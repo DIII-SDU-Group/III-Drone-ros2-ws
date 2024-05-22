@@ -1,0 +1,21 @@
+version: '3.7'
+
+services:
+  base:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+      args:
+        ROS_DISTRO: ${ROS_DISTRO}
+    image: iii_drone:base
+  exec_base:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.exec_base
+      args:
+        ROS_DISTRO: ${ROS_DISTRO}
+    image: iii_drone:exec_base
+    volumes:
+      - ..:/home/ws
+    depends_on:
+      - base
