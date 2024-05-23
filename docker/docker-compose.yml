@@ -16,6 +16,6 @@ services:
         ROS_DISTRO: ${ROS_DISTRO}
     image: iii_drone:exec_base
     volumes:
-      - ..:/home/ws
+      - ..:/home/ws:cached
     depends_on:
       - base
