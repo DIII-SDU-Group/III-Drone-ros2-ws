@@ -13,7 +13,6 @@
         "/opt/ros/humble/lib/python3.10/site-packages",
         "/opt/ros/humble/local/lib/python3.10/dist-packages"
     ],
-    "cmake.sourceDirectory": "/home/ffn/Workspace/ros2_humble_ws/build/btcpp_ros2_interfaces/btcpp_ros2_interfaces__py",
     "files.associations": {
         "chrono": "cpp",
         "mutex": "cpp",
@@ -95,5 +94,6 @@
         "ranges": "cpp",
         "*.ipp": "cpp",
         "core": "cpp"
-    }
+    },
+    "cmake.configureOnOpen": false
 }

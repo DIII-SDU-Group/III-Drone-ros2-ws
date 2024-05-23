@@ -1,20 +1,24 @@
 version: '3'
 
 services:
-  app:
+  dev:
     build: 
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+      args:
+        USERNAME: ${USER}
 
     volumes:
       # Forwards the local Docker socket to the container.
       - /var/run/docker.sock:/var/run/docker-host.sock 
       # Update this to wherever you want VS Code to mount the folder of your project
-      - ../..:/workspaces:cached
+      - ..:/home/ws:cached
 
     # Overrides default command so things don't shut down after the process ends.
     entrypoint: /usr/local/share/docker-init.sh
-    command: sleep infinity 
+    command: sleep infinity
+    depends_on:
+      - base
 
     # Uncomment the next four lines if you will use a ptrace-based debuggers like C++, Go, and Rust.
     # cap_add:
