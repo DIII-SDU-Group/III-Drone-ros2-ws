@@ -1,4 +1,3 @@
-# Note: You can use any Debian/Ubuntu based image you want. 
 FROM iii_drone:base
 ARG USERNAME=USERNAME
 ARG USER_UID=1000
@@ -23,4 +22,4 @@ RUN apt-get install -y python3-pip
 
 # [Optional] Set the default user. Omit if you want to keep the default as root.
 USER $USERNAME
-# CMD ["/bin/bash"]
+CMD ["/bin/bash"]

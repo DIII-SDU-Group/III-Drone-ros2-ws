@@ -1,7 +1,5 @@
-// For format details, see https://aka.ms/devcontainer.json. For config options, see the
-// README at: https://github.com/devcontainers/templates/tree/main/src/docker-outside-of-docker-compose
 {
-	"name": "Docker from Docker Compose",
+	"name": "III-Drone Dev Container",
 	"dockerComposeFile": [
 		"../docker/docker-compose.yml",
 		"docker-compose.yml"
@@ -9,11 +7,6 @@
 	"service": "dev",
 	"workspaceFolder": "/home/ws",
     "shutdownAction": "stopCompose",
-
-	// Use this environment variable if you need to bind mount your local source code into a new container.
-	// "remoteEnv": {
-	// 	"LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
-	// },
 
 	"features": {
 		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
@@ -42,11 +35,6 @@
         "ROS_DOMAIN_ID": "42"
     },
 
-    // "runArgs": [
-    //     "--net=host",
-    //     "-e", "DISPLAY=${env:DISPLAY}"
-    // ],
-
     "mounts": [
        "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",
         "source=/dev/dri,target=/dev/dri,type=bind,consistency=cached"
@@ -54,6 +42,5 @@
 
     "postCreateCommand": "bash -i -c \"rosdep update && rosdep install --from-paths src --ignore-src -y && sudo chown -R $(whoami) /home/ws/ \"",
     "postStartCommand": "bash -i -c \" colcon build \" "
-    // "postStartCommand": "source /opt/ros/${ROS_DISTRO}/setup.bash && colcon build"
 
 }
