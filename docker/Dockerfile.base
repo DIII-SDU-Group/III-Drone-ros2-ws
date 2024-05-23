@@ -14,8 +14,9 @@ RUN apt-get update && apt-get upgrade -y
 WORKDIR /home/ws
 
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /etc/bash.bashrc
+RUN echo "source /home/ws/install/setup.bash" >> /etc/bash.bashrc
 
-RUN bash -i -c "colcon build"
+RUN bash -i -c "colcon build --symlink-install"
 
 # Install dependencies
 COPY src/III-Drone-Core/scripts /scripts

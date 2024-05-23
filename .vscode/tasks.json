@@ -1,0 +1,14 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Full build",
+            "type": "shell",
+            "command": "/bin/bash -i -c \"colcon build --symlink-install\"",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+        }
+    ]
+}
