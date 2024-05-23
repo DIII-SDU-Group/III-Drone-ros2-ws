@@ -6,18 +6,18 @@
         "limitSymbolsToIncludedHeaders": false
       },
       "includePath": [
-        "/home/ffn/Workspace/ros2_humble_ws/install/px4_msgs/include/**",
-        "/home/ffn/Workspace/ros2_humble_ws/install/micro_ros_agent/include/**",
-        "/home/ffn/Workspace/ros2_humble_ws/install/micro_ros_msgs/include/**",
-        "/home/ffn/Workspace/ros2_humble_ws/install/iii_drone_interfaces/include/**",
-        "/home/ffn/Workspace/ros2_humble_ws/install/iii_drone_core/include/**",
-        "/home/ffn/Workspace/ros2_humble_ws/install/iii_drone_simulation/include/**",
-        "/home/ffn/Workspace/ros2_humble_ws/install/behaviortree_ros2/include/**",
-        "/home/ffn/Workspace/ros2_humble_ws/install/btcpp_ros2_interfaces/include/**",
-        "/home/ffn/Workspace/ros2_humble_ws/install/px4_ros2_cpp/include/**",
-        "/home/ffn/Workspace/ros2_humble_ws/src/III-Drone-Core/include/*",
-        "/home/ffn/Workspace/ros2_humble_ws/src/BehaviorTree.ROS2/include/*",
-        "/home/ffn/Workspace/ros2_humble_ws/src/px4-ros2-interface-lib/include/*",
+        "${workspaceFolder}/install/px4_msgs/include/**",
+        "${workspaceFolder}/install/micro_ros_agent/include/**",
+        "${workspaceFolder}/install/micro_ros_msgs/include/**",
+        "${workspaceFolder}/install/iii_drone_interfaces/include/**",
+        "${workspaceFolder}/install/iii_drone_core/include/**",
+        "${workspaceFolder}/install/iii_drone_simulation/include/**",
+        "${workspaceFolder}/install/behaviortree_ros2/include/**",
+        "${workspaceFolder}/install/btcpp_ros2_interfaces/include/**",
+        "${workspaceFolder}/install/px4_ros2_cpp/include/**",
+        "${workspaceFolder}/src/III-Drone-Core/include/*",
+        "${workspaceFolder}/src/BehaviorTree.ROS2/include/*",
+        "${workspaceFolder}/src/px4-ros2-interface-lib/include/*",
         "/opt/ros/humble/include/**",
         "/usr/include/**"
       ],
@@ -25,7 +25,7 @@
       "intelliSenseMode": "gcc-x64",
       "compilerPath": "/usr/bin/gcc",
       "cStandard": "gnu11",
-      "cppStandard": "c++19",
+      "cppStandard": "c++19"
     }
   ],
   "version": 4
