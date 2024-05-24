@@ -1,12 +1,17 @@
 services:
   colcon_build:
+    container_name: iii-colcon-build
+
     build:
       context: ..
       dockerfile: docker/Dockerfile.colcon_build
 
+    image: iii_drone:colcon_build
+
     volumes:
-      - /var/run/docker.sock:/var/run/docker-host.sock
       - ..:/home/iii/ws:cached
+
+    command: sleep infinity
 
     depends_on:
       - base

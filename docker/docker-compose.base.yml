@@ -1,5 +1,6 @@
 services:
   base:
+    container_name: iii-base
     build:
       context: ..
       dockerfile: docker/Dockerfile.base
@@ -7,6 +8,7 @@ services:
         ROS_DISTRO: ${ROS_DISTRO}
     image: "iii_drone:base"
   exec_base:
+    container_name: iii-exec-base
     build:
       context: ..
       dockerfile: docker/Dockerfile.exec_base
