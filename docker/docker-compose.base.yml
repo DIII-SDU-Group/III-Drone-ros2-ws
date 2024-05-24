@@ -1,5 +1,3 @@
-# version: '3.7'
-
 services:
   base:
     build:
@@ -16,6 +14,6 @@ services:
         ROS_DISTRO: ${ROS_DISTRO}
     image: "iii_drone:exec_base"
     volumes:
-      - ..:/home/ws:cached
+      - ..:/home/iii/ws:cached
     depends_on:
       - base

@@ -1,7 +1,27 @@
 ARG ROS_DISTRO
+# ARG USERNAME=iii
+# ARG USER_UID=1000
+# ARG USER_GID=1000
 
 # Use an official ROS2 base image
 FROM ros:${ROS_DISTRO}
+
+# Create the user
+RUN groupadd --gid 1000 iii
+RUN useradd --uid 1000 --gid 1000 -m iii
+RUN apt-get update
+RUN apt-get install -y sudo
+RUN echo iii ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/iii
+RUN chmod 0440 /etc/sudoers.d/iii
+RUN apt-get update && apt-get upgrade -y
+
+# RUN groupadd --gid ${USER_GID} ${USERNAME}
+# RUN useradd --uid ${USER_UID} --gid ${USER_GID} -m ${USERNAME}
+# RUN apt-get update
+# RUN apt-get install -y sudo
+# RUN echo ${USERNAME} ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/${USERNAME}
+# RUN chmod 0440 /etc/sudoers.d/${USERNAME}
+# RUN apt-get update && apt-get upgrade -y
 
 # Install necessary packages and dependencies
 RUN apt-get update && apt-get install -y \
@@ -10,15 +30,18 @@ RUN apt-get update && apt-get install -y \
 
 RUN apt-get update && apt-get upgrade -y
 
-# # Set the working directory
-WORKDIR /home/ws
-
-RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /etc/bash.bashrc
-RUN echo "source /home/ws/install/setup.bash" >> /etc/bash.bashrc
-
-RUN bash -i -c "colcon build --symlink-install"
-
 # Install dependencies
 COPY src/III-Drone-Core/scripts /scripts
 RUN /scripts/install_dependencies.sh
 RUN rm -rf /scripts
+
+# # Set the working directory
+WORKDIR /home/iii/ws
+
+RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /etc/bash.bashrc
+RUN echo "source /home/iii/ws/install/setup.bash" >> /etc/bash.bashrc
+
+# RUN bash -i -c "colcon build --symlink-install"
+
+ENV SHELL /bin/bash
+

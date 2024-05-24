@@ -1,18 +1,17 @@
-version: '3'
+include:
+  - ../docker/docker-compose.base.yml
 
 services:
   dev:
     build: 
       context: ..
       dockerfile: .devcontainer/Dockerfile
-      args:
-        USERNAME: ${USER}
 
     volumes:
       # Forwards the local Docker socket to the container.
       - /var/run/docker.sock:/var/run/docker-host.sock 
       # Update this to wherever you want VS Code to mount the folder of your project
-      - ..:/home/ws:cached
+      - ..:/home/iii/ws:cached
 
     # Overrides default command so things don't shut down after the process ends.
     entrypoint: /usr/local/share/docker-init.sh
