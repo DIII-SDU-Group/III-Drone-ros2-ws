@@ -28,9 +28,13 @@ elif [ "$1" == "--all" ]; then
     COMPOSE_FILES=$(ls $WORKSPACE_DIR/docker/docker-compose*.yml)
 elif [ "$1" == "--system" ]; then
     COMPOSE_FILES=$(ls $WORKSPACE_DIR/docker/system/docker-compose*.yml)
+    # Append $WORKSPACE_DIR/docker/docker-compose.base.yml to COMPOSE_FILES with new line separator
+    # COMPOSE_FILES="$COMPOSE_FILES"$'\n'"$WORKSPACE_DIR/docker/docker-compose.base.yml"
 else
     COMPOSE_FILES=$@
 fi
+
+echo "COMPOSE_FILES: $COMPOSE_FILES"
 
 # If no compose file is specified, show help message
 if [ -z "$COMPOSE_FILES" ]; then
@@ -43,5 +47,12 @@ compose_args=""
 for compose_file in $COMPOSE_FILES; do
     compose_args="$compose_args -f $compose_file"
 done
+
+# If --system, append -f $WORKSPACE_DIR/docker/docker-compose.base.yml to compose_args
+if [ "$1" == "--system" ]; then
+    compose_args="$compose_args -f $WORKSPACE_DIR/docker/docker-compose.base.yml"
+fi
+
+echo "Building docker-compose files: $compose_args"
 
 docker compose $compose_args build

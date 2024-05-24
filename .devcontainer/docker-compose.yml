@@ -30,3 +30,10 @@ services:
     #  - SYS_PTRACE
     # security_opt:
     #   - seccomp:unconfined
+
+    networks:
+      - iii_drone
+
+networks:
+  iii_drone:
+    external: true

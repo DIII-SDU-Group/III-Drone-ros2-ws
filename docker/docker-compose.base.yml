@@ -19,3 +19,11 @@ services:
       - ..:/home/iii/ws:cached
     depends_on:
       - base
+
+# networks:
+#   iii_drone:
+#     external: true
+
+networks:
+  host:
+    external: true

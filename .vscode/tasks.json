@@ -4,7 +4,7 @@
         {
             "label": "Install development configuration",
             "type": "shell",
-            "command": "${workspaceFolder}/scripts/install_development_configuration.sh",
+            "command": "${workspaceFolder}/src/III-Drone-Configuration/scripts/install.sh",
             "args": [
                 "${workspaceFolder}/.config"
             ]
@@ -81,6 +81,11 @@
                 "kind": "build"
             },
         },
+        // {
+        //     "label": "Launch",
+        //     "type": "shell",
+        //     "command": "docker"
+        // }
     ],
     "inputs": [
         {

@@ -1,5 +1,5 @@
 {
-	"name": "III-Drone Dev Container",
+	"name": "iii_drone",
 	"dockerComposeFile": [
         "docker-compose.yml",
         "../docker/docker-compose.colcon-build.yml"
@@ -44,7 +44,7 @@
         "source=/dev/dri,target=/dev/dri,type=bind,consistency=cached"
     ],
 
-    "postCreateCommand": "./scripts/install_development_configuration.sh .config && bash -i -c \"rosdep update && rosdep install --from-paths src --ignore-src -y && sudo chown -R $(whoami) /home/iii/ws/ \"",
+    "postCreateCommand": "./src/III-Drone-Configuration/scripts/install.sh .config && bash -i -c \"rosdep update && rosdep install --from-paths src --ignore-src -y && sudo chown -R $(whoami) /home/iii/ws/ \"",
     // "postStartCommand": "bash -i -c \" colcon build --cmake-args -DCMAKE_BUILD_TYPE=Debug \" "
     // "postStartCommand": "./scripts/install_development_configuration.sh ${workspaceFolder}/.config"
 

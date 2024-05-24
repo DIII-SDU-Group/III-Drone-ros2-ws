@@ -15,3 +15,10 @@ services:
 
     depends_on:
       - base
+
+    networks:
+      - iii_drone
+
+networks:
+  iii_drone:
+    external: true
