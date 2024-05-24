@@ -1,6 +1,9 @@
 {
 	"name": "III-Drone Dev Container",
-	"dockerComposeFile": "docker-compose.yml",
+	"dockerComposeFile": [
+        "docker-compose.yml",
+        "../docker/docker-compose.colcon-build.yml"
+    ],
 	"service": "dev",
 	"workspaceFolder": "/home/iii/ws",
     "shutdownAction": "stopCompose",
@@ -21,7 +24,11 @@
                 "twxs.cmake",
                 "donjayamanne.python-extension-pack",
                 "ms-iot.vscode-ros",
-                "ms-azuretools.vscode-docker"
+                "ms-azuretools.vscode-docker",
+                "ms-python.python",
+                "rioj7.command-variable",
+                "augustocdias.tasks-shell-input",
+                "ms-vscode.cpptools-extension-pack"
             ]
         }
     },
@@ -37,7 +44,8 @@
         "source=/dev/dri,target=/dev/dri,type=bind,consistency=cached"
     ],
 
-    "postCreateCommand": "bash -i -c \"rosdep update && rosdep install --from-paths src --ignore-src -y && sudo chown -R $(whoami) /home/iii/ws/ \"",
-    "postStartCommand": "bash -i -c \" colcon build --cmake-args -DCMAKE_BUILD_TYPE=Debug \" "
+    "postCreateCommand": "./scripts/install_development_configuration.sh .config && bash -i -c \"rosdep update && rosdep install --from-paths src --ignore-src -y && sudo chown -R $(whoami) /home/iii/ws/ \"",
+    // "postStartCommand": "bash -i -c \" colcon build --cmake-args -DCMAKE_BUILD_TYPE=Debug \" "
+    // "postStartCommand": "./scripts/install_development_configuration.sh ${workspaceFolder}/.config"
 
 }

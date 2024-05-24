@@ -2,6 +2,14 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "Install development configuration",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/install_development_configuration.sh",
+            "args": [
+                "${workspaceFolder}/.config"
+            ]
+        },
+        {
             "label": "Docker compose build",
             "type": "shell",
             "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
@@ -45,7 +53,7 @@
         {
             "label": "ROS2 full build",
             "type": "shell",
-            "command": "docker compose -f docker/docker-compose.base.yml -f docker/docker-compose.colcon-build.yml run colcon_build colcon build --symlink-install", 
+            "command": "docker exec -it iii-colcon-build bash -i -c \"colcon build --symlink-install\"", 
             "group": {
                 "kind": "build"
             },
@@ -68,27 +76,11 @@
         {
             "label": "ROS2 build package",
             "type": "shell",
-            "command": "docker compose -f docker/docker-compose.base.yml -f docker/docker-compose.colcon-build.yml run colcon_build colcon build --packages-select ${input:buildPackage} --symlink-install ", 
+            "command": "docker exec -it iii-colcon-build bash -i -c \"colcon build --packages-select ${input:buildPackage} --symlink-install\"", 
             "group": {
                 "kind": "build"
             },
         },
-        // {
-        //     "label": "ROS2 debug build package",
-        //     "type": "shell",
-        //     "command": "docker compose -f docker/docker-compose.base.yml -f docker/docker-compose.colcon-build.yml run colcon_build colcon build --packages-select ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug\"",
-        //     "group": {
-        //         "kind": "build"
-        //     },
-        // },
-        // {
-        //     "label": "Simulation launch",
-        //     "type": "docker",
-        //     "group": {
-        //         "kind": "test"
-        //     },
-
-        // }
     ],
     "inputs": [
         {
@@ -117,7 +109,9 @@
             "command": "shellCommand.execute",
             "args": {
                 "description": "Select the package to build",
-                "command": "${workspaceFolder}/scripts/get_iii_drone_package_names.sh"
+                "command": "${workspaceFolder}/scripts/get_iii_drone_package_names.sh",
+                "taskId": "ros2BuildPackageShellCommandLastSelection",
+                "rememberPrevious": true
             }
         }
     ]
