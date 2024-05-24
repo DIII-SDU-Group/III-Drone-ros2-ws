@@ -1,0 +1,12 @@
+services:
+  colcon_build:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.colcon_build
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker-host.sock
+      - ..:/home/iii/ws:cached
+
+    depends_on:
+      - base
