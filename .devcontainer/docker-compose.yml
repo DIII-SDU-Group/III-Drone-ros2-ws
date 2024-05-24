@@ -3,9 +3,15 @@ include:
 
 services:
   dev:
+    container_name: iii-dev
     build: 
       context: ..
       dockerfile: .devcontainer/Dockerfile
+
+      # args:
+      #   username: ${USER}
+
+    image: iii_drone:dev
 
     volumes:
       # Forwards the local Docker socket to the container.
