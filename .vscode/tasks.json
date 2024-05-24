@@ -2,13 +2,69 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "Build package",
+            "type": "shell",
+            "command": "/bin/bash -i -c \"colcon build --packages-select ${input:buildPackages} --symlink-install\"", 
+            "group": {
+                "kind": "build"
+            },
+        },
+        {
+            "label": "Debug build package",
+            "type": "shell",
+            "command": "/bin/bash -i -c \"colcon build --packages-select ${input:debugBuildPackages} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug\"",
+            "group": {
+                "kind": "build"
+            },
+        },
+        {
             "label": "Full build",
             "type": "shell",
-            "command": "/bin/bash -i -c \"colcon build --symlink-install\"",
+            "command": "/bin/bash -i -c \"colcon build --symlink-install\"", 
             "group": {
-                "kind": "build",
-                "isDefault": true
+                "kind": "build"
             },
+        },
+        {
+            "label": "Clean and build",
+            "type": "shell",
+            "dependsOn": [
+                "Clean",
+                "Full build"
+            ],
+            "dependsOrder": "sequence",
+            "group": {
+                "kind": "build"
+            }
+        },
+        {
+            "label": "Clean",
+            "type": "shell",
+            "command": "rm -rf build install log",
+            "group": {
+                "kind": "build"
+            }, 
+        },
+    ],
+    "inputs": [
+        {
+            "id": "buildPackages",
+            "description": "Select the package to build",
+            "type": "pickString",
+            "options": [
+                "iii_drone_core",
+                "iii_drone_interfaces",
+                "iii_drone_simulation",
+                "iii_drone_gc"
+            ]
+        },
+        {
+            "id": "debugBuildPackages",
+            "description": "Select the package to build",
+            "type": "pickString",
+            "options": [
+                "iii_drone_core",
+            ]
         }
     ]
 }
