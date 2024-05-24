@@ -39,11 +39,14 @@ RUN rm -rf /scripts
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Create workspace folder and set ownership
+RUN mkdir -p /home/iii/ws/src
+RUN chown -R iii:iii /home/iii/ws
+
+WORKDIR /home/iii/ws
+
 # Set the entrypoint
 ENTRYPOINT ["/entrypoint.sh"]
-
-# # Set the working directory
-WORKDIR /home/iii/ws
 
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /etc/bash.bashrc
 RUN echo "source /home/iii/ws/install/setup.bash" >> /etc/bash.bashrc
