@@ -2,35 +2,63 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build package",
+            "label": "Docker compose build",
             "type": "shell",
-            "command": "/bin/bash -i -c \"colcon build --packages-select ${input:buildPackages} --symlink-install\"", 
+            "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
+            "args": [
+                "${input:dockerComposeBuildFiles}"
+            ],
+            "group": {
+                "kind": "build"
+            }
+        },
+        {
+            "label": "Docker compose build all",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
+            "args": [
+                "--all"
+            ],
+            "group": {
+                "kind": "build"
+            }
+        },
+        {
+            "label": "Docker compose build system",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
+            "args": [
+                "--system"
+            ],
+            "group": {
+                "kind": "build"
+            }
+        },
+        {
+            "label": "ROS2 clean",
+            "type": "shell",
+            "command": "if [ ${input:cleanPrompt} == \"Yes\" ]; then rm -rf build install log; else echo \"Cleaning cancelled.\"; exit 1; fi",
+            "group": {
+                "kind": "build"
+            }, 
+        },
+        {
+            "label": "ROS2 full build",
+            "type": "shell",
+            "command": "docker compose -f docker/docker-compose.base.yml -f docker/docker-compose.colcon-build.yml run colcon_build colcon build --symlink-install", 
             "group": {
                 "kind": "build"
             },
+            "dependsOn": [
+                "Docker compose build all"
+            ]
         },
         {
-            "label": "Debug build package",
-            "type": "shell",
-            "command": "/bin/bash -i -c \"colcon build --packages-select ${input:debugBuildPackages} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug\"",
-            "group": {
-                "kind": "build"
-            },
-        },
-        {
-            "label": "Full build",
-            "type": "shell",
-            "command": "/bin/bash -i -c \"colcon build --symlink-install\"", 
-            "group": {
-                "kind": "build"
-            },
-        },
-        {
-            "label": "Clean and build",
+            "label": "ROS2 clean build",
             "type": "shell",
             "dependsOn": [
-                "Clean",
-                "Full build"
+                "ROS2 clean",
+                "ROS2 full build"
             ],
             "dependsOrder": "sequence",
             "group": {
@@ -38,33 +66,59 @@
             }
         },
         {
-            "label": "Clean",
+            "label": "ROS2 build package",
             "type": "shell",
-            "command": "rm -rf build install log",
+            "command": "docker compose -f docker/docker-compose.base.yml -f docker/docker-compose.colcon-build.yml run colcon_build colcon build --packages-select ${input:buildPackage} --symlink-install ", 
             "group": {
                 "kind": "build"
-            }, 
+            },
         },
+        // {
+        //     "label": "ROS2 debug build package",
+        //     "type": "shell",
+        //     "command": "docker compose -f docker/docker-compose.base.yml -f docker/docker-compose.colcon-build.yml run colcon_build colcon build --packages-select ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug\"",
+        //     "group": {
+        //         "kind": "build"
+        //     },
+        // },
+        // {
+        //     "label": "Simulation launch",
+        //     "type": "docker",
+        //     "group": {
+        //         "kind": "test"
+        //     },
+
+        // }
     ],
     "inputs": [
         {
-            "id": "buildPackages",
-            "description": "Select the package to build",
-            "type": "pickString",
-            "options": [
-                "iii_drone_core",
-                "iii_drone_interfaces",
-                "iii_drone_simulation",
-                "iii_drone_gc"
-            ]
+            "id": "dockerComposeBuildFiles",
+            "type": "command",
+            "command": "extension.commandvariable.file.pickFile",
+            "description": "Select the docker-compose files to build",
+            "fromWorkspace": "${workspaceFolderBasename}",
+            "args": {
+                "include": "docker/docker-compose*.yml",
+            }
         },
         {
-            "id": "debugBuildPackages",
-            "description": "Select the package to build",
+            "id": "cleanPrompt",
+            "description": "Are you sure you want to clean the workspace?",
             "type": "pickString",
             "options": [
-                "iii_drone_core",
-            ]
+                "No",
+                "Yes"
+            ],
+            "default": "No"
+        },
+        {
+            "id": "buildPackage",
+            "type": "command",
+            "command": "shellCommand.execute",
+            "args": {
+                "description": "Select the package to build",
+                "command": "${workspaceFolder}/scripts/get_iii_drone_package_names.sh"
+            }
         }
     ]
 }
