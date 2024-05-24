@@ -2,7 +2,5 @@ services:
   control:
     image: "iii_drone:exec_base"
     volumes:
-      - ..:/home/ws:cached
+      - ../..:/home/iii/ws:cached
     command: ros2 launch iii_drone_core control.launch.py ${CONTROL_ARGS}
-    depends_on:
-      - exec_base

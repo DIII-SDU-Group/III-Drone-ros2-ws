@@ -2,7 +2,5 @@ services:
   configuration-server:
     image: "iii_drone:exec_base"
     volumes:
-      - ..:/home/ws:cached
+      - ../..:/home/iii/ws:cached
     command: ros2 run iii_drone_core configuration_server_node.py ${CONFIGURATION_SERVER_ARGS}
-    depends_on:
-      - exec_base

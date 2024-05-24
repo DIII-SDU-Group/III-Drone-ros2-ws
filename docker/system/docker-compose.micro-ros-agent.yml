@@ -2,7 +2,5 @@ services:
   micro-ros-agent:
     image: "iii_drone:exec_base"
     volumes:
-      - ..:/home/ws:cached
+      - ../..:/home/iii/ws:cached
     command: ros2 run micro_ros_agent udp4 --port ${FMU_PORT}
-    depends_on:
-      - exec_base
