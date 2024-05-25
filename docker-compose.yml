@@ -1,0 +1,35 @@
+# networks:
+#   default:
+#     driver: bridge
+
+services:
+  # configuration-server:
+  #   extends:
+  #     file: ../docker/system/docker-compose.configuration.yml
+  #     service: configuration-server
+  #   networks:
+  #     - default
+    # profiles:
+    #   - sim
+    #   - real
+
+  configuration-server:
+    container_name: configuration-server
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: ${ROS_DISTRO}
+    image: "iii_drone:base"
+    volumes:
+      - .:/home/iii/ws:cached
+    command: ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file ${CONFIG_BASE_DIR}/iii_drone/ros_params.yaml
+    environment:
+      - ROS_DOMAIN_ID
+      - CONFIG_BASE_DIR
+    profiles:
+      - sim
+      - real
+    # network_mode: host
+    # networks:
+    #   - default

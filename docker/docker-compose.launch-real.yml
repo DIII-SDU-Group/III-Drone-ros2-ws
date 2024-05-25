@@ -1,7 +1,0 @@
-include:
-  - "system/docker-compose.configuration.yml"
-  - "system/docker-compose.micro-ros-agent.yml"
-  - "system/docker-compose.sensors-real.yml"
-  - "system/docker-compose.tf-real.yml"
-  - "system/docker-compose.perception.yml"
-  - "system/docker-compose.control.yml"

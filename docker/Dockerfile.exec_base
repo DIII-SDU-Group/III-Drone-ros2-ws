@@ -1,5 +1,0 @@
-FROM iii_drone:base
-
-SHELL ["/bin/bash", "-c"]
-
-USER iii

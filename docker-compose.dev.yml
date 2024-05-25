@@ -1,0 +1,106 @@
+# networks:
+#   iii_drone:
+#     driver: bridge
+
+services:
+  dev:
+    container_name: iii-dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: ${ROS_DISTRO}
+    image: "iii_drone:base"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker-host.sock 
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - .:/home/iii/ws:cached
+    entrypoint: /usr/local/share/docker-init.sh
+    command: sleep infinity
+    environment:
+      - ROS_DOMAIN_ID
+      - DISPLAY=$DISPLAY
+    # network_mode: host
+    # networks:
+    #   - default
+    # # Uncomment the next four lines if you will use a ptrace-based debuggers like C++, Go, and Rust.
+    # cap_add:
+    #  - SYS_PTRACE
+    # security_opt:
+    #   - seccomp:unconfined
+
+  # configuration-server:
+  #   extends:
+  #     file: ../docker/system/docker-compose.configuration.yml
+  #     service: configuration-server
+  #   networks:
+  #     - iii_drone
+  #   profiles:
+  #     - sim
+  #     - real
+    
+  # micro-ros-agent:
+  #   extends:
+  #     file: ../docker/system/docker-compose.micro-ros-agent.yml
+  #     service: micro-ros-agent
+  #   networks:
+  #     - iii_drone
+  #   profiles:
+  #     - sim
+  #     - real
+
+  # tf-real:
+  #   extends:
+  #     file: ../docker/system/docker-compose.tf-real.yml
+  #     service: tf-real
+  #   networks:
+  #     - iii_drone
+  #   profiles:
+  #     - real
+
+  # tf-sim:
+  #   extends:
+  #     file: ../docker/system/docker-compose.tf-sim.yml
+  #     service: tf-sim
+  #   networks:
+  #     - iii_drone
+  #   profiles:
+  #     - sim
+
+  # sensors-real:
+  #   extends:
+  #     file: ../docker/system/docker-compose.sensors-real.yml
+  #     service: sensors-real
+  #   networks:
+  #     - iii_drone
+  #   profiles:
+  #     - real
+
+  # sensors-sim:
+  #   extends:
+  #     file: ../docker/system/docker-compose.sensors-sim.yml
+  #     service: sensors-sim
+  #   networks:
+  #     - iii_drone
+  #   profiles:
+  #     - sim
+
+  # perception:
+  #   extends:
+  #     file: ../docker/system/docker-compose.perception.yml
+  #     service: perception
+  #   networks:
+  #     - iii_drone
+  #   profiles:
+  #     - sim
+  #     - real
+
+  # control:
+  #   extends:
+  #     file: ../docker/system/docker-compose.control.yml
+  #     service: control
+  #   networks:
+  #     - iii_drone
+  #   profiles:
+  #     - sim
+  #     - real

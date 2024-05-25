@@ -9,39 +9,39 @@
                 "${workspaceFolder}/.config"
             ]
         },
-        {
-            "label": "Docker compose build",
-            "type": "shell",
-            "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
-            "args": [
-                "${input:dockerComposeBuildFiles}"
-            ],
-            "group": {
-                "kind": "build"
-            }
-        },
-        {
-            "label": "Docker compose build all",
-            "type": "shell",
-            "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
-            "args": [
-                "--all"
-            ],
-            "group": {
-                "kind": "build"
-            }
-        },
-        {
-            "label": "Docker compose build system",
-            "type": "shell",
-            "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
-            "args": [
-                "--system"
-            ],
-            "group": {
-                "kind": "build"
-            }
-        },
+        // {
+        //     "label": "Docker compose build",
+        //     "type": "shell",
+        //     "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
+        //     "args": [
+        //         "${input:dockerComposeBuildFiles}"
+        //     ],
+        //     "group": {
+        //         "kind": "build"
+        //     }
+        // },
+        // {
+        //     "label": "Docker compose build all",
+        //     "type": "shell",
+        //     "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
+        //     "args": [
+        //         "--all"
+        //     ],
+        //     "group": {
+        //         "kind": "build"
+        //     }
+        // },
+        // {
+        //     "label": "Docker compose build system",
+        //     "type": "shell",
+        //     "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
+        //     "args": [
+        //         "--system"
+        //     ],
+        //     "group": {
+        //         "kind": "build"
+        //     }
+        // },
         {
             "label": "ROS2 clean",
             "type": "shell",
@@ -53,13 +53,14 @@
         {
             "label": "ROS2 full build",
             "type": "shell",
-            "command": "docker exec -it iii-colcon-build bash -i -c \"colcon build --symlink-install\"", 
+            "command": "colcon build --symlink-install", 
+            // "command": "docker exec -it iii-colcon-build bash -i -c \"colcon build --symlink-install\"", 
             "group": {
                 "kind": "build"
             },
-            "dependsOn": [
-                "Docker compose build all"
-            ]
+            // "dependsOn": [
+            //     "Docker compose build all"
+            // ]
         },
         {
             "label": "ROS2 clean build",
@@ -76,16 +77,28 @@
         {
             "label": "ROS2 build package",
             "type": "shell",
-            "command": "docker exec -it iii-colcon-build bash -i -c \"colcon build --packages-select ${input:buildPackage} --symlink-install\"", 
+            "command": "colcon build --packages-select ${input:buildPackage} --symlink-install", 
+            // "command": "docker exec -it iii-colcon-build bash -i -c \"colcon build --packages-select ${input:buildPackage} --symlink-install\"", 
             "group": {
                 "kind": "build"
             },
         },
-        // {
-        //     "label": "Launch",
-        //     "type": "shell",
-        //     "command": "docker"
-        // }
+        {
+            "label": "Launch simulation",
+            "type": "shell",
+            "command": "docker compose -f docker-compose.yml --profile sim start",
+            "group": {
+                "kind": "test"
+            }
+        },
+        {
+            "label": "Stop simulation",
+            "type": "shell",
+            "command": "docker compose -f docker-compose.yml --profile sim stop",
+            "group": {
+                "kind": "test"
+            }
+        }
     ],
     "inputs": [
         {

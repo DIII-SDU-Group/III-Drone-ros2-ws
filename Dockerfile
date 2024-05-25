@@ -1,7 +1,4 @@
 ARG ROS_DISTRO
-# ARG USERNAME=iii
-# ARG USER_UID=1000
-# ARG USER_GID=1000
 
 # Use an official ROS2 base image
 FROM ros:${ROS_DISTRO}
@@ -14,14 +11,6 @@ RUN apt-get install -y sudo
 RUN echo iii ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/iii
 RUN chmod 0440 /etc/sudoers.d/iii
 RUN apt-get update && apt-get upgrade -y
-
-# RUN groupadd --gid ${USER_GID} ${USERNAME}
-# RUN useradd --uid ${USER_UID} --gid ${USER_GID} -m ${USERNAME}
-# RUN apt-get update
-# RUN apt-get install -y sudo
-# RUN echo ${USERNAME} ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/${USERNAME}
-# RUN chmod 0440 /etc/sudoers.d/${USERNAME}
-# RUN apt-get update && apt-get upgrade -y
 
 # Install necessary packages and dependencies
 RUN apt-get update && apt-get install -y \
@@ -36,7 +25,7 @@ RUN /scripts/install_dependencies.sh
 RUN rm -rf /scripts
 
 # Copy the entrypoint script
-COPY docker/entrypoint.sh /entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Create workspace folder and set ownership
@@ -51,7 +40,6 @@ ENTRYPOINT ["/entrypoint.sh"]
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /etc/bash.bashrc
 RUN echo "source /home/iii/ws/install/setup.bash" >> /etc/bash.bashrc
 
-# RUN bash -i -c "colcon build --symlink-install"
-
 ENV SHELL /bin/bash
 
+USER iii
