@@ -53,7 +53,7 @@
         {
             "label": "ROS2 full build",
             "type": "shell",
-            "command": "colcon build --symlink-install", 
+            "command": "colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
             // "command": "docker exec -it iii-colcon-build bash -i -c \"colcon build --symlink-install\"", 
             "group": {
                 "kind": "build"
@@ -77,14 +77,14 @@
         {
             "label": "ROS2 build package",
             "type": "shell",
-            "command": "colcon build --packages-select ${input:buildPackage} --symlink-install", 
+            "command": "colcon build --packages-select ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
             // "command": "docker exec -it iii-colcon-build bash -i -c \"colcon build --packages-select ${input:buildPackage} --symlink-install\"", 
             "group": {
                 "kind": "build"
             },
         },
         {
-            "label": "Launch simulation",
+            "label": "Launch III simulation",
             "type": "shell",
             "command": "docker compose -f docker-compose.yml --profile sim start",
             "group": {
@@ -92,9 +92,25 @@
             }
         },
         {
-            "label": "Stop simulation",
+            "label": "Stop III simulation",
             "type": "shell",
             "command": "docker compose -f docker-compose.yml --profile sim stop",
+            "group": {
+                "kind": "test"
+            }
+        },
+        {
+            "label": "Launch Gazebo",
+            "type": "shell",
+            "command": "make -C /home/iii/PX4-Autopilot px4_sitl gz_d4s_dc_drone",
+            "group": {
+                "kind": "test"
+            }
+        },
+        {
+            "label": "Launch QGroundControl",
+            "type": "shell",
+            "command": "/home/iii/QGroundControl.AppImage",
             "group": {
                 "kind": "test"
             }

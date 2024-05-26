@@ -1,7 +1,6 @@
 ARG ROS_DISTRO
 
-# Use an official ROS2 base image
-FROM ros:${ROS_DISTRO}-ros-core
+FROM osrf/ros:${ROS_DISTRO}-desktop-full
 
 # Create the user
 RUN groupadd --gid 1000 iii
@@ -11,6 +10,7 @@ RUN apt-get install -y sudo
 RUN echo iii ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/iii
 RUN chmod 0440 /etc/sudoers.d/iii
 RUN apt-get update && apt-get upgrade -y
+RUN usermod -s /bin/bash iii
 
 # Install necessary packages and dependencies
 RUN apt-get update && apt-get install -y \
@@ -40,6 +40,31 @@ ENTRYPOINT ["/entrypoint.sh"]
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /etc/bash.bashrc
 RUN echo "source /home/iii/ws/install/setup.bash" >> /etc/bash.bashrc
 
+# Install simulation tools:
+USER iii
+
+RUN git clone --recursive https://github.com/DIII-SDU-Group/PX4-Autopilot.git /home/iii/PX4-Autopilot
+
+RUN sudo apt install -y wget
+RUN /bin/bash /home/iii/PX4-Autopilot/Tools/setup/ubuntu.sh
+
+RUN sudo apt remove -y ros-humble-ros-gz*
+RUN sudo apt install -y ros-humble-ros-gzgarden
+
+# QGroundControl
+RUN sudo usermod -a -G dialout iii
+RUN sudo apt-get remove modemmanager -y
+RUN sudo apt install gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-gl -y
+RUN sudo apt install libfuse2 -y
+RUN sudo apt install libxcb-xinerama0 libxkbcommon-x11-0 libxcb-cursor0 -y
+RUN sudo apt install -y fuse
+
+RUN wget https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl.AppImage -P /home/iii
+RUN chmod +x /home/iii/QGroundControl.AppImage
+
+# Install development tools
+RUN sudo apt install -y terminator
+
 ENV SHELL /bin/bash
 
-USER iii
+# USER iii

@@ -24,7 +24,7 @@
                 "ms-vscode.cpptools-themes",
                 "twxs.cmake",
                 "donjayamanne.python-extension-pack",
-                "ms-iot.vscode-ros",
+                // "ms-iot.vscode-ros",
                 "ms-azuretools.vscode-docker",
                 "ms-python.python",
                 "rioj7.command-variable",
@@ -45,9 +45,9 @@
         "source=/dev/dri,target=/dev/dri,type=bind,consistency=cached"
     ],
 
-    "initializeCommand": "docker compose -f docker-compose.yml --profile \"*\" up --build --no-start",
+    "initializeCommand": "./scripts/initialize.sh",
     // "onCreateCommand": "docker kill -d dev",
-    "postCreateCommand": "./src/III-Drone-Configuration/scripts/install.sh .config && bash -i -c \"rosdep update && rosdep install --from-paths src --ignore-src -y && sudo chown -R $(whoami) /home/iii/ws/ \"",
+    "postCreateCommand": "scripts/post_create.sh",
     // "postStartCommand": "bash -i -c \" colcon build --cmake-argstops -DCMAKE_BUILD_TYPE=Debug \" "
     // "postStartCommand": "./scripts/install_development_configuration.sh ${workspaceFolder}/.config"
 

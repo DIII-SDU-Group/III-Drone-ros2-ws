@@ -19,8 +19,9 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
+        # FROM_IMAGE: ros:${ROS_DISTRO}-ros-core
         ROS_DISTRO: ${ROS_DISTRO}
-    image: "iii_drone:base"
+    image: "iii_drone_base:latest"
     volumes:
       - .:/home/iii/ws:cached
     command: ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file ${CONFIG_BASE_DIR}/iii_drone/ros_params.yaml

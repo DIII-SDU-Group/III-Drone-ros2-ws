@@ -5,7 +5,9 @@ set -e
 source /opt/ros/$ROS_DISTRO/setup.bash
 
 # Source the workspace setup script
-source install/setup.bash
+if [ -f /home/iii/ws/install/setup.bash ]; then
+    source /home/iii/ws/install/setup.bash
+fi
 
 # Execute the command passed to the entrypoint
 exec "$@"

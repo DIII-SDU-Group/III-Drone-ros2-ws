@@ -27,7 +27,7 @@
       "intelliSenseMode": "gcc-x64",
       "compilerPath": "/usr/bin/gcc",
       "cStandard": "gnu11",
-      "cppStandard": "c++19"
+      "cppStandard": "c++20"
     }
   ],
   "version": 4
