@@ -6,20 +6,25 @@
         "limitSymbolsToIncludedHeaders": false
       },
       "includePath": [
-        "${workspaceFolder}/install/px4_msgs/include/*",
-        "${workspaceFolder}/install/micro_ros_agent/include/*",
-        "${workspaceFolder}/install/micro_ros_msgs/include/*",
-        "${workspaceFolder}/install/iii_drone_interfaces/include/*",
-        "${workspaceFolder}/install/iii_drone_core/include/*",
-        "${workspaceFolder}/install/iii_drone_configuration/include/*",
-        "${workspaceFolder}/install/iii_drone_simulation/include/*",
-        "${workspaceFolder}/install/behaviortree_ros2/include/*",
-        "${workspaceFolder}/install/btcpp_ros2_interfaces/include/*",
-        "${workspaceFolder}/install/px4_ros2_cpp/include/*",
+        "${workspaceFolder}/install/px4_msgs/include/px4_msgs/*",
+        "${workspaceFolder}/install/micro_ros_msgs/include/micro_ros_msgs/*",
+        "${workspaceFolder}/install/iii_drone_interfaces/include/iii_drone_interfaces/*",
+        "${workspaceFolder}/install/btcpp_ros2_interfaces/include/btcpp_ros2_interfaces/*",
+
+        // "${workspaceFolder}/install/micro_ros_agent/include/*",
+        // "${workspaceFolder}/install/iii_drone_core/include/*",
+        // "${workspaceFolder}/install/iii_drone_configuration/include/*",
+        // "${workspaceFolder}/install/iii_drone_simulation/include/*",
+        // "${workspaceFolder}/install/behaviortree_cpp/include/*",
+        // "${workspaceFolder}/install/behaviortree_ros2/include/*",
+        // "${workspaceFolder}/install/px4_ros2_cpp/include/*",
+
         "${workspaceFolder}/src/III-Drone-Configuration/include/*",
         "${workspaceFolder}/src/III-Drone-Core/include/*",
-        "${workspaceFolder}/src/BehaviorTree.ROS2/include/*",
-        "${workspaceFolder}/src/px4-ros2-interface-lib/include/*",
+        "${workspaceFolder}/src/BehaviorTree.CPP/include/*",
+        "${workspaceFolder}/src/BehaviorTree.ROS2/behaviortree_ros2/include/*",
+        "${workspaceFolder}/src/px4-ros2-interface-lib/px4_ros2_cpp/include/*",
+
         "/opt/ros/humble/include/**",
         "/usr/include/**"
       ],
