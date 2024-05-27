@@ -19,7 +19,7 @@ services:
       - .:/home/iii/ws:cached
       - /dev:/dev
       - /run/user/1000/at-spi/bus_1:/run/user/1000/at-spi/bus_1
-      - /home/${USER}/.config/terminator:/home/iii/.config/terminator
+      # - /home/${USER}/.config/terminator:/home/iii/.config/terminator
     cap_add:
       - SYS_ADMIN
     devices:

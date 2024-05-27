@@ -1,0 +1,16 @@
+# ~/.config/tmuxinator/iii_dev_launch.yml
+
+name: iii_dev_launch
+root: ~/ws/
+
+windows:
+  - configuration:
+      layout: main-vertical
+      panes:
+        - configuration_server: ros2 run iii_drone_configuration configuration_server --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+        - micro_ros_agent: ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888  
+        - tf: ros2 launch iii_drone tf_real.launch.py
+  # - sensors: export ROS_LOG_DIR=~/.ros/log/sensors ; ros2 launch iii_drone sensors_real.launch.py
+  # - pl_mapper: export ROS_LOG_DIR=~/.ros/log/pl_mapper ; ros2 launch iii_drone pl_mapper_SW.launch.py
+  # - controller: export ROS_LOG_DIR=~/.ros/log/controller ; ros2 launch iii_drone controller.launch.py
+  # - charger_gripper: export ROS_LOG_DIR=~/.ros/log/charger_gripper ; ros2 run iii_drone charger_gripper_node.py --ros-args --params-file ~/.config/iii_drone/params.yaml

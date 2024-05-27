@@ -1,0 +1,42 @@
+[global_config]
+[keybindings]
+[profiles]
+  [[default]]
+    background_color = "#300a24"
+    cursor_color = "#aaaaaa"
+    font = Sans 6
+    foreground_color = "#ffffff"
+    scrollback_infinite = True
+    palette = "#073642:#dc322f:#859900:#b58900:#268bd2:#d33682:#2aa198:#eee8d5:#002b36:#cb4b16:#586e75:#657b83:#839496:#6c71c4:#93a1a1:#fdf6e3"
+  [[New Profile]]
+    cursor_color = "#aaaaaa"
+[layouts]
+  [[default]]
+    [[[window0]]]
+      type = Window
+      parent = ""
+    [[[child1]]]
+      type = Terminal
+      parent = window0
+      profile = default
+  [[ROS2]]
+    [[[child0]]]
+      type = Window
+      parent = ""
+      order = 0
+      position = 103:64
+      maximised = False
+      fullscreen = False
+      size = 736, 452
+      title = iii@20da264ad677: ~/ws
+      last_active_term = 0264ec57-77dd-41ce-849e-9d3495a3a8af
+      last_active_window = True
+    [[[terminal1]]]
+      type = Terminal
+      parent = child0
+      order = 0
+      profile = default
+      uuid = 0264ec57-77dd-41ce-849e-9d3495a3a8af
+      command = bash
+      directory = /home/iii/ws
+[plugins]
