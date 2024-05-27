@@ -4,13 +4,25 @@ name: iii_dev_launch
 root: ~/ws/
 
 windows:
+  - background-processes:
+      layout: main-horizontal
+      panes:
+        - micro_ros_agent: ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888  
+        - tf: ros2 launch iii_drone_simulation tf_sim.launch.py
   - configuration:
       layout: main-vertical
       panes:
-        - configuration_server: ros2 run iii_drone_configuration configuration_server --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
-        - micro_ros_agent: ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888  
-        - tf: ros2 launch iii_drone tf_real.launch.py
-  # - sensors: export ROS_LOG_DIR=~/.ros/log/sensors ; ros2 launch iii_drone sensors_real.launch.py
-  # - pl_mapper: export ROS_LOG_DIR=~/.ros/log/pl_mapper ; ros2 launch iii_drone pl_mapper_SW.launch.py
-  # - controller: export ROS_LOG_DIR=~/.ros/log/controller ; ros2 launch iii_drone controller.launch.py
-  # - charger_gripper: export ROS_LOG_DIR=~/.ros/log/charger_gripper ; ros2 run iii_drone charger_gripper_node.py --ros-args --params-file ~/.config/iii_drone/params.yaml
+        - configuration_server: ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+  - perception:
+      layout: main-vertical
+      panes:
+        - sensors: ros2 launch iii_drone_simulation sensors_sim.launch.py
+        - hough_transformer: ros2 run iii_drone_core hough_transformer --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+        - pl_dir_computer: ros2 run iii_drone_core pl_dir_computer --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+        - pl_mapper: ros2 run iii_drone_core pl_mapper --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+  - control:
+      layout: main-vertical
+      panes:
+        - trajectory_generator: ros2 run iii_drone_core trajectory_generator --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+        - maneuver_controller: ros2 run iii_drone_core maneuver_controller --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+  - bash: ""
