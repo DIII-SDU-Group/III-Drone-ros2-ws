@@ -54,13 +54,9 @@
             "label": "ROS2 full build",
             "type": "shell",
             "command": "colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
-            // "command": "docker exec -it iii-colcon-build bash -i -c \"colcon build --symlink-install\"", 
             "group": {
                 "kind": "build"
             },
-            // "dependsOn": [
-            //     "Docker compose build all"
-            // ]
         },
         {
             "label": "ROS2 clean build",
@@ -78,27 +74,26 @@
             "label": "ROS2 build package",
             "type": "shell",
             "command": "colcon build --packages-select ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
-            // "command": "docker exec -it iii-colcon-build bash -i -c \"colcon build --packages-select ${input:buildPackage} --symlink-install\"", 
             "group": {
                 "kind": "build"
             },
         },
         {
-            "label": "Launch III simulation",
+            "label": "Launch ROS2 III system",
             "type": "shell",
-            "command": "docker compose -f docker-compose.yml --profile sim start",
+            "command": "terminator --no-dbus -x tmuxinator iii_dev_launch ; tmux kill-session -t iii_dev_launch",
             "group": {
                 "kind": "test"
             }
         },
-        {
-            "label": "Stop III simulation",
-            "type": "shell",
-            "command": "docker compose -f docker-compose.yml --profile sim stop",
-            "group": {
-                "kind": "test"
-            }
-        },
+        // {
+        //     "label": "Stop III simulation",
+        //     "type": "shell",
+        //     "command": "docker compose -f docker-compose.yml --profile sim stop",
+        //     "group": {
+        //         "kind": "test"
+        //     }
+        // },
         {
             "label": "Launch Gazebo",
             "type": "shell",
@@ -118,7 +113,19 @@
         {
             "label": "Launch Terminator",
             "type": "shell",
-            "command": "terminator",
+            "command": "terminator --no-dbus",
+            "group": {
+                "kind": "test"
+            }
+        },
+        {
+            "label": "Launch full simulation",
+            "type": "shell",
+            "dependsOn": [
+                "Launch Gazebo",
+                "Launch QGroundControl",
+                "Launch ROS2 III system"
+            ],
             "group": {
                 "kind": "test"
             }
