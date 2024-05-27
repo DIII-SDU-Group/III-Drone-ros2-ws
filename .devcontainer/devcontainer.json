@@ -29,12 +29,14 @@
                 "ms-python.python",
                 "rioj7.command-variable",
                 "augustocdias.tasks-shell-input",
-                "ms-vscode.cpptools-extension-pack"
+                "ms-vscode.cpptools-extension-pack",
             ]
         }
     },
 
     "containerEnv": {
+        "CONFIG_BASE_DIR": "/home/iii/ws/.config",
+        "SIMULATION": "true"
         // "DISPLAY": "unix:0",
         // "ROS_LOCALHOST_ONLY": "1",
         // "ROS_DOMAIN_ID": "42"
@@ -45,10 +47,7 @@
         "source=/dev/dri,target=/dev/dri,type=bind,consistency=cached"
     ],
 
-    "initializeCommand": "./scripts/initialize.sh",
-    // "onCreateCommand": "docker kill -d dev",
     "postCreateCommand": "scripts/post_create.sh",
-    // "postStartCommand": "bash -i -c \" colcon build --cmake-argstops -DCMAKE_BUILD_TYPE=Debug \" "
-    // "postStartCommand": "./scripts/install_development_configuration.sh ${workspaceFolder}/.config"
+    "postStartCommand": "scripts/post_start.sh",
 
 }
