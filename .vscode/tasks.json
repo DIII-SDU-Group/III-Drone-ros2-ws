@@ -114,6 +114,14 @@
             "group": {
                 "kind": "test"
             }
+        },
+        {
+            "label": "Launch Terminator",
+            "type": "shell",
+            "command": "terminator",
+            "group": {
+                "kind": "test"
+            }
         }
     ],
     "inputs": [
