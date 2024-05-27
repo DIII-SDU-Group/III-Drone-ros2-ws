@@ -1,6 +1,0 @@
-services:
-  perception:
-    image: "iii_drone:exec_base"
-    volumes:
-      - ../..:/home/iii/ws:cached
-    command: ros2 launch iii_drone_core perception.launch.py ${PERCEPTION_ARGS}
