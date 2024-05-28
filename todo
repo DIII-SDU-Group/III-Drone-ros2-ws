@@ -1,14 +1,16 @@
 * Rewrite to use SIMULATION as env variable instead of param - done
 * Lav docker build for deployment - done
 * Styr på intellisense - done
+* Create configuration cli gui - done
 
+* Implementer ROS2 lifecycle nodes
 
 * Configurator should not rely on node_configs and should not declare parameters, instead configuration-server should read the node params files and auto declare to reduce dependencies and support restart of configuration server
-* Create configuration cli gui
 * Create iii command line utility
-* Implementer ROS2 lifecycle nodes
 * Upgrade al software
 	- ROS2
 	- PX4
 	- PX4 ROS2 library
 	- Gazebo
+
+* Få styr på requirements/dependencies
