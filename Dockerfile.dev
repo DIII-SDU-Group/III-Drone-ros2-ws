@@ -40,9 +40,19 @@ ENTRYPOINT ["/entrypoint.sh"]
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /etc/bash.bashrc
 RUN echo "source /home/iii/ws/install/setup.bash" >> /etc/bash.bashrc
 
-# Install simulation tools:
+# Install userspace tools
 USER iii
 
+COPY requirements.txt /requirements.txt
+
+RUN sudo chown -R iii:iii /requirements.txt
+
+RUN pip3 install --upgrade pip
+RUN pip3 install -r /requirements.txt
+
+RUN sudo rm -rf /requirements.txt
+
+# Install simulation tools:
 RUN git clone --recursive https://github.com/DIII-SDU-Group/PX4-Autopilot.git /home/iii/PX4-Autopilot
 
 RUN sudo apt install -y wget
@@ -66,7 +76,6 @@ RUN chmod +x /home/iii/QGroundControl.AppImage
 RUN sudo apt install -y terminator tmux tmuxinator htop
 COPY tools/terminator /home/iii/.config/terminator
 COPY tools/QGroundControl.org /home/iii/.config/QGroundControl.org
-# COPY tools/tmuxinator /home/iii/.config/tmuxinator
 RUN sudo ln -s /home/iii/ws/tools/tmuxinator /home/iii/.config/tmuxinator
 
 RUN sudo chown -R iii:iii /home/iii/.config
