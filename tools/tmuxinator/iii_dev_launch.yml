@@ -6,6 +6,8 @@ root: ~/ws/
 enable_pane_titles: true
 pane_title_position: top
 
+startup_window: configuration
+
 windows:
   - background-processes:
       layout: even-horizontal
@@ -15,6 +17,7 @@ windows:
   - configuration:
       layout: even-horizontal
       panes:
+        - configuration_client: ros2 run iii_drone_configuration configuration_client_node.py
         - configuration_server: ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
   - perception:
       layout: tiled
