@@ -1,0 +1,8 @@
+build/*
+!build/.gitignore
+install/*
+!install/.gitignore
+log/*
+!log/.gitignore
+
+.config

@@ -1,0 +1,43 @@
+# networks:
+#   iii_drone:
+#     driver: bridge
+
+services:
+  dev:
+    container_name: iii-dev
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      args:
+        # FROM_IMAGE: osrf/ros:${ROS_DISTRO}-desktop-full
+        ROS_DISTRO: ${ROS_DISTRO}
+    image: "iii_drone_dev:latest"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker-host.sock 
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /etc/hosts:/etc/hosts
+      - .:/home/iii/ws:cached
+      - /dev:/dev
+      - /run/user/1000/at-spi/bus_1:/run/user/1000/at-spi/bus_1
+      # - /home/${USER}/.config/terminator:/home/iii/.config/terminator
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    entrypoint: /usr/local/share/docker-init.sh
+    command: sleep infinity
+    environment:
+      - ROS_DOMAIN_ID
+      - DISPLAY=$DISPLAY
+    # network_mode: host
+    # networks:
+    #   - default
+    # # Uncomment the next four lines if you will use a ptrace-based debuggers like C++, Go, and Rust.
+    # cap_add:
+    #  - SYS_PTRACE
+    security_opt:
+      - apparmor:unconfined
+    #   - seccomp:unconfined
+    privileged: true
+    ipc: host
+    pid: host

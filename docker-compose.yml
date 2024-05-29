@@ -1,0 +1,74 @@
+services:
+  iii_drone_base:
+    container_name: iii_drone_base
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: ${ROS_DISTRO}
+    image: "iii_drone_base:latest"
+    environment:
+      - ROS_DOMAIN_ID
+
+  mciro_ros_agent:
+    container_name: micro_ros_agent
+    image: "iii_drone_base:latest"
+    command: ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
+    environment:
+      - ROS_DOMAIN_ID
+
+  tf:
+    container_name: tf
+    image: "iii_drone_base:latest"
+    command: ros2 launch iii_drone_core tf_real.launch.py
+    environment:
+      - ROS_DOMAIN_ID
+
+  configuration-server:
+    container_name: configuration-server
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file /home/iii/.config/iii_drone/ros_params.yaml
+    environment:
+      - ROS_DOMAIN_ID
+
+  sensors:
+    container_name: sensors
+    image: "iii_drone_base:latest"
+    command: ros2 launch iii_drone_core sensors_real.launch.py
+    environment:
+      - ROS_DOMAIN_ID
+
+  hough_transformer:
+    container_name: hough_transformer
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_core hough_transformer --ros-args --params-file /home/iii/.config/iii_drone/ros_params.yaml
+    environment:
+      - ROS_DOMAIN_ID
+
+  pl_dir_computer:
+    container_name: pl_dir_computer
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_core pl_dir_computer --ros-args --params-file /home/iii/.config/iii_drone/ros_params.yaml
+    environment:
+      - ROS_DOMAIN_ID
+
+  pl_mapper:
+    container_name: pl_mapper
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_core pl_mapper --ros-args --params-file /home/iii/.config/iii_drone/ros_params.yaml
+    environment:
+      - ROS_DOMAIN_ID
+
+  trajectory_generator:
+    container_name: trajectory_generator
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_core trajectory_generator --ros-args --params-file /home/iii/.config/iii_drone/ros_params.yaml
+    environment:
+      - ROS_DOMAIN_ID
+
+  maneuver_controller:
+    container_name: maneuver_controller
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_core maneuver_controller --ros-args --params-file /home/iii/.config/iii_drone/ros_params.yaml
+    environment:
+      - ROS_DOMAIN_ID

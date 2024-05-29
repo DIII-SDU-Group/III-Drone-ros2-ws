@@ -1,0 +1,208 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Install development configuration",
+            "type": "shell",
+            "command": "${workspaceFolder}/src/III-Drone-Configuration/scripts/install.sh",
+            "args": [
+                "${workspaceFolder}/.config"
+            ]
+        },
+        // {
+        //     "label": "Docker compose build",
+        //     "type": "shell",
+        //     "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
+        //     "args": [
+        //         "${input:dockerComposeBuildFiles}"
+        //     ],
+        //     "group": {
+        //         "kind": "build"
+        //     }
+        // },
+        // {
+        //     "label": "Docker compose build all",
+        //     "type": "shell",
+        //     "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
+        //     "args": [
+        //         "--all"
+        //     ],
+        //     "group": {
+        //         "kind": "build"
+        //     }
+        // },
+        // {
+        //     "label": "Docker compose build system",
+        //     "type": "shell",
+        //     "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
+        //     "args": [
+        //         "--system"
+        //     ],
+        //     "group": {
+        //         "kind": "build"
+        //     }
+        // },
+        {
+            "label": "ROS2 clean",
+            "type": "shell",
+            "command": "if [ ${input:cleanPrompt} == \"Yes\" ]; then rm -rf build install log; else echo \"Cleaning cancelled.\"; exit 1; fi",
+            "group": {
+                "kind": "build"
+            }, 
+        },
+        {
+            "label": "ROS2 full build",
+            "type": "shell",
+            "command": "colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
+            "group": {
+                "kind": "build"
+            },
+        },
+        {
+            "label": "ROS2 clean build",
+            "type": "shell",
+            "dependsOn": [
+                "ROS2 clean",
+                "ROS2 full build"
+            ],
+            "dependsOrder": "sequence",
+            "group": {
+                "kind": "build"
+            }
+        },
+        {
+            "label": "ROS2 build package",
+            "type": "shell",
+            "command": "colcon build --packages-select ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
+            "group": {
+                "kind": "build"
+            },
+        },
+        // {
+        //     "label": "Run ROS2 executable",
+        //     "type": "shell",
+        //     "command": "ros2 run ${input:runPackage} ${input:runExecutable} --ros-args --params-file /home/iii/ws/.config/iii_drone/ros_params.yaml ${input:runROS2Args}",
+        //     "group": {
+        //         "kind": "test"
+        //     }
+        // },
+        {
+            "label": "Launch ROS2 III system",
+            "type": "shell",
+            "command": "terminator --no-dbus -x tmuxinator iii_dev_launch ; tmux kill-session -t iii_dev_launch",
+            "group": {
+                "kind": "test"
+            }
+        },
+        // {
+        //     "label": "Stop III simulation",
+        //     "type": "shell",
+        //     "command": "docker compose -f docker-compose.yml --profile sim stop",
+        //     "group": {
+        //         "kind": "test"
+        //     }
+        // },
+        {
+            "label": "Launch Gazebo",
+            "type": "shell",
+            "command": "make -C /home/iii/PX4-Autopilot px4_sitl gz_d4s_dc_drone",
+            "group": {
+                "kind": "test"
+            }
+        },
+        {
+            "label": "Launch QGroundControl",
+            "type": "shell",
+            "command": "/home/iii/QGroundControl.AppImage",
+            "group": {
+                "kind": "test"
+            }
+        },
+        {
+            "label": "Launch Terminator",
+            "type": "shell",
+            "command": "terminator --no-dbus",
+            "group": {
+                "kind": "test"
+            }
+        },
+        {
+            "label": "Launch full simulation",
+            "type": "shell",
+            "dependsOn": [
+                "Launch Gazebo",
+                "Launch QGroundControl",
+                "Launch ROS2 III system"
+            ],
+            "group": {
+                "kind": "test"
+            }
+        }
+    ],
+    "inputs": [
+        {
+            "id": "dockerComposeBuildFiles",
+            "type": "command",
+            "command": "extension.commandvariable.file.pickFile",
+            "description": "Select the docker-compose files to build",
+            "fromWorkspace": "${workspaceFolderBasename}",
+            "args": {
+                "include": "docker/docker-compose*.yml",
+            }
+        },
+        {
+            "id": "cleanPrompt",
+            "description": "Are you sure you want to clean the workspace?",
+            "type": "pickString",
+            "options": [
+                "No",
+                "Yes"
+            ],
+            "default": "No"
+        },
+        {
+            "id": "buildPackage",
+            "type": "command",
+            "command": "shellCommand.execute",
+            "args": {
+                "description": "Select the package to build",
+                "command": "${workspaceFolder}/scripts/get_iii_drone_package_names.sh",
+                "taskId": "ros2BuildPackageShellCommandLastSelection",
+                "rememberPrevious": true
+            }
+        },
+        {
+            "id": "runPackage",
+            "type": "command",
+            "command": "shellCommand.execute",
+            "args": {
+                "description": "Select the package",
+                "command": "${workspaceFolder}/scripts/get_iii_drone_package_names.sh",
+                "taskId": "ros2RunPackageShellCommandLastSelection",
+                "rememberPrevious": true
+            }
+        },
+        {
+            "id": "runExecutable",
+            "type": "command",
+            "command": "shellCommand.execute",
+            "args": {
+                "description": "Select the executable",
+                "command": "${workspaceFolder}/scripts/get_package_executable_names.sh ${input:runPackage}",
+                "fieldSeparator": "\n",
+                "taskId": "ros2RunExecutableShellCommandLastSelection",
+                "rememberPrevious": true
+            }
+        },
+        {
+            "id": "runROS2Args",
+            "description": "ROS2 arguments",
+            "type": "command",
+            "command": "extension.commandvariable.promptStringRemember",
+            "args": {
+                "description": "Enter the ROS2 arguments to pass to the node",
+                "key": "args",
+            }
+        }
+    ]
+}

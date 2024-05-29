@@ -1,0 +1,43 @@
+[submodule "src/BehaviorTree.ROS2"]
+	path = src/BehaviorTree.ROS2
+	url = https://github.com/DIII-SDU-Group/BehaviorTree.ROS2.git
+	branch = humble
+[submodule "src/III-Drone-Core"]
+	path = src/III-Drone-Core
+	url = git@github.com:DIII-SDU-Group/III-Drone-Core.git
+	branch = v2.2-staging
+[submodule "src/III-Drone-GC"]
+	path = src/III-Drone-GC
+	url = git@github.com:DIII-SDU-Group/III-Drone-GC.git
+	branch = v2.2-staging
+[submodule "src/III-Drone-Interfaces"]
+	path = src/III-Drone-Interfaces
+	url = git@github.com:DIII-SDU-Group/III-Drone-Interfaces.git
+	branch = v2.2-staging
+[submodule "src/III-Drone-Simulation"]
+	path = src/III-Drone-Simulation
+	url = git@github.com:DIII-SDU-Group/III-Drone-Simulation.git
+	branch = v2.2-staging
+[submodule "src/micro-ROS-Agent"]
+	path = src/micro-ROS-Agent
+	url = git@github.com:DIII-SDU-Group/micro-ROS-Agent.git
+[submodule "src/micro_ros_msgs"]
+	path = src/micro_ros_msgs
+	url = git@github.com:DIII-SDU-Group/micro_ros_msgs.git
+	branch = humble
+[submodule "src/px4_msgs"]
+	path = src/px4_msgs
+	url = git@github.com:DIII-SDU-Group/px4_msgs.git
+	branch = main
+[submodule "src/px4-ros2-interface-lib"]
+	path = src/px4-ros2-interface-lib
+	url = git@github.com:DIII-SDU-Group/px4-ros2-interface-lib.git
+[submodule "src/iwr6843aop-ROS2-pkg"]
+	path = src/iwr6843aop-ROS2-pkg
+	url = git@github.com:DIII-SDU-Group/iwr6843aop-ROS2-pkg.git
+[submodule "src/BehaviorTree.CPP"]
+	path = src/BehaviorTree.CPP
+	url = https://github.com/DIII-SDU-Group/BehaviorTree.CPP.git
+[submodule "src/III-Drone-Configuration"]
+	path = src/III-Drone-Configuration
+	url = git@github.com:DIII-SDU-Group/III-Drone-Configuration.git

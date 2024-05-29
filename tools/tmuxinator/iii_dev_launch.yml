@@ -1,0 +1,34 @@
+# ~/.config/tmuxinator/iii_dev_launch.yml
+
+name: iii_dev_launch
+root: ~/ws/
+
+enable_pane_titles: true
+pane_title_position: top
+
+startup_window: configuration
+
+windows:
+  - background-processes:
+      layout: even-horizontal
+      panes:
+        - micro_ros_agent: ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888  
+        - tf: ros2 launch iii_drone_simulation tf_sim.launch.py
+  - configuration:
+      layout: even-horizontal
+      panes:
+        - configuration_client: ros2 run iii_drone_configuration configuration_client_node.py
+        - configuration_server: ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+  - perception:
+      layout: tiled
+      panes:
+        - sensors: ros2 launch iii_drone_simulation sensors_sim.launch.py
+        - hough_transformer: ros2 run iii_drone_core hough_transformer --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+        - pl_dir_computer: ros2 run iii_drone_core pl_dir_computer --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+        - pl_mapper: ros2 run iii_drone_core pl_mapper --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+  - control:
+      layout: even-horizontal
+      panes:
+        - trajectory_generator: ros2 run iii_drone_core trajectory_generator --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+        - maneuver_controller: ros2 run iii_drone_core maneuver_controller --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+  - bash: ""
