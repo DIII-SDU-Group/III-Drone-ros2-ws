@@ -1,8 +1,15 @@
 {
     "python.autoComplete.extraPaths": [
         "${workspaceFolder}/install/px4_msgs/local/lib/python3.10/dist-packages",
+        "${workspaceFolder}/install/micro_ros_msgs/local/lib/python3.10/dist-packages",
         "${workspaceFolder}/install/iii_drone_interfaces/local/lib/python3.10/dist-packages",
-        "${workspaceFolder}/install/iii_drone_core/local/lib/python3.10/dist-packages",
+        "${workspaceFolder}/install/btcpp_ros2_interfaces/local/lib/python3.10/dist-packages",
+        
+        "${workspaceFolder}/src/III-Drone-Core",
+        "${workspaceFolder}/src/III-Drone-GC",
+        "${workspaceFolder}/src/III-Drone-Supervision",
+        "${workspaceFolder}/src/III-Drone-Configuration",
+
         "/opt/ros/humble/lib/python3.10/site-packages",
         "/opt/ros/humble/local/lib/python3.10/dist-packages"
     ],
