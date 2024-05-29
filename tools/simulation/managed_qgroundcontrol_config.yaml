@@ -1,0 +1,8 @@
+node_name: "qgroundcontrol"
+node_namespace: ""
+log_level: "debug"
+
+command: "/home/iii/QGroundControl.AppImage"
+working_directory: "/home/iii/"
+
+process_monitor_period_sec: 5

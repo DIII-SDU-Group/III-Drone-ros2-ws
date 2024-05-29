@@ -41,3 +41,6 @@
 [submodule "src/III-Drone-Configuration"]
 	path = src/III-Drone-Configuration
 	url = git@github.com:DIII-SDU-Group/III-Drone-Configuration.git
+[submodule "src/III-Drone-Supervision"]
+	path = src/III-Drone-Supervision
+	url = git@github.com:DIII-SDU-Group/III-Drone-Supervision.git
