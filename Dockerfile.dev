@@ -80,6 +80,10 @@ RUN sudo ln -s /home/iii/ws/tools/tmuxinator /home/iii/.config/tmuxinator
 
 RUN sudo chown -R iii:iii /home/iii/.config
 
+# Update bashrc
+COPY .bashrc /home/iii/.bashrc
+RUN sudo chown iii:iii /home/iii/.bashrc
+
 ENV SHELL /bin/bash
 
 # USER iii
