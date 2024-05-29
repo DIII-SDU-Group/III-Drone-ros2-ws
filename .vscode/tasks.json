@@ -78,6 +78,14 @@
                 "kind": "build"
             },
         },
+        // {
+        //     "label": "Run ROS2 executable",
+        //     "type": "shell",
+        //     "command": "ros2 run ${input:runPackage} ${input:runExecutable} --ros-args --params-file /home/iii/ws/.config/iii_drone/ros_params.yaml ${input:runROS2Args}",
+        //     "group": {
+        //         "kind": "test"
+        //     }
+        // },
         {
             "label": "Launch ROS2 III system",
             "type": "shell",
@@ -161,6 +169,39 @@
                 "command": "${workspaceFolder}/scripts/get_iii_drone_package_names.sh",
                 "taskId": "ros2BuildPackageShellCommandLastSelection",
                 "rememberPrevious": true
+            }
+        },
+        {
+            "id": "runPackage",
+            "type": "command",
+            "command": "shellCommand.execute",
+            "args": {
+                "description": "Select the package",
+                "command": "${workspaceFolder}/scripts/get_iii_drone_package_names.sh",
+                "taskId": "ros2RunPackageShellCommandLastSelection",
+                "rememberPrevious": true
+            }
+        },
+        {
+            "id": "runExecutable",
+            "type": "command",
+            "command": "shellCommand.execute",
+            "args": {
+                "description": "Select the executable",
+                "command": "${workspaceFolder}/scripts/get_package_executable_names.sh ${input:runPackage}",
+                "fieldSeparator": "\n",
+                "taskId": "ros2RunExecutableShellCommandLastSelection",
+                "rememberPrevious": true
+            }
+        },
+        {
+            "id": "runROS2Args",
+            "description": "ROS2 arguments",
+            "type": "command",
+            "command": "extension.commandvariable.promptStringRemember",
+            "args": {
+                "description": "Enter the ROS2 arguments to pass to the node",
+                "key": "args",
             }
         }
     ]
