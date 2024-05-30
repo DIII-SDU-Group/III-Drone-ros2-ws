@@ -12,8 +12,10 @@ windows:
   - background-processes:
       layout: even-horizontal
       panes:
-        - micro_ros_agent: ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888  
-        - tf: ros2 launch iii_drone_simulation tf_sim.launch.py
+        # - micro_ros_agent: ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888  
+        - micro_ros_agent: ros2 run iii_drone_supervision managed_node_wrapper ~/ws/src/III-Drone-Supervision/node_management_config/micro_ros_agent.yaml
+        # - tf: ros2 launch iii_drone_simulation tf_sim.launch.py
+        - tf: ros2 run iii_drone_supervision managed_node_wrapper ~/ws/src/III-Drone-Supervision/node_management_config/tf_sim_launch.yaml
   - configuration:
       layout: even-horizontal
       panes:
@@ -31,4 +33,9 @@ windows:
       panes:
         - trajectory_generator: ros2 run iii_drone_core trajectory_generator --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
         - maneuver_controller: ros2 run iii_drone_core maneuver_controller --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+  - simulation:
+      layout: even-horizontal
+      panes:
+        - px4_gazebo: ros2 run iii_drone_supervision managed_node_wrapper ~/ws/tools/simulation/managed_px4_gazebo_config.yaml
+        - qgroundcontrol: ros2 run iii_drone_supervision managed_node_wrapper ~/ws/tools/simulation/managed_qgroundcontrol_config.yaml
   - bash: ""
