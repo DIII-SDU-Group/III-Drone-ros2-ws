@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Install III-Drone-CLI in editable mode
+pip3 install -e ./tools/III-Drone-CLI
+
+# If eval "$(register-python-argcomplete iii)" is not in ~/.bashrc, add it
+if ! grep -q "eval \"\$(register-python-argcomplete iii)\"" ~/.bashrc; then
+    echo "eval \"\$(register-python-argcomplete iii)\"" >> ~/.bashrc
+fi
+
 # Install configuration
 ./src/III-Drone-Configuration/scripts/install.sh .config 
 
