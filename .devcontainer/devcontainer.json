@@ -35,8 +35,6 @@
     },
 
     "containerEnv": {
-        "CONFIG_BASE_DIR": "/home/iii/ws/.config",
-        "SIMULATION": "true"
         // "DISPLAY": "unix:0",
         // "ROS_LOCALHOST_ONLY": "1",
         // "ROS_DOMAIN_ID": "42"

@@ -8,6 +8,11 @@ if ! grep -q "eval \"\$(register-python-argcomplete iii)\"" ~/.bashrc; then
     echo "eval \"\$(register-python-argcomplete iii)\"" >> ~/.bashrc
 fi
 
+# If source /home/iii/ws/dev_setup.bash is not in ~/.bashrc, add it
+if ! grep -q "source /home/iii/ws/dev_setup.bash" ~/.bashrc; then
+    echo "source /home/iii/ws/dev_setup.bash" >> ~/.bashrc
+fi
+
 # Install configuration
 ./src/III-Drone-Configuration/scripts/install.sh .config 
 
