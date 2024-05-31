@@ -16,15 +16,15 @@
 * Create iii command line utility
 Reads environment variable SIMULATION to guide its actions.
 	- system
-		- start: Will start the system, performing all necessary steps
-		- stop: Will stop the system
-		- restart: will restart the system
-			- warm: Only deactive and reactivate nodes
-			- cold: Will also cleanup and reconfigure nodes
-		- launch: Launch the unbooted system
-			--attach: Will attach to the tmux session
-		- shutdown: will shutdown the system
-
+		- start: Will start the system, performing all necessary steps - done
+		- stop: Will stop the system - done
+		- restart: will restart the system - done
+			- warm: Only deactive and reactivate nodes - done
+			- cold: Will also cleanup and reconfigure nodes - done
+		- boot: Launch the unbooted system - done
+			--attach: Will attach to the tmux session - done
+		- shutdown: will shutdown the system - done
+		- attach: attach to the booted system - done
 		- status: Display system information
 
 
