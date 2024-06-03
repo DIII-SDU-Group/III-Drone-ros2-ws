@@ -14,8 +14,8 @@ windows:
   - supervisor: 
       layout: even-horizontal
       panes:
-        - supervisor: ros2 run iii_drone_supervision supervisor
         - bash:
+        - supervisor: ros2 run iii_drone_supervision supervisor
   - background-processes:
       layout: even-horizontal
       panes:

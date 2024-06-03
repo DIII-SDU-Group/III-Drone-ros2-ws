@@ -5,7 +5,9 @@ log_level: "debug"
 command: "make -C /home/iii/PX4-Autopilot px4_sitl gz_d4s_dc_drone"
 working_directory: "/home/iii/PX4-Autopilot"
 
-process_monitor_command: "topics=$(gz topic --list) ; echo \"$topics\" | grep -q '/world' && echo \"$topics\" | grep -q '/model' && exit 0 || exit 1"
+process_monitor_command: 
+  type: "command"
+  command: "topics=$(gz topic --list) ; echo \"$topics\" | grep -q '/world' && echo \"$topics\" | grep -q '/model' && exit 0 || exit 1"
 process_monitor_period_sec: 5
 process_start_timeout_sec: 120
 process_stop_timeout_sec: 30
