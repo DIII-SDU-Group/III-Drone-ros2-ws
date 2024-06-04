@@ -43,6 +43,14 @@
         //     }
         // },
         {
+            "label": "PX4 clean",
+            "type": "shell",
+            "command": "if [ ${input:cleanPrompt} == \"Yes\" ]; then cd ~/PX4-Autopilot && make clean; else echo \"Cleaning cancelled.\"; exit 1; fi",
+            "group": {
+                "kind": "build"
+            }, 
+        },
+        {
             "label": "ROS2 clean",
             "type": "shell",
             "command": "if [ ${input:cleanPrompt} == \"Yes\" ]; then rm -rf build install log; else echo \"Cleaning cancelled.\"; exit 1; fi",
@@ -74,6 +82,14 @@
             "label": "ROS2 build package",
             "type": "shell",
             "command": "colcon build --packages-select ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
+            "group": {
+                "kind": "build"
+            },
+        },
+        {
+            "label": "ROS2 build packages up to",
+            "type": "shell",
+            "command": "colcon build --packages-up-to ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
             "group": {
                 "kind": "build"
             },
