@@ -100,7 +100,10 @@
         "variant": "cpp",
         "ranges": "cpp",
         "*.ipp": "cpp",
-        "core": "cpp"
+        "core": "cpp",
+        "charconv": "cpp",
+        "span": "cpp",
+        "valarray": "cpp"
     },
     "cmake.configureOnOpen": false
 }
