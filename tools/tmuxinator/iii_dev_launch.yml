@@ -14,24 +14,22 @@ windows:
   - supervisor: 
       layout: even-horizontal
       panes:
-        - bash:
+        - bash: iii --help
         - supervisor: ros2 run iii_drone_supervision supervisor
   - background-processes:
       layout: even-horizontal
       panes:
-        # - micro_ros_agent: ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888  
         - micro_ros_agent: ros2 run iii_drone_supervision managed_node_wrapper ~/ws/src/III-Drone-Supervision/node_management_config/micro_ros_agent.yaml
-        # - tf: ros2 launch iii_drone_simulation tf_sim.launch.py
         - tf: ros2 run iii_drone_supervision managed_node_wrapper ~/ws/src/III-Drone-Supervision/node_management_config/tf_sim_launch.yaml
   - configuration:
       layout: even-horizontal
       panes:
         - configuration_server: "ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml --log-level configuration.configuration_server.configuration_server:=debug"
-  # - perception:
-  #     layout: tiled
-  #     panes:
-  #       - sensors: ros2 launch iii_drone_simulation sensors_sim.launch.py
-  #       - hough_transformer: ros2 run iii_drone_core hough_transformer --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+  - perception:
+      layout: tiled
+      panes:
+        - sensors: ros2 run iii_drone_supervision managed_node_wrapper ~/ws/src/III-Drone-Supervision/node_management_config/sensors_sim_launch.yaml
+        - hough_transformer: ros2 run iii_drone_core hough_transformer --ros-args --log-level perception.hough_transformer.hough_transformer:=$HOUGH_TRANSFORMER_LOG_LEVEL
   #       - pl_dir_computer: ros2 run iii_drone_core pl_dir_computer --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
   #       - pl_mapper: ros2 run iii_drone_core pl_mapper --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
   # - control:
