@@ -20,6 +20,7 @@ services:
       - /dev:/dev
       - /run/user/1000/at-spi/bus_1:/run/user/1000/at-spi/bus_1
       # - /home/${USER}/.config/terminator:/home/iii/.config/terminator
+      - $XAUTHORITY:$XAUTHORITY
     cap_add:
       - SYS_ADMIN
     devices:
@@ -29,6 +30,8 @@ services:
     environment:
       - ROS_DOMAIN_ID
       - DISPLAY=$DISPLAY
+      - QT_X11_NO_MITSHM=1
+      - XAUTHORITY=$XAUTHORITY
     # network_mode: host
     # networks:
     #   - default
@@ -41,3 +44,10 @@ services:
     privileged: true
     ipc: host
     pid: host
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
