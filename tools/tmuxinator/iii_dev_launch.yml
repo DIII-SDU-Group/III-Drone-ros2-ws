@@ -15,7 +15,7 @@ windows:
       layout: even-horizontal
       panes:
         - bash: iii --help
-        - supervisor: ros2 run iii_drone_supervision supervisor
+        - supervisor: ros2 run iii_drone_supervision supervisor --ros-args --log-level supervision.supervisor:=$SUPERVISOR_LOG_LEVEL
   - background-processes:
       layout: even-horizontal
       panes:
@@ -24,7 +24,7 @@ windows:
   - configuration:
       layout: even-horizontal
       panes:
-        - configuration_server: "ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml --log-level configuration.configuration_server.configuration_server:=debug"
+        - configuration_server: "ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml --log-level configuration.configuration_server.configuration_server:=$CONFIGURATION_SERVER_LOG_LEVEL"
   - perception:
       layout: tiled
       panes:
