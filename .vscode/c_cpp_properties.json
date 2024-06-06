@@ -21,6 +21,7 @@
 
         "${workspaceFolder}/src/III-Drone-Configuration/include/*",
         "${workspaceFolder}/src/III-Drone-Core/include/*",
+        "${workspaceFolder}/src/III-Drone-Core/src/extern/*",
         "${workspaceFolder}/src/BehaviorTree.CPP/include/*",
         "${workspaceFolder}/src/BehaviorTree.ROS2/behaviortree_ros2/include/*",
         "${workspaceFolder}/src/px4-ros2-interface-lib/px4_ros2_cpp/include/*",

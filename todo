@@ -28,7 +28,7 @@ Reads environment variable SIMULATION to guide its actions.
 		- status: Display system information
 
 
-
+* Implementér start/stop i hele perception stack
 
 * Configurator should not rely on node_configs and should not declare parameters, instead configuration-server should read the node params files and auto declare to reduce dependencies and support restart of configuration server
 

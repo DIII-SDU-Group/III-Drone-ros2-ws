@@ -30,13 +30,13 @@ windows:
       panes:
         - sensors: ros2 run iii_drone_supervision managed_node_wrapper ~/ws/src/III-Drone-Supervision/node_management_config/sensors_sim_launch.yaml
         - hough_transformer: ros2 run iii_drone_core hough_transformer --ros-args --log-level perception.hough_transformer.hough_transformer:=$HOUGH_TRANSFORMER_LOG_LEVEL
-  #       - pl_dir_computer: ros2 run iii_drone_core pl_dir_computer --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
-  #       - pl_mapper: ros2 run iii_drone_core pl_mapper --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
-  # - control:
-  #     layout: even-horizontal
-  #     panes:
-  #       - trajectory_generator: ros2 run iii_drone_core trajectory_generator --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
-  #       - maneuver_controller: ros2 run iii_drone_core maneuver_controller --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+        - pl_dir_computer: ros2 run iii_drone_core pl_dir_computer --ros-args --log-level perception.pl_dir_computer.pl_dir_computer:=$PL_DIR_COMPUTER_LOG_LEVEL
+        - pl_mapper: ros2 run iii_drone_core pl_mapper --ros-args --log-level perception.pl_mapper.pl_mapper:=$PL_MAPPER_LOG_LEVEL
+  - control:
+      layout: even-horizontal
+      panes:
+        - trajectory_generator: ros2 run iii_drone_core trajectory_generator --ros-args --log-level control.trajectory_generator.trajectory_generator:=$TRAJECTORY_GENERATOR_LOG_LEVEL
+        - maneuver_controller: ros2 run iii_drone_core maneuver_controller --ros-args --log-level control.maneuver_controller.maneuver_controller:=$MANEUVER_CONTROLLER_LOG_LEVEL
   - simulation:
       layout: even-horizontal
       panes:

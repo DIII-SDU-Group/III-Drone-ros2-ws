@@ -10,4 +10,4 @@ pip3 uninstall -y iii 2> /dev/null
 pip3 install -e ./tools/III-Drone-CLI
 
 # Build workspace
-colcon build --cmake-args -DCMAKE_BUILD_TYPE=Debug
+colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug
