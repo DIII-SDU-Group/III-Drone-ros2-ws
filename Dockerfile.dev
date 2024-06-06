@@ -1,7 +1,7 @@
 ARG ROS_DISTRO
 
-# FROM osrf/ros:humble-desktop-full
-FROM nvidia/cuda:12.5.0-base-ubuntu22.04
+FROM osrf/ros:humble-desktop-full
+# FROM nvidia/cuda:12.4.0-base-ubuntu22.04
 
 # Create the user
 RUN groupadd --gid 1000 iii
@@ -17,36 +17,32 @@ RUN usermod -s /bin/bash iii
 COPY src/III-Drone-Core/scripts /scripts
 
 # Install ROS
-RUN locale  # check for UTF-8 \
-    apt update && apt install -y locales \
-    locale-gen en_US en_US.UTF-8 \
-    update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 \
-    export LANG=en_US.UTF-8 \
-    apt install -y software-properties-common \
-    add-apt-repository universe \
-    
-    apt update && apt install curl -y \
-    curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
-
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null \
-
-    apt update && apt upgrade -y \
-
-    apt install ros-humble-desktop \
-    
-    apt install -y ros-humble-rmw-cyclonedds-cpp \
-
-    /scripts/install_dependencies.sh \
-
-    rm -rf /scripts \
-
-    apt remove -y ros-humble-ros-gz* \
+RUN \
+#     locale  # check for UTF-8 \
+    apt update && apt install -y locales wget && \
+#     locale-gen en_US en_US.UTF-8 \
+#     update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 \
+#     export LANG=en_US.UTF-8 \
+#     apt install -y software-properties-common \
+#     add-apt-repository universe \
+#     apt update && apt install curl -y \
+#     curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
+#     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null \
+#     apt update && apt upgrade -y \
+#     apt install ros-humble-desktop \
+    wget https://packages.osrfoundation.org/gazebo.gpg -O /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/gazebo-stable.list > /dev/null && \
+    apt update && \
+    apt install -y ros-humble-rmw-cyclonedds-cpp && \
+    /scripts/install_dependencies.sh && \
+    rm -rf /scripts && \
+    apt update && \
+    apt remove -y ros-humble-ros-gz* && \
     apt install -y ros-humble-ros-gzgarden
-
 
 # Install necessary packages and dependencies
 RUN apt-get update && apt-get install -y \
-    # python3-colcon-common-extensions \
+    python3-colcon-common-extensions \
     python3-pip
 
 RUN apt-get update && apt-get upgrade -y
