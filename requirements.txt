@@ -63,7 +63,7 @@ argcomplete==1.8.1
 # mpmath==1.3.0
 # netifaces==0.11.0
 # notify2==0.3
-# npyscreen==4.10.5
+npyscreen==4.10.5
 # numpy==1.26.4
 # nunavut==2.3.1
 # osrf-pycommon==2.0.2
