@@ -38,6 +38,7 @@
                 "rioj7.command-variable",
                 "augustocdias.tasks-shell-input",
                 "ms-vscode.cpptools-extension-pack",
+                "SumitNalavade.vscode-readme-editor"
             ]
         }
     },
@@ -68,7 +69,8 @@
         "--ipc","host",
         "--pid","host",
         "--runtime", "nvidia",
-        "--gpus", "all"
+        "--gpus", "all",
+        "-e", "NVIDIA_DRIVER_CAPABILITIES=all"
     ],
 
     "postCreateCommand": "scripts/post_create.sh",
