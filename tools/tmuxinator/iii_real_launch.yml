@@ -1,7 +1,5 @@
-# ~/.config/tmuxinator/iii_dev_launch.yml
-
 name: iii_dev_launch
-root: ~/ws/
+# root: ${WORKSPACE_DIR}
 
 enable_pane_titles: true
 pane_title_position: top
@@ -14,27 +12,27 @@ windows:
   - supervisor: 
       layout: even-horizontal
       panes:
-        - bash: iii --help
-        - supervisor: docker start -a -i iii_drone_supervisor 
+        - bash: 
+        - supervisor: docker compose -f $WORKSPACE_DIR/docker-compose.test.yml --profile test run --rm supervisor
   - background-processes:
       layout: even-horizontal
       panes:
-        - micro_ros_agent: docker start -a -i iii_drone_micro_ros_agent 
-        - tf: docker start -a -i iii_drone_tf 
+        - micro_ros_agent: docker compose -f $WORKSPACE_DIR/docker-compose.test.yml --profile test run --rm micro_ros_agent
+        - tf: docker compose -f $WORKSPACE_DIR/docker-compose.test.yml --profile test run --rm tf
   - configuration:
       layout: even-horizontal
       panes:
-        - configuration_server: docker start -a -i iii_drone_configuration_server 
+        - configuration-server: docker compose -f $WORKSPACE_DIR/docker-compose.test.yml --profile test run --rm configuration_server
   - perception:
       layout: tiled
       panes:
-        - sensors: docker start -a -i iii_drone_sensors 
-        - hough_transformer: docker start -a -i iii_drone_hough_transformer 
-        - pl_dir_computer: docker start -a -i iii_drone_pl_dir_computer 
-        - pl_mapper: docker start -a -i iii_drone_pl_mapper 
+        - sensors: docker compose -f $WORKSPACE_DIR/docker-compose.test.yml --profile test run --rm sensors
+        - hough_transformer: docker compose -f $WORKSPACE_DIR/docker-compose.test.yml --profile test run --rm hough_transformer
+        - pl_dir_computer: docker compose -f $WORKSPACE_DIR/docker-compose.test.yml --profile test run --rm pl_dir_computer
+        - pl_mapper: docker compose -f $WORKSPACE_DIR/docker-compose.test.yml --profile test run --rm pl_mapper
   - control:
       layout: even-horizontal
       panes:
-        - trajectory_generator: docker start -a -i iii_drone_trajectory_generator 
-        - maneuver_controller: docker start -a -i iii_drone_maneuver_controller 
+        - trajectory_generator: docker compose -f $WORKSPACE_DIR/docker-compose.test.yml --profile test run --rm trajectory_generator
+        - maneuver_controller: docker compose -f $WORKSPACE_DIR/docker-compose.test.yml --profile test run --rm maneuver_controller
   - bash:
