@@ -9,5 +9,7 @@ if [ -f /home/iii/ws/install/setup.bash ]; then
     source /home/iii/ws/install/setup.bash
 fi
 
+# source /home/iii/ws/setup_real.bash
+
 # Execute the command passed to the entrypoint
-exec "$@"
+bash -c "$@"

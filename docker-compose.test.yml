@@ -1,0 +1,140 @@
+services:
+  iii_drone_build:
+    container_name: iii_drone_build
+    build:
+      context: .
+      dockerfile: Dockerfile.build
+    image: "iii_drone_build:latest"
+    volumes:
+      - .:/home/iii/ws:cached
+    command: bash -c "colcon build --symlink-install"
+    profiles:
+      - build
+
+  iii_drone_base:
+    container_name: iii_drone_base
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    image: "iii_drone_base:latest"
+
+  supervisor:
+    container_name: iii_drone_supervisor
+    image: "iii_drone_base:latest"
+    command: "ros2 run iii_drone_supervision supervisor" #--ros-args --log-level supervision.supervisor:=$$SUPERVISOR_LOG_LEVEL
+    volumes:
+      - .:/home/iii/ws:cached
+    profiles:
+      - test
+      - supervisor
+    network_mode: host
+
+  # mciro_ros_agent:
+  #   container_name: iii_drone_micro_ros_agent
+  #   image: "iii_drone_base:latest"
+  #   command: bash -c "ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888"
+  #   volumes:
+  #     - .:/home/iii/ws:cached
+  #   profiles:
+  #     - test
+  #     - micro_ros_agent
+  #   network_mode: host
+
+  # tf:
+  #   container_name: iii_drone_tf
+  #   image: "iii_drone_base:latest"
+  #   command: bash -c "ros2 run iii_drone_supervision managed_node_wrapper ~/ws/src/III-Drone-Supervision/node_management_config/tf_real_launch.yaml"
+  #   volumes:
+  #     - .:/home/iii/ws:cached
+  #   profiles:
+  #     - test
+  #     - tf
+  #   network_mode: host
+
+  # configuration-server:
+  #   container_name: iii_drone_configuration_server
+  #   image: "iii_drone_base:latest"
+  #   command: bash -c "ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml --log-level configuration.configuration_server.configuration_server:=$$CONFIGURATION_SERVER_LOG_LEVEL"
+  #   volumes:
+  #     - .:/home/iii/ws:cached
+  #   profiles:
+  #     - test
+  #     - configuration
+  #   network_mode: host
+
+  # configuration-client:
+  #   container_name: iii_drone_configuration_client
+  #   image: "iii_drone_base:latest"
+  #   command: bash -c "ros2 run iii_drone_configuration configuration_client_node.py"
+  #   volumes:
+  #     - .:/home/iii/ws:cached
+  #   profiles:
+  #     - test
+  #     - configuration
+  #   network_mode: host
+
+  # sensors:
+  #   container_name: iii_drone_sensors
+  #   image: "iii_drone_base:latest"
+  #   command: bash -c "ros2 run iii_drone_supervision managed_node_wrapper ~/ws/src/III-Drone-Supervision/node_management_config/sensors_real_launch.yaml"
+  #   volumes:
+  #     - .:/home/iii/ws:cached
+  #   profiles:
+  #     - test
+  #     - perception
+  #   network_mode: host
+
+  # hough_transformer:
+  #   container_name: iii_drone_hough_transformer
+  #   image: "iii_drone_base:latest"
+  #   command: bash -c "ros2 run iii_drone_core hough_transformer --ros-args --log-level perception.hough_transformer.hough_transformer:=$$HOUGH_TRANSFORMER_LOG_LEVEL"
+  #   volumes:
+  #     - .:/home/iii/ws:cached
+  #   profiles:
+  #     - test
+  #     - perception
+  #   network_mode: host
+
+  # pl_dir_computer:
+  #   container_name: iii_drone_pl_dir_computer
+  #   image: "iii_drone_base:latest"
+  #   command: bash -c "ros2 run iii_drone_core pl_dir_computer --ros-args --log-level perception.pl_dir_computer.pl_dir_computer:=$$PL_DIR_COMPUTER_LOG_LEVEL"
+  #   volumes:
+  #     - .:/home/iii/ws:cached
+  #   profiles:
+  #     - test
+  #     - perception
+  #   network_mode: host
+
+  # pl_mapper:
+  #   container_name: iii_drone_pl_mapper
+  #   image: "iii_drone_base:latest"
+  #   command: bash -c "ros2 run iii_drone_core pl_mapper --ros-args --log-level perception.pl_mapper.pl_mapper:=$$PL_MAPPER_LOG_LEVEL"
+  #   volumes:
+  #     - .:/home/iii/ws:cached
+  #   profiles:
+  #     - test
+  #     - perception
+  #   network_mode: host
+
+  # trajectory_generator:
+  #   container_name: iii_drone_trajectory_generator
+  #   image: "iii_drone_base:latest"
+  #   command: bash -c "ros2 run iii_drone_core trajectory_generator --ros-args --log-level control.trajectory_generator.trajectory_generator:=$$TRAJECTORY_GENERATOR_LOG_LEVEL"
+  #   volumes:
+  #     - .:/home/iii/ws:cached
+  #   profiles:
+  #     - test
+  #     - control
+  #   network_mode: host
+
+  # maneuver_controller:
+  #   container_name: iii_drone_maneuver_controller
+  #   image: "iii_drone_base:latest"
+  #   command: bash -c "ros2 run iii_drone_core maneuver_controller --ros-args --log-level control.maneuver_controller.maneuver_controller:=$$MANEUVER_CONTROLLER_LOG_LEVEL"
+  #   volumes:
+  #     - .:/home/iii/ws:cached
+  #   profiles:
+  #     - test
+  #     - control
+  #   network_mode: host
