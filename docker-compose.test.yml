@@ -3,27 +3,17 @@ services:
     container_name: iii_drone_build
     build:
       context: .
-      dockerfile: Dockerfile.build
-    image: "iii_drone_build:latest"
+      dockerfile: Dockerfile
+    image: "iii_drone_base:latest"
     volumes:
       - .:/home/iii/ws:cached
     command: "colcon build"
     profiles:
       - build
 
-  iii_drone_base:
-    container_name: iii_drone_base
-    build:
-      context: .
-      dockerfile: Dockerfile.test
-    image: "iii_drone_base:latest"
-
   cli:
     container_name: iii_drone_cli
-    build:
-      context: .
-      dockerfile: Dockerfile.cli
-    image: "iii_drone_cli:latest"
+    image: "iii_drone_base:latest"
     command: bash
     volumes:
       - /var/run/docker.sock:/var/run/docker-host.sock 
