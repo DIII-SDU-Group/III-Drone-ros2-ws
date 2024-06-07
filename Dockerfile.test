@@ -27,22 +27,15 @@ RUN apt-get update && apt-get install -y \
 
 RUN apt-get update && apt-get upgrade -y
 
-# Copy the entrypoint script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
 # Create workspace folder and set ownership
 RUN mkdir -p /home/iii/ws/src
 RUN chown -R iii:iii /home/iii/ws
 
 WORKDIR /home/iii/ws
 
-# Set the entrypoint
-ENTRYPOINT ["/entrypoint.sh"]
-
-RUN echo "source /opt/ros/humble/setup.bash" >> /etc/bash.bashrc
-RUN echo "source /home/iii/ws/install/setup.bash 2> /dev/null" >> /etc/bash.bashrc
-RUN echo "source /home/iii/ws/setup_real.bash" >> /etc/bash.bashrc
+# RUN echo "source /opt/ros/humble/setup.bash" >> /etc/bash.bashrc
+# RUN echo "source /home/iii/ws/install/setup.bash 2> /dev/null" >> /etc/bash.bashrc
+# RUN echo "source /home/iii/ws/setup_real.bash" >> /etc/bash.bashrc
 
 # Install userspace tools
 USER iii
@@ -58,4 +51,23 @@ RUN pip3 install -r /requirements.txt
 
 RUN sudo rm -rf /requirements.txt
 
+# Install cli
+COPY tools/III-Drone-CLI /III-Drone-CLI
+RUN sudo chown -R iii:iii /III-Drone-CLI
+RUN pip3 install /III-Drone-CLI
+RUN sudo rm -rf /III-Drone-CLI
+
+RUN sudo activate-global-python-argcomplete3
+
+RUN if ! grep -q "eval \"\$(register-python-argcomplete3 iii)\"" ~/.bashrc; then \
+        echo "eval \"\$(register-python-argcomplete3 iii)\"" >> ~/.bashrc ; \
+    fi
+
 ENV SHELL /bin/bash
+
+# Copy the entrypoint script
+COPY entrypoint_real.sh /entrypoint.sh
+RUN sudo chmod +x /entrypoint.sh
+
+# Set the entrypoint
+ENTRYPOINT ["/entrypoint.sh"]

@@ -1,10 +1,9 @@
 source /opt/ros/humble/setup.bash
-source /home/iii/ws/install/setup.bash
+source /home/iii/ws/install/setup.bash 2> /dev/null
 
 export CONFIG_BASE_DIR="/home/iii/ws/.config"
 export SIMULATION="false"
 export SUPERVISOR_CONFIG_FILE="/home/iii/ws/src/III-Drone-Supervision/supervision_config/real.yaml"
-export TMUXINATOR_PROJECT="iii_real_launch"
 
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 

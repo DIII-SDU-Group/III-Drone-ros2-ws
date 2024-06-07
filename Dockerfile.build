@@ -27,21 +27,14 @@ RUN apt-get update && apt-get install -y \
 
 RUN apt-get update && apt-get upgrade -y
 
-# Copy the entrypoint script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
 # Create workspace folder and set ownership
 RUN mkdir -p /home/iii/ws/src
 RUN chown -R iii:iii /home/iii/ws
 
 WORKDIR /home/iii/ws
 
-# Set the entrypoint
-ENTRYPOINT ["/entrypoint.sh"]
-
-RUN echo "source /opt/ros/humble/setup.bash" >> /etc/bash.bashrc
-RUN echo "source /home/iii/ws/install/setup.bash" >> /etc/bash.bashrc
+# RUN echo "source /opt/ros/humble/setup.bash" >> /etc/bash.bashrc
+# RUN echo "source /home/iii/ws/install/setup.bash 2> /dev/null" >> /etc/bash.bashrc
 
 # Install userspace tools
 USER iii
@@ -58,3 +51,10 @@ RUN pip3 install -r /requirements.txt
 RUN sudo rm -rf /requirements.txt
 
 ENV SHELL /bin/bash
+
+# Copy the entrypoint script
+COPY entrypoint_real.sh /entrypoint.sh
+RUN sudo chmod +x /entrypoint.sh
+
+# Set the entrypoint
+ENTRYPOINT ["/entrypoint.sh"]

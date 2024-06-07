@@ -48,7 +48,7 @@ RUN apt-get update && apt-get install -y \
 RUN apt-get update && apt-get upgrade -y
 
 # Copy the entrypoint script
-COPY entrypoint.sh /entrypoint.sh
+COPY entrypoint_dev.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Create workspace folder and set ownership
