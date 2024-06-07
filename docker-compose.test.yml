@@ -1,0 +1,168 @@
+services:
+  iii_drone_build:
+    container_name: iii_drone_build
+    build:
+      context: .
+      dockerfile: Dockerfile.build
+    image: "iii_drone_build:latest"
+    volumes:
+      - .:/home/iii/ws:cached
+    command: "colcon build"
+    profiles:
+      - build
+
+  iii_drone_base:
+    container_name: iii_drone_base
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    image: "iii_drone_base:latest"
+
+  cli:
+    container_name: iii_drone_cli
+    build:
+      context: .
+      dockerfile: Dockerfile.cli
+    image: "iii_drone_cli:latest"
+    command: bash
+    volumes:
+      - /var/run/docker.sock:/var/run/docker-host.sock 
+      - /tmp:/tmp
+      - .:/home/iii/ws:cached
+      - ./tools/tmuxinator:/home/iii/.config/tmuxinator:cached
+    network_mode: host
+    privileged: true
+    profiles:
+      - cli
+    ipc: host
+    pid: host
+
+  supervisor:
+    container_name: iii_drone_supervisor
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_supervision supervisor
+    volumes:
+      - .:/home/iii/ws:cached
+    profiles:
+      - test
+      - supervisor
+    network_mode: host
+    ipc: host
+    pid: host
+
+  micro_ros_agent:
+    container_name: iii_drone_micro_ros_agent
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_supervision managed_node_wrapper /home/iii/ws/src/III-Drone-Supervision/node_management_config/micro_ros_agent.yaml
+    volumes:
+      - .:/home/iii/ws:cached
+    profiles:
+      - test
+      - micro_ros_agent
+    network_mode: host
+    ipc: host
+    pid: host
+
+  tf:
+    container_name: iii_drone_tf
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_supervision managed_node_wrapper /home/iii/ws/src/III-Drone-Supervision/node_management_config/tf_real_launch.yaml
+    volumes:
+      - .:/home/iii/ws:cached
+    profiles:
+      - test
+      - tf
+    network_mode: host
+    ipc: host
+    pid: host
+
+  configuration_server:
+    container_name: iii_drone_configuration_server
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file /home/iii/ws/.config/iii_drone/ros_params.yaml
+    volumes:
+      - .:/home/iii/ws:cached
+    profiles:
+      - test
+      - configuration
+    network_mode: host
+    ipc: host
+    pid: host
+
+  sensors:
+    container_name: iii_drone_sensors
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_supervision managed_node_wrapper /home/iii/ws/src/III-Drone-Supervision/node_management_config/sensors_real_launch.yaml
+    volumes:
+      - .:/home/iii/ws:cached
+    profiles:
+      - test
+      - perception
+    network_mode: host
+    ipc: host
+    pid: host
+
+  hough_transformer:
+    container_name: iii_drone_hough_transformer
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_core hough_transformer
+    volumes:
+      - .:/home/iii/ws:cached
+    profiles:
+      - test
+      - perception
+    network_mode: host
+    ipc: host
+    pid: host
+
+  pl_dir_computer:
+    container_name: iii_drone_pl_dir_computer
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_core pl_dir_computer
+    volumes:
+      - .:/home/iii/ws:cached
+    profiles:
+      - test
+      - perception
+    network_mode: host
+    ipc: host
+    pid: host
+
+  pl_mapper:
+    container_name: iii_drone_pl_mapper
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_core pl_mapper
+    volumes:
+      - .:/home/iii/ws:cached
+    profiles:
+      - test
+      - perception
+    network_mode: host
+    ipc: host
+    pid: host
+
+  trajectory_generator:
+    container_name: iii_drone_trajectory_generator
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_core trajectory_generator
+    volumes:
+      - .:/home/iii/ws:cached
+    profiles:
+      - test
+      - control
+    network_mode: host
+    ipc: host
+    pid: host
+
+  maneuver_controller:
+    container_name: iii_drone_maneuver_controller
+    image: "iii_drone_base:latest"
+    command: ros2 run iii_drone_core maneuver_controller
+    volumes:
+      - .:/home/iii/ws:cached
+    profiles:
+      - test
+      - control
+    network_mode: host
+    ipc: host
+    pid: host

@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# If source /home/iii/ws/dev_setup.bash is not in ~/.bashrc, add it
-if ! grep -q "source /home/iii/ws/dev_setup.bash" ~/.bashrc; then
-    echo "source /home/iii/ws/dev_setup.bash" >> ~/.bashrc
+# If source /home/iii/ws/setup_dev.bash is not in ~/.bashrc, add it
+if ! grep -q "source /home/iii/ws/setup_dev.bash" ~/.bashrc; then
+    echo "source /home/iii/ws/setup_dev.bash" >> ~/.bashrc
 fi
 
 # Install configuration

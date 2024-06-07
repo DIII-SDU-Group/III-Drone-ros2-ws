@@ -1,8 +1,8 @@
 #!/bin/bash
-set -e
+# set -e
 
 # Source the ROS2 setup script
-source /opt/ros/$ROS_DISTRO/setup.bash
+source /opt/ros/humble/setup.bash
 
 # Source the workspace setup script
 if [ -f /home/iii/ws/install/setup.bash ]; then
