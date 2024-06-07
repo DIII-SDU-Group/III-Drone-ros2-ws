@@ -10,9 +10,7 @@
 # fi
 
 # Source the workspace setup script
-if [ -f /home/iii/ws/setup_real.bash ]; then
-    source /home/iii/ws/setup_real.bash
-fi
+source /home/iii/ws/setup_real.bash
 
 # Execute the command passed to the entrypoint
 exec "$@"

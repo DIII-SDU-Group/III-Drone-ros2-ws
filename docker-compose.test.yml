@@ -29,10 +29,13 @@ services:
       - /var/run/docker.sock:/var/run/docker-host.sock 
       - /tmp:/tmp
       - .:/home/iii/ws:cached
+      - ./tools/tmuxinator:/home/iii/.config/tmuxinator:cached
     network_mode: host
     privileged: true
     profiles:
       - cli
+    ipc: host
+    pid: host
 
   supervisor:
     container_name: iii_drone_supervisor
@@ -44,17 +47,21 @@ services:
       - test
       - supervisor
     network_mode: host
+    ipc: host
+    pid: host
 
   micro_ros_agent:
     container_name: iii_drone_micro_ros_agent
     image: "iii_drone_base:latest"
-    command: ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
+    command: ros2 run iii_drone_supervision managed_node_wrapper /home/iii/ws/src/III-Drone-Supervision/node_management_config/micro_ros_agent.yaml
     volumes:
       - .:/home/iii/ws:cached
     profiles:
       - test
       - micro_ros_agent
     network_mode: host
+    ipc: host
+    pid: host
 
   tf:
     container_name: iii_drone_tf
@@ -66,6 +73,8 @@ services:
       - test
       - tf
     network_mode: host
+    ipc: host
+    pid: host
 
   configuration_server:
     container_name: iii_drone_configuration_server
@@ -77,6 +86,8 @@ services:
       - test
       - configuration
     network_mode: host
+    ipc: host
+    pid: host
 
   sensors:
     container_name: iii_drone_sensors
@@ -88,6 +99,8 @@ services:
       - test
       - perception
     network_mode: host
+    ipc: host
+    pid: host
 
   hough_transformer:
     container_name: iii_drone_hough_transformer
@@ -99,6 +112,8 @@ services:
       - test
       - perception
     network_mode: host
+    ipc: host
+    pid: host
 
   pl_dir_computer:
     container_name: iii_drone_pl_dir_computer
@@ -110,6 +125,8 @@ services:
       - test
       - perception
     network_mode: host
+    ipc: host
+    pid: host
 
   pl_mapper:
     container_name: iii_drone_pl_mapper
@@ -121,6 +138,8 @@ services:
       - test
       - perception
     network_mode: host
+    ipc: host
+    pid: host
 
   trajectory_generator:
     container_name: iii_drone_trajectory_generator
@@ -132,6 +151,8 @@ services:
       - test
       - control
     network_mode: host
+    ipc: host
+    pid: host
 
   maneuver_controller:
     container_name: iii_drone_maneuver_controller
@@ -143,3 +164,5 @@ services:
       - test
       - control
     network_mode: host
+    ipc: host
+    pid: host

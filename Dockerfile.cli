@@ -36,7 +36,7 @@ WORKDIR /home/iii/ws
 # Install userspace tools
 USER iii
 
-RUN sudo apt-get install vim -y
+RUN sudo apt install -y tmux tmuxinator vim
 
 COPY requirements.txt /requirements.txt
 
@@ -59,9 +59,10 @@ RUN if ! grep -q "eval \"\$(register-python-argcomplete3 iii)\"" ~/.bashrc; then
         echo "eval \"\$(register-python-argcomplete3 iii)\"" >> ~/.bashrc ; \
     fi
 
-RUN sudo apt install -y tmux tmuxinator
-
 ENV SHELL /bin/bash
+
+# Prepare tmux configuration
+RUN mkdir -p /home/iii/.config/tmuxinator
 
 # Copy the entrypoint script
 COPY entrypoint_real.sh /entrypoint.sh

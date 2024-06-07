@@ -1,4 +1,4 @@
-name: iii_dev_launch
+name: iii_real_launch
 # root: ${WORKSPACE_DIR}
 
 enable_pane_titles: true
