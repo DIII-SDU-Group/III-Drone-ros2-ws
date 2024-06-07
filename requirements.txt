@@ -107,4 +107,4 @@ npyscreen==4.10.5
 # urllib3==2.2.1
 # vcstool==0.3.0
 # zipp==1.0.0
-symforce==0.9.0
+# symforce==0.9.0
