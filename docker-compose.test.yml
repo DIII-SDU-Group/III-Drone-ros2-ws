@@ -20,13 +20,19 @@ services:
 
   cli:
     container_name: iii_drone_cli
-    image: "iii_drone_base:latest"
+    build:
+      context: .
+      dockerfile: Dockerfile.cli
+    image: "iii_drone_cli:latest"
     command: bash
     volumes:
       - /var/run/docker.sock:/var/run/docker-host.sock 
+      - /tmp:/tmp
       - .:/home/iii/ws:cached
     network_mode: host
     privileged: true
+    profiles:
+      - cli
 
   supervisor:
     container_name: iii_drone_supervisor
