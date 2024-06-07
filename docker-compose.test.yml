@@ -7,7 +7,7 @@ services:
     image: "iii_drone_base:latest"
     volumes:
       - .:/home/iii/ws:cached
-    command: "colcon build"
+    command: "colcon build --symlink-install"
     profiles:
       - build
 
