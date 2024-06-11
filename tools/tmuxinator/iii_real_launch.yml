@@ -13,26 +13,26 @@ windows:
       layout: even-horizontal
       panes:
         - bash: 
-        - supervisor: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm supervisor
+        - supervisor: docker compose -f $DOCKER_COMPOSE_FILE --profile test exec system ros2 run iii_drone_supervision supervisor
   - background-processes:
       layout: even-horizontal
       panes:
-        - micro_ros_agent: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm micro_ros_agent
-        - tf: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm tf
+        - micro_ros_agent: docker compose -f $DOCKER_COMPOSE_FILE --profile test exec system ros2 run iii_drone_supervision managed_node_wrapper /home/iii/ws/src/III-Drone-Supervision/node_management_config/micro_ros_agent.yaml
+        - tf: docker compose -f $DOCKER_COMPOSE_FILE --profile test exec system ros2 run iii_drone_supervision managed_node_wrapper /home/iii/ws/src/III-Drone-Supervision/node_management_config/tf_real_launch.yaml
   - configuration:
       layout: even-horizontal
       panes:
-        - configuration-server: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm configuration_server
+        - configuration-server: docker compose -f $DOCKER_COMPOSE_FILE --profile test exec system ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file /home/iii/ws/.config/iii_drone/ros_params.yaml
   - perception:
       layout: tiled
       panes:
-        - sensors: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm sensors
-        - hough_transformer: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm hough_transformer
-        - pl_dir_computer: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm pl_dir_computer
-        - pl_mapper: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm pl_mapper
+        - sensors: docker compose -f $DOCKER_COMPOSE_FILE --profile test exec system ros2 run iii_drone_supervision managed_node_wrapper /home/iii/ws/src/III-Drone-Supervision/node_management_config/sensors_real_launch.yaml
+        - hough_transformer: docker compose -f $DOCKER_COMPOSE_FILE --profile test exec system ros2 run iii_drone_core hough_transformer
+        - pl_dir_computer: docker compose -f $DOCKER_COMPOSE_FILE --profile test exec system ros2 run iii_drone_core pl_dir_computer
+        - pl_mapper: docker compose -f $DOCKER_COMPOSE_FILE --profile test exec system ros2 run iii_drone_core pl_mapper
   - control:
       layout: even-horizontal
       panes:
-        - trajectory_generator: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm trajectory_generator
-        - maneuver_controller: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm maneuver_controller
+        - trajectory_generator: docker compose -f $DOCKER_COMPOSE_FILE --profile test exec system ros2 run iii_drone_core trajectory_generator
+        - maneuver_controller: docker compose -f $DOCKER_COMPOSE_FILE --profile test exec system ros2 run iii_drone_core maneuver_controller 
   - bash:
