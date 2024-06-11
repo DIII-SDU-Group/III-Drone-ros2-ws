@@ -16,7 +16,7 @@ export CMAKE_INCLUDE_PATH=${CMAKE_SYSROOT}/usr/include
 colcon_args=$@
 
 colcon build \
-    --packages-skip micro_ros_agent micro_ros_msgs \
+    --packages-skip micro_ros_agent micro_ros_msgs px4_msgs iii_drone_interfaces \
     --packages-skip-regex example_* $colcon_args \
     --cmake-args \
     -DCMAKE_TOOLCHAIN_FILE=/home/iii/ws/arm64-toolchain.cmake \
