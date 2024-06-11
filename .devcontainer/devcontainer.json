@@ -1,13 +1,6 @@
 {
 	"name": "iii_dev",
-	// "dockerComposeFile": [
-    //     // "../docker-compose.yml",
-    //     "../docker-compose.dev.yml"
-    // ],
-	// "service": "dev",
-    // "runServices": ["dev"],
 	"workspaceFolder": "/home/iii/ws",
-    // "shutdownAction": "stopCompose",
 
     "build": {
         "dockerfile": "../Dockerfile.dev",
