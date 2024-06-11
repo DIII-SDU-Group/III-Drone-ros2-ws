@@ -2,4 +2,4 @@ build/
 install/
 log/
 src/
-setup_real.bash/
+setup_real.bash
