@@ -59,6 +59,8 @@ RUN pip3 install /III-Drone-CLI
 USER root
 RUN rm -rf /III-Drone-CLI
 
+RUN echo "export PATH=$PATH:/home/iii/.local/bin" >> /home/iii/.bashrc
+
 RUN activate-global-python-argcomplete3
 
 USER iii
