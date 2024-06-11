@@ -14,25 +14,25 @@ windows:
       panes:
         - bash: 
         - supervisor: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm supervisor
-  # - background-processes:
-  #     layout: even-horizontal
-  #     panes:
-  #       - micro_ros_agent: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm micro_ros_agent
-  #       - tf: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm tf
-  # - configuration:
-  #     layout: even-horizontal
-  #     panes:
-  #       - configuration-server: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm configuration_server
-  # - perception:
-  #     layout: tiled
-  #     panes:
-  #       - sensors: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm sensors
-  #       - hough_transformer: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm hough_transformer
-  #       - pl_dir_computer: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm pl_dir_computer
-  #       - pl_mapper: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm pl_mapper
-  # - control:
-  #     layout: even-horizontal
-  #     panes:
-  #       - trajectory_generator: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm trajectory_generator
-  #       - maneuver_controller: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm maneuver_controller
+  - background-processes:
+      layout: even-horizontal
+      panes:
+        - micro_ros_agent: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm micro_ros_agent
+        - tf: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm tf
+  - configuration:
+      layout: even-horizontal
+      panes:
+        - configuration-server: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm configuration_server
+  - perception:
+      layout: tiled
+      panes:
+        - sensors: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm sensors
+        - hough_transformer: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm hough_transformer
+        - pl_dir_computer: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm pl_dir_computer
+        - pl_mapper: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm pl_mapper
+  - control:
+      layout: even-horizontal
+      panes:
+        - trajectory_generator: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm trajectory_generator
+        - maneuver_controller: docker compose -f $DOCKER_COMPOSE_FILE --profile test run --rm maneuver_controller
   - bash:
