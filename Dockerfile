@@ -34,26 +34,32 @@ RUN chown -R iii:iii /home/iii/ws
 WORKDIR /home/iii/ws
 
 # Install userspace tools
-USER iii
-
-RUN sudo apt install -y tmux tmuxinator vim
+RUN apt install -y tmux tmuxinator vim
 
 COPY requirements.txt /requirements.txt
 
-RUN sudo chown -R iii:iii /requirements.txt
+RUN chown -R iii:iii /requirements.txt
+
+USER iii
 
 RUN pip3 install --upgrade pip
 RUN pip3 install -r /requirements.txt
 
-RUN sudo rm -rf /requirements.txt
+USER root
+
+RUN rm -rf /requirements.txt
 
 # Install cli
 COPY tools/III-Drone-CLI /III-Drone-CLI
-RUN sudo chown -R iii:iii /III-Drone-CLI
+RUN chown -R iii:iii /III-Drone-CLI
+USER iii
 RUN pip3 install /III-Drone-CLI
-RUN sudo rm -rf /III-Drone-CLI
+USER root
+RUN rm -rf /III-Drone-CLI
 
-RUN sudo activate-global-python-argcomplete3
+RUN activate-global-python-argcomplete3
+
+USER iii
 
 RUN if ! grep -q "eval \"\$(register-python-argcomplete3 iii)\"" ~/.bashrc; then \
         echo "eval \"\$(register-python-argcomplete3 iii)\"" >> ~/.bashrc ; \
@@ -66,7 +72,10 @@ RUN mkdir -p /home/iii/.config/tmuxinator
 
 # Copy the entrypoint script
 COPY entrypoint_real.sh /entrypoint.sh
-RUN sudo chmod +x /entrypoint.sh
+USER root
+RUN chmod +x /entrypoint.sh
+
+USER iii
 
 # Set the entrypoint
 ENTRYPOINT ["/entrypoint.sh"]
