@@ -33,3 +33,17 @@ if ! grep -q "Host $III_SSH_HOST" ~/.ssh/config; then
     echo "Host $III_SSH_HOST" >> ~/.ssh/config
     echo "    ForwardAgent yes" >> ~/.ssh/config
 fi
+
+# Install cross-compilation tools
+sudo apt update
+
+sudo apt install -y \
+    liblog4cxx-dev \
+    python3-dev
+
+sudo apt install -y \
+    python3-numpy \
+    python3-netifaces \
+    python3-yaml
+
+sudo apt install -y sshfs
