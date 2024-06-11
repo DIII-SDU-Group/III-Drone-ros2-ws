@@ -31,7 +31,9 @@ RUN apt-get update && apt-get upgrade -y
 RUN mkdir -p /home/iii/ws/src
 RUN chown -R iii:iii /home/iii/ws
 
-WORKDIR /home/iii/ws
+RUN ln -s / /arm64-sysroot
+
+WORKDIR /arm64-sysroot/home/iii/ws
 
 # Install userspace tools
 RUN apt install -y tmux tmuxinator vim

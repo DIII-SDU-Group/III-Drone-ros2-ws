@@ -1,5 +1,8 @@
 FROM --platform=linux/arm64 iii_drone_base:latest as ROS
 
+USER root
+RUN rm /arm64-sysroot
+
 FROM ros:humble-ros-base
 
 # Copy the sys root

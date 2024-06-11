@@ -1,5 +1,5 @@
-source /opt/ros/humble/setup.bash
-source /home/iii/ws/install/setup.bash 2> /dev/null
+source /arm64-sysroot/opt/ros/humble/setup.bash
+source /arm64-sysroot/home/iii/ws/install/setup.bash 2> /dev/null
 
 export CLI_CONFIGURATION="container"
 
