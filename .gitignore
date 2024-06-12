@@ -7,3 +7,5 @@ log/*
 
 .config/*
 !.config/.gitignore
+
+PX4-Autopilot

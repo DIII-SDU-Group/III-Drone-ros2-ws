@@ -45,10 +45,18 @@
         {
             "label": "PX4 clean",
             "type": "shell",
-            "command": "if [ ${input:cleanPrompt} == \"Yes\" ]; then cd ~/PX4-Autopilot && make clean; else echo \"Cleaning cancelled.\"; exit 1; fi",
+            "command": "if [ ${input:cleanPrompt} == \"Yes\" ]; then cd ~/ws/PX4-Autopilot && make clean; else echo \"Cleaning cancelled.\"; exit 1; fi",
             "group": {
                 "kind": "build"
             }, 
+        },
+        {
+            "label": "PX4 build firmware",
+            "type": "shell",
+            "command": "cd ~/ws/PX4-Autopilot && make px4_fmu-v6x_default",
+            "group": {
+                "kind": "build"
+            }
         },
         {
             "label": "ROS2 clean",

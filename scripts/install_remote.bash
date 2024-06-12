@@ -5,10 +5,10 @@ set -e
 
 SCRIPT_DIR=$(dirname $(readlink -f $BASH_SOURCE))
 
-source $SCRIPT_DIR/../setup_remote.bash
+source $SCRIPT_DIR/../setup/setup_remote.bash
 
-if ! grep -q "source $WORKSPACE_DIR/setup_remote.bash" ~/.bashrc; then
-    echo "source $WORKSPACE_DIR/setup_remote.bash" >> ~/.bashrc
+if ! grep -q "source $WORKSPACE_DIR/setup/setup_remote.bash" ~/.bashrc; then
+    echo "source $WORKSPACE_DIR/setup/setup_remote.bash" >> ~/.bashrc
 fi
 
 # Install cli tools

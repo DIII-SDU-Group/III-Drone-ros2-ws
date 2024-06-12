@@ -10,7 +10,7 @@
 # fi
 
 source /arm64-sysroot/home/iii/.bashrc
-source /arm64-sysroot/home/iii/ws/setup_real.bash
+source /arm64-sysroot/home/iii/ws/setup/setup_real.bash
 cd /arm64-sysroot/home/iii/ws
 
 # Execute the command passed to the entrypoint

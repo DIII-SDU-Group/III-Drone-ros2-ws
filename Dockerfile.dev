@@ -18,18 +18,7 @@ COPY src/III-Drone-Core/scripts /scripts
 
 # Install ROS
 RUN \
-#     locale  # check for UTF-8 \
     apt update && apt install -y locales wget && \
-#     locale-gen en_US en_US.UTF-8 \
-#     update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 \
-#     export LANG=en_US.UTF-8 \
-#     apt install -y software-properties-common \
-#     add-apt-repository universe \
-#     apt update && apt install curl -y \
-#     curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
-#     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null \
-#     apt update && apt upgrade -y \
-#     apt install ros-humble-desktop \
     wget https://packages.osrfoundation.org/gazebo.gpg -O /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/gazebo-stable.list > /dev/null && \
     apt update && \
@@ -52,7 +41,7 @@ COPY entrypoint_dev.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Create workspace folder and set ownership
-RUN mkdir -p /home/iii/ws/src
+RUN mkdir -p /home/iii/ws
 RUN chown -R iii:iii /home/iii/ws
 
 WORKDIR /home/iii/ws
@@ -77,12 +66,8 @@ RUN pip3 install -r /requirements.txt
 
 RUN sudo rm -rf /requirements.txt
 
-# RUN sudo activate-global-python-argcomplete3
-
 # Install simulation tools:
 RUN sudo apt install -y wget git lsb-release
-RUN git clone --recursive https://github.com/DIII-SDU-Group/PX4-Autopilot.git /home/iii/PX4-Autopilot
-RUN /bin/bash /home/iii/PX4-Autopilot/Tools/setup/ubuntu.sh
 
 # QGroundControl
 RUN sudo usermod -a -G dialout iii

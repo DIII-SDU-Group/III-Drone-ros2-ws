@@ -1,4 +1,7 @@
 {
+    "git.ignoredRepositories": [
+        "/home/iii/ws/PX4-Autopilot"
+    ],
     "python.autoComplete.extraPaths": [
         "${workspaceFolder}/install/px4_msgs/local/lib/python3.10/dist-packages",
         "${workspaceFolder}/install/micro_ros_msgs/local/lib/python3.10/dist-packages",

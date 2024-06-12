@@ -9,5 +9,8 @@ fi
 pip3 uninstall -y iii 2> /dev/null
 pip3 install -e ./tools/III-Drone-CLI
 
+# Source bashrc
+source ~/.bashrc
+
 # Build workspace
-colcon build
+COLCON_HOME=/home/iii/ws colcon build
