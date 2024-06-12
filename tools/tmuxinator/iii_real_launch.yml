@@ -53,7 +53,7 @@ windows:
     panes:
       - configuration_server: docker compose -f $DOCKER_COMPOSE_FILE --profile test up configuration_server
 - sensors:
-    layout: tiled
+    layout: even-horizontal
     panes:
       - cable_camera: docker compose -f $DOCKER_COMPOSE_FILE --profile test up cable_camera
       - mmwave: docker compose -f $DOCKER_COMPOSE_FILE --profile test up mmwave
