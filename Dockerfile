@@ -79,6 +79,10 @@ COPY entrypoint_real.sh /entrypoint.sh
 USER root
 RUN chmod +x /entrypoint.sh
 
+# Add user to dialout and video groups
+RUN usermod -a -G dialout iii
+RUN usermod -a -G video iii
+
 USER iii
 
 # Set the entrypoint

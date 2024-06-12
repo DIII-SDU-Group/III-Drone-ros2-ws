@@ -51,11 +51,15 @@ windows:
 - configuration:
     layout: even-horizontal
     panes:
-      - configuration-server: docker compose -f $DOCKER_COMPOSE_FILE --profile test start configuration-server
+      - configuration_server: docker compose -f $DOCKER_COMPOSE_FILE --profile test start configuration_server
+- sensors:
+    layout: tiled
+    panes:
+      - cable_camera: docker compose -f $DOCKER_COMPOSE_FILE --profile test start cable_camera
+      - mmwave: docker compose -f $DOCKER_COMPOSE_FILE --profile test start mmwave
 - perception:
     layout: tiled
     panes:
-      - sensors: docker compose -f $DOCKER_COMPOSE_FILE --profile test start sensors
       - hough_transformer: docker compose -f $DOCKER_COMPOSE_FILE --profile test start hough_transformer
       - pl_dir_computer: docker compose -f $DOCKER_COMPOSE_FILE --profile test start pl_dir_computer
       - pl_mapper: docker compose -f $DOCKER_COMPOSE_FILE --profile test start pl_mapper

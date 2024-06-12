@@ -40,3 +40,12 @@ Reads environment variable SIMULATION to guide its actions.
 
 * Få styr på requirements/dependencies
 
+
+
+
+
+---
+* Debug sensors
+* Styr på params til usb cam
+
+! Læg mærker til lokale ændringer på pi

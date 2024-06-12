@@ -9,7 +9,7 @@
 #     source /home/iii/ws/install/setup.bash
 # fi
 
-# Source the workspace setup script
+source /arm64-sysroot/home/iii/.bashrc
 source /arm64-sysroot/home/iii/ws/setup_real.bash
 cd /arm64-sysroot/home/iii/ws
 
