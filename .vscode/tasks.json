@@ -129,7 +129,7 @@
         {
             "label": "Launch ROS2 III system",
             "type": "shell",
-            "command": "terminator --no-dbus -x tmuxinator iii_dev_launch ; tmux kill-session -t iii_dev_launch",
+            "command": "terminator --no-dbus -x tmuxinator iii_dev_launch ; tmux kill-session -t iii_dev_launch || echo done",
             "group": {
                 "kind": "test"
             }
@@ -142,22 +142,22 @@
         //         "kind": "test"
         //     }
         // },
-        {
-            "label": "Launch Gazebo",
-            "type": "shell",
-            "command": "make -C /home/iii/PX4-Autopilot px4_sitl gz_d4s_dc_drone",
-            "group": {
-                "kind": "test"
-            }
-        },
-        {
-            "label": "Launch QGroundControl",
-            "type": "shell",
-            "command": "/home/iii/QGroundControl.AppImage",
-            "group": {
-                "kind": "test"
-            }
-        },
+        // {
+        //     "label": "Launch Gazebo",
+        //     "type": "shell",
+        //     "command": "make -C /home/iii/PX4-Autopilot px4_sitl gz_d4s_dc_drone",
+        //     "group": {
+        //         "kind": "test"
+        //     }
+        // },
+        // {
+        //     "label": "Launch QGroundControl",
+        //     "type": "shell",
+        //     "command": "/home/iii/QGroundControl.AppImage",
+        //     "group": {
+        //         "kind": "test"
+        //     }
+        // },
         {
             "label": "Launch Terminator",
             "type": "shell",
@@ -166,18 +166,6 @@
                 "kind": "test"
             }
         },
-        {
-            "label": "Launch full simulation",
-            "type": "shell",
-            "dependsOn": [
-                "Launch Gazebo",
-                "Launch QGroundControl",
-                "Launch ROS2 III system"
-            ],
-            "group": {
-                "kind": "test"
-            }
-        }
     ],
     "inputs": [
         {
