@@ -102,6 +102,22 @@
                 "kind": "build"
             },
         },
+        {
+            "label": "ROS2 build III packages",
+            "type": "shell",
+            "command": "colcon build --packages-select-regex iii_drone_*  --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
+            "group": {
+                "kind": "build"
+            },
+        },
+        {
+            "label": "ROS2 build with colcon args",
+            "type": "shell",
+            "command": "colcon build ${input:promptColconArgs} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
+            "group": {
+                "kind": "build"
+            },
+        },
         // {
         //     "label": "Run ROS2 executable",
         //     "type": "shell",
@@ -193,6 +209,15 @@
                 "command": "${workspaceFolder}/scripts/get_iii_drone_package_names.sh",
                 "taskId": "ros2BuildPackageShellCommandLastSelection",
                 "rememberPrevious": true
+            }
+        },
+        {
+            "id": "promptColconArgs",
+            "type": "command",
+            "command": "extension.commandvariable.promptStringRemember",
+            "args": {
+                "description": "Enter additional colcon arguments",
+                "key": "args",
             }
         },
         {
