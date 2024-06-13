@@ -1,51 +1,17 @@
-* Rewrite to use SIMULATION as env variable instead of param - done
-* Lav docker build for deployment - done
-* Styr på intellisense - done
-* Create configuration cli gui - done
-
-* Implementer ROS2 lifecycle nodes
-	- Implementér managed_node_wrapper - done
-	- Lav python nodes supervised - done
-	- Implementér supervisor
-		- Lav bringup/bringdown generic - done
-			- Lav verify dependency chain
-		- Lav monitoring og recovery
-	- Gør bringup hurtigere
-	- Lav Cpp nodes managed
-
-* Create iii command line utility
-Reads environment variable SIMULATION to guide its actions.
-	- system
-		- start: Will start the system, performing all necessary steps - done
-		- stop: Will stop the system - done
-		- restart: will restart the system - done
-			- warm: Only deactive and reactivate nodes - done
-			- cold: Will also cleanup and reconfigure nodes - done
-		- boot: Launch the unbooted system - done
-			--attach: Will attach to the tmux session - done
-		- shutdown: will shutdown the system - done
-		- attach: attach to the booted system - done
-		- status: Display system information
-
-
 * Implementér start/stop i hele perception stack
 
-* Configurator should not rely on node_configs and should not declare parameters, instead configuration-server should read the node params files and auto declare to reduce dependencies and support restart of configuration server
+* Finalize implementation of behavior/px4 layer
 
-* Upgrade al software
-	- ROS2
-	- PX4
-	- PX4 ROS2 library
-	- Gazebo
-
-* Få styr på requirements/dependencies
+* Implement flight recorder/repeater
 
 
 
+* Implementér supervisor
+	- Lav verify dependency chain
+		- Bring down nodes and restart in correct order (?)
+	- Lav monitoring og recovery
 
+* Create iii command line utility
+	- system
+		- status: Display system information
 
----
-* Debug sensors
-* Styr på params til usb cam
-
-! Læg mærker til lokale ændringer på pi
