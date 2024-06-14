@@ -89,7 +89,7 @@
         {
             "label": "ROS2 build package",
             "type": "shell",
-            "command": "colcon build --packages-select ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
+            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-select ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
             "group": {
                 "kind": "build"
             },
@@ -97,7 +97,7 @@
         {
             "label": "ROS2 build packages up to",
             "type": "shell",
-            "command": "colcon build --packages-up-to ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
+            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-up-to ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
             "group": {
                 "kind": "build"
             },
@@ -105,7 +105,7 @@
         {
             "label": "ROS2 build III packages",
             "type": "shell",
-            "command": "colcon build --packages-select-regex iii_drone_*  --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
+            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-select-regex iii_drone_*  --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
             "group": {
                 "kind": "build"
             },
@@ -113,7 +113,7 @@
         {
             "label": "ROS2 build with colcon args",
             "type": "shell",
-            "command": "colcon build ${input:promptColconArgs} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
+            "command": "COLCON_HOME=/home/iii/ws colcon build ${input:promptColconArgs} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
             "group": {
                 "kind": "build"
             },
