@@ -19,8 +19,8 @@ windows:
   - background-processes:
       layout: even-horizontal
       panes:
-        - micro_ros_agent: ros2 run iii_drone_supervision managed_node_wrapper ~/ws/src/III-Drone-Supervision/node_management_config/micro_ros_agent.yaml
-        - tf: ros2 run iii_drone_supervision managed_node_wrapper ~/ws/src/III-Drone-Supervision/node_management_config/tf_sim_launch.yaml
+        - micro_ros_agent: ros2 run iii_drone_supervision managed_node_wrapper $NODE_MANAGEMENT_CONFIG_DIR/micro_ros_agent.yaml
+        - tf: ros2 run iii_drone_supervision managed_node_wrapper $NODE_MANAGEMENT_CONFIG_DIR/tf_sim_launch.yaml
   - payload:
       layout: even-horizontal
       panes:
@@ -28,11 +28,11 @@ windows:
   - configuration:
       layout: even-horizontal
       panes:
-        - configuration_server: "ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml"
+        - configuration_server: "ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml"
   - perception:
       layout: tiled
       panes:
-        - sensors: ros2 run iii_drone_supervision managed_node_wrapper ~/ws/src/III-Drone-Supervision/node_management_config/sensors_sim_launch.yaml
+        - sensors: ros2 run iii_drone_supervision managed_node_wrapper $NODE_MANAGEMENT_CONFIG_DIR/sensors_sim_launch.yaml
         - hough_transformer: ros2 run iii_drone_core hough_transformer
         - pl_dir_computer: ros2 run iii_drone_core pl_dir_computer 
         - pl_mapper: ros2 run iii_drone_core pl_mapper 
@@ -44,6 +44,6 @@ windows:
   - simulation:
       layout: even-horizontal
       panes:
-        - px4_gazebo: ros2 run iii_drone_supervision managed_node_wrapper ~/ws/tools/simulation/managed_px4_gazebo_config.yaml
-        - qgroundcontrol: ros2 run iii_drone_supervision managed_node_wrapper ~/ws/tools/simulation/managed_qgroundcontrol_config.yaml
+        - px4_gazebo: ros2 run iii_drone_supervision managed_node_wrapper $SIMULATION_CONFIG_DIR/managed_px4_gazebo_config.yaml
+        - qgroundcontrol: ros2 run iii_drone_supervision managed_node_wrapper $SIMULATION_CONFIG_DIR/managed_qgroundcontrol_config.yaml
   - bash:
