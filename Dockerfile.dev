@@ -81,7 +81,7 @@ RUN wget https://d176tv9ibo4jno.cloudfront.net/builds/master/QGroundControl.AppI
 RUN chmod +x /home/iii/QGroundControl.AppImage
 
 # Install development tools
-RUN sudo apt install -y terminator tmux tmuxinator htop
+RUN sudo apt install -y terminator tmux tmuxinator htop gdb
 COPY tools/terminator /home/iii/.config/terminator
 COPY tools/QGroundControl.org /home/iii/.config/QGroundControl.org
 RUN sudo ln -s /home/iii/ws/tools/tmuxinator /home/iii/.config/tmuxinator

@@ -9,46 +9,13 @@
                 "${workspaceFolder}/.config"
             ]
         },
-        // {
-        //     "label": "Docker compose build",
-        //     "type": "shell",
-        //     "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
-        //     "args": [
-        //         "${input:dockerComposeBuildFiles}"
-        //     ],
-        //     "group": {
-        //         "kind": "build"
-        //     }
-        // },
-        // {
-        //     "label": "Docker compose build all",
-        //     "type": "shell",
-        //     "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
-        //     "args": [
-        //         "--all"
-        //     ],
-        //     "group": {
-        //         "kind": "build"
-        //     }
-        // },
-        // {
-        //     "label": "Docker compose build system",
-        //     "type": "shell",
-        //     "command": "${workspaceFolder}/scripts/docker_compose_build.sh",
-        //     "args": [
-        //         "--system"
-        //     ],
-        //     "group": {
-        //         "kind": "build"
-        //     }
-        // },
         {
             "label": "PX4 clean",
             "type": "shell",
             "command": "if [ ${input:cleanPrompt} == \"Yes\" ]; then cd ~/ws/PX4-Autopilot && make clean; else echo \"Cleaning cancelled.\"; exit 1; fi",
             "group": {
                 "kind": "build"
-            }, 
+            }
         },
         {
             "label": "PX4 build firmware",
@@ -64,15 +31,15 @@
             "command": "if [ ${input:cleanPrompt} == \"Yes\" ]; then rm -rf build install log; else echo \"Cleaning cancelled.\"; exit 1; fi",
             "group": {
                 "kind": "build"
-            }, 
+            }
         },
         {
             "label": "ROS2 full build",
             "type": "shell",
-            "command": "colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
+            "command": "colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug",
             "group": {
                 "kind": "build"
-            },
+            }
         },
         {
             "label": "ROS2 clean build",
@@ -89,43 +56,35 @@
         {
             "label": "ROS2 build package",
             "type": "shell",
-            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-select ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
+            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-select ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug",
             "group": {
                 "kind": "build"
-            },
+            }
         },
         {
             "label": "ROS2 build packages up to",
             "type": "shell",
-            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-up-to ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
+            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-up-to ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug",
             "group": {
                 "kind": "build"
-            },
+            }
         },
         {
             "label": "ROS2 build III packages",
             "type": "shell",
-            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-select-regex iii_drone_*  --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
+            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-select-regex iii_drone_*  --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug",
             "group": {
                 "kind": "build"
-            },
+            }
         },
         {
             "label": "ROS2 build with colcon args",
             "type": "shell",
-            "command": "COLCON_HOME=/home/iii/ws colcon build ${input:promptColconArgs} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug", 
+            "command": "COLCON_HOME=/home/iii/ws colcon build ${input:promptColconArgs} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug",
             "group": {
                 "kind": "build"
-            },
+            }
         },
-        // {
-        //     "label": "Run ROS2 executable",
-        //     "type": "shell",
-        //     "command": "ros2 run ${input:runPackage} ${input:runExecutable} --ros-args --params-file /home/iii/ws/.config/iii_drone/ros_params.yaml ${input:runROS2Args}",
-        //     "group": {
-        //         "kind": "test"
-        //     }
-        // },
         {
             "label": "Launch ROS2 III system",
             "type": "shell",
@@ -134,30 +93,6 @@
                 "kind": "test"
             }
         },
-        // {
-        //     "label": "Stop III simulation",
-        //     "type": "shell",
-        //     "command": "docker compose -f docker-compose.yml --profile sim stop",
-        //     "group": {
-        //         "kind": "test"
-        //     }
-        // },
-        // {
-        //     "label": "Launch Gazebo",
-        //     "type": "shell",
-        //     "command": "make -C /home/iii/PX4-Autopilot px4_sitl gz_d4s_dc_drone",
-        //     "group": {
-        //         "kind": "test"
-        //     }
-        // },
-        // {
-        //     "label": "Launch QGroundControl",
-        //     "type": "shell",
-        //     "command": "/home/iii/QGroundControl.AppImage",
-        //     "group": {
-        //         "kind": "test"
-        //     }
-        // },
         {
             "label": "Launch Terminator",
             "type": "shell",
@@ -240,6 +175,6 @@
                 "description": "Enter the ROS2 arguments to pass to the node",
                 "key": "args",
             }
-        }
+        },       
     ]
 }

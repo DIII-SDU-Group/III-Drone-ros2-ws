@@ -1,0 +1,108 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        // Configurations for the following nodes:
+        // iii_drone_core/hough_transformer
+        // iii_drone_core/pl_dir_computer
+        // iii_drone_core/pl_mapper
+        // iii_drone_core/trajectory_generator
+        // iii_drone_core/maneuver_controller
+        // iii_drone_mission/mission_executor
+        {
+            "name": "hough_transformer",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/install/iii_drone_core/lib/iii_drone_core/hough_transformer",
+            "processId": "${command:pickProcess}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "pl_dir_computer",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/install/iii_drone_core/lib/iii_drone_core/pl_dir_computer",
+            "processId": "${command:pickProcess}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "pl_mapper",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/install/iii_drone_core/lib/iii_drone_core/pl_mapper",
+            "processId": "${command:pickProcess}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "trajectory_generator",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/install/iii_drone_core/lib/iii_drone_core/trajectory_generator",
+            "processId": "${command:pickProcess}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "maneuver_controller",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/install/iii_drone_core/lib/iii_drone_core/maneuver_controller",
+            "processId": "${command:pickProcess}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "mission_executor",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/install/iii_drone_mission/lib/iii_drone_mission/mission_executor",
+            "processId": "${command:pickProcess}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}
