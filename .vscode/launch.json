@@ -13,7 +13,7 @@
             "type": "cppdbg",
             "request": "attach",
             "program": "${workspaceFolder}/install/iii_drone_core/lib/iii_drone_core/hough_transformer",
-            "processId": "${command:pickProcess}",
+            "processId": "${input:getHoughTransformerDebugPid}",
             "MIMode": "gdb",
             "miDebuggerPath": "/usr/bin/gdb",
             "setupCommands": [
@@ -29,7 +29,7 @@
             "type": "cppdbg",
             "request": "attach",
             "program": "${workspaceFolder}/install/iii_drone_core/lib/iii_drone_core/pl_dir_computer",
-            "processId": "${command:pickProcess}",
+            "processId": "${input:getPlDirComputerDebugPid}",
             "MIMode": "gdb",
             "miDebuggerPath": "/usr/bin/gdb",
             "setupCommands": [
@@ -45,7 +45,7 @@
             "type": "cppdbg",
             "request": "attach",
             "program": "${workspaceFolder}/install/iii_drone_core/lib/iii_drone_core/pl_mapper",
-            "processId": "${command:pickProcess}",
+            "processId": "${input:getPlMapperDebugPid}",
             "MIMode": "gdb",
             "miDebuggerPath": "/usr/bin/gdb",
             "setupCommands": [
@@ -61,7 +61,7 @@
             "type": "cppdbg",
             "request": "attach",
             "program": "${workspaceFolder}/install/iii_drone_core/lib/iii_drone_core/trajectory_generator",
-            "processId": "${command:pickProcess}",
+            "processId": "${input:getTrajectoryGeneratorDebugPid}",
             "MIMode": "gdb",
             "miDebuggerPath": "/usr/bin/gdb",
             "setupCommands": [
@@ -77,7 +77,7 @@
             "type": "cppdbg",
             "request": "attach",
             "program": "${workspaceFolder}/install/iii_drone_core/lib/iii_drone_core/maneuver_controller",
-            "processId": "${command:pickProcess}",
+            "processId": "${input:getManeuverControllerDebugPid}",
             "MIMode": "gdb",
             "miDebuggerPath": "/usr/bin/gdb",
             "setupCommands": [
@@ -93,7 +93,7 @@
             "type": "cppdbg",
             "request": "attach",
             "program": "${workspaceFolder}/install/iii_drone_mission/lib/iii_drone_mission/mission_executor",
-            "processId": "${command:pickProcess}",
+            "processId": "${input:getMissionExecutorDebugPid}",
             "MIMode": "gdb",
             "miDebuggerPath": "/usr/bin/gdb",
             "setupCommands": [
@@ -103,6 +103,158 @@
                     "ignoreFailures": true
                 }
             ]
+        },
+        {
+            "name": "supervisor",
+            "type": "python",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": "${env:SUPERVISOR_DEBUG_PORT}"
+            },
+            // "pathMappings": [
+            //     {
+            //         "localRoot": "${workspaceFolder}",
+            //         "remoteRoot": "."
+            //     }
+            // ]
+        },
+        // {
+        //     "name": "micro_ros_agent_manager",
+        //     "type": "python",
+        //     "request": "attach",
+        //     "connect": {
+        //         "host": "localhost",
+        //         "port": "${env:MICRO_ROS_AGENT_MANAGER_DEBUG_PORT}"
+        //     },
+        //     "pathMappings": [
+        //         {
+        //             "localRoot": "${workspaceFolder}",
+        //             "remoteRoot": "."
+        //         }
+        //     ]
+        // },
+        // {
+        //     "name": "tf_sim_launch_manager",
+        //     "type": "python",
+        //     "request": "attach",
+        //     "connect": {
+        //         "host": "localhost",
+        //         "port": "${env:TF_SIM_LAUNCH_MANAGER_DEBUG_PORT}"
+        //     },
+        //     "pathMappings": [
+        //         {
+        //             "localRoot": "${workspaceFolder}",
+        //             "remoteRoot": "."
+        //         }
+        //     ]
+        // },
+        // {
+        //     "name": "charger_gripper",
+        //     "type": "python",
+        //     "request": "attach",
+        //     "connect": {
+        //         "host": "localhost",
+        //         "port": "${env:CHARGER_GRIPPER_DEBUG_PORT}"
+        //     },
+        //     "pathMappings": [
+        //         {
+        //             "localRoot": "${workspaceFolder}",
+        //             "remoteRoot": "."
+        //         }
+        //     ]
+        // },
+        // {
+        //     "name": "configuration_server",
+        //     "type": "python",
+        //     "request": "attach",
+        //     "connect": {
+        //         "host": "localhost",
+        //         "port": "${env:CONFIGURATION_SERVER_DEBUG_PORT}"
+        //     },
+        //     "pathMappings": [
+        //         {
+        //             "localRoot": "${workspaceFolder}",
+        //             "remoteRoot": "."
+        //         }
+        //     ]
+        // },
+        // {
+        //     "name": "sensors_sim_launch_manager",
+        //     "type": "python",
+        //     "request": "attach",
+        //     "connect": {
+        //         "host": "localhost",
+        //         "port": "${env:SENSORS_SIM_LAUNCH_MANAGER_DEBUG_PORT}"
+        //     },
+        //     "pathMappings": [
+        //         {
+        //             "localRoot": "${workspaceFolder}",
+        //             "remoteRoot": "."
+        //         }
+        //     ]
+        // },
+    ],
+    "inputs": [
+        {
+            "id": "getHoughTransformerDebugPid",
+            "type": "command",
+            "command": "shellCommand.execute",
+            "args": {
+                "command": "${workspaceFolder}/scripts/get_debug_pid.sh iii_drone_core hough_transformer",
+                "useFirstResult": true,
+                "useSingleResult": true
+            }
+        },
+        {
+            "id": "getPlDirComputerDebugPid",
+            "type": "command",
+            "command": "shellCommand.execute",
+            "args": {
+                "command": "${workspaceFolder}/scripts/get_debug_pid.sh iii_drone_core pl_dir_computer",
+                "useFirstResult": true,
+                "useSingleResult": true
+            }
+        },
+        {
+            "id": "getPlMapperDebugPid",
+            "type": "command",
+            "command": "shellCommand.execute",
+            "args": {
+                "command": "${workspaceFolder}/scripts/get_debug_pid.sh iii_drone_core pl_mapper",
+                "useFirstResult": true,
+                "useSingleResult": true
+            }
+        },
+        {
+            "id": "getTrajectoryGeneratorDebugPid",
+            "type": "command",
+            "command": "shellCommand.execute",
+            "args": {
+                "command": "${workspaceFolder}/scripts/get_debug_pid.sh iii_drone_core trajectory_generator",
+                "useFirstResult": true,
+                "useSingleResult": true
+            }
+        },
+        {
+            "id": "getManeuverControllerDebugPid",
+            "type": "command",
+            "command": "shellCommand.execute",
+            "args": {
+                "command": "${workspaceFolder}/scripts/get_debug_pid.sh iii_drone_core maneuver_controller",
+                "useFirstResult": true,
+                "useSingleResult": true
+            }
+        },
+        {
+            "id": "getMissionExecutorDebugPid",
+            "type": "command",
+            "command": "shellCommand.execute",
+            "args": {
+                "command": "${workspaceFolder}/scripts/get_debug_pid.sh iii_drone_mission mission_executor",
+                "useFirstResult": true,
+                "useSingleResult": true
+            }
         }
     ]
 }

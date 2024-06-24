@@ -13,3 +13,9 @@
 	- system
 		- status: Display system information
 
+* Fix bug in mission executor when starting after having been stopped
+
+
+---
+
+* I gang med at lave powerline overview provider og waypoint provider

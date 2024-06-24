@@ -15,16 +15,16 @@ windows:
       layout: even-horizontal
       panes:
         - bash: iii --help
-        - supervisor: ros2 run iii_drone_supervision supervisor
+        - supervisor: ros2 run iii_drone_supervision supervisor --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
   - background-processes:
       layout: even-horizontal
       panes:
-        - micro_ros_agent: ros2 run iii_drone_supervision managed_node_wrapper $NODE_MANAGEMENT_CONFIG_DIR/micro_ros_agent.yaml
-        - tf: ros2 run iii_drone_supervision managed_node_wrapper $NODE_MANAGEMENT_CONFIG_DIR/tf_sim_launch.yaml
+        - micro_ros_agent: ros2 run iii_drone_supervision managed_node_wrapper $NODE_MANAGEMENT_CONFIG_DIR/micro_ros_agent.yaml --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+        - tf: ros2 run iii_drone_supervision managed_node_wrapper $NODE_MANAGEMENT_CONFIG_DIR/tf_sim_launch.yaml --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
   - payload:
       layout: even-horizontal
       panes:
-        - charger_gripper: ros2 run iii_drone_core charger_gripper_node.py
+        - charger_gripper: ros2 run iii_drone_core charger_gripper_node.py --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
   - configuration:
       layout: even-horizontal
       panes:
@@ -32,18 +32,23 @@ windows:
   - perception:
       layout: tiled
       panes:
-        - sensors: ros2 run iii_drone_supervision managed_node_wrapper $NODE_MANAGEMENT_CONFIG_DIR/sensors_sim_launch.yaml
-        - hough_transformer: ros2 run iii_drone_core hough_transformer
-        - pl_dir_computer: ros2 run iii_drone_core pl_dir_computer 
-        - pl_mapper: ros2 run iii_drone_core pl_mapper 
+        - sensors: ros2 run iii_drone_supervision managed_node_wrapper $NODE_MANAGEMENT_CONFIG_DIR/sensors_sim_launch.yaml --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+        - hough_transformer: ros2 run iii_drone_core hough_transformer --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+        - pl_dir_computer: ros2 run iii_drone_core pl_dir_computer  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+        - pl_mapper: ros2 run iii_drone_core pl_mapper  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
   - control:
       layout: even-horizontal
       panes:
-        - trajectory_generator: ros2 run iii_drone_core trajectory_generator 
-        - maneuver_controller: ros2 run iii_drone_core maneuver_controller 
+        # - trajectory_generator: ros2 run iii_drone_core trajectory_generator  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+        - maneuver_controller: ros2 run iii_drone_core maneuver_controller  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+        - mission_executor: ros2 run iii_drone_mission mission_executor --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
   - simulation:
       layout: even-horizontal
       panes:
-        - px4_gazebo: ros2 run iii_drone_supervision managed_node_wrapper $SIMULATION_CONFIG_DIR/managed_px4_gazebo_config.yaml
-        - qgroundcontrol: ros2 run iii_drone_supervision managed_node_wrapper $SIMULATION_CONFIG_DIR/managed_qgroundcontrol_config.yaml
+        - px4_gazebo: ros2 run iii_drone_supervision managed_node_wrapper $SIMULATION_CONFIG_DIR/managed_px4_gazebo_config.yaml --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+        - qgroundcontrol: ros2 run iii_drone_supervision managed_node_wrapper $SIMULATION_CONFIG_DIR/managed_qgroundcontrol_config.yaml --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+  # - mission:
+  #     layout: even-horizontal
+  #     panes:
+  #       - mission_executor: ros2 run iii_drone_mission mission_executor --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
   - bash:

@@ -14,3 +14,7 @@ export COLCON_HOME="$WORKSPACE_DIR"
 source $SCRIPT_DIR/remote.bash
 source $SCRIPT_DIR/node_log_levels.bash
 source $SCRIPT_DIR/ros_setup.bash
+
+export DEBUGGABLE_NODES=$(cat $SCRIPT_DIR/debuggable_nodes.txt | tr '\n' ' ')
+
+source $SCRIPT_DIR/python_debug_ports.bash
