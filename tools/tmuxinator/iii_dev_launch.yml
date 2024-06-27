@@ -24,7 +24,7 @@ windows:
   - payload:
       layout: even-horizontal
       panes:
-        - charger_gripper: ros2 run iii_drone_core charger_gripper_node.py --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+        - charger_gripper: ros2 run iii_drone_core charger_gripper_node.py
   - configuration:
       layout: even-horizontal
       panes:
@@ -39,9 +39,10 @@ windows:
   - control:
       layout: even-horizontal
       panes:
-        # - trajectory_generator: ros2 run iii_drone_core trajectory_generator  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+        - trajectory_generator: ros2 run iii_drone_core trajectory_generator  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
         - maneuver_controller: ros2 run iii_drone_core maneuver_controller  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
         - mission_executor: ros2 run iii_drone_mission mission_executor --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+        - powerline_overview_provider: ros2 run iii_drone_mission powerline_overview_provider --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
   - simulation:
       layout: even-horizontal
       panes:

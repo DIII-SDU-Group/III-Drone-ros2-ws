@@ -149,21 +149,21 @@
         //         }
         //     ]
         // },
-        // {
-        //     "name": "charger_gripper",
-        //     "type": "python",
-        //     "request": "attach",
-        //     "connect": {
-        //         "host": "localhost",
-        //         "port": "${env:CHARGER_GRIPPER_DEBUG_PORT}"
-        //     },
-        //     "pathMappings": [
-        //         {
-        //             "localRoot": "${workspaceFolder}",
-        //             "remoteRoot": "."
-        //         }
-        //     ]
-        // },
+        {
+            "name": "charger_gripper",
+            "type": "python",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": "${env:CHARGER_GRIPPER_DEBUG_PORT}"
+            },
+            // "pathMappings": [
+            //     {
+            //         "localRoot": "${workspaceFolder}",
+            //         "remoteRoot": "."
+            //     }
+            // ]
+        },
         // {
         //     "name": "configuration_server",
         //     "type": "python",

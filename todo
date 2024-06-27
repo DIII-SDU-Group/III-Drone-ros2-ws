@@ -1,9 +1,3 @@
-* Finalize implementation of behavior/px4 layer
-
-* Implement flight recorder/repeater
-
-* Maneuver reference client timeout test og debug
-
 * Implementér supervisor
 	- Lav verify dependency chain
 		- Bring down nodes and restart in correct order (?)
@@ -18,4 +12,13 @@
 
 ---
 
-* I gang med at lave powerline overview provider og waypoint provider
+* Lav parameters for powerline waypoint provider - done
+* Lav Store/Get Initial State - use global blackboard for all trees - done
+* Lav simulation configuration for at teste
+* Arm before i stedet for arm after
+* Lav gripper status nodes 
+	- verify gripper closed
+	- battery is sufficiently charged
+* Setup RPi, test HITL
+* Setup laptop
+* Opdater GUI
