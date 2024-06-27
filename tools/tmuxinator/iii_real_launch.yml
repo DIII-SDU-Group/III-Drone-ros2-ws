@@ -68,4 +68,9 @@ windows:
     panes:
       - trajectory_generator: docker compose -f $DOCKER_COMPOSE_FILE --profile test up trajectory_generator
       - maneuver_controller: docker compose -f $DOCKER_COMPOSE_FILE --profile test up maneuver_controller
+- mission:
+    layout: even-horizontal
+    panes:
+      - mission_executor: docker compose -f $DOCKER_COMPOSE_FILE --profile test up mission_executor
+      - powerline_overview_provider: docker compose -f $DOCKER_COMPOSE_FILE --profile test up powerline_overview_provider
 - bash:
