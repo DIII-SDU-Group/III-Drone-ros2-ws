@@ -1,3 +1,4 @@
 setup_real.bash
 node_log_levels.bash
 ros_setup.bash
+paths.bash
