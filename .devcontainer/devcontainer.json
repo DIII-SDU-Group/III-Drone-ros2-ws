@@ -62,6 +62,7 @@
         "--privileged",
         "--ipc","host",
         "--pid","host",
+        "--network","host",
         "--runtime", "nvidia",
         "--gpus", "all",
         "-e", "NVIDIA_DRIVER_CAPABILITIES=all"
