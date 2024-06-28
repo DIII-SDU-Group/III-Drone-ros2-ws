@@ -21,6 +21,10 @@ windows:
     layout: even-horizontal
     panes:
       - configuration_server: docker compose -f $DOCKER_COMPOSE_FILE --profile test up configuration_server
+- payload:
+    layout: even-horizontal
+    panes:
+      - charger_gripper: docker compose -f $DOCKER_COMPOSE_FILE --profile test up charger_gripper
 - sensors:
     layout: even-horizontal
     panes:
