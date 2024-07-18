@@ -36,13 +36,13 @@ windows:
         - hough_transformer: ros2 run iii_drone_core hough_transformer --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
         - pl_dir_computer: ros2 run iii_drone_core pl_dir_computer  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
         - pl_mapper: ros2 run iii_drone_core pl_mapper  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
-  - control:
-      layout: even-horizontal
-      panes:
-        - trajectory_generator: ros2 run iii_drone_core trajectory_generator  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
-        - maneuver_controller: ros2 run iii_drone_core maneuver_controller  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
-        - mission_executor: ros2 run iii_drone_mission mission_executor --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
-        - powerline_overview_provider: ros2 run iii_drone_mission powerline_overview_provider --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+  # - control:
+  #     layout: even-horizontal
+  #     panes:
+  #       - trajectory_generator: ros2 run iii_drone_core trajectory_generator  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+  #       - maneuver_controller: ros2 run iii_drone_core maneuver_controller  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+  #       - mission_executor: ros2 run iii_drone_mission mission_executor --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+  #       - powerline_overview_provider: ros2 run iii_drone_mission powerline_overview_provider --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
   - simulation:
       layout: even-horizontal
       panes:
