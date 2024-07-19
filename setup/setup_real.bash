@@ -7,10 +7,14 @@ source $SCRIPT_DIR/paths.bash
 
 export CLI_CONFIGURATION="container"
 
-export TMUXINATOR_PROJECT="iii_real_launch"
+source $SCRIPT_DIR/tmuxinator_config.bash
+export TMUXINATOR_PROJECT=$TMUXINATOR_PROJECT_REAL
+export TMUXINATOR_PROJECT_HITL=$TMUXINATOR_PROJECT_REAL_HITL
 
 export SIMULATION="false"
-export SUPERVISOR_CONFIG_FILE="$SUPERVISOR_CONFIG_DIR/real.yaml"
+
+source $SCRIPT_DIR/supervisor_config.bash
+export SUPERVISOR_CONFIG_FILE=$SUPERVISOR_CONFIG_FILE_REAL
 
 source $SCRIPT_DIR/node_log_levels.bash
 source $SCRIPT_DIR/ros_setup.bash

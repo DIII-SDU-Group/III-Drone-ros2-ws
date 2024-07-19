@@ -1,0 +1,5 @@
+export TMUXINATOR_PROJECT_REAL="iii_real_launch"
+export TMUXINATOR_PROJECT_DEV="iii_dev_launch"
+
+export TMUXINATOR_PROJECT_REAL_HITL="iii_real_hitl_launch"
+export TMUXINATOR_PROJECT_DEV_HITL="iii_dev_hitl_launch"
