@@ -16,4 +16,35 @@ windows:
     layout: even-horizontal
     panes:
       - micro_ros_agent: docker compose -f $DOCKER_COMPOSE_FILE --profile test up micro_ros_agent
+      - tf: docker compose -f $DOCKER_COMPOSE_FILE --profile test up tf
+- configuration:
+    layout: even-horizontal
+    panes:
+      - configuration_server: docker compose -f $DOCKER_COMPOSE_FILE --profile test up configuration_server
+- payload:
+    layout: even-horizontal
+    panes:
+      - charger_gripper: docker compose -f $DOCKER_COMPOSE_FILE --profile test up charger_gripper
+- sensors:
+    layout: even-horizontal
+    panes:
+      - cable_camera: docker compose -f $DOCKER_COMPOSE_FILE --profile test up cable_camera
+      - mmwave: docker compose -f $DOCKER_COMPOSE_FILE --profile test up mmwave
+- perception:
+    layout: tiled
+    panes:
+      - hough_transformer: docker compose -f $DOCKER_COMPOSE_FILE --profile test up hough_transformer
+      - pl_dir_computer: docker compose -f $DOCKER_COMPOSE_FILE --profile test up pl_dir_computer
+      - pl_mapper: docker compose -f $DOCKER_COMPOSE_FILE --profile test up pl_mapper
+- control:
+    layout: even-horizontal
+    panes:
+      - trajectory_generator: docker compose -f $DOCKER_COMPOSE_FILE --profile test up trajectory_generator
+      - maneuver_controller: docker compose -f $DOCKER_COMPOSE_FILE --profile test up maneuver_controller
+- mission:
+    layout: even-horizontal
+    panes:
+      - mission_executor: docker compose -f $DOCKER_COMPOSE_FILE --profile test up mission_executor
+      - powerline_overview_provider: docker compose -f $DOCKER_COMPOSE_FILE --profile test up powerline_overview_provider
+- bash:
 - bash:
