@@ -1,0 +1,19 @@
+name: iii_opti_track_launch
+# root: ${WORKSPACE_DIR}
+
+enable_pane_titles: true
+pane_title_position: top
+
+startup_window: supervisor
+
+windows:
+- supervisor: 
+    layout: even-horizontal
+    panes:
+      - bash: 
+      - supervisor: docker compose -f $DOCKER_COMPOSE_FILE --profile test up supervisor
+- background-processes:
+    layout: even-horizontal
+    panes:
+      - micro_ros_agent: docker compose -f $DOCKER_COMPOSE_FILE --profile test up micro_ros_agent
+- bash:
