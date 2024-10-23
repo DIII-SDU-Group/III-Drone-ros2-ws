@@ -46,5 +46,4 @@ windows:
     panes:
       - mission_executor: docker compose -f $DOCKER_COMPOSE_FILE --profile test up mission_executor
       - powerline_overview_provider: docker compose -f $DOCKER_COMPOSE_FILE --profile test up powerline_overview_provider
-- bash:
-- bash:
+- cli: run-iii-cli
