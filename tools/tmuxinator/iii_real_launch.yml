@@ -10,7 +10,7 @@ windows:
 - supervisor: 
     layout: even-horizontal
     panes:
-      - bash: 
+      - bash: iii --help
       - supervisor: docker compose -f $DOCKER_COMPOSE_FILE --profile test up supervisor
 - background-processes:
     layout: even-horizontal
