@@ -77,7 +77,7 @@ RUN sudo apt install libfuse2 -y
 RUN sudo apt install libxcb-xinerama0 libxkbcommon-x11-0 libxcb-cursor0 -y
 RUN sudo apt install -y fuse
 
-RUN wget https://d176tv9ibo4jno.cloudfront.net/builds/master/QGroundControl.AppImage -P /home/iii
+RUN wget https://github.com/mavlink/qgroundcontrol/releases/download/latest/QGroundControl-x86_64.AppImage -P /home/iii -O /home/iii/QGroundControl.AppImage
 RUN chmod +x /home/iii/QGroundControl.AppImage
 
 # Install development tools
