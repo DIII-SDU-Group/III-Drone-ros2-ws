@@ -37,7 +37,7 @@
         {
             "label": "ROS2 full build",
             "type": "shell",
-            "command": "colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug",
+            "command": "colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             "group": {
                 "kind": "build"
             }
@@ -57,7 +57,7 @@
         {
             "label": "ROS2 build package",
             "type": "shell",
-            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-select ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug",
+            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-select ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             "group": {
                 "kind": "build"
             }
@@ -65,7 +65,7 @@
         {
             "label": "ROS2 build packages up to",
             "type": "shell",
-            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-up-to ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug",
+            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-up-to ${input:buildPackage} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             "group": {
                 "kind": "build"
             }
@@ -73,7 +73,7 @@
         {
             "label": "ROS2 build III packages",
             "type": "shell",
-            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-select-regex iii_drone_*  --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug",
+            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-select-regex iii_drone_*  --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             "group": {
                 "kind": "build"
             }
@@ -81,7 +81,7 @@
         {
             "label": "ROS2 build with colcon args",
             "type": "shell",
-            "command": "COLCON_HOME=/home/iii/ws colcon build ${input:promptColconArgs} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug",
+            "command": "COLCON_HOME=/home/iii/ws colcon build ${input:promptColconArgs} --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             "group": {
                 "kind": "build"
             }
