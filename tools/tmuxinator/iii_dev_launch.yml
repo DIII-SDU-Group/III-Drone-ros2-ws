@@ -49,11 +49,4 @@ windows:
       panes:
         - mission_executor: ROS_LOG_DIR=$ROS_LOG_DIR_BASE/mission_executor ros2 run iii_drone_mission mission_executor --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
         - powerline_overview_provider: ROS_LOG_DIR=$ROS_LOG_DIR_BASE/powerline_overview_provider ros2 run iii_drone_mission powerline_overview_provider --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
-  - simulation:
-      layout: even-horizontal
-      panes:
-        # - px4_gazebo: ros2 run iii_drone_supervision managed_node_wrapper $SIMULATION_CONFIG_DIR/managed_px4_gazebo_config.yaml --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
-        - px4_gazebo: make -C /home/iii/ws/PX4-Autopilot px4_sitl gz_d4s_dc_drone
-        # - qgroundcontrol: ros2 run iii_drone_supervision managed_node_wrapper $SIMULATION_CONFIG_DIR/managed_qgroundcontrol_config.yaml --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
-        - qgroundcontrol: /home/iii/QGroundControl.AppImage
   - bash:

@@ -95,6 +95,14 @@
             }
         },
         {
+            "label": "Launch simulation environment",
+            "type": "shell",
+            "command": "terminator --no-dbus -x tmuxinator iii_dev_sim_launch ; tmux kill-session -t iii_dev_launch || echo done",
+            "group": {
+                "kind": "test"
+            }
+        },
+        {
             "label": "Launch Terminator",
             "type": "shell",
             "command": "terminator --no-dbus",
