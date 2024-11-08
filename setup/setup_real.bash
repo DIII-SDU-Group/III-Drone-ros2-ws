@@ -20,3 +20,5 @@ export SUPERVISOR_CONFIG_FILE=$SUPERVISOR_CONFIG_FILE_REAL
 
 source $SCRIPT_DIR/node_log_levels.bash
 source $SCRIPT_DIR/ros_setup.bash
+
+export CYCLONEDDS_URI=$CYCLONEDDS_URI_REAL
