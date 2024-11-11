@@ -1,6 +1,0 @@
-iii_drone_core/hough_transformer
-iii_drone_core/pl_dir_computer
-iii_drone_core/pl_mapper
-iii_drone_core/trajectory_generator
-iii_drone_core/maneuver_controller
-iii_drone_mission/mission_executor
