@@ -1,24 +1,21 @@
-* Implementér supervisor
-	- Lav verify dependency chain
-		- Bring down nodes and restart in correct order (?)
-	- Lav monitoring og recovery
-
-* Create iii command line utility
-	- system
-		- status: Display system information
-
-* Fix bug in mission executor when starting after having been stopped
-
-
----
-
-* Lav parameters for powerline waypoint provider - done
-* Lav Store/Get Initial State - use global blackboard for all trees - done
-* Lav simulation configuration for at teste
-* Arm before i stedet for arm after
-* Lav gripper status nodes 
-	- verify gripper closed
-	- battery is sufficiently charged
-* Setup RPi, test HITL
-* Setup laptop
-* Opdater GUI
+* Run 3,3,3 tests again
+	- Use smaller reached position threshold
+	- Tune MPC more (decrease weight on velocity)
+* Run cable landing tests again
+	- Report CPU load vs dt
+	- Select highest tolerable dt
+	- Compare sync and async, open- and closed loop performance and timeout (plot)
+* Run pl mapper tests again
+	- Tune pl mapper
+		- Maximum distance point match
+		- View cone slope and distance
+	- Run tests again
+	
+	
+	
+	
+	
+	
+-----------------------------------------
+* Command for pulling rosbags
+* Command for pulling src
