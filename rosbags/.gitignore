@@ -1,1 +1,6 @@
-rosbag2_*
+# Ignore everything
+*
+
+# Do not ignore these files
+!record.bash
+!topics.bash
