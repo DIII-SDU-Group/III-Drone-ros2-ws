@@ -11,6 +11,7 @@
 /control/trajectory_controller/trajectory_path
 /control/trajectory_generator/target_pose
 /control/trajectory_generator/trajectory_path
+/control/trajectory_generator/trajectory_compute_time
 
 /fmu/out/vehicle_odometry
 /fmu/out/vehicle_status
@@ -41,7 +42,7 @@
 /perception/pl_mapper/state
 /perception/pl_mapper/transformed_points
 
-/sensor/cable_camera/image_raw
+#/sensor/cable_camera/image_raw
 
 /sensor/mmwave/pcl
 
