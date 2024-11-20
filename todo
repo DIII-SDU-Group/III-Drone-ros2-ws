@@ -1,6 +1,7 @@
 * Run 3,3,3 tests again
 	- Use smaller reached position threshold
 	- Tune MPC more (decrease weight on velocity)
+	- Put higher weight on XY to show the advantage of MPC
 * Run cable landing tests again
 	- Report CPU load vs dt
 	- Select highest tolerable dt
