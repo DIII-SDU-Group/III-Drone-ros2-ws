@@ -1,6 +1,7 @@
 {
     "version": "0.2.0",
     "configurations": [
+
         // Configurations for the following nodes:
         // iii_drone_core/hough_transformer
         // iii_drone_core/pl_dir_computer
@@ -110,7 +111,8 @@
             "request": "attach",
             "connect": {
                 "host": "localhost",
-                "port": "${env:SUPERVISOR_DEBUG_PORT}"
+                // "port": "${env:SUPERVISOR_DEBUG_PORT}"
+                "port": "49160"
             },
             // "pathMappings": [
             //     {
@@ -164,21 +166,38 @@
             //     }
             // ]
         },
-        // {
-        //     "name": "configuration_server",
-        //     "type": "python",
-        //     "request": "attach",
-        //     "connect": {
-        //         "host": "localhost",
-        //         "port": "${env:CONFIGURATION_SERVER_DEBUG_PORT}"
-        //     },
-        //     "pathMappings": [
-        //         {
-        //             "localRoot": "${workspaceFolder}",
-        //             "remoteRoot": "."
-        //         }
-        //     ]
-        // },
+        {
+            "name": "configuration_server",
+            "type": "python",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": "49164"
+                // "port": "${env:CONFIGURATION_SERVER_DEBUG_PORT}"
+            },
+            // "pathMappings": [
+            //     {
+            //         "localRoot": "${workspaceFolder}",
+            //         "remoteRoot": "."
+            //     }
+            // ]
+        },
+        {
+            "name": "tf",
+            "type": "python",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": "49162"
+                // "port": "${env:CONFIGURATION_SERVER_DEBUG_PORT}"
+            },
+            // "pathMappings": [
+            //     {
+            //         "localRoot": "${workspaceFolder}",
+            //         "remoteRoot": "."
+            //     }
+            // ]
+        },
         // {
         //     "name": "sensors_sim_launch_manager",
         //     "type": "python",

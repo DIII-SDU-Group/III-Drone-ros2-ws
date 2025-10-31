@@ -1,4 +1,4 @@
-{
+{ 
     "git.ignoredRepositories": [
         "/home/iii/ws/PX4-Autopilot"
     ],
@@ -112,5 +112,6 @@
         "*.txx": "cpp"
     },
     "cmake.configureOnOpen": false,
-    "python.REPL.enableREPLSmartSend": false
+    "python.REPL.enableREPLSmartSend": false,
+    "ros.distro": "humble"
 }
