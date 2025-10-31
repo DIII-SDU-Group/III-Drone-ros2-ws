@@ -1,0 +1,9 @@
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+WORKSPACE_DIR="$(dirname $SCRIPT_DIR)"
+
+export NODE_MANAGEMENT_CONFIG_DIR="$WORKSPACE_DIR/src/III-Drone-Supervision/node_management_config"
+export CONFIG_BASE_DIR="$WORKSPACE_DIR/.config"
+export SUPERVISOR_CONFIG_DIR="$WORKSPACE_DIR/src/III-Drone-Supervision/supervision_config"
+export SIMULATION_CONFIG_DIR="$WORKSPACE_DIR/tools/simulation"
+export MISSION_SPECIFICATION_DIR="$WORKSPACE_DIR/src/III-Drone-Mission/mission_specification"
+export BEHAVIOR_TREES_DIR="$WORKSPACE_DIR/src/III-Drone-Mission/behavior_trees"

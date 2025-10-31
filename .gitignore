@@ -5,4 +5,11 @@ install/*
 log/*
 !log/.gitignore
 
-.config
+.config/*
+!.config/.gitignore
+
+PX4-Autopilot
+
+testing/*
+!testing/*.sh
+!testing/*.py

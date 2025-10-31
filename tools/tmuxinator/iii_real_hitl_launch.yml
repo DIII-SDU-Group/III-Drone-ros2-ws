@@ -1,0 +1,42 @@
+name: iii_real_launch
+
+enable_pane_titles: true
+pane_title_position: top
+
+startup_window: supervisor
+
+windows:
+- supervisor: 
+    layout: even-horizontal
+    panes:
+      - bash: 
+      - supervisor: docker compose -f $DOCKER_COMPOSE_FILE --profile test up supervisor_hitl
+- tf:
+    layout: even-horizontal
+    panes:
+      - tf: docker compose -f $DOCKER_COMPOSE_FILE --profile test up tf_hitl
+- configuration:
+    layout: even-horizontal
+    panes:
+      - configuration_server: docker compose -f $DOCKER_COMPOSE_FILE --profile test up configuration_server_hitl
+- payload:
+    layout: even-horizontal
+    panes:
+      - charger_gripper: docker compose -f $DOCKER_COMPOSE_FILE --profile test up charger_gripper_hitl
+- perception:
+    layout: tiled
+    panes:
+      - hough_transformer: docker compose -f $DOCKER_COMPOSE_FILE --profile test up hough_transformer
+      - pl_dir_computer: docker compose -f $DOCKER_COMPOSE_FILE --profile test up pl_dir_computer
+      - pl_mapper: docker compose -f $DOCKER_COMPOSE_FILE --profile test up pl_mapper_hitl
+- control:
+    layout: even-horizontal
+    panes:
+      - trajectory_generator: docker compose -f $DOCKER_COMPOSE_FILE --profile test up trajectory_generator
+      - maneuver_controller: docker compose -f $DOCKER_COMPOSE_FILE --profile test up maneuver_controller
+- mission:
+    layout: even-horizontal
+    panes:
+      - mission_executor: docker compose -f $DOCKER_COMPOSE_FILE --profile test up mission_executor
+      - powerline_overview_provider: docker compose -f $DOCKER_COMPOSE_FILE --profile test up powerline_overview_provider
+- bash:

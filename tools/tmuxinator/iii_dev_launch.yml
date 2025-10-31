@@ -6,29 +6,47 @@ root: ~/ws/
 enable_pane_titles: true
 pane_title_position: top
 
-startup_window: configuration
+# startup_window: simulation
+startup_window: supervisor
+# startup_window: configuration
 
 windows:
+  - supervisor: 
+      layout: even-horizontal
+      panes:
+        - bash: iii --help
+        - supervisor: ROS_LOG_DIR=$ROS_LOG_DIR_BASE/supervisor ros2 run iii_drone_supervision supervisor --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
   - background-processes:
       layout: even-horizontal
       panes:
-        - micro_ros_agent: ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888  
-        - tf: ros2 launch iii_drone_simulation tf_sim.launch.py
+        - micro_dds: MicroXRCEAgent udp4 -p 8888
+        - tf: ROS_LOG_DIR=$ROS_LOG_DIR_BASE/tf ros2 run iii_drone_supervision managed_node_wrapper $NODE_MANAGEMENT_CONFIG_DIR/tf_sim_launch.yaml --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
   - configuration:
       layout: even-horizontal
       panes:
-        - configuration_client: ros2 run iii_drone_configuration configuration_client_node.py
-        - configuration_server: ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+        - configuration_server: "ROS_LOG_DIR=$ROS_LOG_DIR_BASE/configuration_server ros2 run iii_drone_configuration configuration_server_node.py --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml"
+  - payload:
+      layout: even-horizontal
+      panes:
+        - charger_gripper: ROS_LOG_DIR=$ROS_LOG_DIR_BASE/charger_gripper ros2 run iii_drone_core charger_gripper_node.py
+  - sensors:
+      layout: even-horizontal
+      panes:
+        - sensors: ROS_LOG_DIR=$ROS_LOG_DIR_BASE/sensors ros2 run iii_drone_supervision managed_node_wrapper $NODE_MANAGEMENT_CONFIG_DIR/sensors_sim_launch.yaml --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
   - perception:
       layout: tiled
       panes:
-        - sensors: ros2 launch iii_drone_simulation sensors_sim.launch.py
-        - hough_transformer: ros2 run iii_drone_core hough_transformer --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
-        - pl_dir_computer: ros2 run iii_drone_core pl_dir_computer --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
-        - pl_mapper: ros2 run iii_drone_core pl_mapper --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
+        - hough_transformer: ROS_LOG_DIR=$ROS_LOG_DIR_BASE/hough_transformer ros2 run iii_drone_core hough_transformer --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+        - pl_dir_computer: ROS_LOG_DIR=$ROS_LOG_DIR_BASE/pl_dir_computer ros2 run iii_drone_core pl_dir_computer  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+        - pl_mapper: ROS_LOG_DIR=$ROS_LOG_DIR_BASE/pl_mapper ros2 run iii_drone_core pl_mapper  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
   - control:
       layout: even-horizontal
       panes:
-        - trajectory_generator: ros2 run iii_drone_core trajectory_generator --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
-        - maneuver_controller: ros2 run iii_drone_core maneuver_controller --ros-args --params-file ~/ws/.config/iii_drone/ros_params.yaml
-  - bash: ""
+        - trajectory_generator: ROS_LOG_DIR=$ROS_LOG_DIR_BASE/trajectory_generator ros2 run iii_drone_core trajectory_generator  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+        - maneuver_controller: ROS_LOG_DIR=$ROS_LOG_DIR_BASE/maneuver_controller ros2 run iii_drone_core maneuver_controller  --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+  - mission:
+      layout: even-horizontal
+      panes:
+        - mission_executor: ROS_LOG_DIR=$ROS_LOG_DIR_BASE/mission_executor ros2 run iii_drone_mission mission_executor --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+        - powerline_overview_provider: ROS_LOG_DIR=$ROS_LOG_DIR_BASE/powerline_overview_provider ros2 run iii_drone_mission powerline_overview_provider --ros-args --params-file $CONFIG_BASE_DIR/iii_drone/ros_params.yaml
+  - bash:

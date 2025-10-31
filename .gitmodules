@@ -41,3 +41,22 @@
 [submodule "src/III-Drone-Configuration"]
 	path = src/III-Drone-Configuration
 	url = git@github.com:DIII-SDU-Group/III-Drone-Configuration.git
+	branch = v2.2-staging
+[submodule "src/III-Drone-Supervision"]
+	path = src/III-Drone-Supervision
+	url = git@github.com:DIII-SDU-Group/III-Drone-Supervision.git
+	branch = v2.2-staging
+[submodule "tools/III-Drone-CLI"]
+	path = tools/III-Drone-CLI
+	url = git@github.com:DIII-SDU-Group/III-Drone-CLI.git
+	branch = v2.2-staging
+[submodule "src/III-Drone-Mission"]
+	path = src/III-Drone-Mission
+	url = git@github.com:DIII-SDU-Group/III-Drone-Mission.git
+	branch = behavior-layer-dev
+[submodule "src/dynamic_message_introspection"]
+	path = src/dynamic_message_introspection
+	url = git@github.com:DIII-SDU-Group/dynamic_message_introspection.git
+[submodule "src/Micro-XRCE-DDS-Agent"]
+	path = src/Micro-XRCE-DDS-Agent
+	url = https://github.com/eProsima/Micro-XRCE-DDS-Agent.git

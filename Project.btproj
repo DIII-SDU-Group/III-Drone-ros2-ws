@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4" project_name="Project">
+    <include path="src/III-Drone-Mission/behavior_trees/land_on_cable_tree_groot2.xml"/>
+    <!-- Description of Node Models (used by Groot) -->
+    <TreeNodesModel>
+        <Action ID="CableLanding">
+            <input_port name="target_cable_id" type="int"/>
+        </Action>
+        <Action ID="CableTakeoff">
+            <input_port name="target_cable_id" type="int"/>
+            <input_port name="target_cable_distance" type="float"/>
+        </Action>
+        <Action ID="FlyToObject">
+            <input_port name="target" type="iii_drone_interfaces::msg::Target_&lt;std::allocator&lt;void&gt; &gt;"/>
+        </Action>
+        <Action ID="FlyToPosition">
+            <input_port name="target_yaw" type="float"/>
+            <input_port name="frame_id" type="std::string"/>
+            <input_port name="target_position" type="Eigen::Matrix&lt;float, 3, 1, 0, 3, 1&gt;"/>
+        </Action>
+        <Action ID="GetPowerlineOverview">
+            <output_port name="stored_powerline" type="iii_drone_interfaces::msg::Powerline_&lt;std::allocator&lt;void&gt; &gt;"/>
+        </Action>
+        <Action ID="GripperCommand">
+            <input_port name="gripper_command" type="iii_drone::behavior::gripper_command_t"/>
+        </Action>
+        <Action ID="Hover">
+            <input_port name="duration_s" default="1.000000" type="float">Duration of the hover maneuver in seconds</input_port>
+        </Action>
+        <Action ID="HoverByObject">
+            <input_port name="duration_s" default="1.000000" type="float">Duration of the hover maneuver in seconds</input_port>
+            <input_port name="target" type="iii_drone_interfaces::msg::Target_&lt;std::allocator&lt;void&gt; &gt;">Target to hover by</input_port>
+        </Action>
+        <Action ID="HoverOnCable">
+            <input_port name="target_cable_id" type="int">The target cable ID</input_port>
+            <input_port name="duration_s" default="1.000000" type="float">Duration of the hover maneuver in seconds</input_port>
+        </Action>
+        <Decorator ID="LoopPoint">
+            <output_port name="value" type="Eigen::Matrix&lt;float, 3, 1, 0, 3, 1&gt;"/>
+            <inout_port name="queue" type="std::shared_ptr&lt;std::deque&lt;Eigen::Matrix&lt;float, 3, 1, 0, 3, 1&gt;, std::allocator&lt;Eigen::Matrix&lt;float, 3, 1, 0, 3, 1&gt; &gt; &gt; &gt;"/>
+        </Decorator>
+        <Action ID="PLMapperCommand">
+            <input_port name="pl_mapper_command" type="iii_drone::behavior::pl_mapper_command_t"/>
+        </Action>
+        <Action ID="PowerlineWaypointProvider">
+            <output_port name="waypoints_return" type="std::shared_ptr&lt;std::deque&lt;Eigen::Matrix&lt;float, 3, 1, 0, 3, 1&gt;, std::allocator&lt;Eigen::Matrix&lt;float, 3, 1, 0, 3, 1&gt; &gt; &gt; &gt;"/>
+            <input_port name="start_state" type="iii_drone::control::State"/>
+            <output_port name="waypoints_depart" type="std::shared_ptr&lt;std::deque&lt;Eigen::Matrix&lt;float, 3, 1, 0, 3, 1&gt;, std::allocator&lt;Eigen::Matrix&lt;float, 3, 1, 0, 3, 1&gt; &gt; &gt; &gt;"/>
+            <input_port name="stored_powerline" type="iii_drone_interfaces::msg::Powerline_&lt;std::allocator&lt;void&gt; &gt;"/>
+        </Action>
+        <Condition ID="PublishPowerlineWaypoints">
+            <input_port name="target_yaw" type="float"/>
+            <input_port name="waypoints" type="std::shared_ptr&lt;std::deque&lt;Eigen::Matrix&lt;float, 3, 1, 0, 3, 1&gt;, std::allocator&lt;Eigen::Matrix&lt;float, 3, 1, 0, 3, 1&gt; &gt; &gt; &gt;"/>
+        </Condition>
+        <Condition ID="SelectTargetLine">
+            <output_port name="target_cable_id" type="int"/>
+        </Condition>
+        <Condition ID="StoreCurrentState">
+            <output_port name="current_yaw" type="float">Current yaw</output_port>
+            <output_port name="current_position" type="Eigen::Matrix&lt;float, 3, 1, 0, 3, 1&gt;">Current position</output_port>
+            <output_port name="current_state" type="iii_drone::control::State">Current state</output_port>
+        </Condition>
+        <Condition ID="TargetProvider">
+            <output_port name="target" type="iii_drone_interfaces::msg::Target_&lt;std::allocator&lt;void&gt; &gt;">Provided target</output_port>
+            <input_port name="target_id" type="int">Id of the target</input_port>
+            <input_port name="mode" type="iii_drone::behavior::target_provider_mode_t">Mode of the target provider</input_port>
+        </Condition>
+        <Action ID="UpdatePowerlineOverview"/>
+        <Condition ID="VerifyGripperClosed"/>
+        <Condition ID="VerifyPowerlineDetected">
+            <output_port name="n_lines" type="unsigned int"/>
+            <input_port name="required_n_lines" type="unsigned int"/>
+        </Condition>
+    </TreeNodesModel>
+</root>

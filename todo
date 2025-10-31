@@ -1,16 +1,22 @@
-* Rewrite to use SIMULATION as env variable instead of param - done
-* Lav docker build for deployment - done
-* Styr på intellisense - done
-* Create configuration cli gui - done
-
-* Implementer ROS2 lifecycle nodes
-
-* Configurator should not rely on node_configs and should not declare parameters, instead configuration-server should read the node params files and auto declare to reduce dependencies and support restart of configuration server
-* Create iii command line utility
-* Upgrade al software
-	- ROS2
-	- PX4
-	- PX4 ROS2 library
-	- Gazebo
-
-* Få styr på requirements/dependencies
+* Run 3,3,3 tests again
+	- Use smaller reached position threshold
+	- Tune MPC more (decrease weight on velocity)
+	- Put higher weight on XY to show the advantage of MPC
+* Run cable landing tests again
+	- Report CPU load vs dt
+	- Select highest tolerable dt
+	- Compare sync and async, open- and closed loop performance and timeout (plot)
+* Run pl mapper tests again
+	- Tune pl mapper
+		- Maximum distance point match
+		- View cone slope and distance
+	- Run tests again
+	
+	
+	
+	
+	
+	
+-----------------------------------------
+* Command for pulling rosbags
+* Command for pulling src

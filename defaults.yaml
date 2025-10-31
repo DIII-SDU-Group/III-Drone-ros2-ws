@@ -1,0 +1,18 @@
+{
+  "build": {
+    "base-paths": [
+      "src"
+    ],
+    "packages-skip-regex": [
+      "example_*"
+    ]
+  },
+  "list": {
+    "base-paths": [
+      "src"
+    ],
+    "packages-skip-regex": [
+      "example_*"
+    ]
+  },
+}

@@ -1,8 +1,4 @@
-ARG ROS_DISTRO
-
-# Use an official ROS2 base image
-# FROM ros:${ROS_DISTRO}-ros-core
-FROM ros:${ROS_DISTRO}-ros-base
+FROM ros:humble-ros-base
 
 # Create the user
 RUN groupadd --gid 1000 iii
@@ -12,6 +8,17 @@ RUN apt-get install -y sudo
 RUN echo iii ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/iii
 RUN chmod 0440 /etc/sudoers.d/iii
 RUN apt-get update && apt-get upgrade -y
+RUN usermod -s /bin/bash iii
+
+# Install dependencies
+COPY src/III-Drone-Core/scripts /scripts
+
+RUN \
+    apt update && \
+    apt install -y ros-humble-rmw-cyclonedds-cpp && \
+    /scripts/install_dependencies.sh && \
+    rm -rf /scripts && \
+    apt update
 
 # Install necessary packages and dependencies
 RUN apt-get update && apt-get install -y \
@@ -20,41 +27,63 @@ RUN apt-get update && apt-get install -y \
 
 RUN apt-get update && apt-get upgrade -y
 
-# Install dependencies
-COPY src/III-Drone-Core/scripts /scripts
-RUN /scripts/install_dependencies.sh
-RUN rm -rf /scripts
-
-# Copy the entrypoint script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]
-
 # Create workspace folder and set ownership
 RUN mkdir -p /home/iii/ws/src
-
-WORKDIR /home/iii/ws
-
-COPY src /home/iii/ws/src
-COPY install /home/iii/ws/install
-COPY build /home/iii/ws/build
-COPY log /home/iii/ws/log
-
 RUN chown -R iii:iii /home/iii/ws
 
-# Install configuration files
-RUN bash -c "./src/III-Drone-Configuration/scripts/install.sh /home/iii/.config"
+RUN ln -s / /arm64-sysroot
 
-# Setup the environment
-RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /etc/bash.bashrc
-RUN echo "source /home/iii/ws/install/setup.bash" >> /etc/bash.bashrc
-RUN echo "export CONFIG_BASE_DIR=/home/iii/.config" >> /etc/bash.bashrc
-RUN echo "export SIMULATION=false" >> /etc/bash.bashrc
+WORKDIR /arm64-sysroot/home/iii/ws
 
-ENV SHELL /bin/bash
+# Install userspace tools
+RUN apt install -y tmux tmuxinator vim
+
+COPY requirements.txt /requirements.txt
+
+RUN chown -R iii:iii /requirements.txt
 
 USER iii
 
-# Build ROS2 workspace
-RUN bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash && rosdep update && rosdep install --from-paths src --ignore-src -y"
-RUN bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash && colcon build --symlink-install"
+RUN pip3 install --upgrade pip
+RUN pip3 install -r /requirements.txt
+
+USER root
+
+RUN rm -rf /requirements.txt
+
+# Install cli
+COPY tools/III-Drone-CLI /III-Drone-CLI
+RUN chown -R iii:iii /III-Drone-CLI
+USER iii
+RUN pip3 install /III-Drone-CLI
+USER root
+RUN rm -rf /III-Drone-CLI
+
+RUN echo "export PATH=$PATH:/home/iii/.local/bin" >> /home/iii/.bashrc
+
+RUN activate-global-python-argcomplete3
+
+USER iii
+
+RUN if ! grep -q "eval \"\$(register-python-argcomplete3 iii)\"" ~/.bashrc; then \
+        echo "eval \"\$(register-python-argcomplete3 iii)\"" >> ~/.bashrc ; \
+    fi
+
+ENV SHELL /bin/bash
+
+# Prepare tmux configuration
+RUN mkdir -p /home/iii/.config/tmuxinator
+
+# Copy the entrypoint script
+COPY entrypoint_real.sh /entrypoint.sh
+USER root
+RUN chmod +x /entrypoint.sh
+
+# Add user to dialout and video groups
+RUN usermod -a -G dialout iii
+RUN usermod -a -G video iii
+
+USER iii
+
+# Set the entrypoint
+ENTRYPOINT ["/entrypoint.sh"]

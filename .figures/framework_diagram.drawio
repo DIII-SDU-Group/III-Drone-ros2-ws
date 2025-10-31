@@ -1,0 +1,76 @@
+<mxfile host="app.diagrams.net" modified="2024-06-28T10:49:49.954Z" agent="Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0" etag="tguOYhOAwjnRFS7mNV0J" version="24.4.0" type="github">
+  <diagram name="Page-1" id="oyKpETe_6wcBeBzAVZF-">
+    <mxGraphModel dx="1430" dy="728" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="RYfrRfv-HYk63obeuboZ-1" value="" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="140" y="490" width="290" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-7" value="" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="140" y="240" width="290" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="RYfrRfv-HYk63obeuboZ-3" target="RYfrRfv-HYk63obeuboZ-15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-3" value="&lt;div&gt;Control&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="175" y="340" width="80" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-4" value="Perception" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="175" y="270" width="80" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="RYfrRfv-HYk63obeuboZ-5" target="RYfrRfv-HYk63obeuboZ-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="RYfrRfv-HYk63obeuboZ-5" target="RYfrRfv-HYk63obeuboZ-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-5" value="Mission" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="300" y="340" width="80" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-9" value="Mission specification files" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="290" y="410" width="100" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-10" value="Docker" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="255" y="240" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-11" value="&lt;div&gt;PX4-ROS2&lt;/div&gt;&lt;div&gt;interface&lt;/div&gt;" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" vertex="1" parent="1">
+          <mxGeometry x="390" y="340" width="110" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-15" value="Maneuver servers" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;" vertex="1" parent="1">
+          <mxGeometry x="165" y="415" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-6" value="Configuration" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="300" y="270" width="80" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-2" value="CLI" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="160" y="470" width="50" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-17" value="Ground control" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="235" y="490" width="100" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-18" value="GUI" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="360" y="470" width="50" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="RYfrRfv-HYk63obeuboZ-19" target="RYfrRfv-HYk63obeuboZ-15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-19" value="&lt;div&gt;Level 0&lt;/div&gt;&lt;div&gt;integration&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="415" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-22" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="RYfrRfv-HYk63obeuboZ-21" target="RYfrRfv-HYk63obeuboZ-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-21" value="&lt;div&gt;Level 1&lt;/div&gt;&lt;div&gt;integration&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="470" y="415" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-24" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="RYfrRfv-HYk63obeuboZ-23" target="RYfrRfv-HYk63obeuboZ-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="RYfrRfv-HYk63obeuboZ-23" value="&lt;div&gt;Level 2&lt;/div&gt;&lt;div&gt;integration&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="460" y="260" width="80" height="40" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
