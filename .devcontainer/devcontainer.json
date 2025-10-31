@@ -50,22 +50,24 @@
         "source=/etc/hosts,target=/etc/hosts,type=bind",
         "source=.,target=/home/iii/ws,type=bind,consistency=cached",
         "source=/dev,target=/dev,type=bind",
-        "source=/run/user/1000/at-spi/bus_1,target=/run/user/1000/at-spi/bus_1,type=bind",
+        // "source=/run/user/1000/at-spi/bus_1,target=/run/user/1000/at-spi/bus_1,type=bind",
         "source=${env:XAUTHORITY},target=${env:XAUTHORITY},type=bind",
     ],
 
     "runArgs": [
         "--cap-add", "SYS_ADMIN",
+        "--cap-add", "SYS_PTRACE",
         "--device", "/dev/fuse",
         "--security-opt", "apparmor:unconfined",
         "--privileged",
         "--ipc","host",
         "--pid","host",
+        "--network","host",
         "--runtime", "nvidia",
         "--gpus", "all",
         "-e", "NVIDIA_DRIVER_CAPABILITIES=all"
     ],
-
+    "initializeCommand": "ls",
     "postCreateCommand": "scripts/post_create.sh",
     "postStartCommand": "scripts/post_start.sh",
 

@@ -13,4 +13,4 @@ pip3 install -e ./tools/III-Drone-CLI
 source ~/.bashrc
 
 # Build workspace
-COLCON_HOME=/home/iii/ws colcon build
+COLCON_HOME=/home/iii/ws colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON

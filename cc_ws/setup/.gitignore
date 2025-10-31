@@ -1,3 +1,13 @@
-setup_real.bash
+cyclonedds_real.xml
+cyclonedds_remote.xml
+debuggable_nodes.txt
 node_log_levels.bash
+paths.bash
+python_debug_ports.bash
+remote.bash
 ros_setup.bash
+setup_dev.bash
+setup_real.bash
+setup_remote.bash
+supervisor_config.bash
+tmuxinator_config.bash

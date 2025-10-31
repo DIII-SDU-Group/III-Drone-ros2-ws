@@ -2,8 +2,8 @@ node_name: "px4_gazebo"
 node_namespace: ""
 log_level: "debug"
 
-command: "make -C /home/iii/PX4-Autopilot px4_sitl gz_d4s_dc_drone"
-working_directory: "/home/iii/PX4-Autopilot"
+command: "make -C /home/iii/ws/PX4-Autopilot px4_sitl gz_d4s_dc_drone"
+working_directory: "/home/iii/ws/PX4-Autopilot"
 
 process_monitor_command: 
   - type: "command"

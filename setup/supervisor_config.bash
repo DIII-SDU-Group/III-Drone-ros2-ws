@@ -1,0 +1,7 @@
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+source $SCRIPT_DIR/paths.bash
+
+export SUPERVISOR_CONFIG_FILE_OPTI_TRACK="$SUPERVISOR_CONFIG_DIR/opti_track.yaml"
+export SUPERVISOR_CONFIG_FILE_REAL="$SUPERVISOR_CONFIG_DIR/real.yaml"
+export SUPERVISOR_CONFIG_FILE_SIM="$SUPERVISOR_CONFIG_DIR/sim.yaml"

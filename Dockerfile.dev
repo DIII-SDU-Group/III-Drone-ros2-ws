@@ -77,11 +77,11 @@ RUN sudo apt install libfuse2 -y
 RUN sudo apt install libxcb-xinerama0 libxkbcommon-x11-0 libxcb-cursor0 -y
 RUN sudo apt install -y fuse
 
-RUN wget https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl.AppImage -P /home/iii
+RUN wget https://github.com/mavlink/qgroundcontrol/releases/download/latest/QGroundControl-x86_64.AppImage -P /home/iii -O /home/iii/QGroundControl.AppImage
 RUN chmod +x /home/iii/QGroundControl.AppImage
 
 # Install development tools
-RUN sudo apt install -y terminator tmux tmuxinator htop
+RUN sudo apt install -y terminator tmux tmuxinator htop gdb
 COPY tools/terminator /home/iii/.config/terminator
 COPY tools/QGroundControl.org /home/iii/.config/QGroundControl.org
 RUN sudo ln -s /home/iii/ws/tools/tmuxinator /home/iii/.config/tmuxinator
