@@ -121,3 +121,21 @@ if ! shopt -oq posix; then
     . /etc/bash_completion
   fi
 fi
+
+# >>> iii-cli argcomplete >>>
+__iii_enable_argcomplete() {
+    local cmd shellcode
+    for cmd in register-python-argcomplete3 register-python-argcomplete; do
+        if command -v "$cmd" >/dev/null 2>&1; then
+            shellcode="$("$cmd" iii 2>/dev/null || true)"
+            if [ -n "$shellcode" ]; then
+                eval "$shellcode"
+                return 0
+            fi
+        fi
+    done
+    return 1
+}
+__iii_enable_argcomplete || true
+unset -f __iii_enable_argcomplete
+# <<< iii-cli argcomplete <<<

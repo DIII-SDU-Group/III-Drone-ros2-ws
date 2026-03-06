@@ -10,9 +10,11 @@ fi
 
 # Install simulation assets
 if [ ! -d /home/iii/ws/PX4-Autopilot ]; then
-    git clone --recursive https://github.com/DIII-SDU-Group/PX4-Autopilot.git /home/iii/ws/PX4-Autopilot
-    /bin/bash /home/iii/ws/PX4-Autopilot/Tools/setup/ubuntu.sh
+    echo "ERROR: /home/iii/ws/PX4-Autopilot not found. Add PX4-Autopilot as a submodule before creating the devcontainer."
+    exit 1
 fi
+
+/bin/bash /home/iii/ws/PX4-Autopilot/Tools/setup/ubuntu.sh
 
 ./src/III-Drone-Simulation/scripts/install_gazebo_simulation_assets.sh /home/iii/ws/PX4-Autopilot
 

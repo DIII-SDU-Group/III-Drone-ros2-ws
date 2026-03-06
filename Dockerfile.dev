@@ -1,33 +1,59 @@
-ARG ROS_DISTRO
+ARG ROS_DISTRO=jazzy
+ARG USERNAME=iii
+ARG USER_UID=1000
+ARG USER_GID=1000
 
-FROM osrf/ros:humble-desktop-full
-# FROM nvidia/cuda:12.4.0-base-ubuntu22.04
+FROM osrf/ros:${ROS_DISTRO}-desktop-full
 
-# Create the user
-RUN groupadd --gid 1000 iii
-RUN useradd --uid 1000 --gid 1000 -m iii
+ARG USERNAME
+ARG USER_UID
+ARG USER_GID
+
+# Required on Ubuntu 24+/PEP668 images so pip can install project dependencies.
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+
+# Create or rename user/group to match requested identity.
+RUN set -eux; \
+    existing_group="$(getent group "${USER_GID}" | cut -d: -f1 || true)"; \
+    if [ -z "${existing_group}" ]; then \
+        groupadd --gid "${USER_GID}" "${USERNAME}"; \
+    elif [ "${existing_group}" != "${USERNAME}" ]; then \
+        groupmod -n "${USERNAME}" "${existing_group}"; \
+    fi; \
+    existing_user="$(getent passwd "${USER_UID}" | cut -d: -f1 || true)"; \
+    if [ -z "${existing_user}" ]; then \
+        if id -u "${USERNAME}" >/dev/null 2>&1; then \
+            usermod --uid "${USER_UID}" --gid "${USER_GID}" "${USERNAME}"; \
+        else \
+            useradd --uid "${USER_UID}" --gid "${USER_GID}" -m "${USERNAME}"; \
+        fi; \
+    elif [ "${existing_user}" != "${USERNAME}" ]; then \
+        usermod -l "${USERNAME}" -d "/home/${USERNAME}" -m "${existing_user}"; \
+        usermod --uid "${USER_UID}" --gid "${USER_GID}" "${USERNAME}"; \
+    else \
+        usermod --uid "${USER_UID}" --gid "${USER_GID}" "${USERNAME}"; \
+    fi; \
+    mkdir -p "/home/${USERNAME}"; \
+    chown -R "${USER_UID}:${USER_GID}" "/home/${USERNAME}"
+
 RUN apt-get update
 RUN apt-get install -y sudo
-RUN echo iii ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/iii
-RUN chmod 0440 /etc/sudoers.d/iii
+RUN echo "${USERNAME} ALL=(root) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}"
+RUN chmod 0440 "/etc/sudoers.d/${USERNAME}"
 RUN apt-get update && apt-get upgrade -y
-RUN usermod -s /bin/bash iii
+RUN usermod -s /bin/bash "${USERNAME}"
 
 # Install dependencies
 COPY src/III-Drone-Core/scripts /scripts
 
 # Install ROS
-RUN \
-    apt update && apt install -y locales wget && \
-    wget https://packages.osrfoundation.org/gazebo.gpg -O /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/gazebo-stable.list > /dev/null && \
-    apt update && \
-    apt install -y ros-humble-rmw-cyclonedds-cpp && \
+RUN apt-get update && apt-get install -y \
+    locales \
+    wget \
+    ros-${ROS_DISTRO}-rmw-cyclonedds-cpp && \
     /scripts/install_dependencies.sh && \
     rm -rf /scripts && \
-    apt update && \
-    apt remove -y ros-humble-ros-gz* && \
-    apt install -y ros-humble-ros-gzgarden
+    rm -rf /var/lib/apt/lists/*
 
 # Install necessary packages and dependencies
 RUN apt-get update && apt-get install -y \
@@ -41,25 +67,25 @@ COPY entrypoint_dev.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Create workspace folder and set ownership
-RUN mkdir -p /home/iii/ws
-RUN chown -R iii:iii /home/iii/ws
+RUN mkdir -p "/home/${USERNAME}/ws"
+RUN chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}/ws"
 
-WORKDIR /home/iii/ws
+WORKDIR /home/${USERNAME}/ws
 
 # Set the entrypoint
 ENTRYPOINT ["/entrypoint.sh"]
 
-RUN echo "source /opt/ros/humble/setup.bash" >> /etc/bash.bashrc
-RUN echo "source /home/iii/ws/install/setup.bash" >> /etc/bash.bashrc
+RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /etc/bash.bashrc
+RUN echo "source /home/${USERNAME}/ws/install/setup.bash" >> /etc/bash.bashrc
 
 # Install userspace tools
-USER iii
+USER ${USERNAME}
 
 RUN sudo apt-get install vim -y
 
 COPY requirements.txt /requirements.txt
 
-RUN sudo chown -R iii:iii /requirements.txt
+RUN sudo chown -R "${USERNAME}:${USERNAME}" /requirements.txt
 
 RUN pip3 install --upgrade pip
 RUN pip3 install -r /requirements.txt
@@ -70,28 +96,28 @@ RUN sudo rm -rf /requirements.txt
 RUN sudo apt install -y wget git lsb-release
 
 # QGroundControl
-RUN sudo usermod -a -G dialout iii
+RUN sudo usermod -a -G dialout "${USERNAME}"
 RUN sudo apt-get remove modemmanager -y
 RUN sudo apt install gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-gl -y
 RUN sudo apt install libfuse2 -y
 RUN sudo apt install libxcb-xinerama0 libxkbcommon-x11-0 libxcb-cursor0 -y
 RUN sudo apt install -y fuse
 
-RUN wget https://github.com/mavlink/qgroundcontrol/releases/download/v5.0.8/QGroundControl-x86_64.AppImage -P /home/iii -O /home/iii/QGroundControl.AppImage
-RUN chmod +x /home/iii/QGroundControl.AppImage
+RUN wget https://github.com/mavlink/qgroundcontrol/releases/download/v5.0.8/QGroundControl-x86_64.AppImage -P "/home/${USERNAME}" -O "/home/${USERNAME}/QGroundControl.AppImage"
+RUN chmod +x "/home/${USERNAME}/QGroundControl.AppImage"
 
 # Install development tools
 RUN sudo apt install -y terminator tmux tmuxinator htop gdb
-COPY tools/terminator /home/iii/.config/terminator
-COPY tools/QGroundControl.org /home/iii/.config/QGroundControl.org
-RUN sudo ln -s /home/iii/ws/tools/tmuxinator /home/iii/.config/tmuxinator
+COPY tools/terminator /home/${USERNAME}/.config/terminator
+COPY tools/QGroundControl.org /home/${USERNAME}/.config/QGroundControl.org
+RUN sudo ln -s "/home/${USERNAME}/ws/tools/tmuxinator" "/home/${USERNAME}/.config/tmuxinator"
 
-RUN sudo chown -R iii:iii /home/iii/.config
+RUN sudo chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.config"
 
 # Update bashrc
-COPY .bashrc /home/iii/.bashrc
-RUN sudo chown iii:iii /home/iii/.bashrc
+COPY .bashrc /home/${USERNAME}/.bashrc
+RUN sudo chown "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.bashrc"
 
-ENV SHELL /bin/bash
+ENV SHELL=/bin/bash
 
 # USER iii
