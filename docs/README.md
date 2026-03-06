@@ -41,7 +41,11 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
 12. `repo-boundary-map.md`
    Recommended target split between workspace-owned integration glue and separate reusable repos.
 
-13. `findings-risks-and-clarifications.md`
+
+13. `dependency-governance.md`
+   Dependency lock model for submodules, team workflow, and CI enforcement.
+
+14. `findings-risks-and-clarifications.md`
     Observed inconsistencies, technical risks, and clarification questions for follow-up.
 
 ## Scope Notes
