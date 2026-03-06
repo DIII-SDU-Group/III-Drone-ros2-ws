@@ -9,6 +9,7 @@ This repository is the system-integration layer that ties together core autonomy
 - A top-level ROS2 workspace (`src/`) with multiple sub-repositories.
 - The canonical integration environment used by the team.
 - The place where boot/setup/tooling/dependency governance are managed.
+- Intended for day-to-day development in VS Code using the provided devcontainer.
 
 Core software remains modular in separate repos (core, interfaces, mission, supervision, etc.), while this repo owns integrated workflows.
 
@@ -33,6 +34,17 @@ The stack is organized into the following domains:
 - `deps/`: dependency lock files
 - `docs/`: project architecture and engineering documentation
 
+## Containerized Environments
+
+This project is containerized for both development and deployment workflows.
+
+- Dev container: `.devcontainer/devcontainer.json` using `Dockerfile.dev`
+- Runtime/deployment container: `Dockerfile`
+- Cross-compilation container: `Dockerfile.cc`
+- Entrypoints: `entrypoint_dev.sh`, `entrypoint_real.sh`, `entrypoint_cc.sh`
+
+This allows consistent tooling, dependencies, and ROS/PX4 integration across developer machines and robot-oriented environments.
+
 ## Canonical Bringup Model
 
 Current team workflow is intentionally research/test oriented:
@@ -46,14 +58,13 @@ Supervisor orchestrates node state transitions and dependencies, while CLI/tmux 
 ## Quick Start (Development/Simulation)
 
 ```bash
-# From workspace root
-source setup/setup_dev.bash
-
-# Build
-colcon build --symlink-install
+# Run these inside the VS Code devcontainer terminal
 
 # Boot system (canonical flow)
 iii system boot
+
+# Attach to running tmux session
+iii system attach
 ```
 
 ## Branching And Stability

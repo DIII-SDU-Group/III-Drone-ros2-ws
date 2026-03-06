@@ -1,5 +1,10 @@
 # Build And Environments
 
+This workspace is intentionally containerized across the full lifecycle:
+- development (`Dockerfile.dev` + devcontainer)
+- deployment/runtime (`Dockerfile`)
+- cross-compilation (`Dockerfile.cc`)
+
 ## 1. Build System
 
 Primary build system: `colcon` with workspace defaults (`defaults.yaml`).

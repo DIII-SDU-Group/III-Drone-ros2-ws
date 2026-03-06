@@ -12,7 +12,7 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
    Submodule inventory, package purposes, build types, and dependency relationships.
 
 3. `build-and-environments.md`
-   Container/dev setup, build flow, runtime environment variables, and deployment/cross-compile context.
+   Containerized dev/deploy/cross-compile setup, build flow, runtime environment variables, and deployment context.
 
 4. `runtime-launch-and-node-graph.md`
    Runtime orchestration, launch files, node startup topology, and communication patterns.
