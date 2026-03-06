@@ -33,7 +33,7 @@
 [submodule "src/px4-ros2-interface-lib"]
 	path = src/px4-ros2-interface-lib
 	url = git@github.com:DIII-SDU-Group/px4-ros2-interface-lib.git
-	branch = 2.0.0
+	branch = release/1.16
 [submodule "src/iwr6843aop-ROS2-pkg"]
 	path = src/iwr6843aop-ROS2-pkg
 	url = git@github.com:DIII-SDU-Group/iwr6843aop-ROS2-pkg.git
