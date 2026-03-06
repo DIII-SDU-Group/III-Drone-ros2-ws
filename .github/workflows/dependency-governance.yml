@@ -1,0 +1,22 @@
+name: Dependency Governance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+      - staging
+
+jobs:
+  verify-submodule-lock:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Verify submodule lock
+        run: ./scripts/verify_submodule_lock.sh

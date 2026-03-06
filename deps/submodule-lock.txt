@@ -1,0 +1,21 @@
+# Submodule dependency lock file for III-Drone-ros2-ws.
+# Format: <path> <commit-sha>
+# Managed by scripts/update_submodule_lock.sh
+src/BehaviorTree.CPP 1aa02f2a8fee5c37cfc9b13aee1e15bd3062ff09
+src/BehaviorTree.ROS2 b647ad2e2aed5467a3ce83ed3c914ffa3ee51277
+src/III-Drone-Configuration f86d45a9a7048d96a72539de344de43b7086cbd1
+src/III-Drone-Core 93979b7d37e839495295dca5b4717280ba81e526
+src/III-Drone-GC 385dd61881225edf9ac5d32dd9ab712a178ef782
+src/III-Drone-Interfaces 8545565ae48467d33e22f6c936619a8d4a64eafb
+src/III-Drone-Mission 70b2e1adfeb0f777366ea8bac3608d9fd1275cca
+src/III-Drone-Simulation 7ab869e8e0ce9eb5f70b039629174eee865fd6e7
+src/III-Drone-Simulation/Gazebo-simulation-assets cf9a98c5fb1c6ce8fd59c896a09a7bcc205f9874
+src/III-Drone-Supervision 6962e2fcb7a8466008af09b735bfb0e5d1b3c20a
+src/Micro-XRCE-DDS-Agent 57d086216d01ec43121845d385894a25987f8a2c
+src/dynamic_message_introspection 5ad2f03ec713818dafe0926c81225d6351d65268
+src/iwr6843aop-ROS2-pkg 1b709e44e1d2434b71f5444a11a3dbaca7643dd6
+src/micro-ROS-Agent 1b815304e9432bb843d7258d8e38594954f79bab
+src/micro_ros_msgs 69855ee965473d449244b8057728812be229f6aa
+src/px4-ros2-interface-lib 3e5df6438ad0697a8e919bd0a8a1cbb4f2fda649
+src/px4_msgs e5b8d6107572b3d3acab842a067da04aef79acd0
+tools/III-Drone-CLI eca265a7cae5656dc2a919792b866bfe00c2f8b8
