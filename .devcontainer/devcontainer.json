@@ -6,7 +6,10 @@
         "dockerfile": "../Dockerfile.dev",
         "context": "..",
         "args": {
-            "ROS_DISTRO": "humble"
+            "ROS_DISTRO": "jazzy",
+            "USERNAME": "iii",
+            "USER_UID": "1000",
+            "USER_GID": "1000"
         }
     },
 
@@ -25,7 +28,7 @@
                 "ms-vscode.cpptools-themes",
                 "twxs.cmake",
                 "donjayamanne.python-extension-pack",
-                "ms-iot.vscode-ros",
+                // "ms-iot.vscode-ros",
                 "ms-azuretools.vscode-docker",
                 "ms-python.python",
                 "rioj7.command-variable",

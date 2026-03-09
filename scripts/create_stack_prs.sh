@@ -1,0 +1,253 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+NAME
+  create_stack_prs.sh - create/update coordinated submodule + workspace PR stack
+
+SYNOPSIS
+  scripts/create_stack_prs.sh --base <base-branch> [--feature <feature-branch>] [--yes]
+  scripts/create_stack_prs.sh -h | --help
+
+DESCRIPTION
+  Top-centric helper for a workspace branch workflow with III submodules.
+
+  For changed III submodules (src/III-*, tools/III-*), this script:
+  1) verifies branch consistency with iii_branch_guard.sh
+  2) pushes the feature branch in each target submodule
+  3) creates or updates a submodule PR: <feature> -> <base>
+  4) stages submodule pointers in the workspace
+  5) creates or updates a workspace PR: <feature> -> <base>
+     with a checklist/table linking all submodule PRs.
+
+REQUIREMENTS
+  - gh CLI authenticated (gh auth status)
+  - write permission to workspace and submodule remotes
+  - clean enough branches for push (no unresolved divergence)
+
+OPTIONS
+  --base <base-branch>
+      Required base branch (usually develop).
+
+  --feature <feature-branch>
+      Optional feature branch. Default: current workspace branch.
+
+  --yes
+      Apply mode. Without --yes the script runs in dry-run.
+
+BEHAVIOR
+  - Targets changed III submodules only.
+  - Ignores changed non-III PX4-Autopilot (consistent with iii_branch_guard.sh).
+  - Any other changed non-III submodule blocks execution.
+
+EXAMPLES
+  scripts/create_stack_prs.sh --base develop --feature version-migration
+  scripts/create_stack_prs.sh --base develop --feature version-migration --yes
+USAGE
+}
+
+base_branch=""
+feature_branch=""
+apply=0
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 1
+fi
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --base)
+      base_branch="${2:-}"
+      shift 2
+      ;;
+    --feature)
+      feature_branch="${2:-}"
+      shift 2
+      ;;
+    --yes)
+      apply=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z "$base_branch" ]]; then
+  echo "ERROR: --base is required" >&2
+  exit 1
+fi
+
+root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$root" ]]; then
+  echo "ERROR: not inside a git repository" >&2
+  exit 1
+fi
+cd "$root"
+
+if [[ -z "$feature_branch" ]]; then
+  feature_branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+fi
+if [[ -z "$feature_branch" ]]; then
+  echo "ERROR: workspace is detached HEAD; pass --feature explicitly and checkout a branch" >&2
+  exit 1
+fi
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "ERROR: gh CLI is required" >&2
+  exit 1
+fi
+
+if ! gh auth status >/dev/null 2>&1; then
+  echo "ERROR: gh is not authenticated. Run: gh auth login" >&2
+  exit 1
+fi
+
+# Policy + target detection in one place.
+audit_out="$(mktemp)"
+trap 'rm -f "$audit_out"' EXIT
+
+if ! scripts/iii_branch_guard.sh audit --base "$base_branch" --feature "$feature_branch" >"$audit_out"; then
+  cat "$audit_out"
+  echo "ERROR: iii_branch_guard audit failed" >&2
+  exit 1
+fi
+
+mapfile -t targets < <(awk '/^  - (src\/III-|tools\/III-)/{print $2}' "$audit_out")
+
+if (( ${#targets[@]} == 0 )); then
+  echo "No changed III submodules detected. Nothing to do."
+  exit 0
+fi
+
+echo "Workspace branch: $feature_branch"
+echo "Base branch: $base_branch"
+echo "Changed III submodules (${#targets[@]}):"
+for p in "${targets[@]}"; do
+  echo "  - $p"
+done
+
+workspace_repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
+
+pr_rows=()
+
+upsert_pr() {
+  local repo="$1"
+  local head="$2"
+  local base="$3"
+  local title="$4"
+  local body="$5"
+
+  local existing
+  existing="$(gh pr list --repo "$repo" --head "$head" --base "$base" --state open --json number,url -q '.[0].url' 2>/dev/null || true)"
+
+  if [[ -n "$existing" && "$existing" != "null" ]]; then
+    if (( apply == 1 )); then
+      gh pr edit "$existing" --repo "$repo" --title "$title" --body "$body" >/dev/null
+    fi
+    echo "$existing"
+    return
+  fi
+
+  if (( apply == 1 )); then
+    gh pr create --repo "$repo" --head "$head" --base "$base" --title "$title" --body "$body"
+  else
+    echo "DRY-RUN: would create PR in $repo ($head -> $base)" >&2
+    echo "https://github.com/$repo/pull/NEW"
+  fi
+}
+
+# Submodule PRs
+for p in "${targets[@]}"; do
+  echo
+  echo "== $p =="
+  sub_branch="$(git -C "$p" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  if [[ -z "$sub_branch" ]]; then
+    echo "ERROR: $p is detached HEAD" >&2
+    exit 1
+  fi
+
+  if [[ "$sub_branch" != "$feature_branch" ]]; then
+    echo "ERROR: $p is on '$sub_branch', expected '$feature_branch'" >&2
+    echo "Run: scripts/iii_branch_guard.sh align --base $base_branch --feature $feature_branch --yes" >&2
+    exit 1
+  fi
+
+  remote_url="$(git -C "$p" remote get-url origin)"
+  repo_slug="$(printf '%s' "$remote_url" | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')"
+
+  if (( apply == 1 )); then
+    git -C "$p" push -u origin "$feature_branch"
+  else
+    echo "DRY-RUN: would push $p:$feature_branch"
+  fi
+
+  sub_title="[${feature_branch}] ${p}: integration changes"
+  sub_body=$(cat <<SUBBODY
+Automated stacked PR from workspace **$workspace_repo**.
+
+- Source branch: \\`$feature_branch\\`
+- Target branch: \\`$base_branch\\`
+- Submodule path in workspace: \\`$p\\`
+
+This PR is part of a coordinated workspace integration stack.
+SUBBODY
+)
+
+  sub_pr_url="$(upsert_pr "$repo_slug" "$feature_branch" "$base_branch" "$sub_title" "$sub_body")"
+  echo "Submodule PR: $sub_pr_url"
+
+  sha="$(git -C "$p" rev-parse --short HEAD)"
+  pr_rows+=("| $p | $sha | $sub_pr_url |")
+
+  if (( apply == 1 )); then
+    git add "$p"
+  fi
+done
+
+workspace_body_file="$(mktemp)"
+trap 'rm -f "$audit_out" "$workspace_body_file"' EXIT
+
+{
+  echo "Coordinated workspace integration PR."
+  echo
+  echo "- Source branch: \`$feature_branch\`"
+  echo "- Target branch: \`$base_branch\`"
+  echo
+  echo "### III Submodule PRs"
+  echo
+  echo "| Submodule | SHA | PR |"
+  echo "|---|---:|---|"
+  for row in "${pr_rows[@]}"; do
+    echo "$row"
+  done
+  echo
+  echo "### Merge Rule"
+  echo
+  echo "Workspace PR must only merge after all listed submodule PRs are merged into \`$base_branch\`."
+} > "$workspace_body_file"
+
+if (( apply == 1 )); then
+  git push -u origin "$feature_branch"
+fi
+
+ws_title="[$feature_branch] workspace integration"
+ws_body="$(cat "$workspace_body_file")"
+ws_pr_url="$(upsert_pr "$workspace_repo" "$feature_branch" "$base_branch" "$ws_title" "$ws_body")"
+
+echo
+if (( apply == 1 )); then
+  echo "Workspace PR: $ws_pr_url"
+  echo "Done."
+else
+  echo "DRY-RUN complete. Re-run with --yes to push and create/update PRs."
+fi

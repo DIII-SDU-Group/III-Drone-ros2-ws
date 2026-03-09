@@ -37,7 +37,7 @@
         {
             "label": "ROS2 full build",
             "type": "shell",
-            "command": "colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+            "command": "COLCON_HOME=/home/iii/ws colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             "group": {
                 "kind": "build"
             }
@@ -73,7 +73,7 @@
         {
             "label": "ROS2 build III packages",
             "type": "shell",
-            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-select-regex iii_drone_*  --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+            "command": "COLCON_HOME=/home/iii/ws colcon build --packages-select-regex iii_drone_* --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             "group": {
                 "kind": "build"
             }
