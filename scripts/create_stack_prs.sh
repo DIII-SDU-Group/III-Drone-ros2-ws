@@ -42,6 +42,9 @@ BEHAVIOR
     - committed workspace gitlink change in <base>...HEAD.
   - Ignores changed non-III PX4-Autopilot (consistent with iii_branch_guard.sh).
   - Any other changed non-III submodule blocks execution.
+  - For each target III submodule, requires actual commits on feature vs base.
+    If feature exists but has no commits beyond base, the script fails and
+    suggests running scripts/post_pr_sync.sh.
 
 EXAMPLES
   scripts/create_stack_prs.sh --base develop --feature version-migration
@@ -165,6 +168,7 @@ done
 workspace_repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
 
 pr_rows=()
+skipped_no_delta=()
 
 upsert_pr() {
   local repo="$1"
@@ -211,6 +215,23 @@ for p in "${targets[@]}"; do
   remote_url="$(git -C "$p" remote get-url origin)"
   repo_slug="$(printf '%s' "$remote_url" | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')"
 
+  # Always refresh remote base first, then gate on local feature vs remote base.
+  git -C "$p" fetch --no-tags origin "$base_branch" >/dev/null 2>&1
+  if ! git -C "$p" rev-parse --verify --quiet "origin/$base_branch" >/dev/null; then
+    echo "ERROR: $p missing origin/$base_branch; cannot validate PR delta." >&2
+    exit 1
+  fi
+
+  # Require actual local feature commits beyond remote base before creating/updating PR.
+  # This catches the common case where feature was already merged and remote feature branch deleted.
+  delta_count="$(git -C "$p" rev-list --count "origin/$base_branch..$feature_branch" 2>/dev/null || echo 0)"
+  if [[ "$delta_count" == "0" ]]; then
+    echo "WARN: $p local '$feature_branch' has no commits beyond origin/$base_branch; skipping PR for this submodule." >&2
+    echo "      Hint: ./scripts/post_pr_sync.sh --base $base_branch --clean-only --yes" >&2
+    skipped_no_delta+=("$p")
+    continue
+  fi
+
   has_remote_feature=0
   if git -C "$p" ls-remote --exit-code --heads origin "$feature_branch" >/dev/null 2>&1; then
     has_remote_feature=1
@@ -250,6 +271,14 @@ for p in "${targets[@]}"; do
     git add "$p"
   fi
 done
+
+if (( ${#skipped_no_delta[@]} > 0 )); then
+  echo
+  echo "Skipped III submodules with no feature-vs-base delta (${#skipped_no_delta[@]}):"
+  for p in "${skipped_no_delta[@]}"; do
+    echo "  - $p"
+  done
+fi
 
 workspace_body_file="$(mktemp)"
 trap 'rm -f "$audit_out" "$workspace_body_file"' EXIT

@@ -53,7 +53,7 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Verify III submodule commits are on origin/develop
+      - name: Verify III submodule pointers equal origin/develop HEAD
         run: ./scripts/verify_iii_submodule_commits_on_branch_ci.sh --target-branch develop
 
       - name: Upload III submodule status artifact
@@ -103,8 +103,8 @@ jobs:
             const state = mismatches === 0 ? 'PASS' : 'FAIL';
             const header = `${marker}\n### III Submodule Develop Gate: ${state}\n`;
             const summary = mismatches === 0
-              ? 'All pinned III submodule commits are reachable from `origin/develop`.'
-              : `${mismatches} submodule(s) are not reachable from \`origin/develop\`.`;
+              ? 'All pinned III submodule commits exactly match `origin/develop` HEAD.'
+              : `${mismatches} submodule(s) do not match \`origin/develop\` HEAD.`;
 
             const table = rows.length
               ? [

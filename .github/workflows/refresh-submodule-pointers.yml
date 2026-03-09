@@ -1,0 +1,121 @@
+name: Refresh Submodule Pointers
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_branch:
+        description: "Workspace PR branch to update (e.g. version-migration)"
+        required: true
+        type: string
+      base_branch:
+        description: "Base branch to pin submodules to (usually develop)"
+        required: true
+        default: "develop"
+        type: string
+      all_iii:
+        description: "Refresh all III submodules instead of only affected ones"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout workspace branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.pr_branch }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Refresh III submodule pointers
+        run: |
+          cmd=(./scripts/refresh_workspace_submodule_pointers.sh --base "${{ inputs.base_branch }}" --feature "${{ inputs.pr_branch }}" --yes)
+          if [[ "${{ inputs.all_iii }}" == "true" ]]; then
+            cmd+=(--all-iii)
+          fi
+          "${cmd[@]}"
+
+      - name: Commit and push updates if changed
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git add -A
+            git commit -m "chore(submodules): refresh pointers to origin/${{ inputs.base_branch }}"
+            git push origin "HEAD:${{ inputs.pr_branch }}"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No changes to commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+        id: commit
+
+      - name: Comment on workspace PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = `${{ inputs.pr_branch }}`;
+            const base = `${{ inputs.base_branch }}`;
+            const changed = `${{ steps.commit.outputs.changed }}` === 'true';
+            const marker = '<!-- refresh-submodule-pointers-bot -->';
+
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: 'open',
+              head: `${owner}:${branch}`,
+              per_page: 100,
+            });
+
+            if (!prs.length) {
+              core.info(`No open PR found for head ${owner}:${branch}`);
+              return;
+            }
+
+            const pr = prs[0];
+            const body = [
+              marker,
+              '### Submodule Pointer Refresh',
+              '',
+              `- Branch: \`${branch}\``,
+              `- Base: \`${base}\``,
+              `- Result: ${changed ? 'Updated pointers + lock file and pushed commit.' : 'No pointer updates were needed.'}`,
+              ''
+            ].join('\n');
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: pr.number,
+              per_page: 100,
+            });
+
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pr.number,
+                body,
+              });
+            }
