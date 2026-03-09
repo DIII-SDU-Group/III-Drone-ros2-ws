@@ -153,17 +153,54 @@ done
 
 mapfile -t targets < <(printf '%s\n' "${!target_map[@]}" | sort)
 
+workspace_only_mode=0
 if (( ${#targets[@]} == 0 )); then
-  echo "No affected III submodules detected (worktree or gitlink delta vs ${base_branch}...HEAD). Nothing to do."
-  exit 0
+  workspace_only_mode=1
+fi
+
+# Early skip: if a submodule is already on base branch and clean, it cannot
+# produce a submodule PR for the feature branch; skip it from the start.
+filtered_targets=()
+early_skipped_base_clean=()
+for p in "${targets[@]}"; do
+  sub_branch="$(git -C "$p" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  sub_dirty="$(git -C "$p" status --porcelain 2>/dev/null || true)"
+  if [[ "$sub_branch" == "$base_branch" && -z "$sub_dirty" ]]; then
+    early_skipped_base_clean+=("$p")
+    continue
+  fi
+  filtered_targets+=("$p")
+done
+targets=("${filtered_targets[@]}")
+
+if (( ${#targets[@]} == 0 )); then
+  workspace_only_mode=1
+  echo "No actionable III submodules detected."
+  if (( ${#early_skipped_base_clean[@]} > 0 )); then
+    echo "Skipped from start (already on base branch and clean):"
+    for p in "${early_skipped_base_clean[@]}"; do
+      echo "  - $p"
+    done
+  fi
 fi
 
 echo "Workspace branch: $feature_branch"
 echo "Base branch: $base_branch"
-echo "Changed III submodules (${#targets[@]}):"
-for p in "${targets[@]}"; do
-  echo "  - $p"
-done
+if (( workspace_only_mode == 1 )); then
+  echo "Candidate III submodules (0)"
+  echo "Workspace-only PR mode: enabled"
+else
+  echo "Candidate III submodules (${#targets[@]}):"
+  for p in "${targets[@]}"; do
+    echo "  - $p"
+  done
+fi
+if (( ${#early_skipped_base_clean[@]} > 0 )); then
+  echo "Skipped from start (already on base branch and clean):"
+  for p in "${early_skipped_base_clean[@]}"; do
+    echo "  - $p"
+  done
+fi
 
 # Allowed submodule branch names follow the workspace branch stack:
 # base -> ... -> feature (using top-level branch ancestry).
@@ -311,6 +348,11 @@ if (( ${#skipped_branch_mismatch[@]} > 0 )); then
   for p in "${skipped_branch_mismatch[@]}"; do
     echo "  - $p"
   done
+fi
+
+if (( ${#pr_rows[@]} == 0 )); then
+  echo
+  echo "No actionable III submodule PRs to create/update after filtering."
 fi
 
 workspace_body_file="$(mktemp)"
