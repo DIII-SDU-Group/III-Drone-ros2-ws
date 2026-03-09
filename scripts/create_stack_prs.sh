@@ -151,7 +151,11 @@ for p in "${iii_submodules[@]}"; do
   fi
 done
 
-mapfile -t targets < <(printf '%s\n' "${!target_map[@]}" | sort)
+if (( ${#target_map[@]} > 0 )); then
+  mapfile -t targets < <(printf '%s\n' "${!target_map[@]}" | sed '/^$/d' | sort)
+else
+  targets=()
+fi
 
 workspace_only_mode=0
 if (( ${#targets[@]} == 0 )); then
@@ -163,6 +167,7 @@ fi
 filtered_targets=()
 early_skipped_base_clean=()
 for p in "${targets[@]}"; do
+  [[ -z "$p" ]] && continue
   sub_branch="$(git -C "$p" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
   sub_dirty="$(git -C "$p" status --porcelain 2>/dev/null || true)"
   if [[ "$sub_branch" == "$base_branch" && -z "$sub_dirty" ]]; then
@@ -251,6 +256,7 @@ upsert_pr() {
 
 # Submodule PRs
 for p in "${targets[@]}"; do
+  [[ -z "$p" ]] && continue
   echo
   echo "== $p =="
   sub_branch="$(git -C "$p" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
