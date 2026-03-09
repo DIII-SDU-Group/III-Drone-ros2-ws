@@ -77,6 +77,7 @@ These are open-source libraries maintained as forks. Editing may be needed, but 
 - `src/BehaviorTree.CPP`
 - `src/BehaviorTree.ROS2`
 - `src/px4-ros2-interface-lib`
+- `src/iwr6843aop-ROS2-pkg`
 
 Rule: before changing any of these three, pause and ask for explicit verification.
 
@@ -86,7 +87,6 @@ Everything else is considered third-party and should not be edited unless there 
 - `PX4-Autopilot`
 - `src/Micro-XRCE-DDS-Agent`
 - `src/dynamic_message_introspection`
-- `src/iwr6843aop-ROS2-pkg`
 - `src/micro-ROS-Agent`
 - `src/micro_ros_msgs`
 - `src/px4_msgs`
