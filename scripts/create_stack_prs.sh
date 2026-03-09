@@ -165,10 +165,26 @@ for p in "${targets[@]}"; do
   echo "  - $p"
 done
 
+# Allowed submodule branch names follow the workspace branch stack:
+# base -> ... -> feature (using top-level branch ancestry).
+mapfile -t allowed_branches < <(
+  git for-each-ref --format='%(refname:short)' refs/heads | while read -r b; do
+    if git merge-base --is-ancestor "$base_branch" "$b" && git merge-base --is-ancestor "$b" "$feature_branch"; then
+      echo "$b"
+    fi
+  done
+)
+
+echo "Allowed submodule branches from workspace stack:"
+for b in "${allowed_branches[@]}"; do
+  echo "  - $b"
+done
+
 workspace_repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
 
 pr_rows=()
 skipped_no_delta=()
+skipped_branch_mismatch=()
 
 upsert_pr() {
   local repo="$1"
@@ -202,14 +218,23 @@ for p in "${targets[@]}"; do
   echo "== $p =="
   sub_branch="$(git -C "$p" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
   if [[ -z "$sub_branch" ]]; then
-    echo "ERROR: $p is detached HEAD" >&2
-    exit 1
+    echo "WARN: $p is detached HEAD; skipping submodule PR for this repo." >&2
+    skipped_branch_mismatch+=("$p")
+    continue
   fi
 
-  if [[ "$sub_branch" != "$feature_branch" ]]; then
-    echo "ERROR: $p is on '$sub_branch', expected '$feature_branch'" >&2
-    echo "Run: scripts/iii_branch_guard.sh align --base $base_branch --feature $feature_branch --yes" >&2
-    exit 1
+  in_allowed=0
+  for b in "${allowed_branches[@]}"; do
+    if [[ "$sub_branch" == "$b" ]]; then
+      in_allowed=1
+      break
+    fi
+  done
+
+  if (( in_allowed == 0 )); then
+    echo "WARN: $p is on '$sub_branch' (outside allowed stack base->feature); skipping submodule PR for this repo." >&2
+    skipped_branch_mismatch+=("$p")
+    continue
   fi
 
   remote_url="$(git -C "$p" remote get-url origin)"
@@ -276,6 +301,14 @@ if (( ${#skipped_no_delta[@]} > 0 )); then
   echo
   echo "Skipped III submodules with no feature-vs-base delta (${#skipped_no_delta[@]}):"
   for p in "${skipped_no_delta[@]}"; do
+    echo "  - $p"
+  done
+fi
+
+if (( ${#skipped_branch_mismatch[@]} > 0 )); then
+  echo
+  echo "Skipped III submodules not on workspace feature branch (${#skipped_branch_mismatch[@]}):"
+  for p in "${skipped_branch_mismatch[@]}"; do
     echo "  - $p"
   done
 fi
