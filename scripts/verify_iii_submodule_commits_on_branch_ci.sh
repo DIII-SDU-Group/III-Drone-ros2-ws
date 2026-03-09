@@ -7,7 +7,7 @@ Usage:
   ./scripts/verify_iii_submodule_commits_on_branch_ci.sh --target-branch <branch>
 
 Checks each III submodule gitlink commit pinned by the workspace checkout
-and verifies that commit is reachable from origin/<target-branch>
+and verifies that commit exactly matches origin/<target-branch> HEAD
 in the corresponding submodule repository.
 
 This is intended for CI gatekeeping before merging workspace PRs.
@@ -75,12 +75,14 @@ for p in "${iii_submodules[@]}"; do
     continue
   fi
 
-  if git -C "$p" merge-base --is-ancestor "$commit" "origin/$target_branch"; then
-    echo "[OK] $p @ $commit is on origin/$target_branch"
-    printf '%s\t%s\t%s\t%s\n' "$p" "$commit" "OK" "on origin/$target_branch" >> "$status_file"
+  remote_head="$(git -C "$p" rev-parse "origin/$target_branch")"
+
+  if [[ "$commit" == "$remote_head" ]]; then
+    echo "[OK] $p @ $commit matches origin/$target_branch"
+    printf '%s\t%s\t%s\t%s\n' "$p" "$commit" "OK" "matches origin/$target_branch ($remote_head)" >> "$status_file"
   else
-    echo "[MISMATCH] $p @ $commit not on origin/$target_branch" >&2
-    printf '%s\t%s\t%s\t%s\n' "$p" "$commit" "MISMATCH" "not on origin/$target_branch" >> "$status_file"
+    echo "[MISMATCH] $p @ $commit does not match origin/$target_branch ($remote_head)" >&2
+    printf '%s\t%s\t%s\t%s\n' "$p" "$commit" "MISMATCH" "expected $remote_head from origin/$target_branch" >> "$status_file"
     mismatches=$((mismatches + 1))
   fi
 done
