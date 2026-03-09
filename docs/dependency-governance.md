@@ -14,6 +14,8 @@ The lock file ensures everyone uses the same dependency commits unless a change 
 - Update script: `scripts/update_submodule_lock.sh`
 - Local III branch policy script: `scripts/iii_branch_guard.sh`
 - CI III branch policy script: `scripts/verify_iii_submodule_branch_policy_ci.sh`
+- CI III develop-gate script: `scripts/verify_iii_submodule_commits_on_branch_ci.sh`
+- Stacked PR helper: `scripts/create_stack_prs.sh`
 - CI workflow: `.github/workflows/dependency-governance.yml`
 
 ## Team Workflow
@@ -47,6 +49,31 @@ For pull requests, CI also runs `verify_iii_submodule_branch_policy_ci.sh`, whic
 - only III submodules (`src/III-*`, `tools/III-*`) are checked
 - each pinned III submodule commit must be reachable from the allowed branch stack:
   `base -> ... -> feature` (for PR: `${base_ref} -> ${head_ref}`)
+
+For pull requests targeting `develop`, CI additionally runs `verify_iii_submodule_commits_on_branch_ci.sh`, which enforces:
+- each pinned III submodule commit in the workspace PR must already be reachable from `origin/develop` in that submodule repo
+- merge is blocked if any pinned III commit is not yet in submodule `develop`
+- a PR status comment bot updates a table in the workspace PR with per-submodule pass/fail
+
+## Stacked PR Automation
+
+Use the workspace helper to create/update a coordinated PR stack:
+
+```bash
+./scripts/create_stack_prs.sh --base develop --feature <feature-branch>
+./scripts/create_stack_prs.sh --base develop --feature <feature-branch> --yes
+```
+
+What it does:
+- detects changed III submodules
+- pushes each changed III submodule feature branch
+- creates/updates submodule PRs (`<feature> -> <base>`)
+- creates/updates workspace PR (`<feature> -> <base>`) with linked submodule PRs
+
+Notes:
+- `--yes` is required to actually push and create/edit PRs
+- without `--yes`, it is a dry-run
+- requires authenticated `gh` CLI
 
 ## Suggested Policy
 
