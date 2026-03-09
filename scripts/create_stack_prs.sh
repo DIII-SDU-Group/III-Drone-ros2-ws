@@ -13,7 +13,7 @@ SYNOPSIS
 DESCRIPTION
   Top-centric helper for a workspace branch workflow with III submodules.
 
-  For changed III submodules (src/III-*, tools/III-*), this script:
+  For affected III submodules (src/III-*, tools/III-*), this script:
   1) verifies branch consistency with iii_branch_guard.sh
   2) pushes the feature branch in each target submodule
   3) creates or updates a submodule PR: <feature> -> <base>
@@ -37,7 +37,9 @@ OPTIONS
       Apply mode. Without --yes the script runs in dry-run.
 
 BEHAVIOR
-  - Targets changed III submodules only.
+  - Targets affected III submodules, detected as either:
+    - locally changed submodule working tree, or
+    - committed workspace gitlink change in <base>...HEAD.
   - Ignores changed non-III PX4-Autopilot (consistent with iii_branch_guard.sh).
   - Any other changed non-III submodule blocks execution.
 
@@ -122,10 +124,34 @@ if ! scripts/iii_branch_guard.sh audit --base "$base_branch" --feature "$feature
   exit 1
 fi
 
-mapfile -t targets < <(awk '/^  - (src\/III-|tools\/III-)/{print $2}' "$audit_out")
+# Discover III submodules from .gitmodules.
+mapfile -t iii_submodules < <(
+  git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+    | awk '{print $2}' \
+    | grep -E '^(src/III-|tools/III-)'
+)
+
+declare -A target_map=()
+
+# 1) Locally changed III submodule worktrees.
+for p in "${iii_submodules[@]}"; do
+  [[ ! -d "$p" ]] && continue
+  if [[ -n "$(git -C "$p" status --porcelain 2>/dev/null || true)" ]]; then
+    target_map["$p"]=1
+  fi
+done
+
+# 2) Committed workspace gitlink changes in base...HEAD.
+for p in "${iii_submodules[@]}"; do
+  if ! git diff --quiet "${base_branch}...HEAD" -- "$p"; then
+    target_map["$p"]=1
+  fi
+done
+
+mapfile -t targets < <(printf '%s\n' "${!target_map[@]}" | sort)
 
 if (( ${#targets[@]} == 0 )); then
-  echo "No changed III submodules detected. Nothing to do."
+  echo "No affected III submodules detected (worktree or gitlink delta vs ${base_branch}...HEAD). Nothing to do."
   exit 0
 fi
 
@@ -185,23 +211,34 @@ for p in "${targets[@]}"; do
   remote_url="$(git -C "$p" remote get-url origin)"
   repo_slug="$(printf '%s' "$remote_url" | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')"
 
-  if (( apply == 1 )); then
-    git -C "$p" push -u origin "$feature_branch"
+  has_remote_feature=0
+  if git -C "$p" ls-remote --exit-code --heads origin "$feature_branch" >/dev/null 2>&1; then
+    has_remote_feature=1
+  fi
+
+  if (( has_remote_feature == 0 )); then
+    if git -C "$p" rev-parse --verify --quiet "$feature_branch" >/dev/null; then
+      if (( apply == 1 )); then
+        git -C "$p" push -u origin "$feature_branch"
+      else
+        echo "DRY-RUN: would push $p:$feature_branch (remote branch missing)"
+      fi
+    else
+      echo "ERROR: $p has no remote branch '$feature_branch' and no local branch to push." >&2
+      echo "Create/switch first (or run align): scripts/iii_branch_guard.sh align --base $base_branch --feature $feature_branch --yes" >&2
+      exit 1
+    fi
   else
-    echo "DRY-RUN: would push $p:$feature_branch"
+    echo "Remote branch exists for $p: origin/$feature_branch"
   fi
 
   sub_title="[${feature_branch}] ${p}: integration changes"
-  sub_body=$(cat <<SUBBODY
-Automated stacked PR from workspace **$workspace_repo**.
-
-- Source branch: \\`$feature_branch\\`
-- Target branch: \\`$base_branch\\`
-- Submodule path in workspace: \\`$p\\`
-
-This PR is part of a coordinated workspace integration stack.
-SUBBODY
-)
+  sub_body="$(printf '%s\n\n- Source branch: `%s`\n- Target branch: `%s`\n- Submodule path in workspace: `%s`\n\n%s\n' \
+    "Automated stacked PR from workspace **$workspace_repo**." \
+    "$feature_branch" \
+    "$base_branch" \
+    "$p" \
+    "This PR is part of a coordinated workspace integration stack.")"
 
   sub_pr_url="$(upsert_pr "$repo_slug" "$feature_branch" "$base_branch" "$sub_title" "$sub_body")"
   echo "Submodule PR: $sub_pr_url"

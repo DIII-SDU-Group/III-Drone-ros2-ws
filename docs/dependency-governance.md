@@ -16,6 +16,7 @@ The lock file ensures everyone uses the same dependency commits unless a change 
 - CI III branch policy script: `scripts/verify_iii_submodule_branch_policy_ci.sh`
 - CI III develop-gate script: `scripts/verify_iii_submodule_commits_on_branch_ci.sh`
 - Stacked PR helper: `scripts/create_stack_prs.sh`
+- Post-PR local sync helper: `scripts/post_pr_sync.sh`
 - CI workflow: `.github/workflows/dependency-governance.yml`
 
 ## Team Workflow
@@ -74,6 +75,22 @@ Notes:
 - `--yes` is required to actually push and create/edit PRs
 - without `--yes`, it is a dry-run
 - requires authenticated `gh` CLI
+
+## Post-PR Local Sync
+
+After PRs are merged, you can safely sync workspace + III submodules back to `develop`:
+
+```bash
+./scripts/post_pr_sync.sh --base develop
+./scripts/post_pr_sync.sh --base develop --yes
+```
+
+Behavior:
+- fails if workspace or any III submodule has uncommitted changes
+- fetches/prunes workspace + III submodules
+- switches workspace to `develop` and fast-forwards
+- syncs submodules, then switches each III submodule to `develop` and fast-forwards
+- deletes local branches only when upstream is gone and branch is already merged into `develop`
 
 ## Suggested Policy
 
