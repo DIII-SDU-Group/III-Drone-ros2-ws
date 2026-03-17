@@ -43,7 +43,7 @@ jobs:
             --feature "${{ github.head_ref }}"
 
   verify-iii-submodules-on-target-branch:
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    if: github.event_name == 'pull_request' && contains(fromJSON('["develop","main","staging"]'), github.base_ref)
     runs-on: ubuntu-latest
 
     steps:
@@ -53,8 +53,8 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Verify III submodule pointers equal origin/develop HEAD
-        run: ./scripts/ci/verify_iii_submodule_commits_on_branch_ci.sh --target-branch develop
+      - name: Verify III submodule pointers equal origin/${{ github.base_ref }} HEAD
+        run: ./scripts/ci/verify_iii_submodule_commits_on_branch_ci.sh --target-branch "${{ github.base_ref }}"
 
       - name: Upload III submodule status artifact
         if: always()
@@ -65,7 +65,7 @@ jobs:
           if-no-files-found: ignore
 
   comment-iii-submodule-status:
-    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop'
+    if: always() && github.event_name == 'pull_request' && contains(fromJSON('["develop","main","staging"]'), github.base_ref)
     runs-on: ubuntu-latest
     needs:
       - verify-iii-submodules-on-target-branch
@@ -101,10 +101,11 @@ jobs:
             }
 
             const state = mismatches === 0 ? 'PASS' : 'FAIL';
-            const header = `${marker}\n### III Submodule Develop Gate: ${state}\n`;
+            const targetBranch = context.payload.pull_request.base.ref;
+            const header = `${marker}\n### III Submodule Target Branch Gate (${targetBranch}): ${state}\n`;
             const summary = mismatches === 0
-              ? 'All pinned III submodule commits exactly match `origin/develop` HEAD.'
-              : `${mismatches} submodule(s) do not match \`origin/develop\` HEAD.`;
+              ? `All pinned III submodule commits exactly match \`origin/${targetBranch}\` HEAD.`
+              : `${mismatches} submodule(s) do not match \`origin/${targetBranch}\` HEAD.`;
 
             const table = rows.length
               ? [
@@ -142,4 +143,86 @@ jobs:
                 issue_number,
                 body
               });
+            }
+
+  verify-linked-submodule-prs-merged:
+    if: github.event_name == 'pull_request' && contains(fromJSON('["develop","main","staging"]'), github.base_ref)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify linked III submodule PRs are merged
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request.body || '';
+            const targetBranch = context.payload.pull_request.base.ref;
+            const markerRegex = /<!--\s*iii-submodule-pr:\s*path=([^\s]+)\s+url=(https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+))\s*-->/g;
+            const prMap = new Map();
+
+            for (const match of body.matchAll(markerRegex)) {
+              const [, path, url, repoSlug, pullNumber] = match;
+              prMap.set(url, { path, url, repoSlug, pullNumber: Number(pullNumber) });
+            }
+
+            if (prMap.size === 0) {
+              const files = await github.paginate(github.rest.pulls.listFiles, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                per_page: 100,
+              });
+              const changedIIIPaths = files
+                .map(file => file.filename)
+                .filter(path => path.startsWith('src/III-') || path.startsWith('tools/III-'));
+
+              if (changedIIIPaths.length > 0) {
+                core.setFailed(
+                  `III submodule paths changed in this workspace PR but no linked submodule PR markers were found: ${changedIIIPaths.join(', ')}`
+                );
+                return;
+              }
+
+              core.info('No linked III submodule PR markers found in the workspace PR body.');
+              return;
+            }
+
+            const failures = [];
+            const rows = [];
+
+            for (const pr of prMap.values()) {
+              const [owner, repo] = pr.repoSlug.split('/');
+              const response = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: pr.pullNumber,
+              });
+
+              const data = response.data;
+              const merged = Boolean(data.merged_at);
+              const baseMatches = data.base && data.base.ref === targetBranch;
+              const state = merged && baseMatches ? 'OK' : 'FAIL';
+              let detail = `merged into ${data.base.ref}`;
+
+              if (!merged) {
+                detail = `state=${data.state}, merged_at=${data.merged_at || 'null'}`;
+                failures.push(`${pr.path}: ${pr.url} is not merged yet`);
+              } else if (!baseMatches) {
+                detail = `merged into ${data.base.ref}, expected ${targetBranch}`;
+                failures.push(`${pr.path}: ${pr.url} merged into ${data.base.ref}, expected ${targetBranch}`);
+              }
+
+              rows.push(`| \`${pr.path}\` | ${state} | ${pr.url} | ${detail} |`);
+            }
+
+            const summary = [
+              `### Linked III Submodule PR Merge Gate (${targetBranch})`,
+              '',
+              '| Submodule | Status | PR | Detail |',
+              '|---|---|---|---|',
+              ...rows,
+            ].join('\n');
+
+            await core.summary.addRaw(summary).write();
+
+            if (failures.length > 0) {
+              core.setFailed(failures.join('\n'));
             }

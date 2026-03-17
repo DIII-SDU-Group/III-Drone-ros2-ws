@@ -25,6 +25,7 @@ This is the bucket for:
 - branch policy
 - lock-file verification/update
 - stacked PR creation/update
+- release promotion PR helpers
 - post-merge sync flows
 - repository/fork synchronization
 
