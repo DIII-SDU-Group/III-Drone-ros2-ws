@@ -16,6 +16,7 @@ The lock file ensures everyone uses the same dependency commits unless a change 
 - CI III branch policy script: `scripts/ci/verify_iii_submodule_branch_policy_ci.sh`
 - CI III develop-gate script: `scripts/ci/verify_iii_submodule_commits_on_branch_ci.sh`
 - Stacked PR helper: `scripts/git/create_stack_prs.sh`
+- Develop-to-main release helper: `scripts/git/create_develop_to_main_prs.sh`
 - Stacked PR post-merge pointer refresh: `scripts/git/refresh_workspace_submodule_pointers.sh`
 - Post-PR local sync helper: `scripts/git/post_pr_sync.sh`
 - CI workflow: `.github/workflows/dependency-governance.yml`
@@ -53,10 +54,12 @@ For pull requests, CI also runs `verify_iii_submodule_branch_policy_ci.sh`, whic
 - each pinned III submodule commit must be reachable from the allowed branch stack:
   `base -> ... -> feature` (for PR: `${base_ref} -> ${head_ref}`)
 
-For pull requests targeting `develop`, CI additionally runs `verify_iii_submodule_commits_on_branch_ci.sh`, which enforces:
-- each pinned III submodule commit in the workspace PR must exactly match `origin/develop` HEAD in that submodule repo
-- merge is blocked if any pinned III commit does not match latest `develop` head
+For pull requests targeting protected integration branches (`develop`, `main`, `staging`), CI additionally runs `verify_iii_submodule_commits_on_branch_ci.sh`, which enforces:
+- each pinned III submodule commit in the workspace PR must exactly match `origin/<base>` HEAD in that submodule repo
+- merge is blocked if any pinned III commit does not match the latest target-branch head
 - a PR status comment bot updates a table in the workspace PR with per-submodule pass/fail
+
+For those same protected-branch PRs, CI also verifies that every linked III submodule PR listed in the workspace PR body is already merged into the same target branch.
 
 ## Stacked PR Automation
 
@@ -65,6 +68,7 @@ Use the workspace helper to create/update a coordinated PR stack:
 ```bash
 ./scripts/git/create_stack_prs.sh --base develop --feature <feature-branch>
 ./scripts/git/create_stack_prs.sh --base develop --feature <feature-branch> --yes
+./scripts/git/create_stack_prs.sh --base main --feature <release-branch> --all-iii --yes
 ```
 
 What it does:
@@ -75,6 +79,7 @@ What it does:
 
 Notes:
 - `--yes` is required to actually push and create/edit PRs
+- `--all-iii` targets all III submodules instead of only changed ones
 - without `--yes`, it is a dry-run
 - requires authenticated `gh` CLI
 - after submodule PRs are merged, refresh pointers to capture merge commits:
@@ -82,6 +87,29 @@ Notes:
   ./scripts/git/refresh_workspace_submodule_pointers.sh --base develop --feature <feature-branch> --yes
   ```
   then commit + push workspace branch to update workspace PR gitlinks and lock file
+
+### Develop to main release flow
+
+Use the dedicated release wrapper when promoting `develop` into `main`:
+
+```bash
+./scripts/git/create_develop_to_main_prs.sh --release release/develop-to-main-2026-03
+./scripts/git/create_develop_to_main_prs.sh --release release/develop-to-main-2026-03 --yes
+```
+
+What it does:
+- syncs the workspace and all III submodules back onto `develop`
+- creates or switches a dedicated release branch in the workspace
+- aligns all III submodules onto matching release branches
+- creates or updates coordinated III submodule PRs and the workspace PR into `main`
+
+After the submodule PRs merge into `main`, refresh the workspace release branch:
+
+```bash
+./scripts/git/refresh_workspace_submodule_pointers.sh --base main --feature release/develop-to-main-2026-03 --all-iii --yes
+```
+
+Then commit and push the refreshed gitlinks so the workspace PR can satisfy the target-branch gate.
 
 GitHub-native alternative (no local update needed):
 1. Open workspace repo Actions tab.

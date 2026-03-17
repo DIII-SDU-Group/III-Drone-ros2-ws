@@ -7,7 +7,7 @@ NAME
   create_stack_prs.sh - create/update coordinated submodule + workspace PR stack
 
 SYNOPSIS
-  scripts/git/create_stack_prs.sh --base <base-branch> [--feature <feature-branch>] [--yes]
+  scripts/git/create_stack_prs.sh --base <base-branch> [--feature <feature-branch>] [--all-iii] [--yes]
   scripts/git/create_stack_prs.sh -h | --help
 
 DESCRIPTION
@@ -37,13 +37,17 @@ OPTIONS
   --feature <feature-branch>
       Optional feature branch. Default: current workspace branch.
 
+  --all-iii
+      Target all III submodules instead of only changed ones.
+
   --yes
       Apply mode. Without --yes the script runs in dry-run.
 
 BEHAVIOR
-  - Targets affected III submodules, detected as either:
+  - By default, targets affected III submodules, detected as either:
     - locally changed submodule working tree, or
-    - committed workspace gitlink change in <base>...HEAD.
+    - committed workspace gitlink change in <base>...<feature>.
+  - With --all-iii, targets all III submodules.
   - Ignores changed non-III PX4-Autopilot (consistent with iii_branch_guard.sh).
   - Any other changed non-III submodule blocks execution.
   - For each target III submodule, requires actual commits on feature vs base.
@@ -58,6 +62,7 @@ USAGE
 
 base_branch=""
 feature_branch=""
+all_iii=0
 apply=0
 
 if [[ $# -eq 0 ]]; then
@@ -74,6 +79,10 @@ while [[ $# -gt 0 ]]; do
     --feature)
       feature_branch="${2:-}"
       shift 2
+      ;;
+    --all-iii)
+      all_iii=1
+      shift
       ;;
     --yes)
       apply=1
@@ -140,20 +149,26 @@ mapfile -t iii_submodules < <(
 
 declare -A target_map=()
 
-# 1) Locally changed III submodule worktrees.
-for p in "${iii_submodules[@]}"; do
-  [[ ! -d "$p" ]] && continue
-  if [[ -n "$(git -C "$p" status --porcelain 2>/dev/null || true)" ]]; then
+if (( all_iii == 1 )); then
+  for p in "${iii_submodules[@]}"; do
     target_map["$p"]=1
-  fi
-done
+  done
+else
+  # 1) Locally changed III submodule worktrees.
+  for p in "${iii_submodules[@]}"; do
+    [[ ! -d "$p" ]] && continue
+    if [[ -n "$(git -C "$p" status --porcelain 2>/dev/null || true)" ]]; then
+      target_map["$p"]=1
+    fi
+  done
 
-# 2) Committed workspace gitlink changes in base...HEAD.
-for p in "${iii_submodules[@]}"; do
-  if ! git diff --quiet "${base_branch}...HEAD" -- "$p"; then
-    target_map["$p"]=1
-  fi
-done
+  # 2) Committed workspace gitlink changes in base...feature.
+  for p in "${iii_submodules[@]}"; do
+    if ! git diff --quiet "${base_branch}...${feature_branch}" -- "$p"; then
+      target_map["$p"]=1
+    fi
+  done
+fi
 
 if (( ${#target_map[@]} > 0 )); then
   mapfile -t targets < <(printf '%s\n' "${!target_map[@]}" | sed '/^$/d' | sort)
@@ -195,6 +210,11 @@ fi
 
 echo "Workspace branch: $feature_branch"
 echo "Base branch: $base_branch"
+target_mode="changed only"
+if (( all_iii == 1 )); then
+  target_mode="all III"
+fi
+echo "Target mode: $target_mode"
 if (( workspace_only_mode == 1 )); then
   echo "Candidate III submodules (0)"
   echo "Workspace-only PR mode: enabled"
@@ -229,6 +249,7 @@ done
 workspace_repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
 
 pr_rows=()
+pr_markers=()
 skipped_no_delta=()
 skipped_branch_mismatch=()
 
@@ -338,6 +359,7 @@ for p in "${targets[@]}"; do
 
   sha="$(git -C "$p" rev-parse --short HEAD)"
   pr_rows+=("| $p | $sha | $sub_pr_url |")
+  pr_markers+=("<!-- iii-submodule-pr: path=$p url=$sub_pr_url -->")
 
   if (( apply == 1 )); then
     git add "$p"
@@ -385,6 +407,20 @@ trap 'rm -f "$audit_out" "$workspace_body_file"' EXIT
   echo "### Merge Rule"
   echo
   echo "Workspace PR must only merge after all listed submodule PRs are merged into \`$base_branch\`."
+  echo
+  echo "### Pointer Refresh Rule"
+  echo
+  echo "After the submodule PRs merge, refresh this workspace branch so every III gitlink points at the latest \`origin/$base_branch\` head:"
+  echo
+  echo "\`\`\`bash"
+  echo "./scripts/git/refresh_workspace_submodule_pointers.sh --base $base_branch --feature $feature_branch --yes"
+  echo "\`\`\`"
+  if (( ${#pr_markers[@]} > 0 )); then
+    echo
+    for marker in "${pr_markers[@]}"; do
+      echo "$marker"
+    done
+  fi
 } > "$workspace_body_file"
 
 if (( apply == 1 )); then

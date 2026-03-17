@@ -63,6 +63,25 @@ mapfile -t allowed_branches < <(
   done
 )
 
+mapfile -t iii_submodules < <(
+  git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+    | awk '{print $2}' \
+    | grep -E '^(src/III-|tools/III-)'
+)
+
+changed_iii_submodules=()
+for p in "${iii_submodules[@]}"; do
+  if ! git diff --quiet "origin/$base_branch...origin/$feature_branch" -- "$p"; then
+    changed_iii_submodules+=("$p")
+  fi
+done
+
+if (( ${#changed_iii_submodules[@]} == 0 )); then
+  echo "No III submodule gitlink changes detected between origin/$base_branch and origin/$feature_branch."
+  echo "Skipping III branch policy check for workspace-only PR."
+  exit 0
+fi
+
 if (( ${#allowed_branches[@]} == 0 )); then
   echo "error: no allowed branch stack inferred for origin/$base_branch..origin/$feature_branch" >&2
   exit 1
@@ -73,14 +92,13 @@ for b in "${allowed_branches[@]}"; do
   echo "  - $b"
 done
 
-mapfile -t iii_submodules < <(
-  git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
-    | awk '{print $2}' \
-    | grep -E '^(src/III-|tools/III-)'
-)
+echo "Changed III submodules in PR (${#changed_iii_submodules[@]}):"
+for p in "${changed_iii_submodules[@]}"; do
+  echo "  - $p"
+done
 
 mismatches=0
-for p in "${iii_submodules[@]}"; do
+for p in "${changed_iii_submodules[@]}"; do
   [[ ! -d "$p" ]] && continue
   commit="$(git -C "$p" rev-parse HEAD)"
   git -C "$p" fetch --no-tags origin >/dev/null 2>&1 || true
