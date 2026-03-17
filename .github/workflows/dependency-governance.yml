@@ -23,7 +23,7 @@ jobs:
           submodules: recursive
 
       - name: Verify submodule lock
-        run: ./scripts/verify_submodule_lock.sh
+        run: ./scripts/git/verify_submodule_lock.sh
 
   verify-iii-branch-policy:
     if: github.event_name == 'pull_request'
@@ -38,7 +38,7 @@ jobs:
 
       - name: Verify III submodule branch policy (base->feature stack)
         run: |
-          ./scripts/verify_iii_submodule_branch_policy_ci.sh \
+          ./scripts/ci/verify_iii_submodule_branch_policy_ci.sh \
             --base "${{ github.base_ref }}" \
             --feature "${{ github.head_ref }}"
 
@@ -54,7 +54,7 @@ jobs:
           submodules: recursive
 
       - name: Verify III submodule pointers equal origin/develop HEAD
-        run: ./scripts/verify_iii_submodule_commits_on_branch_ci.sh --target-branch develop
+        run: ./scripts/ci/verify_iii_submodule_commits_on_branch_ci.sh --target-branch develop
 
       - name: Upload III submodule status artifact
         if: always()

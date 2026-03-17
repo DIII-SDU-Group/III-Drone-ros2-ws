@@ -7,8 +7,8 @@ NAME
   create_stack_prs.sh - create/update coordinated submodule + workspace PR stack
 
 SYNOPSIS
-  scripts/create_stack_prs.sh --base <base-branch> [--feature <feature-branch>] [--yes]
-  scripts/create_stack_prs.sh -h | --help
+  scripts/git/create_stack_prs.sh --base <base-branch> [--feature <feature-branch>] [--yes]
+  scripts/git/create_stack_prs.sh -h | --help
 
 DESCRIPTION
   Top-centric helper for a workspace branch workflow with III submodules.
@@ -20,6 +20,10 @@ DESCRIPTION
   4) stages submodule pointers in the workspace
   5) creates or updates a workspace PR: <feature> -> <base>
      with a checklist/table linking all submodule PRs.
+
+  This is the main "push and update the stacked PR set" helper. Use it when a
+  workspace feature branch also carries matching III submodule feature branches
+  and you want GitHub PRs created or refreshed consistently.
 
 REQUIREMENTS
   - gh CLI authenticated (gh auth status)
@@ -44,11 +48,11 @@ BEHAVIOR
   - Any other changed non-III submodule blocks execution.
   - For each target III submodule, requires actual commits on feature vs base.
     If feature exists but has no commits beyond base, the script fails and
-    suggests running scripts/post_pr_sync.sh.
+    suggests running scripts/git/post_pr_sync.sh.
 
 EXAMPLES
-  scripts/create_stack_prs.sh --base develop --feature version-migration
-  scripts/create_stack_prs.sh --base develop --feature version-migration --yes
+  scripts/git/create_stack_prs.sh --base develop --feature version-migration
+  scripts/git/create_stack_prs.sh --base develop --feature version-migration --yes
 USAGE
 }
 
@@ -121,7 +125,7 @@ fi
 audit_out="$(mktemp)"
 trap 'rm -f "$audit_out"' EXIT
 
-if ! scripts/iii_branch_guard.sh audit --base "$base_branch" --feature "$feature_branch" >"$audit_out"; then
+if ! scripts/git/iii_branch_guard.sh audit --base "$base_branch" --feature "$feature_branch" >"$audit_out"; then
   cat "$audit_out"
   echo "ERROR: iii_branch_guard audit failed" >&2
   exit 1
@@ -295,7 +299,7 @@ for p in "${targets[@]}"; do
   delta_count="$(git -C "$p" rev-list --count "origin/$base_branch..$feature_branch" 2>/dev/null || echo 0)"
   if [[ "$delta_count" == "0" ]]; then
     echo "WARN: $p local '$feature_branch' has no commits beyond origin/$base_branch; skipping PR for this submodule." >&2
-    echo "      Hint: ./scripts/post_pr_sync.sh --base $base_branch --clean-only --yes" >&2
+    echo "      Hint: ./scripts/git/post_pr_sync.sh --base $base_branch --clean-only --yes" >&2
     skipped_no_delta+=("$p")
     continue
   fi
@@ -314,7 +318,7 @@ for p in "${targets[@]}"; do
       fi
     else
       echo "ERROR: $p has no remote branch '$feature_branch' and no local branch to push." >&2
-      echo "Create/switch first (or run align): scripts/iii_branch_guard.sh align --base $base_branch --feature $feature_branch --yes" >&2
+      echo "Create/switch first (or run align): scripts/git/iii_branch_guard.sh align --base $base_branch --feature $feature_branch --yes" >&2
       exit 1
     fi
   else
