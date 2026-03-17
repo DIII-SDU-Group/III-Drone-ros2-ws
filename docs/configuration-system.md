@@ -29,22 +29,24 @@
 
 ## 3. File Model
 
-### 3.1 Base ROS Params (`config/ros_params.yaml`)
-Contains global ROS parameters such as:
+### 3.1 Runtime ROS Params (`config/ros_params_real.yaml`, `config/ros_params_sim.yaml`)
+Contain startup and runtime parameter values for real and simulation modes, including support parameters such as:
 - `parameters_path_postfix`
-- `node_parameters_path_postfix`
 - `default_parameter_file`
 - `sim_parameter_file`
+- `parameter_snapshots_path_postfix`
+- `default_snapshot_file`
+- `sim_snapshot_file`
 - `use_sim_time`
 
-### 3.2 Parameter Profiles (`config/parameters/*.yaml`)
-Structured parameter files (`parameters_real.yaml`, `parameters_sim.yaml`, etc.) store domain-specific settings with schema entries:
+### 3.2 Schema Manifest (`config/parameters/parameter_manifest.yaml`)
+The schema manifest stores managed parameter definitions with:
 - `type`
 - `value`
 - optional: `constant`, `min`, `max`, `options`
 
-### 3.3 Node Parameter Bundles (`config/node_parameters/*.yaml`)
-Per-node parameter grouping consumed by configurator logic.
+### 3.3 Snapshot Files (`$CONFIG_BASE_DIR/iii_drone/parameter_snapshots/*.yaml`)
+Saved runtime snapshots use the normal ROS parameter-file format and are managed by the optional configuration server.
 
 ## 4. Runtime Selection Logic
 
@@ -63,7 +65,7 @@ Configuration server services are used by:
 - supervision/GC tools for live parameter management and profile switching
 
 High-value services in operations:
-- `load_parameters` (switch profile)
+- `load_parameters` (load snapshot)
 - `save_parameters` (persist current)
 - `set_parameter_from_gc` (operator intervention)
 
