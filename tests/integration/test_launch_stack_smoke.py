@@ -15,11 +15,23 @@ def _write_config_tree(base_dir: Path):
         "/**:\n"
         "  ros__parameters:\n"
         "    parameters_path_postfix: parameters\n"
-        "    default_parameter_file: parameters.yaml\n"
-        "    sim_parameter_file: parameters.yaml\n"
+        "    sim_parameter_file: sim.yaml\n"
+        "    default_parameter_file: sim.yaml\n"
     )
 
-    (parameters_dir / "parameters.yaml").write_text(
+    (config_root / "ros_params_sim.yaml").write_text(
+        "/**:\n"
+        "  ros__parameters:\n"
+        "    /tf/drone_frame_id: drone\n"
+        "    /tf/cable_gripper_frame_id: cable_gripper\n"
+        "    /tf/mmwave_frame_id: mmwave\n"
+        "    /tf/sim/depth_cam_frame_id: depth_camera\n"
+        "    /tf/sim/drone_to_cable_gripper: [0, 0, 0, 0, 0, 0]\n"
+        "    /tf/sim/drone_to_mmwave: [0, 0, 0, 0, 0, 0]\n"
+        "    /tf/sim/drone_to_depth_cam: [0, 0, 0, 0, 0, 0]\n"
+    )
+
+    (parameters_dir / "sim.yaml").write_text(
         "tf:\n"
         "  drone_frame_id:\n"
         "    value: drone\n"

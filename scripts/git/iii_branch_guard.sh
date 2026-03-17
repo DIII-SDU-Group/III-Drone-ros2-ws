@@ -6,7 +6,7 @@ usage() {
 iii_branch_guard.sh - audit and align III submodule branches to workspace branch policy
 
 SYNOPSIS
-  scripts/git/iii_branch_guard.sh <action> --base <base-branch> [--feature <feature-branch>] [--all-iii] [--yes]
+  scripts/git/iii_branch_guard.sh <action> --base <base-branch> [--feature <feature-branch>] [--all-iii] [--checkout-existing] [--yes]
   scripts/git/iii_branch_guard.sh -h | --help
 
 ACTIONS
@@ -35,6 +35,11 @@ ARGUMENTS / OPTIONS
       - tools/III-*
       Default target set: only changed III submodules.
 
+  --checkout-existing
+      Optional. Align-mode only.
+      Target III submodules where the feature branch already exists locally,
+      then switch to that branch without creating new branches.
+
   --yes
       Optional. Apply changes in align mode.
       Ignored in audit mode.
@@ -60,6 +65,9 @@ EXAMPLES
   Plan alignment of changed III submodules:
     scripts/git/iii_branch_guard.sh align --base develop --feature version-migration
 
+  Restore an existing feature branch only where it already exists:
+    scripts/git/iii_branch_guard.sh align --base develop --feature configuration-refactor --checkout-existing --yes
+
   Apply alignment:
     scripts/git/iii_branch_guard.sh align --base develop --feature version-migration --yes
 USAGE
@@ -69,6 +77,7 @@ mode=""
 base_branch=""
 feature_branch=""
 all_iii=0
+checkout_existing=0
 assume_yes=0
 
 if [[ $# -lt 1 ]]; then
@@ -107,6 +116,10 @@ while [[ $# -gt 0 ]]; do
       all_iii=1
       shift
       ;;
+    --checkout-existing)
+      checkout_existing=1
+      shift
+      ;;
     --yes)
       assume_yes=1
       shift
@@ -125,6 +138,11 @@ done
 
 if [[ -z "$base_branch" ]]; then
   echo "ERROR: --base is required" >&2
+  exit 1
+fi
+
+if (( checkout_existing == 1 )) && [[ "$mode" != "align" ]]; then
+  echo "ERROR: --checkout-existing is only supported with 'align'" >&2
   exit 1
 fi
 
@@ -205,14 +223,22 @@ if (( ${#changed_non_iii[@]} > 0 )); then
 fi
 
 targets=()
-if (( all_iii == 1 )); then
+if (( checkout_existing == 1 )); then
+  for p in "${all_iii_submodules[@]}"; do
+    if git -C "$p" rev-parse --verify --quiet "$feature_branch" >/dev/null; then
+      targets+=("$p")
+    fi
+  done
+elif (( all_iii == 1 )); then
   targets=("${all_iii_submodules[@]}")
 else
   targets=("${changed_iii[@]}")
 fi
 
 target_mode="changed only"
-if (( all_iii == 1 )); then
+if (( checkout_existing == 1 )); then
+  target_mode="existing feature branch only"
+elif (( all_iii == 1 )); then
   target_mode="all III"
 fi
 
@@ -225,25 +251,27 @@ echo "Top-level branch: $top_branch"
 echo "Expected base branch: $base_branch"
 echo "Target feature branch: $feature_branch"
 
-# Allowed branch stack for III submodules:
-# any local branch that is an ancestor of feature and descendant of/equal to base.
-mapfile -t allowed_branches < <(
-  git for-each-ref --format='%(refname:short)' refs/heads | while read -r b; do
-    if git merge-base --is-ancestor "$b" "$feature_branch" && git merge-base --is-ancestor "$base_branch" "$b"; then
-      echo "$b"
-    fi
+if (( checkout_existing == 0 )); then
+  # Allowed branch stack for III submodules:
+  # any local branch that is an ancestor of feature and descendant of/equal to base.
+  mapfile -t allowed_branches < <(
+    git for-each-ref --format='%(refname:short)' refs/heads | while read -r b; do
+      if git merge-base --is-ancestor "$b" "$feature_branch" && git merge-base --is-ancestor "$base_branch" "$b"; then
+        echo "$b"
+      fi
+    done
+  )
+
+  if (( ${#allowed_branches[@]} == 0 )); then
+    echo "ERROR: no allowed branch stack inferred between base '$base_branch' and feature '$feature_branch'" >&2
+    exit 1
+  fi
+
+  echo "Allowed III submodule branches:"
+  for b in "${allowed_branches[@]}"; do
+    echo "  - $b"
   done
-)
-
-if (( ${#allowed_branches[@]} == 0 )); then
-  echo "ERROR: no allowed branch stack inferred between base '$base_branch' and feature '$feature_branch'" >&2
-  exit 1
 fi
-
-echo "Allowed III submodule branches:"
-for b in "${allowed_branches[@]}"; do
-  echo "  - $b"
-done
 
 echo "Target III submodules (${#targets[@]}):"
 for p in "${targets[@]}"; do
@@ -282,8 +310,26 @@ check_one() {
   echo "  current branch: $current_branch"
   echo "  has base '$base_branch': $has_base"
   echo "  has feature '$feature_branch': $has_feature"
-  if (( has_base == 1 && has_feature == 1 )); then
+  if (( checkout_existing == 0 && has_base == 1 && has_feature == 1 )); then
     echo "  feature based on base: $feature_based"
+  fi
+
+  if (( checkout_existing == 1 )); then
+    if (( has_feature == 0 )); then
+      echo "  ACTION: skip (feature branch does not exist locally)"
+      return
+    fi
+
+    if [[ "$current_branch" == "$feature_branch" ]]; then
+      echo "  ACTION: no-op (already on feature branch)"
+      return
+    fi
+
+    echo "  ACTION: switch to existing feature branch '$feature_branch'"
+    if (( assume_yes == 1 )); then
+      git -C "$p" switch "$feature_branch"
+    fi
+    return
   fi
 
   local in_allowed=0
@@ -363,5 +409,9 @@ fi
 
 if [[ "$mode" == "align" && $assume_yes -eq 0 ]]; then
   echo
-  echo "Dry run complete. Re-run with --yes to apply switches/branch creation."
+  if (( checkout_existing == 1 )); then
+    echo "Dry run complete. Re-run with --yes to apply existing-branch switches."
+  else
+    echo "Dry run complete. Re-run with --yes to apply switches/branch creation."
+  fi
 fi
