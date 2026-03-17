@@ -6,9 +6,7 @@ root: ~/ws/
 enable_pane_titles: true
 pane_title_position: top
 
-# startup_window: simulation
 startup_window: supervisor
-# startup_window: configuration
 
 windows:
   - supervisor: 

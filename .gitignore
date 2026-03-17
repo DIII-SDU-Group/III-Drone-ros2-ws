@@ -8,11 +8,16 @@ log/*
 .config/*
 !.config/.gitignore
 
-PX4-Autopilot
-
 testing/*
 !testing/*.sh
 !testing/*.py
 package-lock.json
 package.json
 node_modules/.package-lock.json
+
+**/.*.swp
+
+# Python caches
+**/__pycache__/
+**/.pytest_cache/
+*.pyc
