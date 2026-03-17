@@ -71,7 +71,7 @@
         "-e", "NVIDIA_DRIVER_CAPABILITIES=all"
     ],
     "initializeCommand": "ls",
-    "postCreateCommand": ".devcontainer/post_create.sh",
-    "postStartCommand": ".devcontainer/post_start.sh",
+    "postCreateCommand": "scripts/post_create.sh",
+    "postStartCommand": "scripts/post_start.sh",
 
 }

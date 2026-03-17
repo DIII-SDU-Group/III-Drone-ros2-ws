@@ -83,8 +83,8 @@ Workspace defaults are in `defaults.yaml` (`src` base path, skip `example_*`).
 
 Submodule refs are lock-governed:
 - lock file: `deps/submodule-lock.txt`
-- verify: `./scripts/git/verify_submodule_lock.sh`
-- update lock intentionally: `./scripts/git/update_submodule_lock.sh`
+- verify: `./scripts/verify_submodule_lock.sh`
+- update lock intentionally: `./scripts/update_submodule_lock.sh`
 
 Rules:
 - Do not change submodule commits casually.
@@ -167,7 +167,7 @@ When implementing changes:
 Use as applicable:
 ```bash
 # Dependency integrity
-./scripts/git/verify_submodule_lock.sh
+./scripts/verify_submodule_lock.sh
 
 # Build (full)
 COLCON_HOME=/home/iii/ws colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON

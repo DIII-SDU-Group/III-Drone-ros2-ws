@@ -4,16 +4,14 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  ./scripts/ci/verify_iii_submodule_branch_policy_ci.sh --base <base-branch> --feature <feature-branch>
+  ./scripts/verify_iii_submodule_branch_policy_ci.sh --base <base-branch> --feature <feature-branch>
 
 CI-safe III submodule branch policy verifier.
 It validates that each III submodule pinned commit (HEAD in the checked-out submodule)
 is reachable from at least one branch in the allowed stack:
   base -> ... -> feature
 
-This avoids relying on local branch names (submodules are often detached in CI)
-and is intended for pull-request validation, not day-to-day local branch
-management.
+This avoids relying on local branch names (submodules are often detached in CI).
 USAGE
 }
 

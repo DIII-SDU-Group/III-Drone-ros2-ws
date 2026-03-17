@@ -10,14 +10,14 @@ The lock file ensures everyone uses the same dependency commits unless a change 
 ## Files
 
 - Lock file: `deps/submodule-lock.txt`
-- Verify script: `scripts/git/verify_submodule_lock.sh`
-- Update script: `scripts/git/update_submodule_lock.sh`
-- Local III branch policy script: `scripts/git/iii_branch_guard.sh`
-- CI III branch policy script: `scripts/ci/verify_iii_submodule_branch_policy_ci.sh`
-- CI III develop-gate script: `scripts/ci/verify_iii_submodule_commits_on_branch_ci.sh`
-- Stacked PR helper: `scripts/git/create_stack_prs.sh`
-- Stacked PR post-merge pointer refresh: `scripts/git/refresh_workspace_submodule_pointers.sh`
-- Post-PR local sync helper: `scripts/git/post_pr_sync.sh`
+- Verify script: `scripts/verify_submodule_lock.sh`
+- Update script: `scripts/update_submodule_lock.sh`
+- Local III branch policy script: `scripts/iii_branch_guard.sh`
+- CI III branch policy script: `scripts/verify_iii_submodule_branch_policy_ci.sh`
+- CI III develop-gate script: `scripts/verify_iii_submodule_commits_on_branch_ci.sh`
+- Stacked PR helper: `scripts/create_stack_prs.sh`
+- Stacked PR post-merge pointer refresh: `scripts/refresh_workspace_submodule_pointers.sh`
+- Post-PR local sync helper: `scripts/post_pr_sync.sh`
 - CI workflow: `.github/workflows/dependency-governance.yml`
 - Manual pointer refresh workflow: `.github/workflows/refresh-submodule-pointers.yml`
 
@@ -32,11 +32,11 @@ Do not edit `deps/submodule-lock.txt` unless intentionally updating dependency v
 1. Update submodule refs as needed.
 2. Regenerate lock file:
    ```bash
-   ./scripts/git/update_submodule_lock.sh
+   ./scripts/update_submodule_lock.sh
    ```
 3. Verify:
    ```bash
-   ./scripts/git/verify_submodule_lock.sh
+   ./scripts/verify_submodule_lock.sh
    ```
 4. In PR description, explain:
 - which submodules changed
@@ -63,8 +63,8 @@ For pull requests targeting `develop`, CI additionally runs `verify_iii_submodul
 Use the workspace helper to create/update a coordinated PR stack:
 
 ```bash
-./scripts/git/create_stack_prs.sh --base develop --feature <feature-branch>
-./scripts/git/create_stack_prs.sh --base develop --feature <feature-branch> --yes
+./scripts/create_stack_prs.sh --base develop --feature <feature-branch>
+./scripts/create_stack_prs.sh --base develop --feature <feature-branch> --yes
 ```
 
 What it does:
@@ -79,7 +79,7 @@ Notes:
 - requires authenticated `gh` CLI
 - after submodule PRs are merged, refresh pointers to capture merge commits:
   ```bash
-  ./scripts/git/refresh_workspace_submodule_pointers.sh --base develop --feature <feature-branch> --yes
+  ./scripts/refresh_workspace_submodule_pointers.sh --base develop --feature <feature-branch> --yes
   ```
   then commit + push workspace branch to update workspace PR gitlinks and lock file
 
@@ -97,9 +97,9 @@ GitHub-native alternative (no local update needed):
 After PRs are merged, you can safely sync workspace + III submodules back to `develop`:
 
 ```bash
-./scripts/git/post_pr_sync.sh --base develop
-./scripts/git/post_pr_sync.sh --base develop --yes
-./scripts/git/post_pr_sync.sh --base develop --clean-only --yes
+./scripts/post_pr_sync.sh --base develop
+./scripts/post_pr_sync.sh --base develop --yes
+./scripts/post_pr_sync.sh --base develop --clean-only --yes
 ```
 
 Behavior:
@@ -125,21 +125,21 @@ git submodule status --recursive
 
 Check lock integrity locally:
 ```bash
-./scripts/git/verify_submodule_lock.sh
+./scripts/verify_submodule_lock.sh
 ```
 
 Refresh lock after intentional changes:
 ```bash
-./scripts/git/update_submodule_lock.sh
+./scripts/update_submodule_lock.sh
 ```
 
 Audit local III branch policy before pushing:
 ```bash
-./scripts/git/iii_branch_guard.sh audit --base develop
+./scripts/iii_branch_guard.sh audit --base develop
 ```
 
 Align changed III submodules to feature branch (dry-run, then apply):
 ```bash
-./scripts/git/iii_branch_guard.sh align --base develop --feature version-migration
-./scripts/git/iii_branch_guard.sh align --base develop --feature version-migration --yes
+./scripts/iii_branch_guard.sh align --base develop --feature version-migration
+./scripts/iii_branch_guard.sh align --base develop --feature version-migration --yes
 ```

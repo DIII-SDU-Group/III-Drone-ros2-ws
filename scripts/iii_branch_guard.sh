@@ -6,8 +6,8 @@ usage() {
 iii_branch_guard.sh - audit and align III submodule branches to workspace branch policy
 
 SYNOPSIS
-  scripts/git/iii_branch_guard.sh <action> --base <base-branch> [--feature <feature-branch>] [--all-iii] [--yes]
-  scripts/git/iii_branch_guard.sh -h | --help
+  scripts/iii_branch_guard.sh <action> --base <base-branch> [--feature <feature-branch>] [--all-iii] [--yes]
+  scripts/iii_branch_guard.sh -h | --help
 
 ACTIONS
   audit
@@ -47,21 +47,19 @@ BEHAVIOR
   - For each target III submodule, current branch must be in allowed stack:
       base -> ... -> feature
   - Detached submodule HEAD is reported as mismatch.
-  - In `align` mode it can switch or create local submodule branches so the
-    workspace and III repos follow the same feature-stack naming policy.
 
 EXAMPLES
   Audit changed III submodules against develop -> current workspace branch:
-    scripts/git/iii_branch_guard.sh audit --base develop
+    scripts/iii_branch_guard.sh audit --base develop
 
   Audit all III submodules against develop -> version-migration:
-    scripts/git/iii_branch_guard.sh audit --base develop --feature version-migration --all-iii
+    scripts/iii_branch_guard.sh audit --base develop --feature version-migration --all-iii
 
   Plan alignment of changed III submodules:
-    scripts/git/iii_branch_guard.sh align --base develop --feature version-migration
+    scripts/iii_branch_guard.sh align --base develop --feature version-migration
 
   Apply alignment:
-    scripts/git/iii_branch_guard.sh align --base develop --feature version-migration --yes
+    scripts/iii_branch_guard.sh align --base develop --feature version-migration --yes
 USAGE
 }
 

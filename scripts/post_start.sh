@@ -1,12 +1,4 @@
 #!/bin/bash
-set -euo pipefail
-
-# Devcontainer post-start hook.
-#
-# Responsibilities:
-# - refresh iii CLI argcomplete wiring in ~/.bashrc
-# - reinstall the editable CLI package inside the container
-# - build the workspace with the standard debug configuration
 
 # Remove previously managed iii argcomplete block (if present) and legacy single-line entries.
 sed -i '/# >>> iii-cli argcomplete >>>/,/# <<< iii-cli argcomplete <<</d' ~/.bashrc

@@ -1,6 +1,6 @@
 # Submodule dependency lock file for III-Drone-ros2-ws.
 # Format: <path> <commit-sha>
-# Managed by scripts/git/update_submodule_lock.sh
+# Managed by scripts/update_submodule_lock.sh
 PX4-Autopilot 94cb2012792b2ae89f0b147cfee53ee31ae550be
 PX4-Autopilot/boards/modalai/voxl2/libfc-sensor-api 85151aaf6ba8b24ce82b387e088452c63f7e2096
 PX4-Autopilot/platforms/nuttx/NuttX/apps e37940d8535f603a16b8f6f21c21edaf584218aa

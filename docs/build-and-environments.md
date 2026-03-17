@@ -55,8 +55,8 @@ Shared env and path conventions:
 - GPU runtime settings (NVIDIA)
 
 Post hooks:
-- `.devcontainer/post_create.sh`
-- `.devcontainer/post_start.sh`
+- `scripts/post_create.sh`
+- `scripts/post_start.sh`
 
 ### 3.2 Dockerfile Layers
 

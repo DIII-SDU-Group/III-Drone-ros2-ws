@@ -220,7 +220,7 @@
             "type": "command",
             "command": "shellCommand.execute",
             "args": {
-                "command": "${workspaceFolder}/.vscode/get_debug_pid.sh iii_drone_core hough_transformer",
+                "command": "${workspaceFolder}/scripts/get_debug_pid.sh iii_drone_core hough_transformer",
                 "useFirstResult": true,
                 "useSingleResult": true
             }
@@ -230,7 +230,7 @@
             "type": "command",
             "command": "shellCommand.execute",
             "args": {
-                "command": "${workspaceFolder}/.vscode/get_debug_pid.sh iii_drone_core pl_dir_computer",
+                "command": "${workspaceFolder}/scripts/get_debug_pid.sh iii_drone_core pl_dir_computer",
                 "useFirstResult": true,
                 "useSingleResult": true
             }
@@ -240,7 +240,7 @@
             "type": "command",
             "command": "shellCommand.execute",
             "args": {
-                "command": "${workspaceFolder}/.vscode/get_debug_pid.sh iii_drone_core pl_mapper",
+                "command": "${workspaceFolder}/scripts/get_debug_pid.sh iii_drone_core pl_mapper",
                 "useFirstResult": true,
                 "useSingleResult": true
             }
@@ -250,7 +250,7 @@
             "type": "command",
             "command": "shellCommand.execute",
             "args": {
-                "command": "${workspaceFolder}/.vscode/get_debug_pid.sh iii_drone_core trajectory_generator",
+                "command": "${workspaceFolder}/scripts/get_debug_pid.sh iii_drone_core trajectory_generator",
                 "useFirstResult": true,
                 "useSingleResult": true
             }
@@ -260,7 +260,7 @@
             "type": "command",
             "command": "shellCommand.execute",
             "args": {
-                "command": "${workspaceFolder}/.vscode/get_debug_pid.sh iii_drone_core maneuver_controller",
+                "command": "${workspaceFolder}/scripts/get_debug_pid.sh iii_drone_core maneuver_controller",
                 "useFirstResult": true,
                 "useSingleResult": true
             }
@@ -270,7 +270,7 @@
             "type": "command",
             "command": "shellCommand.execute",
             "args": {
-                "command": "${workspaceFolder}/.vscode/get_debug_pid.sh iii_drone_mission mission_executor",
+                "command": "${workspaceFolder}/scripts/get_debug_pid.sh iii_drone_mission mission_executor",
                 "useFirstResult": true,
                 "useSingleResult": true
             }
