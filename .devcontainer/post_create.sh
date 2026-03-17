@@ -1,4 +1,14 @@
 #!/bin/bash
+set -euo pipefail
+
+# Devcontainer post-create hook.
+#
+# Responsibilities:
+# - ensure the dev profile is sourced from ~/.bashrc
+# - install workspace-owned configuration into .config
+# - install PX4/Gazebo simulation prerequisites
+# - run rosdep for the workspace
+# - install additional apt tools needed in the devcontainer
 
 # If source /home/iii/ws/setup_dev.bash is not in ~/.bashrc, add it
 if ! grep -q "source /home/iii/ws/setup/setup_dev.bash" ~/.bashrc; then

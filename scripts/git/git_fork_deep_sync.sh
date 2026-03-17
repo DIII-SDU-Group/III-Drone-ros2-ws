@@ -1,6 +1,31 @@
 #!/usr/bin/env bash
 set -u
 
+usage() {
+  cat <<'USAGE'
+NAME
+  git_fork_deep_sync.sh - merge upstream branches into matching origin branches
+
+SYNOPSIS
+  scripts/git/git_fork_deep_sync.sh
+
+DESCRIPTION
+  Repository-level helper for fork maintenance.
+
+  For each branch that exists on both `upstream` and `origin`, this script:
+  - checks out or creates the local branch from `origin/<branch>`
+  - merges `upstream/<branch>` into it
+  - pushes the merged result back to `origin/<branch>`
+
+  It is intended for fork synchronization, not normal feature development.
+USAGE
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
 git fetch origin --prune --tags
 git fetch upstream --prune --tags
 

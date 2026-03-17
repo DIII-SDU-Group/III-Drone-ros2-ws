@@ -7,8 +7,8 @@ NAME
   refresh_workspace_submodule_pointers.sh - update workspace III submodule pointers to remote base heads
 
 SYNOPSIS
-  scripts/refresh_workspace_submodule_pointers.sh [--base <branch>] [--feature <branch>] [--all-iii] [--yes]
-  scripts/refresh_workspace_submodule_pointers.sh -h | --help
+  scripts/git/refresh_workspace_submodule_pointers.sh [--base <branch>] [--feature <branch>] [--all-iii] [--yes]
+  scripts/git/refresh_workspace_submodule_pointers.sh -h | --help
 
 DESCRIPTION
   Use this after submodule PRs are merged (which creates merge commits), so the
@@ -20,6 +20,9 @@ DESCRIPTION
   - moves submodule working tree HEAD to origin/<base> (detached)
   - stages updated gitlink in workspace
   - updates deps/submodule-lock.txt
+
+  This is the "refresh my workspace PR after submodule PR merge commits landed"
+  helper.
 
 OPTIONS
   --base <branch>
@@ -36,9 +39,9 @@ OPTIONS
       Apply changes. Without --yes, runs in dry-run mode.
 
 EXAMPLES
-  scripts/refresh_workspace_submodule_pointers.sh --base develop
-  scripts/refresh_workspace_submodule_pointers.sh --base develop --yes
-  scripts/refresh_workspace_submodule_pointers.sh --base develop --feature version-migration --yes
+  scripts/git/refresh_workspace_submodule_pointers.sh --base develop
+  scripts/git/refresh_workspace_submodule_pointers.sh --base develop --yes
+  scripts/git/refresh_workspace_submodule_pointers.sh --base develop --feature version-migration --yes
 USAGE
 }
 
@@ -166,7 +169,7 @@ for p in "${targets[@]}"; do
 done
 
 if (( apply == 1 )); then
-  ./scripts/update_submodule_lock.sh
+  ./scripts/git/update_submodule_lock.sh
   git add deps/submodule-lock.txt
   echo
   if (( changed == 1 )); then

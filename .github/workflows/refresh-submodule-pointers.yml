@@ -41,7 +41,7 @@ jobs:
 
       - name: Refresh III submodule pointers
         run: |
-          cmd=(./scripts/refresh_workspace_submodule_pointers.sh --base "${{ inputs.base_branch }}" --feature "${{ inputs.pr_branch }}" --yes)
+          cmd=(./scripts/git/refresh_workspace_submodule_pointers.sh --base "${{ inputs.base_branch }}" --feature "${{ inputs.pr_branch }}" --yes)
           if [[ "${{ inputs.all_iii }}" == "true" ]]; then
             cmd+=(--all-iii)
           fi

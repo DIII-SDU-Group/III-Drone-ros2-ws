@@ -4,13 +4,14 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  ./scripts/verify_iii_submodule_commits_on_branch_ci.sh --target-branch <branch>
+  ./scripts/ci/verify_iii_submodule_commits_on_branch_ci.sh --target-branch <branch>
 
 Checks each III submodule gitlink commit pinned by the workspace checkout
 and verifies that commit exactly matches origin/<target-branch> HEAD
 in the corresponding submodule repository.
 
-This is intended for CI gatekeeping before merging workspace PRs.
+This is intended for CI gatekeeping before merging workspace PRs into the
+protected integration branch.
 USAGE
 }
 

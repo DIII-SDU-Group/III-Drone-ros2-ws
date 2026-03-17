@@ -1,11 +1,37 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
+set -euo pipefail
 set -x
-set -e
 
-SCRIPT_DIR=$(dirname $(readlink -f $BASH_SOURCE))
+usage() {
+  cat <<'USAGE'
+NAME
+  install_remote.bash - bootstrap the local machine for III remote workflows
 
-source $SCRIPT_DIR/../setup/setup_remote.bash
+SYNOPSIS
+  scripts/remote/install_remote.bash
+
+DESCRIPTION
+  Installs and configures the local developer environment used for remote
+  deployment workflows.
+
+  Actions performed:
+  - source and persist `setup/setup_remote.bash`
+  - install the editable III CLI
+  - configure CLI argcomplete in `~/.bashrc`
+  - install `sshpass` and remote-development helper packages
+  - configure SSH agent forwarding for the target host
+USAGE
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKSPACE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+source "$WORKSPACE_DIR/setup/setup_remote.bash"
 
 if ! grep -q "source $WORKSPACE_DIR/setup/setup_remote.bash" ~/.bashrc; then
     echo "source $WORKSPACE_DIR/setup/setup_remote.bash" >> ~/.bashrc

@@ -29,7 +29,7 @@ The stack is organized into the following domains:
 
 - `src/`: ROS2 packages and submodules
 - `setup/`: environment profiles (`dev`, `real`, `remote`) and runtime vars
-- `scripts/`: build/install/dev helper scripts
+- `scripts/`: categorized workspace tooling (`ci/`, `git/`, `remote/`, `workspace/`)
 - `tools/`: CLI and tmuxinator layouts
 - `deps/`: dependency lock files
 - `docs/`: project architecture and engineering documentation
@@ -82,8 +82,8 @@ Recommended working model:
 Submodule references are governed by a lock file:
 
 - Lock file: `deps/submodule-lock.txt`
-- Verify: `./scripts/verify_submodule_lock.sh`
-- Update intentionally: `./scripts/update_submodule_lock.sh`
+- Verify: `./scripts/git/verify_submodule_lock.sh`
+- Update intentionally: `./scripts/git/update_submodule_lock.sh`
 
 CI enforces lock consistency on PRs/pushes.
 

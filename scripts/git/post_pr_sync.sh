@@ -7,8 +7,8 @@ NAME
   post_pr_sync.sh - safe post-PR sync for workspace + III submodules
 
 SYNOPSIS
-  scripts/post_pr_sync.sh [--base <branch>] [--clean-only] [--yes]
-  scripts/post_pr_sync.sh -h | --help
+  scripts/git/post_pr_sync.sh [--base <branch>] [--clean-only] [--yes]
+  scripts/git/post_pr_sync.sh -h | --help
 
 DESCRIPTION
   After PRs are merged, this script helps bring your local tree back to a clean
@@ -26,6 +26,9 @@ DESCRIPTION
   6) Delete local branches whose upstream is gone *and* are merged into base.
      Also deletes local branches with no matching remote branch when they add
      no commits beyond base.
+
+  Use this after merged PRs to reset your local workspace and III submodules
+  back onto the shared base branch without manually cleaning every repository.
 
 SAFETY
   - No destructive action is done without passing --yes.
@@ -45,10 +48,10 @@ OPTIONS
       Apply changes. Without this flag the script runs in dry-run mode.
 
 EXAMPLES
-  scripts/post_pr_sync.sh
-  scripts/post_pr_sync.sh --base develop
-  scripts/post_pr_sync.sh --base develop --clean-only
-  scripts/post_pr_sync.sh --base develop --yes
+  scripts/git/post_pr_sync.sh
+  scripts/git/post_pr_sync.sh --base develop
+  scripts/git/post_pr_sync.sh --base develop --clean-only
+  scripts/git/post_pr_sync.sh --base develop --yes
 USAGE
 }
 
