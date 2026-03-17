@@ -209,8 +209,13 @@ else
   targets=("${changed_iii[@]}")
 fi
 
+target_mode="changed only"
+if (( all_iii == 1 )); then
+  target_mode="all III"
+fi
+
 if (( ${#targets[@]} == 0 )); then
-  echo "No target III submodules found (mode: ${all_iii:+all III}${all_iii:-changed only})."
+  echo "No target III submodules found (mode: $target_mode)."
   exit 0
 fi
 

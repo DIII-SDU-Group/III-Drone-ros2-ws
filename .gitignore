@@ -16,3 +16,8 @@ package.json
 node_modules/.package-lock.json
 
 **/.*.swp
+
+# Python caches
+**/__pycache__/
+**/.pytest_cache/
+*.pyc

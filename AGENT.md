@@ -30,6 +30,48 @@ Default dev path (inside devcontainer):
 - workspace path: `/home/iii/ws`
 - ROS distro target: Jazzy in devcontainer config and Dockerfile args
 
+### 3.1 Devcontainer Build/Test Execution
+
+Agents may run build and test commands inside the active devcontainer instead of the host shell.
+
+Do not hardcode a container id. Discover the container from the workspace path/labels first.
+
+Preferred discovery command from the host workspace root:
+```bash
+docker ps \
+  --filter "label=devcontainer.local_folder=$(pwd)" \
+  --format '{{.ID}}\t{{.Names}}'
+```
+
+The devcontainer config is in `.devcontainer/devcontainer.json` and the in-container workspace root is:
+- `/home/iii/ws`
+
+Preferred execution pattern:
+```bash
+CONTAINER_ID="$(docker ps --filter "label=devcontainer.local_folder=$(pwd)" --format '{{.ID}}' | head -n1)"
+docker exec "$CONTAINER_ID" bash -lc '
+  source /opt/ros/jazzy/setup.bash
+  cd /home/iii/ws
+  colcon build --base-paths src --packages-select <pkg> --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+'
+```
+
+Preferred test pattern:
+```bash
+CONTAINER_ID="$(docker ps --filter "label=devcontainer.local_folder=$(pwd)" --format '{{.ID}}' | head -n1)"
+docker exec "$CONTAINER_ID" bash -lc '
+  source /opt/ros/jazzy/setup.bash
+  cd /home/iii/ws
+  colcon test --base-paths src --packages-select <pkg> --ctest-args --output-on-failure
+  colcon test-result --verbose
+'
+```
+
+Notes:
+- Only run tests for III packages. Do not run test commands for non-III third-party packages.
+- Use `--base-paths src` when running `colcon` in the devcontainer to avoid package discovery in unrelated workspace directories.
+- Source `/opt/ros/jazzy/setup.bash` before `colcon test`, otherwise Python-based `ament` test helpers may be missing from the environment.
+
 Common build command:
 ```bash
 COLCON_HOME=/home/iii/ws colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
