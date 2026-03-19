@@ -191,3 +191,13 @@ Current docs flag these active risks:
 - fragility when env/config setup is incomplete
 
 Agents should preserve stability and avoid broad refactors unless explicitly requested.
+
+
+
+
+
+
+
+Additional workspace instruction:
+- Only run tests for III packages. Do not run test commands for non-III third-party packages.
+
