@@ -7,3 +7,6 @@ export SUPERVISOR_CONFIG_DIR="$WORKSPACE_DIR/src/III-Drone-Supervision/supervisi
 export SIMULATION_CONFIG_DIR="$WORKSPACE_DIR/tools/simulation"
 export MISSION_SPECIFICATION_DIR="$WORKSPACE_DIR/src/III-Drone-Mission/mission_specification"
 export BEHAVIOR_TREES_DIR="$WORKSPACE_DIR/src/III-Drone-Mission/behavior_trees"
+export III_SYSTEM_RUNTIME_DIR="$WORKSPACE_DIR/runtime"
+export III_SYSTEM_DAEMON_SOCKET="$III_SYSTEM_RUNTIME_DIR/system_manager.sock"
+export III_SYSTEM_DAEMON_LOG="$III_SYSTEM_RUNTIME_DIR/system_manager.log"

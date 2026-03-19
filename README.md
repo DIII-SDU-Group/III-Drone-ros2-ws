@@ -47,13 +47,23 @@ This allows consistent tooling, dependencies, and ROS/PX4 integration across dev
 
 ## Canonical Bringup Model
 
-Current team workflow is intentionally research/test oriented:
+Current team workflow is centered on the III CLI and the supervision daemon:
 
 1. Load the correct environment profile from `setup/*.bash`.
-2. Boot processes via III CLI (`iii system boot`) into tmux layouts.
-3. Use supervisor actions to configure/activate/manage lifecycle states.
+2. Boot the runtime through III CLI (`iii system boot`).
+3. The CLI ensures the background system-manager daemon is running.
+4. The daemon launches the canonical ROS 2 system graph for the selected profile.
+5. The CLI creates a tmux session from a separate tmux view specification.
+6. Use `iii system start` / `stop` / `restart` / `status` for lifecycle-aware operations.
 
-Supervisor orchestrates node state transitions and dependencies, while CLI/tmux handles process boot transparency and control.
+The canonical runtime graph now lives in `src/III-Drone-Supervision/iii_drone_supervision/system_spec.py`.
+Direct unmanaged launch is still supported through:
+
+```bash
+ros2 launch iii_drone_supervision system.launch.py profile:=sim
+```
+
+The supervision daemon adds process tracking, lifecycle orchestration, CLI integration, and derived tmux views on top of that graph.
 
 ## Quick Start (Development/Simulation)
 
@@ -94,6 +104,7 @@ Start here for detailed technical documentation:
 - [Workspace Docs Index](docs/README.md)
 - [Workspace Overview](docs/workspace-overview.md)
 - [Runtime Launch And Node Graph](docs/runtime-launch-and-node-graph.md)
+- [Supervision And Process Management](docs/supervision-and-process-management.md)
 - [Dependency Governance](docs/dependency-governance.md)
 - [Repository Boundary Map](docs/repo-boundary-map.md)
 

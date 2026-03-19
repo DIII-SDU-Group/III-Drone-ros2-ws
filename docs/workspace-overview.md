@@ -46,12 +46,14 @@ The system decomposes into these runtime domains:
 ## 5. Primary Runtime Pattern
 
 Operationally, the architecture is centered on:
-1. Configuration server provides parameter values and management services.
-2. Supervisor starts/manages lifecycle/process-wrapped nodes according to dependency constraints.
-3. Perception publishes environmental state (powerline estimates, orientations).
-4. Control exposes maneuver action servers and reference services.
-5. Mission layer runs behavior trees that orchestrate maneuver actions and system service calls.
-6. PX4 interface layer registers and executes offboard mode behavior.
+1. A canonical system specification in `III-Drone-Supervision` declares the runtime graph and profile-conditioned differences.
+2. A background supervision daemon instantiates that graph through ROS 2 launch and tracks process state.
+3. The daemon uses supervision logic to configure/activate managed nodes according to dependency constraints.
+4. Configuration services provide parameter values and runtime updates to participating nodes.
+5. Perception publishes environmental state (powerline estimates, orientations).
+6. Control exposes maneuver action servers and reference services.
+7. Mission layer runs behavior trees that orchestrate maneuver actions and system service calls.
+8. PX4 interface layer registers and executes offboard mode behavior.
 
 ## 6. External Integrations
 
@@ -68,4 +70,5 @@ This codebase is not a simple single-package ROS app. It is a full system stack 
 - Mixed C++ + Python ROS2 nodes.
 - Lifecycle nodes and standard nodes coexisting.
 - Action/service-heavy orchestration.
+- A launch-driven runtime graph with daemon-managed operator workflows.
 - Subsystem-level modularity but strong cross-package coupling through shared interfaces and configuration keys.

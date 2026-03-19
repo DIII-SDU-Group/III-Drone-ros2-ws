@@ -6,6 +6,7 @@ export WORKSPACE_DIR="$(dirname $SCRIPT_DIR)"
 source $SCRIPT_DIR/paths.bash
 
 export SIMULATION="true"
+export III_SYSTEM_PROFILE="sim"
 source $SCRIPT_DIR/supervisor_config.bash
 export SUPERVISOR_CONFIG_FILE=$SUPERVISOR_CONFIG_FILE_SIM
 
