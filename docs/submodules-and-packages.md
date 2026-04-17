@@ -51,8 +51,8 @@ Package names and roles:
 - Executable: `depth_cam_to_mmwave`.
 
 6. `iii_drone_supervision` (ament_python)
-- Supervisor node and managed node/process wrappers.
-- Console scripts: `supervisor`, `managed_node_wrapper`.
+- System daemon, runtime manager, and managed node/process wrappers.
+- Console scripts: `system_daemon`, `managed_node_wrapper`.
 
 7. `iii_drone_gc` (ament_python)
 - Ground control GUI + ROS2 client node for operator telemetry/control.

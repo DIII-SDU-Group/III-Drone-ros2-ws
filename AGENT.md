@@ -15,7 +15,7 @@ Treat this repo as the source of truth for:
 
 ## 2) Canonical Runtime Model
 
-Preferred bringup flow:
+Bringup flow:
 1. Source an environment profile from `setup/` (usually `setup/setup_dev.bash`).
 2. Start runtime via III CLI and tmux layout:
    - `iii system boot`
@@ -96,7 +96,6 @@ Rules:
 Primary workspace-owned integration areas are still safe default targets:
 - `setup/`
 - `scripts/`
-- `tools/tmuxinator/`
 - top-level docs and workflow files
 
 For submodules, use this strict policy.
@@ -142,7 +141,6 @@ Recursive/nested third-party submodules (for example under `PX4-Autopilot` and `
 Runtime expects environment variables and config layout from `setup/paths.bash`, especially:
 - `CONFIG_BASE_DIR`
 - `NODE_MANAGEMENT_CONFIG_DIR`
-- `SUPERVISOR_CONFIG_DIR`
 - `MISSION_SPECIFICATION_DIR`
 - `BEHAVIOR_TREES_DIR`
 
@@ -184,10 +182,9 @@ iii system boot
 
 ## 9) Known Project Risks To Keep In Mind
 
-Current docs flag these active risks:
+Active risks documented in the workspace:
 - launch-path inconsistencies between some launch files and supervision-managed flows
 - tight cross-package coupling via shared interfaces/config
-- potential confusion from legacy simulation naming/history
 - fragility when env/config setup is incomplete
 
 Agents should preserve stability and avoid broad refactors unless explicitly requested.
@@ -200,4 +197,3 @@ Agents should preserve stability and avoid broad refactors unless explicitly req
 
 Additional workspace instruction:
 - Only run tests for III packages. Do not run test commands for non-III third-party packages.
-

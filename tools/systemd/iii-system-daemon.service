@@ -1,0 +1,19 @@
+[Unit]
+Description=III system daemon
+After=network.target
+
+[Service]
+Type=simple
+User=iii
+Group=iii
+WorkingDirectory=/home/iii/ws
+KillMode=control-group
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+ExecStartPre=/bin/mkdir -p /home/iii/ws/runtime
+ExecStartPre=/bin/rm -f /home/iii/ws/runtime/system_manager.sock /home/iii/ws/runtime/system_manager.lock
+ExecStart=/bin/bash -lc 'source /home/iii/ws/setup/setup_dev.bash && mkdir -p "$(dirname "$III_SYSTEM_DAEMON_LOG")" && exec python3 -m iii_drone_supervision.system_daemon --socket "$III_SYSTEM_DAEMON_SOCKET" >> "$III_SYSTEM_DAEMON_LOG" 2>&1'
+
+[Install]
+WantedBy=multi-user.target

@@ -8,7 +8,6 @@ set -euo pipefail
 # - install workspace-owned configuration into .config
 # - install PX4/Gazebo simulation prerequisites
 # - run rosdep for the workspace
-# - install additional apt tools needed in the devcontainer
 
 # If source /home/iii/ws/setup_dev.bash is not in ~/.bashrc, add it
 if ! grep -q "source /home/iii/ws/setup/setup_dev.bash" ~/.bashrc; then
@@ -24,12 +23,11 @@ if [ ! -d /home/iii/ws/PX4-Autopilot ]; then
     exit 1
 fi
 
-/bin/bash /home/iii/ws/PX4-Autopilot/Tools/setup/ubuntu.sh
+# The devcontainer uses PX4 SITL/Gazebo only. Skip the NuttX ARM firmware
+# toolchain; it is large and not needed for companion-computer development.
+/bin/bash /home/iii/ws/PX4-Autopilot/Tools/setup/ubuntu.sh --no-nuttx
 
 ./src/III-Drone-Simulation/scripts/install_gazebo_simulation_assets.sh /home/iii/ws/PX4-Autopilot
-
-sudo apt update
-sudo apt install -y gcc-arm-none-eabi
 
 # Rosdep install
 rosdep update && rosdep install --from-paths src --ignore-src -y && sudo chown -R $(whoami) /home/iii/ws/

@@ -12,7 +12,7 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
    Submodule inventory, package purposes, build types, and dependency relationships.
 
 3. `build-and-environments.md`
-   Containerized dev/deploy/cross-compile setup, build flow, runtime environment variables, and deployment context.
+   Devcontainer setup, native onboard runtime assumptions, build flow, runtime environment variables, and deployment context.
 
 4. `runtime-launch-and-node-graph.md`
    Runtime orchestration, canonical launch graph, system profiles, and communication patterns.
@@ -30,7 +30,7 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
    Core package deep-dive: perception pipeline, maneuver stack, control references, and adapter architecture.
 
 9. `supervision-and-process-management.md`
-    System-manager daemon, dependency-based lifecycle management, managed process wrappers, and supervision model.
+    System-manager daemon, daemon-managed services, dependency-based lifecycle management, managed process wrappers, and supervision model.
 
 10. `simulation-and-px4-integration.md`
     Gazebo/PX4 integration, bridge paths, simulation assets, and SITL-related mechanics.

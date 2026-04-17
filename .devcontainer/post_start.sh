@@ -40,8 +40,54 @@ fi
 pip3 uninstall -y iii 2> /dev/null
 pip3 install -e ./tools/III-Drone-CLI
 
-# Source bashrc
-source ~/.bashrc
+# Refresh PX4 Gazebo simulation assets if the checkout is present.
+if [ -d /home/iii/ws/PX4-Autopilot ]; then
+    ./src/III-Drone-Simulation/scripts/install_gazebo_simulation_assets.sh /home/iii/ws/PX4-Autopilot
+fi
 
-# Build workspace
-COLCON_HOME=/home/iii/ws colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+# Source only the ROS underlay before building. Sourcing the workspace install
+# here can make CMake resolve stale artifacts from previous builds.
+set +u
+source /opt/ros/jazzy/setup.bash
+set -u
+
+# Build workspace. Limit discovery to src/ so colcon does not pick up duplicate
+# packages from auxiliary workspaces or Python virtual environments.
+COLCON_COMMON_ARGS=(
+    --base-paths src
+    --symlink-install
+)
+COLCON_CMAKE_ARGS=(
+    --cmake-args
+    -DCMAKE_BUILD_TYPE=Debug
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+)
+
+# micro_ros_agent does not declare the vendored Micro XRCE-DDS Agent as a ROS
+# package dependency, so build the CMake package first and source it explicitly.
+COLCON_HOME=/home/iii/ws colcon build \
+    "${COLCON_COMMON_ARGS[@]}" \
+    --packages-select microxrcedds_agent \
+    "${COLCON_CMAKE_ARGS[@]}"
+
+set +u
+source /home/iii/ws/install/setup.bash
+set -u
+
+COLCON_HOME=/home/iii/ws colcon build \
+    "${COLCON_COMMON_ARGS[@]}" \
+    --packages-select micro_ros_agent \
+    "${COLCON_CMAKE_ARGS[@]}" \
+    -DMICROROSAGENT_SUPERBUILD=OFF
+
+set +u
+source /home/iii/ws/install/setup.bash
+set -u
+
+COLCON_HOME=/home/iii/ws colcon build \
+    "${COLCON_COMMON_ARGS[@]}" \
+    --packages-skip microxrcedds_agent micro_ros_agent \
+    "${COLCON_CMAKE_ARGS[@]}"
+
+# Install and run the daemon through systemd so dev mirrors onboard runtime ownership.
+./scripts/systemd/install_dev_systemd_service.sh

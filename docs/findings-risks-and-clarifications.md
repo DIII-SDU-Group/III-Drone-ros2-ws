@@ -44,7 +44,7 @@ Confirmed by maintainer clarification:
 - If users bypass CLI boot assumptions, supervisor lifecycle actions may fail against missing processes.
 
 4. Potential dead paths:
-- Unused or stale BT XML files and legacy launch references may hide dormant assumptions.
+- Unused or stale BT XML files and stale launch references may hide dormant assumptions.
 
 ## 3. Clarification Questions (Remaining)
 
@@ -58,7 +58,7 @@ Confirmed by maintainer clarification:
 - Is current `mission_specification.yaml` intentionally test-focused, or should we switch docs/code defaults to production cable workflow trees?
 
 4. Simulation baseline:
-- Which simulation stack is authoritative now: Gazebo Garden (`gz`) only, or do you still support/expect Gazebo Classic launch paths?
+- Which simulation stack is authoritative: Gazebo Garden (`gz`) only, or do you still support/expect Gazebo Classic launch paths?
 
 5. Configuration source of truth:
 - Should runtime parameter files be maintained in `src/III-Drone-Configuration/config/parameters/*` only, or in installed `$CONFIG_BASE_DIR/iii_drone/parameters/*` as authoritative copies?
