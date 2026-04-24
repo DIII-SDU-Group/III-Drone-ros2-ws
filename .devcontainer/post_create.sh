@@ -9,6 +9,17 @@ set -euo pipefail
 # - install PX4/Gazebo simulation prerequisites
 # - run rosdep for the workspace
 
+ensure_workspace_runtime_ownership() {
+    local target_user="iii"
+    local target_group="iii"
+
+    sudo mkdir -p /home/iii/ws/.config /home/iii/ws/runtime /home/iii/ws/runtime_logs
+    sudo chown -R "${target_user}:${target_group}" \
+        /home/iii/ws/.config \
+        /home/iii/ws/runtime \
+        /home/iii/ws/runtime_logs
+}
+
 # If source /home/iii/ws/setup_dev.bash is not in ~/.bashrc, add it
 if ! grep -q "source /home/iii/ws/setup/setup_dev.bash" ~/.bashrc; then
     echo "source /home/iii/ws/setup/setup_dev.bash" >> ~/.bashrc
@@ -30,4 +41,9 @@ fi
 ./src/III-Drone-Simulation/scripts/install_gazebo_simulation_assets.sh /home/iii/ws/PX4-Autopilot
 
 # Rosdep install
-rosdep update && rosdep install --from-paths src --ignore-src -y && sudo chown -R $(whoami) /home/iii/ws/
+rosdep update && rosdep install --from-paths src --ignore-src -y
+
+# Some devcontainer lifecycle steps and VS Code helper commands may run as root.
+# Normalize the writable runtime/config paths back to the container user so live
+# parameter snapshots and other runtime artifacts can always be persisted.
+ensure_workspace_runtime_ownership

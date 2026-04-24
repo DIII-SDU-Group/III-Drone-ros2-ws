@@ -8,6 +8,19 @@ set -euo pipefail
 # - reinstall the editable CLI package inside the container
 # - build the workspace with the standard debug configuration
 
+ensure_workspace_runtime_ownership() {
+    local target_user="iii"
+    local target_group="iii"
+
+    sudo mkdir -p /home/iii/ws/.config /home/iii/ws/runtime /home/iii/ws/runtime_logs
+    sudo chown -R "${target_user}:${target_group}" \
+        /home/iii/ws/.config \
+        /home/iii/ws/runtime \
+        /home/iii/ws/runtime_logs
+}
+
+ensure_workspace_runtime_ownership
+
 # Remove previously managed iii argcomplete block (if present) and legacy single-line entries.
 sed -i '/# >>> iii-cli argcomplete >>>/,/# <<< iii-cli argcomplete <<</d' ~/.bashrc
 sed -i '/# III CLI argcomplete (safe across argcomplete command variants)./,/^fi$/d' ~/.bashrc
