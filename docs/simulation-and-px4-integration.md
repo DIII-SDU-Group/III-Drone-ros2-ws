@@ -10,10 +10,15 @@
 ## 2. Runtime Simulation Flow
 
 In simulation mode (`SIMULATION=true`):
-1. `iii_drone.launch.py` includes `iii_drone_simulation/sensors_sim.launch.py`.
-2. `ros_gz_bridge` bridges simulated camera and depth point cloud topics.
-3. `depth_cam_to_mmwave` converts incoming depth cloud to mmWave-like output topic (`/sensor/mmwave/pcl`).
-4. `tf_sim.launch.py` publishes sim-specific static transforms and dynamic drone frame updates.
+1. The simulation helper starts Gazebo/PX4 SITL outside III supervision.
+2. PX4 SITL is treated like the physical PX4 flight controller becoming available.
+3. The III daemon starts `micro_ros_agent` as a daemon-managed service during system bringup.
+4. `iii_drone_simulation/sensors_sim.launch.py` provides simulated sensor ingress through the supervised system graph.
+5. `ros_gz_bridge` bridges simulated camera and depth point cloud topics.
+6. `depth_cam_to_mmwave` converts incoming depth cloud to mmWave-like output topic (`/sensor/mmwave/pcl`).
+7. `tf_sim.launch.py` publishes sim-specific static transforms and dynamic drone frame updates.
+
+QGroundControl is outside III supervision. Connecting or disconnecting it affects PX4/operator telemetry, not III lifecycle bringup.
 
 ## 3. PX4 SITL Asset Injection
 
@@ -42,9 +47,11 @@ Workspace includes local `PX4-Autopilot/` repo and package-level references to D
 
 Mission/control integration points with PX4 include:
 - `px4_msgs` subscriptions/publications
-- micro-ROS agent bridging
+- daemon-managed micro-ROS agent bridging
 - offboard mode registration via service APIs
 - mode executor behavior inside mission package
+
+The III daemon monitors FMU topic heartbeats exposed through the bridge. PX4 SITL/Gazebo can be started before or after `iii system boot`; PX4-dependent nodes remain inactive until the bridge is ready.
 
 ## 6. Patch Artifact
 

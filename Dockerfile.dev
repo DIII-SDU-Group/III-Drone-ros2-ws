@@ -12,6 +12,26 @@ ARG USER_GID
 # Required on Ubuntu 24+/PEP668 images so pip can install project dependencies.
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
+# Make transient Ubuntu mirror failures less likely to abort long image builds.
+RUN printf '%s\n' \
+    'Acquire::Retries "5";' \
+    'Acquire::http::Timeout "30";' \
+    'Acquire::https::Timeout "30";' \
+    'Acquire::http::Pipeline-Depth "0";' \
+    > /etc/apt/apt.conf.d/80-iii-network
+
+# This network blocks Ubuntu HTTP mirrors on port 80. Use HTTPS for Ubuntu
+# archive/security sources, but leave ROS sources on HTTP because packages.ros.org
+# does not present a certificate valid for that host.
+RUN set -eux; \
+    for file in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do \
+        [ -f "${file}" ] || continue; \
+        sed -i -E \
+            -e 's|http://([A-Za-z0-9.-]*archive\.ubuntu\.com/ubuntu)|https://\1|g' \
+            -e 's|http://(security\.ubuntu\.com/ubuntu)|https://\1|g' \
+            "${file}"; \
+    done
+
 # Create or rename user/group to match requested identity.
 RUN set -eux; \
     existing_group="$(getent group "${USER_GID}" | cut -d: -f1 || true)"; \
@@ -36,31 +56,37 @@ RUN set -eux; \
     mkdir -p "/home/${USERNAME}"; \
     chown -R "${USER_UID}:${USER_GID}" "/home/${USERNAME}"
 
-RUN apt-get update
-RUN apt-get install -y sudo
-RUN echo "${USERNAME} ALL=(root) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}"
-RUN chmod 0440 "/etc/sudoers.d/${USERNAME}"
-RUN apt-get update && apt-get upgrade -y
-RUN usermod -s /bin/bash "${USERNAME}"
-
-# Install dependencies
-COPY src/III-Drone-Core/scripts /scripts
-
-# Install ROS
-RUN apt-get update && apt-get install -y \
+# Install stable apt dependencies in one layer. Avoid full apt upgrades: the
+# base image pins the OS/ROS baseline, while upgrades are slow and
+# non-reproducible. Keep GUI/simulation-only dependencies in a later layer.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    sudo \
+    ca-certificates \
     locales \
     wget \
-    ros-${ROS_DISTRO}-rmw-cyclonedds-cpp && \
-    /scripts/install_dependencies.sh && \
-    rm -rf /scripts && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install necessary packages and dependencies
-RUN apt-get update && apt-get install -y \
+    ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
+    ros-${ROS_DISTRO}-generate-parameter-library \
+    ros-${ROS_DISTRO}-generate-parameter-library-py \
+    ros-${ROS_DISTRO}-parameter-traits \
     python3-colcon-common-extensions \
-    python3-pip
-
-RUN apt-get update && apt-get upgrade -y
+    python3-pip \
+    ccache \
+    ninja-build \
+    vim \
+    git \
+    lsb-release \
+    tmux \
+    htop \
+    gdb \
+    build-essential \
+    cmake && \
+    (apt-get purge -y modemmanager || true) && \
+    rm -rf /var/lib/apt/lists/*
+RUN echo "${USERNAME} ALL=(root) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}" && \
+    chmod 0440 "/etc/sudoers.d/${USERNAME}" && \
+    usermod -s /bin/bash "${USERNAME}" && \
+    usermod -a -G dialout "${USERNAME}" && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy the entrypoint script
 COPY entrypoint_dev.sh /entrypoint.sh
@@ -78,10 +104,7 @@ ENTRYPOINT ["/entrypoint.sh"]
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /etc/bash.bashrc
 RUN echo "source /home/${USERNAME}/ws/install/setup.bash" >> /etc/bash.bashrc
 
-# Install userspace tools
 USER ${USERNAME}
-
-RUN sudo apt-get install vim -y
 
 COPY requirements.txt /requirements.txt
 
@@ -92,25 +115,12 @@ RUN pip3 install -r /requirements.txt
 
 RUN sudo rm -rf /requirements.txt
 
-# Install simulation tools:
-RUN sudo apt install -y wget git lsb-release
-
-# QGroundControl
-RUN sudo usermod -a -G dialout "${USERNAME}"
-RUN sudo apt-get remove modemmanager -y
-RUN sudo apt install gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-gl -y
-RUN sudo apt install libfuse2 -y
-RUN sudo apt install libxcb-xinerama0 libxkbcommon-x11-0 libxcb-cursor0 -y
-RUN sudo apt install -y fuse
-
 RUN wget https://github.com/mavlink/qgroundcontrol/releases/download/v5.0.8/QGroundControl-x86_64.AppImage -P "/home/${USERNAME}" -O "/home/${USERNAME}/QGroundControl.AppImage"
 RUN chmod +x "/home/${USERNAME}/QGroundControl.AppImage"
 
 # Install development tools
-RUN sudo apt install -y terminator tmux tmuxinator htop gdb
 COPY tools/terminator /home/${USERNAME}/.config/terminator
 COPY tools/QGroundControl.org /home/${USERNAME}/.config/QGroundControl.org
-RUN sudo ln -s "/home/${USERNAME}/ws/tools/tmuxinator" "/home/${USERNAME}/.config/tmuxinator"
 
 RUN sudo chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.config"
 
@@ -118,6 +128,38 @@ RUN sudo chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.config"
 COPY .bashrc /home/${USERNAME}/.bashrc
 RUN sudo chown "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.bashrc"
 
-ENV SHELL=/bin/bash
+USER root
 
-# USER iii
+# GUI/simulation operator tools. Keep this after Python and QGC layers so
+# transient Ubuntu mirror failures do not invalidate the stable base layer.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fuse \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-libav \
+    gstreamer1.0-gl \
+    libfuse2 \
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libxcb-xinerama0 \
+    libxkbcommon-x11-0 \
+    libxcb-cursor0 \
+    terminator && \
+    rm -rf /var/lib/apt/lists/*
+
+# Workspace runtime/build dependencies. Keep this late so adding package
+# dependencies does not invalidate the stable tooling, Python, or QGC layers.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-${ROS_DISTRO}-pcl-ros \
+    libopencv-dev \
+    python3-opencv \
+    ros-${ROS_DISTRO}-cv-bridge \
+    ros-${ROS_DISTRO}-image-transport \
+    ros-${ROS_DISTRO}-usb-cam \
+    libzmq3-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV SHELL=/bin/bash
+ENV container=docker
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]

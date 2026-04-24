@@ -1,0 +1,37 @@
+# Generated ROS workspace outputs
+build/
+install/
+log/
+runtime/
+runtime_logs/
+
+# Cross-compilation workspace outputs. Keep cc_ws helper scripts available for
+# Dockerfile.cc.
+cc_ws/build/
+cc_ws/install/
+cc_ws/log/
+cc_ws/src/
+
+# PX4 is mounted from the workspace at runtime and is not copied into images.
+PX4-Autopilot/
+
+# Runtime/analysis datasets are mounted at runtime, not baked into images.
+rosbags/
+testing/
+data_analysis/
+
+# VCS and agent-local state are not needed in image layers.
+.git/
+.codex/
+
+# Python and test caches
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Common editor and OS noise
+node_modules/
+.vscode/
+.idea/
+.DS_Store

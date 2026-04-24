@@ -89,7 +89,7 @@
         {
             "label": "Launch ROS2 III system",
             "type": "shell",
-            "command": "terminator --no-dbus -x tmuxinator iii_dev_launch ; tmux kill-session -t iii_dev_launch || echo done",
+            "command": "terminator --no-dbus -x bash -lc 'source ${workspaceFolder}/setup/setup_dev.bash && iii system boot --attach'",
             "group": {
                 "kind": "test"
             }
@@ -97,7 +97,7 @@
         {
             "label": "Launch simulation environment",
             "type": "shell",
-            "command": "terminator --no-dbus -x tmuxinator iii_dev_sim_launch ; tmux kill-session -t iii_dev_launch || echo done",
+            "command": "terminator --no-dbus -x bash -lc '${workspaceFolder}/tools/simulation/launch_simulation_tools.sh --recreate'",
             "group": {
                 "kind": "test"
             }

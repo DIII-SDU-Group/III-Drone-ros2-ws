@@ -88,6 +88,29 @@ Notes:
   ```
   then commit + push workspace branch to update workspace PR gitlinks and lock file
 
+### Push-Only Stack Automation
+
+Use the push-only helper when you want the coordinated III feature branches
+published to origin without creating any PRs yet:
+
+```bash
+./scripts/git/push_stack.sh --base develop --feature <feature-branch>
+./scripts/git/push_stack.sh --base develop --feature <feature-branch> --yes
+./scripts/git/push_stack.sh --base main --feature <release-branch> --all-iii --yes
+```
+
+What it does:
+- detects changed III submodules
+- pushes each eligible III submodule feature branch
+- pushes the workspace feature branch
+
+Notes:
+- `--yes` is required to actually push
+- `--all-iii` targets all III submodules instead of only changed ones
+- without `--yes`, it is a dry-run
+- unlike `create_stack_prs.sh`, it never calls `gh` and never creates or edits PRs
+- dirty worktrees are skipped because only committed branch state can be pushed
+
 ### Develop to main release flow
 
 Use the dedicated release wrapper when promoting `develop` into `main`:

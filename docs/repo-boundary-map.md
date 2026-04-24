@@ -39,11 +39,11 @@ Decision rule:
 
 ### 2.2 Move Into Workspace Repo (or treat as workspace-owned, not independent products)
 
-1. `tools/tmuxinator/*`
-- Pure integration/ops glue for your team workflows.
-
-2. `setup/*` and top-level `scripts/*`
+1. `setup/*` and top-level `scripts/*`
 - Environment/bootstrap/deployment glue for this specific integrated system.
+
+2. Runtime operator-view and deployment glue
+- Files that encode tmux session layout, environment assumptions, and deployment workflow belong with the workspace-level integration layer.
 
 3. Simulation install glue and local asset plumbing
 - Keep `III-Drone-Simulation` as a repo if desired, but workspace should own the authoritative integration scripts/profiles that tie it to PX4 and your current workflow.
@@ -63,7 +63,7 @@ Option B: Move into workspace
 - Good if they are tightly coupled to this exact stack and unlikely to be reused.
 - Simplifies day-to-day branch/PR flow.
 
-Recommendation for now:
+Recommendation:
 - Keep both separate until coupling becomes clearly one-project-only.
 
 ## 3. Submodule Complexity Reduction Plan

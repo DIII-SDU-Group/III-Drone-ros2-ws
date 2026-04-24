@@ -3,15 +3,19 @@ export CLI_CONFIGURATION="dev"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 export WORKSPACE_DIR="$(dirname $SCRIPT_DIR)"
 
+if [ -f /opt/ros/jazzy/setup.bash ]; then
+    source /opt/ros/jazzy/setup.bash
+fi
+
+if [ -f "$WORKSPACE_DIR/install/setup.bash" ]; then
+    source "$WORKSPACE_DIR/install/setup.bash"
+fi
+
+source $SCRIPT_DIR/cli_path.bash
 source $SCRIPT_DIR/paths.bash
 
 export SIMULATION="true"
-source $SCRIPT_DIR/supervisor_config.bash
-export SUPERVISOR_CONFIG_FILE=$SUPERVISOR_CONFIG_FILE_SIM
-
-source $SCRIPT_DIR/tmuxinator_config.bash
-export TMUXINATOR_PROJECT=$TMUXINATOR_PROJECT_DEV
-export TMUXINATOR_PROJECT_HITL=$TMUXINATOR_PROJECT_DEV_HITL
+export III_SYSTEM_PROFILE="sim"
 
 export COLCON_HOME="$WORKSPACE_DIR"
 

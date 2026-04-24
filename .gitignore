@@ -5,6 +5,11 @@ install/*
 log/*
 !log/.gitignore
 
+# Runtime daemon IPC/state and generated node logs
+runtime/
+runtime_logs/**/*.log
+runtime_logs/**/latest
+
 .config/*
 !.config/.gitignore
 
