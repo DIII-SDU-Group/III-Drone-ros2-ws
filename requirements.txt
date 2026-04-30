@@ -1,5 +1,5 @@
 # appdirs==1.4.4
-argcomplete==1.8.1
+argcomplete>=3,<4
 # attrs==23.2.0
 # beniget==0.4.1
 # Brotli==1.0.9

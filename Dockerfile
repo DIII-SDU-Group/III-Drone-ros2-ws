@@ -84,9 +84,33 @@ RUN activate-global-python-argcomplete3
 
 USER iii
 
-RUN if ! grep -q "eval \"\$(register-python-argcomplete3 iii)\"" ~/.bashrc; then \
-        echo "eval \"\$(register-python-argcomplete3 iii)\"" >> ~/.bashrc ; \
+RUN sed -i '/# >>> iii-cli argcomplete >>>/,/# <<< iii-cli argcomplete <<</d' ~/.bashrc && \
+    sed -i '/eval "\$(register-python-argcomplete3 iii)"/d;/eval "\$(register-python-argcomplete iii)"/d' ~/.bashrc && \
+    cat >> ~/.bashrc <<'EOF'
+# >>> iii-cli argcomplete >>>
+_iii_python_argcomplete() {
+    local IFS=$'\013'
+    local suppress_space=0
+    if compopt +o nospace 2> /dev/null; then
+        suppress_space=1
     fi
+    COMPREPLY=( $(IFS="$IFS" \
+                  COMP_LINE="$COMP_LINE" \
+                  COMP_POINT="$COMP_POINT" \
+                  COMP_TYPE="$COMP_TYPE" \
+                  _ARGCOMPLETE_COMP_WORDBREAKS="$COMP_WORDBREAKS" \
+                  _ARGCOMPLETE=1 \
+                  _ARGCOMPLETE_SUPPRESS_SPACE=$suppress_space \
+                  "$1" 8>&1 9>&2 1>/dev/null 2>/dev/null) )
+    if [[ $? != 0 ]]; then
+        unset COMPREPLY
+    elif [[ $suppress_space == 1 ]] && [[ "$COMPREPLY" =~ [=/:]$ ]]; then
+        compopt -o nospace
+    fi
+}
+complete -o nospace -o default -F _iii_python_argcomplete iii
+# <<< iii-cli argcomplete <<<
+EOF
 
 ENV SHELL=/bin/bash
 
