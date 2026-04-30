@@ -123,19 +123,25 @@ if ! shopt -oq posix; then
 fi
 
 # >>> iii-cli argcomplete >>>
-__iii_enable_argcomplete() {
-    local cmd shellcode
-    for cmd in register-python-argcomplete3 register-python-argcomplete; do
-        if command -v "$cmd" >/dev/null 2>&1; then
-            shellcode="$("$cmd" iii 2>/dev/null || true)"
-            if [ -n "$shellcode" ]; then
-                eval "$shellcode"
-                return 0
-            fi
-        fi
-    done
-    return 1
+_iii_python_argcomplete() {
+    local IFS=$'\013'
+    local suppress_space=0
+    if compopt +o nospace 2> /dev/null; then
+        suppress_space=1
+    fi
+    COMPREPLY=( $(IFS="$IFS" \
+                  COMP_LINE="$COMP_LINE" \
+                  COMP_POINT="$COMP_POINT" \
+                  COMP_TYPE="$COMP_TYPE" \
+                  _ARGCOMPLETE_COMP_WORDBREAKS="$COMP_WORDBREAKS" \
+                  _ARGCOMPLETE=1 \
+                  _ARGCOMPLETE_SUPPRESS_SPACE=$suppress_space \
+                  "$1" 8>&1 9>&2 1>/dev/null 2>/dev/null) )
+    if [[ $? != 0 ]]; then
+        unset COMPREPLY
+    elif [[ $suppress_space == 1 ]] && [[ "$COMPREPLY" =~ [=/:]$ ]]; then
+        compopt -o nospace
+    fi
 }
-__iii_enable_argcomplete || true
-unset -f __iii_enable_argcomplete
+complete -o nospace -o default -F _iii_python_argcomplete iii
 # <<< iii-cli argcomplete <<<

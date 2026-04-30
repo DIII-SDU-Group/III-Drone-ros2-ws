@@ -5,7 +5,6 @@ set -euo pipefail
 #
 # Responsibilities:
 # - ensure the dev profile is sourced from ~/.bashrc
-# - install workspace-owned configuration into .config
 # - install PX4/Gazebo simulation prerequisites
 # - run rosdep for the workspace
 
@@ -20,13 +19,20 @@ ensure_workspace_runtime_ownership() {
         /home/iii/ws/runtime_logs
 }
 
-# If source /home/iii/ws/setup_dev.bash is not in ~/.bashrc, add it
-if ! grep -q "source /home/iii/ws/setup/setup_dev.bash" ~/.bashrc; then
-    echo "source /home/iii/ws/setup/setup_dev.bash" >> ~/.bashrc
-fi
+ensure_source_line() {
+    local line="$1"
+    local file="$2"
 
-# Install configuration
-./src/III-Drone-Configuration/scripts/install.sh .config 
+    if ! grep -qxF "$line" "$file" 2>/dev/null; then
+        echo "$line" >> "$file"
+    fi
+}
+
+# Interactive non-login shells use ~/.bashrc; tmux panes launched as bash -lc
+# depend on ~/.profile because ~/.bashrc returns early for non-interactive
+# shells.
+ensure_source_line "source /home/iii/ws/setup/setup_dev.bash" "$HOME/.bashrc"
+ensure_source_line "source /home/iii/ws/setup/setup_dev.bash" "$HOME/.profile"
 
 # Install simulation assets
 if [ ! -d /home/iii/ws/PX4-Autopilot ]; then

@@ -7,6 +7,8 @@ set -euo pipefail
 # - refresh iii CLI argcomplete wiring in ~/.bashrc
 # - reinstall the editable CLI package inside the container
 # - build the workspace with the standard debug configuration
+# - run the schema-aware configuration install/update that requires the built
+#   iii_drone_configuration native extension
 
 ensure_workspace_runtime_ownership() {
     local target_user="iii"
@@ -19,32 +21,50 @@ ensure_workspace_runtime_ownership() {
         /home/iii/ws/runtime_logs
 }
 
+ensure_source_line() {
+    local line="$1"
+    local file="$2"
+
+    if ! grep -qxF "$line" "$file" 2>/dev/null; then
+        echo "$line" >> "$file"
+    fi
+}
+
 ensure_workspace_runtime_ownership
+ensure_source_line "source /home/iii/ws/setup/setup_dev.bash" "$HOME/.bashrc"
+ensure_source_line "source /home/iii/ws/setup/setup_dev.bash" "$HOME/.profile"
 
 # Remove previously managed iii argcomplete block (if present) and legacy single-line entries.
 sed -i '/# >>> iii-cli argcomplete >>>/,/# <<< iii-cli argcomplete <<</d' ~/.bashrc
 sed -i '/# III CLI argcomplete (safe across argcomplete command variants)./,/^fi$/d' ~/.bashrc
 sed -i '/eval "\$(register-python-argcomplete3 iii)"/d;/eval "\$(register-python-argcomplete iii)"/d' ~/.bashrc
 
-# Add resilient completion setup once.
+# Add static iii completion wiring once. This avoids runtime dependence on
+# whichever register-python-argcomplete helper happens to be installed.
 if ! grep -q "# >>> iii-cli argcomplete >>>" ~/.bashrc; then
 cat >> ~/.bashrc <<'EOF'
 # >>> iii-cli argcomplete >>>
-__iii_enable_argcomplete() {
-    local cmd shellcode
-    for cmd in register-python-argcomplete3 register-python-argcomplete; do
-        if command -v "$cmd" >/dev/null 2>&1; then
-            shellcode="$("$cmd" iii 2>/dev/null || true)"
-            if [ -n "$shellcode" ]; then
-                eval "$shellcode"
-                return 0
-            fi
-        fi
-    done
-    return 1
+_iii_python_argcomplete() {
+    local IFS=$'\013'
+    local suppress_space=0
+    if compopt +o nospace 2> /dev/null; then
+        suppress_space=1
+    fi
+    COMPREPLY=( $(IFS="$IFS" \
+                  COMP_LINE="$COMP_LINE" \
+                  COMP_POINT="$COMP_POINT" \
+                  COMP_TYPE="$COMP_TYPE" \
+                  _ARGCOMPLETE_COMP_WORDBREAKS="$COMP_WORDBREAKS" \
+                  _ARGCOMPLETE=1 \
+                  _ARGCOMPLETE_SUPPRESS_SPACE=$suppress_space \
+                  "$1" 8>&1 9>&2 1>/dev/null 2>/dev/null) )
+    if [[ $? != 0 ]]; then
+        unset COMPREPLY
+    elif [[ $suppress_space == 1 ]] && [[ "$COMPREPLY" =~ [=/:]$ ]]; then
+        compopt -o nospace
+    fi
 }
-__iii_enable_argcomplete || true
-unset -f __iii_enable_argcomplete
+complete -o nospace -o default -F _iii_python_argcomplete iii
 # <<< iii-cli argcomplete <<<
 EOF
 fi
@@ -101,6 +121,10 @@ COLCON_HOME=/home/iii/ws colcon build \
     "${COLCON_COMMON_ARGS[@]}" \
     --packages-skip microxrcedds_agent micro_ros_agent \
     "${COLCON_CMAKE_ARGS[@]}"
+
+# Install configuration after the workspace build so the native validation
+# extension used by the configuration tools matches the current sources.
+./src/III-Drone-Configuration/scripts/install.sh .config
 
 # Install and run the daemon through systemd so dev mirrors onboard runtime ownership.
 ./scripts/systemd/install_dev_systemd_service.sh

@@ -101,8 +101,9 @@ WORKDIR /home/${USERNAME}/ws
 # Set the entrypoint
 ENTRYPOINT ["/entrypoint.sh"]
 
+# Provide the ROS underlay in interactive shells. The workspace overlay is
+# sourced from the user profile after the workspace has been built.
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /etc/bash.bashrc
-RUN echo "source /home/${USERNAME}/ws/install/setup.bash" >> /etc/bash.bashrc
 
 USER ${USERNAME}
 
