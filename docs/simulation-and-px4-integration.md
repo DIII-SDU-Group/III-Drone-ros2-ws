@@ -13,9 +13,9 @@ In simulation mode (`SIMULATION=true`):
 1. The simulation helper starts Gazebo/PX4 SITL outside III supervision.
 2. PX4 SITL is treated like the physical PX4 flight controller becoming available.
 3. The III daemon starts `micro_ros_agent` as a daemon-managed service during system bringup.
-4. `iii_drone_simulation/sensors_sim.launch.py` provides simulated sensor ingress through the supervised system graph.
+4. `iii_drone_simulation/sim_assets.launch.py` provides simulated Gazebo asset ingress through the supervised system graph.
 5. `ros_gz_bridge` bridges simulated camera and depth point cloud topics.
-6. `depth_cam_to_mmwave` converts incoming depth cloud to mmWave-like output topic (`/sensor/mmwave/pcl`).
+6. `depth_cam_to_mmwave` converts incoming depth cloud to mmWave-like output topic (`/sensor/mmwave/points`).
 7. `tf_sim.launch.py` publishes sim-specific static transforms and dynamic drone frame updates.
 
 QGroundControl is outside III supervision. Connecting or disconnecting it affects PX4/operator telemetry, not III lifecycle bringup.

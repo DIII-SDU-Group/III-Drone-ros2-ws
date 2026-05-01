@@ -103,7 +103,7 @@ Service dependencies are evaluated by `SystemManager` before lifecycle transitio
 `node_management_config/*.yaml` defines wrapped command processes, for example:
 
 - `cable_camera.yaml` -> usb_cam command
-- `sensors_sim_launch.yaml` -> simulation sensor launch manager
+- `sim_assets_launch.yaml` -> simulation asset launch manager
 - `tf_real_launch.yaml` / `tf_sim_launch.yaml` -> TF launch managers
 
 Each config contains:

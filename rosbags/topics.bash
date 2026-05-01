@@ -44,7 +44,7 @@
 
 #/sensor/cable_camera/image_raw
 
-/sensor/mmwave/pcl
+/sensor/mmwave/points
 
 /tf
 /tf_static

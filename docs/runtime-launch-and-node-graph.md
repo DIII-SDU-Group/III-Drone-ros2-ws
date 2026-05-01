@@ -65,7 +65,7 @@ Examples from the specification:
 ### 2.2 Simulation profile entities
 
 - managed TF simulation launch wrapper (`tf`)
-- managed simulation sensor launch wrapper (`sensors`)
+- managed simulation asset launch wrapper (`sim_assets`)
 
 ### 2.3 Common profile services
 
