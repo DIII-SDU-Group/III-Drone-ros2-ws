@@ -107,6 +107,7 @@ Start here for detailed technical documentation:
 - [Runtime Launch And Node Graph](docs/runtime-launch-and-node-graph.md)
 - [Supervision And Process Management](docs/supervision-and-process-management.md)
 - [Dependency Governance](docs/dependency-governance.md)
+- [Testing](docs/testing.md)
 - [Repository Boundary Map](docs/repo-boundary-map.md)
 
 ## Status

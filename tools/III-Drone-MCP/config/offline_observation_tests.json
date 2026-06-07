@@ -1,0 +1,92 @@
+[
+  {
+    "tool": "sim.geometry_state",
+    "arguments": {
+      "pose": {
+        "x": -0.03,
+        "y": 0.0,
+        "z": 1.45,
+        "yaw": -1.2366
+      },
+      "tf_timeout_sec": 0.1
+    }
+  },
+  {
+    "tool": "sim.visibility_state",
+    "arguments": {
+      "pose": {
+        "x": -0.03,
+        "y": 0.0,
+        "z": 1.45,
+        "yaw": -1.2366
+      }
+    }
+  },
+  {
+    "tool": "sim.plot_state",
+    "arguments": {
+      "prefix": "offline_observation",
+      "path_samples": [
+        {
+          "x": -0.03,
+          "y": 0.0,
+          "z": 1.45,
+          "t": 0.0
+        },
+        {
+          "x": 0.17,
+          "y": 0.0,
+          "z": 1.45,
+          "t": 1.0
+        }
+      ]
+    }
+  },
+  {
+    "tool": "sim.observe_window",
+    "arguments": {
+      "capture_snapshots": false,
+      "expected_corridor": true,
+      "prefix": "offline_observe_window",
+      "filename": "offline_observe_window.json",
+      "path_samples": [
+        {
+          "x": -0.03,
+          "y": 0.0,
+          "z": 1.45,
+          "t": 0.0
+        },
+        {
+          "x": 0.17,
+          "y": 0.0,
+          "z": 1.45,
+          "t": 1.0
+        }
+      ]
+    }
+  },
+  {
+    "tool": "sim.observe_window",
+    "arguments": {
+      "capture_snapshots": false,
+      "expected_corridor": false,
+      "prefix": "offline_observe_window_expected_failure",
+      "filename": "offline_observe_window_expected_failure.json",
+      "path_samples": [
+        {
+          "x": -0.03,
+          "y": 0.0,
+          "z": 1.45,
+          "t": 0.0
+        },
+        {
+          "x": 0.17,
+          "y": 0.0,
+          "z": 1.45,
+          "t": 1.0
+        }
+      ]
+    },
+    "expected_success": false
+  }
+]

@@ -13,6 +13,12 @@ runtime_logs/**/latest
 .config/*
 !.config/.gitignore
 
+.cache/
+.pytest_cache/
+.playwright-mcp/
+artifacts/
+tmp/
+
 testing/*
 !testing/*.sh
 !testing/*.py
@@ -26,3 +32,4 @@ node_modules/.package-lock.json
 **/__pycache__/
 **/.pytest_cache/
 *.pyc
+*.egg-info/

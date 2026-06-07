@@ -1,0 +1,28 @@
+[Unit]
+Description=III runtime API
+After=network.target iii-system-daemon.service
+Wants=iii-system-daemon.service
+
+[Service]
+Type=simple
+User=iii
+Group=iii
+WorkingDirectory=/home/iii/ws
+KillMode=control-group
+Restart=on-failure
+RestartSec=2
+Environment=III_RUNTIME_API_HOST=0.0.0.0
+Environment=III_RUNTIME_API_PORT=8765
+Environment=III_RUNTIME_API_PROFILE=sim
+Environment=III_RUNTIME_API_MDNS_ENABLED=1
+Environment="III_RUNTIME_API_MDNS_INSTANCE=III Runtime API Devcontainer"
+Environment=III_RUNTIME_API_SYSTEM_ID=iii-drone-dev
+Environment=III_RUNTIME_API_BROWSER_PASSWORD=dev-password
+Environment=III_RUNTIME_API_CLI_TOKEN=dev-cli-token
+Environment=III_RUNTIME_API_LOG_DIR=/home/iii/ws/runtime_logs/runtime-api
+EnvironmentFile=-/home/iii/ws/.config/iii-runtime-api.env
+ExecStartPre=/bin/mkdir -p /home/iii/ws/runtime_logs/runtime-api
+ExecStart=/bin/bash -lc 'source /home/iii/ws/setup/setup_dev.bash && source /home/iii/ws/install/setup.bash 2>/dev/null || true; exec python3 -m iii_drone_runtime.api.main'
+
+[Install]
+WantedBy=multi-user.target

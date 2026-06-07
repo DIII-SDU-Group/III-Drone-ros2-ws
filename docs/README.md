@@ -45,7 +45,11 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
 13. `dependency-governance.md`
    Dependency lock model for submodules, team workflow, and CI enforcement.
 
-14. `findings-risks-and-clarifications.md`
+14. `testing.md`
+   III-only test command set, generated TypeScript freshness checks, frontend
+   verification, and GC compose smoke commands.
+
+15. `findings-risks-and-clarifications.md`
     Observed inconsistencies, technical risks, and clarification questions for follow-up.
 
 ## Scope Notes

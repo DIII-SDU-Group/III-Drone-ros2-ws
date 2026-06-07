@@ -1,0 +1,132 @@
+[
+  {
+    "tool": "simulation",
+    "arguments": {
+      "command": "restart",
+      "headless": true,
+      "timeout_sec": 180
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "daemon_restart",
+      "timeout_sec": 45
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "boot",
+      "timeout_sec": 120
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "start",
+      "timeout_sec": 120
+    }
+  },
+  {
+    "tool": "px4.health",
+    "arguments": {
+      "timeout_sec": 60,
+      "stable_sec": 2.0
+    }
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "arm",
+      "timeout_sec": 45,
+      "postcondition_timeout_sec": 20,
+      "health_stable_sec": 2.0
+    }
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "takeoff",
+      "timeout_sec": 45,
+      "postcondition_timeout_sec": 35,
+      "min_altitude_m": 2.0
+    }
+  },
+  {
+    "tool": "operation.activate",
+    "arguments": {
+      "timeout_sec": 15,
+      "postcondition_timeout_sec": 10,
+      "stable_sec": 1.0
+    }
+  },
+  {
+    "tool": "operation.start_hover",
+    "arguments": {
+      "duration_s": 8.0,
+      "send_timeout_sec": 10
+    },
+    "save": {
+      "goal_id": "data.goal_id"
+    }
+  },
+  {
+    "tool": "operation.active",
+    "arguments": {}
+  },
+  {
+    "tool": "operation.start_hover",
+    "arguments": {
+      "duration_s": 1.0,
+      "send_timeout_sec": 10
+    },
+    "expect_success": false
+  },
+  {
+    "tool": "operation.cancel_goal",
+    "arguments": {
+      "goal_id": "${goal_id}",
+      "timeout_sec": 5
+    }
+  },
+  {
+    "tool": "operation.wait_goal",
+    "arguments": {
+      "goal_id": "${goal_id}",
+      "no_feedback_timeout_sec": 10,
+      "allow_no_feedback": true
+    },
+    "expect_success": false
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "land",
+      "timeout_sec": 45,
+      "postcondition_timeout_sec": 35
+    }
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "disarm",
+      "timeout_sec": 20,
+      "postcondition_timeout_sec": 10
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "shutdown",
+      "timeout_sec": 120
+    }
+  },
+  {
+    "tool": "simulation",
+    "arguments": {
+      "command": "stop",
+      "timeout_sec": 30
+    }
+  }
+]

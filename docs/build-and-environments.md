@@ -35,7 +35,9 @@ The workspace defines explicit runtime modes via shell profiles:
 - Sources the installed ROS/workspace setup expected on the target OS
 
 3. `setup_remote.bash`
-- Remote tooling profile for deployment/SSH workflow.
+- Remote tooling profile for deployment/SSH workflow. Remote runtime-control
+  commands use `iii-runtime-api` with `III_RUNTIME_API_URL` and
+  `III_RUNTIME_API_CLI_TOKEN`; SSH remains for deploy/sync/admin tasks.
 
 Shared env and path conventions:
 - `CONFIG_BASE_DIR`
@@ -75,7 +77,9 @@ Post hooks:
 - installs stable OS, ROS, and development tooling in an early apt layer using `--no-install-recommends`
 - installs Python requirements
 - installs QGroundControl AppImage + dev tools
-- installs GUI/simulation operator packages and workspace ROS/runtime package dependencies in late apt layers so package additions do not invalidate the expensive stable layers
+- installs GUI/simulation operator packages, the runtime API service
+  dependencies, and workspace ROS/runtime package dependencies in late apt
+  layers so package additions do not invalidate the expensive stable layers
 
 2. `Dockerfile`
 - Runtime/base image with ROS Jazzy base
@@ -108,6 +112,7 @@ Workspace scripts provide utility for:
 - remote install/setup
 - devcontainer startup behavior
 - docker compose builds
+- GUI v2 full-suite and sim E2E smoke verification
 
 Operational bringup typically uses III CLI commands after environment profile sourcing, rather than relying on a single direct launch file.
 
@@ -117,7 +122,19 @@ Runtime ownership is:
 
 - native `systemd` owns the III daemon onboard and in the devcontainer
 - the III daemon owns ROS launch processes and daemon-managed services
+- `iii-runtime-api` runs on the runtime host as the GUI v2/remote CLI network
+  control plane
+- the GC proxy/frontend run on the ground-control computer and do not require
+  ROS, DDS, MAVSDK, or runtime Python packages
 - PX4 hardware, PX4 SITL/Gazebo, and QGroundControl are external to III supervision
+
+GUI v2 compose entrypoints:
+
+```bash
+docker compose -f src/III-Drone-GC/docker-compose.dev.yml config
+docker compose -f src/III-Drone-GC/docker-compose.prod.yml config
+III_GC_FRONTEND_PORT=5174 scripts/workspace/gui_v2_sim_e2e_smoke.py --start-compose
+```
 
 ## 8. Build/Runtime Observations
 

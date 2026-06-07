@@ -69,7 +69,9 @@ complete -o nospace -o default -F _iii_python_argcomplete iii
 EOF
 fi
 
-# Reinstall the III-Drone-CLI
+# Refresh Python dependencies for existing devcontainers, then reinstall the
+# editable III-Drone-CLI wrapper.
+pip3 install -r ./requirements.txt
 pip3 uninstall -y iii 2> /dev/null
 pip3 install -e ./tools/III-Drone-CLI
 
@@ -128,3 +130,4 @@ COLCON_HOME=/home/iii/ws colcon build \
 
 # Install and run the daemon through systemd so dev mirrors onboard runtime ownership.
 ./scripts/systemd/install_dev_systemd_service.sh
+./scripts/systemd/install_runtime_api_service.sh

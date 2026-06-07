@@ -1,0 +1,141 @@
+[
+  {
+    "tool": "simulation",
+    "arguments": {
+      "command": "restart",
+      "headless": false,
+      "timeout_sec": 180
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "daemon_restart",
+      "timeout_sec": 45
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "boot",
+      "timeout_sec": 120
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "start",
+      "timeout_sec": 120
+    }
+  },
+  {
+    "tool": "px4.health",
+    "arguments": {
+      "timeout_sec": 60,
+      "stable_sec": 2.0
+    }
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "arm",
+      "timeout_sec": 45,
+      "postcondition_timeout_sec": 20,
+      "health_stable_sec": 2.0
+    }
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "takeoff",
+      "timeout_sec": 45,
+      "postcondition_timeout_sec": 35,
+      "min_altitude_m": 2.0
+    }
+  },
+  {
+    "tool": "operation.activate",
+    "arguments": {
+      "timeout_sec": 15,
+      "postcondition_timeout_sec": 10,
+      "stable_sec": 1.0
+    }
+  },
+  {
+    "tool": "operation.start_fly_relative",
+    "arguments": {
+      "dx": 0.6,
+      "dy": 0.0,
+      "dz": 0.0,
+      "min_z": 2.0,
+      "dyaw": 0.0,
+      "tf_timeout_sec": 10,
+      "send_timeout_sec": 10
+    },
+    "save": {
+      "goal_id": "data.goal_id"
+    }
+  },
+  {
+    "tool": "sim.observe_active_goal",
+    "arguments": {
+      "goal_id": "${goal_id}",
+      "max_duration_sec": 30.0,
+      "sample_period_sec": 0.2,
+      "capture_snapshots": false,
+      "expected_corridor": true,
+      "min_sample_count": 1,
+      "min_distance_traveled_m": 0.2,
+      "max_distance_traveled_m": 1.5,
+      "min_target_progress_m": 0.2,
+      "max_target_regression_m": 0.05,
+      "require_terminal": false,
+      "prefix": "nonblocking_maneuver_observation",
+      "filename": "nonblocking_maneuver_observation.json",
+      "timeout_sec": 90
+    }
+  },
+  {
+    "tool": "operation.goal_status",
+    "arguments": {
+      "goal_id": "${goal_id}"
+    }
+  },
+  {
+    "tool": "sim.render_snapshot_set",
+    "arguments": {
+      "views": ["topdown", "follow_drone", "corridor"],
+      "timeout_sec": 10
+    }
+  },
+  {
+    "tool": "sim.observation_timeline",
+    "arguments": {
+      "duration_sec": 2.0,
+      "sample_period_sec": 0.5,
+      "filename": "nonblocking_observation_timeline.json"
+    }
+  },
+  {
+    "tool": "operation.safety_stop",
+    "arguments": {
+      "mode": "land",
+      "disarm_after_land": true,
+      "timeout_sec": 45
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "shutdown",
+      "timeout_sec": 120
+    }
+  },
+  {
+    "tool": "simulation",
+    "arguments": {
+      "command": "stop",
+      "timeout_sec": 30
+    }
+  }
+]
