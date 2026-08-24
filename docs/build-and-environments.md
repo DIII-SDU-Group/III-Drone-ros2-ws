@@ -116,6 +116,11 @@ Workspace scripts provide utility for:
 
 Operational bringup typically uses III CLI commands after environment profile sourcing, rather than relying on a single direct launch file.
 
+Development-host operation is exposed through the workspace-root `./iii-dev`
+bridge. It discovers the associated devcontainer, sources the development
+profile inside it, and delegates to the existing simulation launcher and III
+CLI. See [`host-development-commands.md`](host-development-commands.md).
+
 On the real drone, the deployment repository should install a native `systemd` unit for the III daemon. Inside the devcontainer, the workspace installs the dev unit automatically and `iii system boot` uses `systemctl start iii-system-daemon.service`.
 
 Runtime ownership is:
@@ -135,6 +140,10 @@ docker compose -f src/III-Drone-GC/docker-compose.dev.yml config
 docker compose -f src/III-Drone-GC/docker-compose.prod.yml config
 III_GC_FRONTEND_PORT=5174 scripts/workspace/gui_v2_sim_e2e_smoke.py --start-compose
 ```
+
+The smoke runner and its calibrated fixture resolver are simulation-only. Real
+inspection startup and manual data acquisition follow the authoritative
+[`field-inspection-operations.md`](field-inspection-operations.md) procedure.
 
 ## 8. Build/Runtime Observations
 

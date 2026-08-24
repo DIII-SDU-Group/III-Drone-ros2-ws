@@ -9,14 +9,21 @@ Mutating flight and workflow commands require explicit flags.
 from __future__ import annotations
 
 import argparse
+import base64
 from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import shlex
+import shutil
+import socket
 import subprocess
 import sys
+import tempfile
+import threading
 import time
 from typing import Any
+from uuid import uuid4
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from urllib.parse import urlsplit, urlunsplit
@@ -94,6 +101,32 @@ FLIGHT_COMMANDS = [
     ("px4-land", "px4.land", {}),
 ]
 
+# Acceptance evidence deliberately excludes raw images and point clouds. Those
+# streams can exceed 50 MiB/s and are validated through the dedicated perception
+# state endpoints instead of making every GUI smoke run a multi-gigabyte bag.
+INSPECTION_EVIDENCE_TOPICS = [
+    "/control/maneuver_controller/combined_drone_awareness",
+    "/control/maneuver_controller/current_maneuver",
+    "/control/maneuver_controller/reference",
+    "/fmu/out/battery_status",
+    "/fmu/out/vehicle_land_detected",
+    "/fmu/out/vehicle_local_position",
+    "/fmu/out/vehicle_status_v1",
+    "/mission/custom_operation/mode_status",
+    "/mission/modes/cable_charging/status",
+    "/mission/modes/inspection_demo/status",
+    "/mission/modes/leave_cable/status",
+    "/mission/modes/reach_cable/status",
+    "/mission/powerline_overview_provider/overview_status",
+    "/mission/pylon_overview_provider/overview_status",
+    "/mission/status",
+    "/payload/charger_gripper/charger_status",
+    "/payload/charger_gripper/gripper_status",
+    "/perception/pl_mapper/powerline",
+    "/perception/pl_mapper/state",
+    "/supervision/system_health",
+]
+
 
 class SmokeFailure(RuntimeError):
     pass
@@ -106,8 +139,10 @@ class SmokeRunner:
         self.artifacts = Path(args.artifacts_dir).resolve() / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         self.artifacts.mkdir(parents=True, exist_ok=True)
         self.step_index = 0
+        self.run_id = uuid4().hex[:12]
         self.summary: dict[str, Any] = {
             "started_at": datetime.now(timezone.utc).isoformat(),
+            "run_id": self.run_id,
             "artifacts_dir": str(self.artifacts),
             "runtime_url": args.runtime_url,
             "proxy_url": args.proxy_url,
@@ -115,7 +150,16 @@ class SmokeRunner:
             "steps": [],
             "mutating_workflows": bool(args.run_mutating_workflows),
             "flight_commands": bool(args.run_flight_commands),
+            "inspection_cycle": bool(args.run_inspection_cycle),
         }
+        self.session_headers: dict[str, str] | None = None
+        self.session_token: str | None = None
+        self.endpoint_id: str | None = None
+        self._last_heartbeat_at = 0.0
+        self._heartbeat_lock = threading.Lock()
+        self._heartbeat_stop = threading.Event()
+        self._heartbeat_thread: threading.Thread | None = None
+        self._heartbeat_error: str | None = None
 
     def run(self) -> int:
         compose_started = False
@@ -142,6 +186,7 @@ class SmokeRunner:
                 step_name="manual-runtime-endpoint",
             )
             endpoint_id = endpoint["endpoint_id"]
+            self.endpoint_id = endpoint_id
             self.http_json(
                 "POST",
                 f"{self.args.proxy_url}/runtime/targets/validate",
@@ -163,10 +208,14 @@ class SmokeRunner:
                 step_name="session-login",
             )
             token = login["session_token"]
+            self.session_token = token
             headers = {"Authorization": f"Bearer {token}"}
+            self.session_headers = headers
             self.summary["session_acquired"] = True
+            self.start_session_heartbeat(headers)
 
             for name, path in DEFAULT_READ_ENDPOINTS:
+                self.heartbeat(headers)
                 self.http_json("GET", f"{self.args.proxy_url}{path}", headers=headers, step_name=name)
 
             if self.args.run_mutating_workflows:
@@ -175,19 +224,27 @@ class SmokeRunner:
                 if not self.args.run_mutating_workflows:
                     raise SmokeFailure("--run-flight-commands requires --run-mutating-workflows")
                 self.run_flight_commands(headers)
+            if self.args.run_inspection_cycle:
+                self.run_inspection_cycle(headers)
+            elif self.args.capture_frontend:
+                self.capture_frontend_screenshot("frontend-final")
 
+            self.stop_session_heartbeat()
             self.http_json("POST", f"{self.args.proxy_url}/proxy/session/logout", headers=headers, step_name="session-logout")
             self.summary["completed_at"] = datetime.now(timezone.utc).isoformat()
             self.summary["status"] = "passed"
             return 0
-        except Exception as exc:
+        except (Exception, KeyboardInterrupt) as exc:
             self.summary["completed_at"] = datetime.now(timezone.utc).isoformat()
             self.summary["status"] = "failed"
             self.summary["failure"] = str(exc)
             print(f"GUI v2 sim E2E smoke failed: {exc}", file=sys.stderr)
             print(f"Artifacts: {self.artifacts}", file=sys.stderr)
+            if self.args.run_inspection_cycle and self.session_headers:
+                self.recover_vehicle(self.session_headers)
             return 1
         finally:
+            self.stop_session_heartbeat()
             if compose_started:
                 self.capture_compose_logs()
                 if not self.args.keep_compose:
@@ -202,8 +259,680 @@ class SmokeRunner:
         for name, command_id, parameters in FLIGHT_COMMANDS:
             self.dispatch_command(name, command_id, parameters, headers)
 
-    def dispatch_command(self, name: str, command_id: str, parameters: dict[str, Any], headers: dict[str, str]) -> dict:
-        request_id = f"smoke-{self.step_index + 1:02d}-{name}"
+    def run_inspection_cycle(self, headers: dict[str, str]) -> None:
+        """Exercise the operator inspection path through the GUI runtime API."""
+        self.capture_operator_state("inspection-preflight", headers)
+        vehicle = self.get_state("/proxy/vehicle/status", headers)
+        if vehicle.get("armed") or vehicle.get("in_air"):
+            raise SmokeFailure("inspection cycle requires a disarmed, landed vehicle")
+
+        self.reset_sim_battery(self.args.initial_battery_pct)
+        self.wait_for_state(
+            "inspection-battery-reset-confirmed",
+            "/proxy/vehicle/status",
+            headers,
+            lambda state: simulated_battery_reset_visible(state, self.args.initial_battery_pct),
+            timeout_s=15.0,
+        )
+        self.ensure_inspection_sim_configuration(headers)
+
+        self.wait_for_state(
+            "inspection-px4-command-ready",
+            "/proxy/vehicle/status",
+            headers,
+            lambda state: state.get("latest", {}).get("command_transport", {}).get("command_available") is True
+            and state.get("arming_checks_passed") is True,
+            timeout_s=90.0,
+        )
+
+        self.dispatch_command("inspection-arm", "px4.arm", {}, headers)
+        self.wait_for_stable_state(
+            "inspection-armed",
+            "/proxy/vehicle/status",
+            headers,
+            lambda state: state.get("armed") is True
+            and telemetry_field_matches(state, "armed", True),
+            timeout_s=30.0,
+            consecutive_samples=2,
+        )
+        self.dispatch_command("inspection-takeoff", "px4.takeoff", {"altitude_m": 2.0}, headers)
+        self.wait_for_state(
+            "inspection-airborne",
+            "/proxy/vehicle/status",
+            headers,
+            lambda state: state.get("armed") is True and state.get("in_air") is True,
+            timeout_s=45.0,
+        )
+        self.wait_for_state(
+            "inspection-takeoff-complete",
+            "/proxy/vehicle/status",
+            headers,
+            lambda state: nav_is(state, "hold"),
+            timeout_s=60.0,
+        )
+        self.dispatch_command(
+            "inspection-recording-start",
+            "rosbag.start",
+            {"all_topics": False, "topics": INSPECTION_EVIDENCE_TOPICS},
+            headers,
+        )
+
+        self.position_fixture(self.args.overview_fixture, headers)
+        self.dispatch_command("inspection-mapper-start", "perception.pl_mapper.start", {}, headers)
+        self.wait_for_state(
+            "inspection-mapper-live",
+            "/proxy/perception/status",
+            headers,
+            mapper_active,
+            timeout_s=30.0,
+        )
+        self.wait_for_stable_state(
+            "inspection-powerline-capture-ready",
+            "/proxy/powerline/status",
+            headers,
+            lambda state: state.get("latest", {}).get("capture_ready") is True
+            and live_line_count(state) >= self.args.min_powerline_lines,
+            timeout_s=60.0,
+            consecutive_samples=3,
+        )
+        self.dispatch_retryable_command(
+            "inspection-overview-store",
+            "powerline.overview.update",
+            {"timeout_s": 10},
+            headers,
+            timeout_s=self.args.overview_guard_s - 5.0,
+            interval_s=0.5,
+        )
+        self.dispatch_command("inspection-pylons-clear", "pylon.overview.clear", {}, headers)
+        # Exercise the same component-by-component GUI commands used in the
+        # field without teleporting an armed PX4 vehicle. The simulation-only
+        # fixture seed below then supplies the real test-world pylon endpoints.
+        for pylon_id in (1, 2):
+            self.dispatch_retryable_command(
+                f"inspection-pylon-{pylon_id}-capture",
+                "pylon.capture_current",
+                {"pylon_id": pylon_id},
+                headers,
+                timeout_s=45.0,
+            )
+        self.seed_sim_pylon_overview(("pos_pylon_1", "pos_pylon_2"))
+        self.wait_for_state(
+            "inspection-overviews-complete",
+            "/proxy/powerline/status",
+            headers,
+            overviews_complete,
+            timeout_s=20.0,
+        )
+
+        self.position_fixture(self.args.inspection_start_fixture, headers)
+        # Staging is deliberately flight-heavy. Restore the sim-only acceptance
+        # fixture here so manual recharge is exercised before automatic depletion.
+        self.reset_sim_battery(self.args.initial_battery_pct)
+        self.wait_for_state(
+            "inspection-pre-mission-battery-confirmed",
+            "/proxy/vehicle/status",
+            headers,
+            lambda state: simulated_battery_reset_visible(state, self.args.initial_battery_pct),
+            timeout_s=15.0,
+        )
+        before = self.get_state("/proxy/vehicle/status", headers)
+        self.dispatch_command(
+            "inspection-activate",
+            "mission.activate",
+            {"mode_key": "inspection_demo"},
+            headers,
+        )
+        self.wait_for_mission_mode("inspection-running", "inspection_demo", headers, timeout_s=45.0)
+        time.sleep(self.args.inspection_observation_s)
+        after = self.get_state("/proxy/vehicle/status", headers)
+        assert_battery_depleted(before, after)
+        self.capture_operator_state("inspection-before-recharge", headers)
+
+        self.dispatch_command("inspection-recharge-now", "mission.recharge_now", {}, headers)
+        self.wait_for_mission_mode("inspection-reach-cable", "reach_cable", headers, timeout_s=180.0)
+        self.wait_for_mission_mode("inspection-charging", "cable_charging", headers, timeout_s=180.0)
+        charging_start = self.get_state("/proxy/vehicle/status", headers)
+        charging_end = self.wait_for_state(
+            "inspection-battery-charging",
+            "/proxy/vehicle/status",
+            headers,
+            lambda state: battery_increased(charging_start, state),
+            timeout_s=self.args.charging_observation_s,
+            interval_s=0.25,
+        )
+        assert_battery_charged(charging_start, charging_end)
+
+        charging_mode = self.get_state("/proxy/mission/status", headers)
+        if active_mission_mode(charging_mode) != "cable_charging":
+            raise SmokeFailure(
+                "cable charging ended before the operator leave command could be exercised; "
+                "reduce the initial battery level or charging observation threshold"
+            )
+        self.dispatch_command("inspection-leave-now", "mission.leave_cable_now", {}, headers)
+        self.wait_for_mission_mode("inspection-leave-cable", "leave_cable", headers, timeout_s=90.0)
+        self.wait_for_mission_mode("inspection-resumed", "inspection_demo", headers, timeout_s=180.0)
+        self.capture_operator_state("inspection-resumed-state", headers)
+
+        self.dispatch_command("inspection-global-hold", "px4.hold", {}, headers)
+        self.wait_for_state(
+            "inspection-hold-confirmed",
+            "/proxy/vehicle/status",
+            headers,
+            lambda state: nav_is(state, "hold"),
+            timeout_s=30.0,
+        )
+        self.wait_for_state(
+            "inspection-mission-released",
+            "/proxy/mission/status",
+            headers,
+            lambda state: not mission_active(state),
+            timeout_s=30.0,
+        )
+        released_mission = self.get_state("/proxy/mission/status", headers)
+        self.wait_for_stable_state(
+            "inspection-modes-remain-selectable",
+            "/proxy/vehicle/status",
+            headers,
+            lambda state: mission_modes_selectable(state, released_mission),
+            timeout_s=15.0,
+            consecutive_samples=8,
+            interval_s=0.5,
+        )
+        self.dispatch_command("inspection-land", "px4.land", {}, headers)
+        self.wait_for_stable_state(
+            "inspection-landed",
+            "/proxy/vehicle/status",
+            headers,
+            vehicle_landed_and_disarmed,
+            timeout_s=120.0,
+            consecutive_samples=4,
+        )
+        self.wait_for_stable_state(
+            "inspection-terminated-cleanly",
+            "/proxy/mission/status",
+            headers,
+            lambda state: state.get("operational_safety", {}).get("status") == "normal",
+            timeout_s=15.0,
+            consecutive_samples=3,
+        )
+        self.dispatch_command(
+            "inspection-recording-stop",
+            "rosbag.stop",
+            {"hold_confirmed": True},
+            headers,
+        )
+        self.capture_operator_state("inspection-final", headers)
+        self.capture_frontend_screenshot("inspection-final")
+
+    def ensure_inspection_sim_configuration(self, headers: dict[str, str]) -> None:
+        state = self.wait_for_state(
+            "inspection-configuration-ready",
+            "/proxy/configuration/status",
+            headers,
+            configuration_manifest_available,
+            timeout_s=30.0,
+        )
+        requested = {
+            "/control/trajectory_interpolator/interpolation_avg_velocity_m_s": self.args.inspection_translation_speed_m_s,
+            "/control/trajectory_interpolator/interpolation_avg_yaw_rate_rad_s": self.args.inspection_yaw_rate_rad_s,
+        }
+        edits = []
+        for name, value in requested.items():
+            parameter = configuration_parameter(state, name)
+            if parameter is None:
+                raise SmokeFailure(f"sim acceptance parameter is absent from configuration manifest: {name}")
+            if not numeric_values_match(parameter.get("current_value"), value):
+                edits.append({"node_id": parameter["node_id"], "name": name, "value": value})
+        if edits:
+            self.dispatch_command(
+                "inspection-configuration-apply",
+                "configuration.apply",
+                {"edits": edits},
+                headers,
+            )
+        self.wait_for_state(
+            "inspection-configuration-confirmed",
+            "/proxy/configuration/status",
+            headers,
+            lambda current: all(
+                numeric_values_match((configuration_parameter(current, name) or {}).get("current_value"), value)
+                and numeric_values_match((configuration_parameter(current, name) or {}).get("persisted_value"), value)
+                for name, value in requested.items()
+            ),
+            timeout_s=30.0,
+        )
+
+    def call_sim_mcp(
+        self,
+        tool: str,
+        arguments: dict[str, Any],
+        *,
+        artifact_name: str,
+        timeout_s: float = 30.0,
+    ) -> dict[str, Any]:
+        discovery = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "--filter",
+                f"label=devcontainer.local_folder={self.workspace}",
+                "--format",
+                "{{.ID}}",
+            ],
+            cwd=self.workspace,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        containers = [line.strip() for line in discovery.stdout.splitlines() if line.strip()]
+        if discovery.returncode != 0 or len(containers) != 1:
+            raise SmokeFailure(
+                f"expected one workspace devcontainer for {tool}, found {len(containers)}: "
+                f"{discovery.stderr.strip()}"
+            )
+        serialized_arguments = json.dumps(arguments, separators=(",", ":"))
+        try:
+            artifact_relative = self.artifacts.relative_to(self.workspace)
+        except ValueError as exc:
+            raise SmokeFailure("MCP acceptance artifacts must be inside the workspace") from exc
+        mcp_artifacts = Path("/home/iii/ws") / artifact_relative / "mcp"
+        shell = (
+            "source /opt/ros/jazzy/setup.bash && "
+            "cd /home/iii/ws && source install/setup.bash && "
+            f"iii-drone-mcp-call --json --artifact-dir {shlex.quote(str(mcp_artifacts))} "
+            f"{shlex.quote(tool)} {shlex.quote(serialized_arguments)}"
+        )
+        result = subprocess.run(
+            ["docker", "exec", "--user", "iii", containers[0], "bash", "-lc", shell],
+            cwd=self.workspace,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout_s,
+        )
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise SmokeFailure(
+                f"{tool} returned invalid JSON: {(result.stdout + result.stderr).strip()}"
+            ) from exc
+        self.record_structured_artifact(artifact_name, payload)
+        if result.returncode != 0 or payload.get("success") is not True:
+            raise SmokeFailure(f"{tool} failed: {payload.get('message') or result.stderr.strip()}")
+        return payload
+
+    def reset_sim_battery(self, remaining_pct: float) -> None:
+        self.call_sim_mcp(
+            "battery.reset",
+            {"remaining_pct": float(remaining_pct), "timeout_sec": 15.0, "tolerance_pct": 1.0},
+            artifact_name="inspection-battery-reset",
+        )
+
+    def seed_sim_pylon_overview(self, fixture_ids: tuple[str, str]) -> None:
+        """Seed mapped test-world pylons without moving the simulated aircraft."""
+        targets = [self.resolve_fixture(fixture_id) for fixture_id in fixture_ids]
+        self.call_sim_mcp(
+            "perception.clear_pylon_overview",
+            {"timeout_sec": 5.0},
+            artifact_name="inspection-sim-pylons-seed-clear",
+        )
+        for pylon_id, (fixture_id, target) in enumerate(zip(fixture_ids, targets, strict=True), start=1):
+            self.call_sim_mcp(
+                "perception.store_pylon_overview",
+                {
+                    "pylon_id": pylon_id,
+                    "x": float(target["x"]),
+                    "y": float(target["y"]),
+                    "frame_id": "world",
+                    "timeout_sec": 5.0,
+                    "filename": f"gui_e2e_seeded_pylon_{pylon_id}.json",
+                },
+                artifact_name=f"inspection-sim-pylon-{pylon_id}-seed",
+            )
+            self.record_structured_artifact(
+                f"inspection-sim-pylon-{pylon_id}-fixture",
+                {"setup_only": True, "fixture_id": fixture_id, "mapped_world_target": target},
+            )
+
+    def position_fixture(self, fixture_id: str, headers: dict[str, str]) -> None:
+        target = self.resolve_fixture(fixture_id)
+        self.dispatch_command(f"fixture-{fixture_id}-release-hold", "custom_operation.activate", {}, headers)
+        self.wait_for_state(
+            f"fixture-{fixture_id}-custom-mode",
+            "/proxy/operations/status",
+            headers,
+            lambda state: state.get("latest", {}).get("control_owner") == "custom_operation",
+            timeout_s=15.0,
+        )
+        started = self.dispatch_command(
+            f"fixture-{fixture_id}-flight-start",
+            "custom_operation.cable_aware_fly_to_position.start",
+            {
+                "hold_confirmed": True,
+                "arguments": {
+                    "frame_id": str(target.get("frame_id") or "world"),
+                    "x": float(target["x"]),
+                    "y": float(target["y"]),
+                    "z": float(target["z"]),
+                    "yaw": float(target["yaw"]),
+                    "blend_to_next": False,
+                    "ignore_altitude": True,
+                },
+            },
+            headers,
+        )
+        action_id = str(started.get("action_id") or "")
+        if not action_id:
+            raise SmokeFailure(f"fixture flight did not return an action id: {fixture_id}")
+        self.wait_for_state(
+            f"fixture-{fixture_id}-flight-active",
+            "/proxy/operations/status",
+            headers,
+            lambda state: operation_started_or_finished(state, action_id),
+            timeout_s=20.0,
+        )
+        self.wait_for_state(
+            f"fixture-{fixture_id}-flight-complete",
+            "/proxy/operations/status",
+            headers,
+            lambda state: operation_finished(state, operation_id=action_id),
+            timeout_s=150.0,
+        )
+        self.dispatch_command(f"fixture-{fixture_id}-capture-hold", "px4.hold", {}, headers)
+        self.wait_for_state(
+            f"fixture-{fixture_id}-settled",
+            "/proxy/vehicle/status",
+            headers,
+            lambda state: nav_is(state, "hold") and state.get("in_air") is True,
+            timeout_s=30.0,
+        )
+        time.sleep(self.args.fixture_settle_s)
+
+    def resolve_fixture(
+        self,
+        fixture_id: str,
+        *,
+        apply: bool = False,
+        hold_duration_s: float = 0.0,
+    ) -> dict[str, Any]:
+        command = [
+            self.args.fixture_resolver,
+            "--fixture-id",
+            fixture_id,
+            "--workspace",
+            str(self.workspace),
+        ]
+        if apply:
+            command.append("--apply")
+        if hold_duration_s:
+            command.extend(("--hold-duration-s", str(hold_duration_s)))
+        result = subprocess.run(command, cwd=self.workspace, text=True, capture_output=True, check=False)
+        artifact = self.artifacts / f"fixture-{fixture_id}.log"
+        artifact.write_text(result.stdout + result.stderr, encoding="utf-8")
+        if result.returncode != 0:
+            raise SmokeFailure(f"fixture resolver failed for {fixture_id}; see {artifact}")
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise SmokeFailure(f"fixture resolver returned invalid JSON for {fixture_id}") from exc
+        if not payload.get("success"):
+            raise SmokeFailure(f"fixture resolution failed for {fixture_id}: {payload.get('message')}")
+        target = payload["data"]
+        if apply:
+            if target.get("setup_only") is not True or not isinstance(target.get("gazebo_pose"), dict):
+                raise SmokeFailure(
+                    f"fixture application for {fixture_id} did not return authoritative Gazebo setup evidence"
+                )
+            return target
+        if target.get("target_source") != "gazebo_ground_truth_mapped_to_live_ros_world":
+            raise SmokeFailure(
+                f"fixture resolution for {fixture_id} used non-authoritative source: "
+                f"{target.get('target_source') or 'unknown'}"
+            )
+        return target
+
+    def wait_for_mission_mode(self, name: str, mode_key: str, headers: dict[str, str], *, timeout_s: float) -> dict:
+        return self.wait_for_state(
+            name,
+            "/proxy/mission/status",
+            headers,
+            lambda state: active_mission_mode(state) == mode_key,
+            timeout_s=timeout_s,
+        )
+
+    def wait_for_state(
+        self,
+        name: str,
+        path: str,
+        headers: dict[str, str],
+        predicate: Any,
+        *,
+        timeout_s: float,
+        interval_s: float = 0.5,
+    ) -> dict:
+        deadline = time.monotonic() + timeout_s
+        samples: list[dict[str, Any]] = []
+        while time.monotonic() < deadline:
+            self.heartbeat(headers)
+            state = self.get_state(path, headers)
+            samples.append({"at": datetime.now(timezone.utc).isoformat(), "state": state})
+            if predicate(state):
+                self.record_structured_artifact(name, {"status": "satisfied", "samples": samples})
+                return state
+            time.sleep(interval_s)
+        self.record_structured_artifact(name, {"status": "timed_out", "samples": samples})
+        raise SmokeFailure(f"timed out waiting for {name}; last state={json.dumps(samples[-1]['state'] if samples else {}, sort_keys=True)}")
+
+    def wait_for_stable_state(
+        self,
+        name: str,
+        path: str,
+        headers: dict[str, str],
+        predicate: Any,
+        *,
+        timeout_s: float,
+        consecutive_samples: int,
+        interval_s: float = 0.5,
+    ) -> dict:
+        if consecutive_samples < 1:
+            raise ValueError("consecutive_samples must be positive")
+        deadline = time.monotonic() + timeout_s
+        samples: list[dict[str, Any]] = []
+        consecutive = 0
+        while time.monotonic() < deadline:
+            self.heartbeat(headers)
+            state = self.get_state(path, headers)
+            samples.append({"at": datetime.now(timezone.utc).isoformat(), "state": state})
+            consecutive = consecutive + 1 if predicate(state) else 0
+            if consecutive >= consecutive_samples:
+                self.record_structured_artifact(
+                    name,
+                    {"status": "satisfied", "consecutive_samples": consecutive, "samples": samples},
+                )
+                return state
+            time.sleep(interval_s)
+        self.record_structured_artifact(
+            name,
+            {"status": "timed_out", "consecutive_samples": consecutive, "samples": samples},
+        )
+        raise SmokeFailure(
+            f"timed out waiting for stable {name}; "
+            f"last state={json.dumps(samples[-1]['state'] if samples else {}, sort_keys=True)}"
+        )
+
+    def get_state(self, path: str, headers: dict[str, str]) -> dict:
+        return self.http_json(
+            "GET",
+            f"{self.args.proxy_url}{path}",
+            headers=headers,
+            step_name="poll",
+            record=False,
+        )
+
+    def heartbeat(self, headers: dict[str, str]) -> None:
+        with self._heartbeat_lock:
+            if time.monotonic() - self._last_heartbeat_at < 1.0:
+                return
+            self.http_json(
+                "POST",
+                f"{self.args.proxy_url}/proxy/session/heartbeat",
+                headers=headers,
+                step_name="heartbeat",
+                record=False,
+            )
+            self._last_heartbeat_at = time.monotonic()
+
+    def start_session_heartbeat(self, headers: dict[str, str]) -> None:
+        """Maintain the short browser lease across blocking commands and tools."""
+        if self._heartbeat_thread is not None:
+            return
+        self._heartbeat_stop.clear()
+        self._heartbeat_error = None
+
+        def maintain_lease() -> None:
+            while not self._heartbeat_stop.wait(1.0):
+                try:
+                    self.heartbeat(headers)
+                except Exception as exc:
+                    self._heartbeat_error = str(exc)
+
+        self._heartbeat_thread = threading.Thread(
+            target=maintain_lease,
+            name="gui-v2-e2e-heartbeat",
+            daemon=True,
+        )
+        self._heartbeat_thread.start()
+
+    def stop_session_heartbeat(self) -> None:
+        thread = self._heartbeat_thread
+        if thread is None:
+            return
+        self._heartbeat_stop.set()
+        thread.join(timeout=3.0)
+        self._heartbeat_thread = None
+        if self._heartbeat_error:
+            self.summary["heartbeat_warning"] = self._heartbeat_error
+
+    def capture_operator_state(self, name: str, headers: dict[str, str]) -> None:
+        domains = {}
+        for domain_name, path in DEFAULT_READ_ENDPOINTS:
+            if domain_name in {"commands-handlers"}:
+                continue
+            try:
+                self.heartbeat(headers)
+                domains[domain_name] = self.get_state(path, headers)
+            except Exception as exc:
+                domains[domain_name] = {"capture_error": str(exc)}
+        self.record_structured_artifact(name, domains)
+
+    def record_structured_artifact(self, name: str, payload: Any) -> Path:
+        self.step_index += 1
+        safe_name = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in name)
+        path = self.artifacts / f"{self.step_index:02d}-{safe_name}.json"
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        self.summary["steps"].append({"name": name, "status": "captured", "artifact": str(path)})
+        print(f"[{self.step_index:02d}] {name}: captured")
+        return path
+
+    def capture_frontend_screenshot(self, name: str) -> None:
+        if not self.args.frontend_url:
+            return
+        if not self.session_token or not self.endpoint_id:
+            raise SmokeFailure("authenticated frontend screenshot requires an active runtime session")
+        output = self.artifacts / f"{name}.png"
+        identity = self.summary.get("runtime_identity", {})
+        session = frontend_session_payload(
+            token=self.session_token,
+            endpoint_id=self.endpoint_id,
+            runtime_name=str(identity.get("runtime_name") or "III Drone Sim Runtime"),
+            runtime_id=identity.get("runtime_id"),
+            system_id=identity.get("host_label"),
+            profile=identity.get("profile"),
+        )
+        capture_authenticated_chromium(
+            browser_binary=self.args.browser_binary,
+            frontend_url=self.args.frontend_url,
+            output=output,
+            session=session,
+        )
+        self.summary["steps"].append({"name": name, "status": "captured", "artifact": str(output)})
+
+    def recover_vehicle(self, headers: dict[str, str]) -> None:
+        recovery: dict[str, Any] = {"attempted_at": datetime.now(timezone.utc).isoformat(), "commands": []}
+        try:
+            operation = self.get_state("/proxy/operations/status", headers)
+            if operation.get("active_operation_id") or operation.get("latest", {}).get("operation_active") is True:
+                result = self.dispatch_command(
+                    "failure-operation-cancel",
+                    "custom_operation.cancel",
+                    {},
+                    headers,
+                    require_accepted=False,
+                )
+                recovery["commands"].append(result)
+                self.wait_for_stable_state(
+                    "failure-operation-stopped",
+                    "/proxy/operations/status",
+                    headers,
+                    lambda state: state.get("active_operation_id") is None
+                    and state.get("latest", {}).get("operation_active") is not True,
+                    timeout_s=45.0,
+                    consecutive_samples=3,
+                )
+        except Exception as exc:
+            recovery["commands"].append({"command_id": "custom_operation.cancel", "error": str(exc)})
+        for name, command_id, parameters in (
+            ("failure-hold", "px4.hold", {}),
+            ("failure-land", "px4.land", {}),
+        ):
+            try:
+                state = self.get_state("/proxy/vehicle/status", headers)
+                if command_id == "px4.land" and state.get("in_air") is not True:
+                    recovery["commands"].append({"command_id": command_id, "skipped": "vehicle not in air"})
+                    continue
+                result = self.dispatch_command(name, command_id, parameters, headers, require_accepted=False)
+                recovery["commands"].append(result)
+                if command_id == "px4.land" and result.get("accepted"):
+                    self.wait_for_stable_state(
+                        "failure-landed",
+                        "/proxy/vehicle/status",
+                        headers,
+                        vehicle_landed_and_disarmed,
+                        timeout_s=120.0,
+                        consecutive_samples=4,
+                    )
+            except Exception as exc:
+                recovery["commands"].append({"command_id": command_id, "error": str(exc)})
+        try:
+            recording = self.get_state("/proxy/rosbag/status", headers)
+            if recording.get("recording") is True:
+                result = self.dispatch_command(
+                    "failure-recording-stop",
+                    "rosbag.stop",
+                    {"hold_confirmed": True},
+                    headers,
+                    require_accepted=False,
+                )
+                recovery["commands"].append(result)
+        except Exception as exc:
+            recovery["commands"].append({"command_id": "rosbag.stop", "error": str(exc)})
+        try:
+            recovery["final_vehicle"] = self.get_state("/proxy/vehicle/status", headers)
+        except Exception as exc:
+            recovery["final_vehicle_error"] = str(exc)
+        self.record_structured_artifact("failure-safe-recovery", recovery)
+
+    def dispatch_command(
+        self,
+        name: str,
+        command_id: str,
+        parameters: dict[str, Any],
+        headers: dict[str, str],
+        *,
+        require_accepted: bool = True,
+    ) -> dict:
+        self.heartbeat(headers)
+        request_id = build_request_id(self.run_id, self.step_index + 1, name)
         payload = {
             "request_id": request_id,
             "client_label": "gui-v2-sim-e2e-smoke",
@@ -217,9 +946,43 @@ class SmokeRunner:
             headers=headers,
             step_name=name,
         )
-        if not result.get("accepted"):
+        if require_accepted and not result.get("accepted"):
             raise SmokeFailure(f"{command_id} rejected: {json.dumps(result.get('rejection') or result, sort_keys=True)}")
         return result
+
+    def dispatch_retryable_command(
+        self,
+        name: str,
+        command_id: str,
+        parameters: dict[str, Any],
+        headers: dict[str, str],
+        *,
+        timeout_s: float,
+        interval_s: float = 1.0,
+    ) -> dict:
+        deadline = time.monotonic() + timeout_s
+        attempt = 0
+        last_rejection: dict[str, Any] | None = None
+        while time.monotonic() < deadline:
+            attempt += 1
+            result = self.dispatch_command(
+                f"{name}-attempt-{attempt}",
+                command_id,
+                parameters,
+                headers,
+                require_accepted=False,
+            )
+            if result.get("accepted"):
+                return result
+            rejection = result.get("rejection") or result
+            last_rejection = rejection
+            if rejection.get("retryable") is not True:
+                raise SmokeFailure(f"{command_id} rejected: {json.dumps(rejection, sort_keys=True)}")
+            time.sleep(interval_s)
+        raise SmokeFailure(
+            f"{command_id} remained rejected for {timeout_s:.1f}s: "
+            f"{json.dumps(last_rejection or {}, sort_keys=True)}"
+        )
 
     def wait_for_url(self, url: str, label: str) -> None:
         deadline = time.monotonic() + self.args.timeout_s
@@ -268,6 +1031,12 @@ class SmokeRunner:
             raw = exc.read()
             self.record_http_step(step_name, method, url, exc.code, raw, body, record)
             raise SmokeFailure(f"{method} {url} returned HTTP {exc.code}: {raw.decode('utf-8', errors='replace')}") from exc
+        except TimeoutError as exc:
+            self.record_structured_artifact(
+                f"{step_name}-transport-timeout",
+                {"method": method, "url": url, "timeout_s": self.args.http_timeout_s, "request": body},
+            )
+            raise SmokeFailure(f"{method} {url} timed out after {self.args.http_timeout_s:.1f}s") from exc
         except URLError as exc:
             raise SmokeFailure(f"{method} {url} failed: {exc.reason}") from exc
 
@@ -401,14 +1170,386 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--password", default=os.environ.get("III_RUNTIME_API_BROWSER_PASSWORD", "dev-password"))
     parser.add_argument("--artifacts-dir", default=os.environ.get("III_GUI_V2_E2E_ARTIFACTS", "log/gui-v2-sim-e2e-smoke"))
     parser.add_argument("--timeout-s", type=float, default=float(os.environ.get("III_GUI_V2_E2E_TIMEOUT_SEC", "60")))
-    parser.add_argument("--http-timeout-s", type=float, default=10.0)
+    parser.add_argument("--http-timeout-s", type=float, default=30.0)
     parser.add_argument("--start-compose", action="store_true", help="Start the GC compose stack before running checks.")
     parser.add_argument("--keep-compose", action="store_true", help="Leave compose services running after the smoke.")
     parser.add_argument("--compose-file", default="src/III-Drone-GC/docker-compose.prod.yml")
     parser.add_argument("--compose-project", default=os.environ.get("III_GUI_V2_E2E_COMPOSE_PROJECT", "iii-gc-e2e-smoke"))
     parser.add_argument("--run-mutating-workflows", action="store_true", help="Run sim-only runtime, payload, perception, configuration, rosbag, and operation commands.")
     parser.add_argument("--run-flight-commands", action="store_true", help="Run sim-only arm, takeoff, hold, and land commands. Requires --run-mutating-workflows.")
+    parser.add_argument("--run-inspection-cycle", action="store_true", help="Run the complete sim inspection/recharge/resume/Hold/land acceptance cycle.")
+    parser.add_argument("--capture-frontend", action="store_true", help="Capture an authenticated final GUI screenshot without running a flight cycle.")
+    parser.add_argument("--overview-fixture", default="mid_corridor_taken_off_conductors_visible")
+    parser.add_argument("--inspection-start-fixture", default="low_entry_side")
+    parser.add_argument("--min-powerline-lines", type=int, default=4)
+    parser.add_argument("--inspection-observation-s", type=float, default=20.0)
+    parser.add_argument("--charging-observation-s", type=float, default=10.0)
+    parser.add_argument("--inspection-translation-speed-m-s", type=float, default=0.75)
+    parser.add_argument("--inspection-yaw-rate-rad-s", type=float, default=0.5)
+    parser.add_argument("--initial-battery-pct", type=float, default=100.0)
+    parser.add_argument("--fixture-settle-s", type=float, default=0.1)
+    parser.add_argument("--fixture-guard-s", type=float, default=8.0)
+    parser.add_argument("--overview-guard-s", type=float, default=60.0)
+    parser.add_argument("--fixture-resolver", default="scripts/workspace/resolve_sim_fixture.py")
+    parser.add_argument("--browser-binary", default=os.environ.get("BROWSER_BINARY", "chromium"))
     return parser.parse_args(argv)
+
+
+def active_mission_mode(state: dict[str, Any]) -> str | None:
+    for mode in state.get("modes", []):
+        if mode.get("active"):
+            return mode.get("mode_key")
+    return state.get("owned_mode") if state.get("mission_active") else None
+
+
+def build_request_id(run_id: str, step_index: int, name: str) -> str:
+    """Build an idempotency key unique to one runner invocation."""
+    return f"smoke-{run_id}-{step_index:02d}-{name}"
+
+
+def frontend_session_payload(
+    *,
+    token: str,
+    endpoint_id: str,
+    runtime_name: str,
+    runtime_id: str | None,
+    system_id: str | None,
+    profile: str | None,
+) -> dict[str, Any]:
+    return {
+        "token": token,
+        "endpointId": endpoint_id,
+        "runtimeName": runtime_name,
+        "runtimeId": runtime_id,
+        "systemId": system_id,
+        "profile": profile,
+    }
+
+
+def capture_authenticated_chromium(
+    *,
+    browser_binary: str,
+    frontend_url: str,
+    output: Path,
+    session: dict[str, Any],
+    timeout_s: float = 30.0,
+) -> None:
+    """Capture the hydrated operator workspace through Chrome DevTools."""
+    try:
+        import websocket
+    except ImportError as exc:
+        raise SmokeFailure("authenticated screenshots require websocket-client") from exc
+    resolved_browser = shutil.which(browser_binary)
+    if resolved_browser is None:
+        resolved_browser = next(
+            (candidate for name in ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable") if (candidate := shutil.which(name))),
+            None,
+        )
+    if resolved_browser is None:
+        raise SmokeFailure(f"browser binary is unavailable: {browser_binary}")
+
+    with socket.socket() as port_socket:
+        port_socket.bind(("127.0.0.1", 0))
+        debug_port = port_socket.getsockname()[1]
+
+    with tempfile.TemporaryDirectory(prefix="iii-gui-v2-chromium-") as profile_dir:
+        process = subprocess.Popen(
+            [
+                resolved_browser,
+                "--headless=new",
+                "--no-sandbox",
+                "--disable-gpu",
+                "--window-size=1440,900",
+                f"--remote-debugging-port={debug_port}",
+                "--remote-allow-origins=*",
+                f"--user-data-dir={profile_dir}",
+                frontend_url,
+            ],
+            cwd=output.parent,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        connection = None
+        try:
+            deadline = time.monotonic() + timeout_s
+            page = None
+            while time.monotonic() < deadline:
+                try:
+                    with urlopen(f"http://127.0.0.1:{debug_port}/json/list", timeout=1) as response:
+                        pages = json.load(response)
+                    page = select_chromium_page(pages, frontend_url)
+                    if page:
+                        break
+                except (URLError, TimeoutError):
+                    pass
+                time.sleep(0.2)
+            if not page:
+                raise SmokeFailure("Chromium DevTools page did not become ready")
+
+            connection = websocket.create_connection(page["webSocketDebuggerUrl"], timeout=5)
+            command_id = 0
+
+            def cdp(method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+                nonlocal command_id
+                command_id += 1
+                connection.send(json.dumps({"id": command_id, "method": method, "params": params or {}}))
+                while True:
+                    response = json.loads(connection.recv())
+                    if response.get("id") == command_id:
+                        if "error" in response:
+                            raise SmokeFailure(f"Chromium DevTools {method} failed: {response['error']}")
+                        return response.get("result", {})
+
+            cdp("Runtime.enable")
+            cdp("Page.enable")
+            storage_script = (
+                "sessionStorage.setItem('iii-gc-v2-session', "
+                + json.dumps(json.dumps(session, separators=(",", ":")))
+                + "); localStorage.setItem('iii-gc-v2-last-endpoint', "
+                + json.dumps(session["endpointId"])
+                + ");"
+            )
+            cdp("Page.addScriptToEvaluateOnNewDocument", {"source": storage_script})
+            cdp("Page.reload", {"ignoreCache": True})
+
+            hydrated = False
+            hydration_deadline = time.monotonic() + timeout_s
+            while time.monotonic() < hydration_deadline:
+                time.sleep(0.3)
+                result = cdp(
+                    "Runtime.evaluate",
+                    {
+                        "expression": (
+                            "Boolean(sessionStorage.getItem('iii-gc-v2-session')) && "
+                            "Boolean(document.querySelector('.app-shell:not(.app-shell--login)')) && "
+                            "Boolean(document.querySelector('[aria-label=\"Runtime session\"]')) && "
+                            "Boolean(document.querySelector('[aria-label=\"Mission command and current state\"]')) && "
+                            "Boolean(document.querySelector('.page-mode')) && "
+                            "!['disconnected', 'connecting'].includes("
+                            "document.querySelector('.page-mode').textContent.trim().toLowerCase())"
+                        ),
+                        "returnByValue": True,
+                    },
+                )
+                if result.get("result", {}).get("value") is True:
+                    hydrated = True
+                    break
+            if not hydrated:
+                diagnostic = cdp(
+                    "Runtime.evaluate",
+                    {
+                        "expression": (
+                            "JSON.stringify({url: location.href, "
+                            "session: sessionStorage.getItem('iii-gc-v2-session'), "
+                            "text: document.body.innerText})"
+                        ),
+                        "returnByValue": True,
+                    },
+                )
+                output.with_suffix(".failed.txt").write_text(
+                    str(diagnostic.get("result", {}).get("value") or diagnostic),
+                    encoding="utf-8",
+                )
+                failed_screenshot = cdp("Page.captureScreenshot", {"format": "png", "fromSurface": True})
+                output.with_suffix(".failed.png").write_bytes(base64.b64decode(failed_screenshot["data"]))
+                raise SmokeFailure("authenticated frontend did not hydrate before screenshot")
+
+            cdp(
+                "Runtime.evaluate",
+                {
+                    "expression": (
+                        "document.fonts.ready.then(() => new Promise(resolve => "
+                        "requestAnimationFrame(() => requestAnimationFrame(resolve))))"
+                    ),
+                    "awaitPromise": True,
+                    "returnByValue": True,
+                },
+            )
+            time.sleep(0.5)
+            screenshot = cdp("Page.captureScreenshot", {"format": "png", "fromSurface": True})
+            output.write_bytes(base64.b64decode(screenshot["data"]))
+        finally:
+            if connection is not None:
+                connection.close()
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+
+
+def select_chromium_page(pages: list[dict[str, Any]], frontend_url: str) -> dict[str, Any] | None:
+    expected = urlsplit(frontend_url)
+    for page in pages:
+        if page.get("type") != "page":
+            continue
+        actual = urlsplit(str(page.get("url") or ""))
+        if (actual.scheme, actual.hostname, actual.port) == (expected.scheme, expected.hostname, expected.port):
+            return page
+    return None
+
+
+def mission_active(state: dict[str, Any]) -> bool:
+    return state.get("mission_state") == "active" or state.get("latest", {}).get("mission_active") is True
+
+
+def operation_mode_active(state: dict[str, Any]) -> bool:
+    latest = state.get("latest", {})
+    return state.get("status") == "custom_operation_active" or latest.get("control_owner") == "custom_operation"
+
+
+def operation_started_or_finished(state: dict[str, Any], operation_id: str) -> bool:
+    if state.get("active_operation_id") == operation_id:
+        return True
+    return any(event.get("operation_id") == operation_id for event in state.get("latest", {}).get("operation_events", []))
+
+
+def operation_finished(state: dict[str, Any], operation_id: str | None = None) -> bool:
+    latest = state.get("latest", {})
+    active = state.get("active_operation_id") or latest.get("operation_active") is True
+    if active:
+        return False
+    events = latest.get("operation_events", [])
+    if not events:
+        return False
+    if operation_id is not None:
+        events = [event for event in events if event.get("operation_id") == operation_id]
+        if not events:
+            return False
+    event = events[-1]
+    status = str(event.get("status", "")).lower()
+    if status in {"failed", "rejected", "cancelled", "aborted"}:
+        raise SmokeFailure(f"custom operation ended in {status}: {event}")
+    event_type = str(event.get("event_type", "")).lower()
+    result = event.get("payload", {}).get("result")
+    if event_type == "rejected":
+        raise SmokeFailure(f"custom operation was rejected: {event}")
+    if event_type == "result" and isinstance(result, dict):
+        if result.get("success") is False:
+            reason = result.get("error") or result.get("status") or "unknown failure"
+            raise SmokeFailure(f"custom operation failed: {reason}")
+        return result.get("success") is True
+    return status in {"succeeded", "completed", "success"}
+
+
+def mapper_active(state: dict[str, Any]) -> bool:
+    latest = state.get("latest", {})
+    label = str(state.get("pl_mapper_state") or latest.get("pl_mapper_state") or "").lower()
+    return any(value in label for value in ("running", "active", "started"))
+
+
+def live_line_count(state: dict[str, Any]) -> int:
+    latest = state.get("latest", {})
+    for value in (state.get("live_line_count"), latest.get("live_powerline_line_count"), latest.get("powerline_count")):
+        if isinstance(value, (int, float)):
+            return int(value)
+    return 0
+
+
+def overviews_complete(state: dict[str, Any]) -> bool:
+    pylon = state.get("pylon_overview", {})
+    powerline_valid = state.get("valid") is True or state.get("stored_overview_valid") is True
+    return powerline_valid and pylon.get("valid") is True and pylon.get("pylon_count") == 2
+
+
+def configuration_manifest_available(state: dict[str, Any]) -> bool:
+    manifest = state.get("latest", {}).get("manifest", {})
+    return (
+        state.get("source_availability") == "available"
+        and manifest.get("status", {}).get("configuration_server_available") is True
+        and bool(manifest.get("nodes"))
+    )
+
+
+def configuration_parameter(state: dict[str, Any], name: str) -> dict[str, Any] | None:
+    for node in state.get("latest", {}).get("manifest", {}).get("nodes", []):
+        for group in node.get("groups", []):
+            for parameter in group.get("parameters", []):
+                if parameter.get("name") == name:
+                    return parameter
+    return None
+
+
+def numeric_values_match(actual: Any, expected: float) -> bool:
+    return isinstance(actual, (int, float)) and not isinstance(actual, bool) and abs(float(actual) - expected) < 1.0e-6
+
+
+def nav_is(state: dict[str, Any], expected: str) -> bool:
+    return expected.lower() in str(state.get("nav_state") or state.get("flight_mode") or "").lower()
+
+
+def vehicle_landed_and_disarmed(state: dict[str, Any]) -> bool:
+    return (
+        telemetry_field_matches(state, "in_air", False)
+        and telemetry_field_matches(state, "armed", False)
+        and state.get("in_air") is False
+        and state.get("armed") is False
+    )
+
+
+def telemetry_field_matches(state: dict[str, Any], field_name: str, expected: Any) -> bool:
+    evidence = state.get("telemetry_fields", {}).get(field_name, {})
+    return (
+        evidence.get("value") == expected
+        and evidence.get("freshness") == "fresh"
+        and evidence.get("source_availability") == "available"
+        and evidence.get("disagreement") is not True
+    )
+
+
+def _battery_remaining(state: dict[str, Any]) -> float:
+    value = state.get("battery_remaining")
+    if not isinstance(value, (int, float)):
+        raise SmokeFailure("battery remaining telemetry is unavailable")
+    return float(value)
+
+
+def simulated_battery_reset_visible(state: dict[str, Any], requested_pct: float) -> bool:
+    """Confirm reset propagation despite intentionally accelerated SITL discharge."""
+    minimum_pct = max(0.0, float(requested_pct) - 15.0)
+    evidence = state.get("telemetry_fields", {}).get("battery_remaining", {})
+    return (
+        _battery_remaining(state) * 100.0 >= minimum_pct
+        and evidence.get("freshness") == "fresh"
+        and evidence.get("source_availability") == "available"
+    )
+
+
+def mission_modes_selectable(vehicle: dict[str, Any], mission: dict[str, Any]) -> bool:
+    """Require every registered mission mode to remain selectable in PX4."""
+    mask = (
+        vehicle.get("latest", {})
+        .get("ros_uxrce", {})
+        .get("raw", {})
+        .get("vehicle_status", {})
+        .get("can_set_nav_states_mask")
+    )
+    mode_ids = [
+        mode.get("mode_id")
+        for mode in mission.get("modes", [])
+        if mode.get("registered") is True
+    ]
+    return (
+        isinstance(mask, int)
+        and bool(mode_ids)
+        and all(isinstance(mode_id, int) and 0 <= mode_id < 32 and mask & (1 << mode_id) for mode_id in mode_ids)
+    )
+
+
+def assert_battery_depleted(before: dict[str, Any], after: dict[str, Any]) -> None:
+    if _battery_remaining(after) >= _battery_remaining(before) - 0.001:
+        raise SmokeFailure("simulated battery did not measurably deplete during inspection")
+
+
+def assert_battery_charged(before: dict[str, Any], after: dict[str, Any]) -> None:
+    if _battery_remaining(after) <= _battery_remaining(before) + 0.001:
+        raise SmokeFailure("battery did not measurably charge while cable-charging mode was active")
+
+
+def battery_increased(before: dict[str, Any], after: dict[str, Any], *, minimum_delta: float = 0.002) -> bool:
+    """Return true after a small but telemetry-significant charge increase."""
+    return _battery_remaining(after) >= _battery_remaining(before) + minimum_delta
 
 
 def port_from_url(url: str | None, *, default: str) -> str:

@@ -52,6 +52,20 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
 15. `findings-risks-and-clarifications.md`
     Observed inconsistencies, technical risks, and clarification questions for follow-up.
 
+16. `perception-dataset-flight-suite.md`
+    Exact-topic simulated perception dataset flights, artifact layout, safety recovery, resumption, and verification.
+
+17. `field-inspection-operations.md`
+    Authoritative real-aircraft operator workflow, authority boundaries,
+    takeover behavior, link loss, and stop criteria.
+
+18. `host-development-commands.md`
+    Workspace-root commands for devcontainer, simulation, III CLI, tmux, and
+    ground-control operation from the development host.
+
+Domain language and context ownership are indexed by the root
+`CONTEXT-MAP.md`.
+
 ## Scope Notes
 
 - This documentation is generated from the local checked-out code and scripts in this workspace.

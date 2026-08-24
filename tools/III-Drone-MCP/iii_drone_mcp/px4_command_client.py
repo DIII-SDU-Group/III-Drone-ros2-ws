@@ -23,6 +23,9 @@ class Px4CommandClient:
 
     def __init__(self, system_address: str = "udpin://0.0.0.0:14540"):
         self._system_address = system_address
+        self._server_port = int(os.environ.get("III_MAVSDK_SERVER_PORT", "50051"))
+        if not 1 <= self._server_port <= 65535:
+            raise ValueError(f"III_MAVSDK_SERVER_PORT must be in [1, 65535], got {self._server_port}")
         self._drone = None
         self._plugin_manager = None
         self._server_process = None
@@ -44,7 +47,7 @@ class Px4CommandClient:
                     return
 
         self.cleanup_stale_servers(self._system_address)
-        self._drone = System()
+        self._drone = System(port=self._server_port)
         self._server_process = self._drone._start_mavsdk_server(
             self._system_address,
             self._drone._port,

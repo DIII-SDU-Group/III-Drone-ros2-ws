@@ -49,6 +49,19 @@ class SuiteFailure(RuntimeError):
     pass
 
 
+def mission_attempt_completed(
+    *,
+    saw_reach_active: bool,
+    saw_leave_success: bool,
+    mission_status: dict[str, Any],
+) -> bool:
+    return (
+        saw_reach_active
+        and saw_leave_success
+        and not bool(mission_status.get("mission_active", True))
+    )
+
+
 @dataclass
 class ScenarioAttempt:
     scenario_id: str
@@ -330,10 +343,30 @@ class MissionScenarioSuite:
                 for key, value in mode_statuses.items():
                     if value and value.get("tree_finished") and not value.get("tree_success"):
                         raise SuiteFailure(f"mission mode {key} finished unsuccessfully: {value}")
-                if mode_statuses["leave_cable"] and mode_statuses["leave_cable"].get("tree_finished") and mode_statuses["leave_cable"].get("tree_success"):
+                leave_status = mode_statuses["leave_cable"]
+                if (
+                    leave_status
+                    and leave_status.get("tree_finished")
+                    and leave_status.get("tree_success")
+                ):
                     saw_leave_success = True
-                mission_active = bool(last_mission.get("mission_active", True)) if last_mission else True
-                if saw_reach_active and saw_leave_success and not mission_active:
+                if saw_leave_success:
+                    try:
+                        final_status = self.tools.mission_status(timeout_sec=2.0)
+                    except Exception as exc:
+                        final_status = ToolResult(
+                            False,
+                            {"error": str(exc)},
+                            "mission terminal status query failed; retrying",
+                        )
+                    self._record_event(attempt, "mission_terminal_status", final_status, compact=True)
+                    if final_status.success and isinstance(final_status.data, dict):
+                        last_mission = dict(final_status.data)
+                if mission_attempt_completed(
+                    saw_reach_active=saw_reach_active,
+                    saw_leave_success=saw_leave_success,
+                    mission_status=last_mission,
+                ):
                     self._record_event(
                         attempt,
                         "mission_success",
@@ -409,18 +442,41 @@ class MissionScenarioSuite:
     def _collect_failure_artifacts(self, attempt: ScenarioAttempt) -> None:
         diagnostics = attempt.artifact_dir / "diagnostics"
         diagnostics.mkdir(parents=True, exist_ok=True)
-        for entity in CRITICAL_NODES:
-            try:
-                result = self.tools.logs(command="capture", entity_id=entity, history=True, save=True, tail_lines=3000, timeout_sec=8.0)
-                self._record_event(attempt, f"log_{entity}", result, compact=True)
-            except Exception as exc:
-                attempt.events.append({"event": f"log_{entity}_failed", "message": str(exc)})
-        for name, call in [
+        system_status = self.tools.system("status", timeout_sec=10.0)
+        self._record_event(attempt, "system_status", system_status, compact=True)
+        system_booted = self.tools._system_status_booted(system_status)
+
+        if system_booted:
+            for entity in CRITICAL_NODES:
+                try:
+                    result = self.tools.logs(
+                        command="capture",
+                        entity_id=entity,
+                        history=True,
+                        save=True,
+                        tail_lines=3000,
+                        timeout_sec=8.0,
+                    )
+                    self._record_event(attempt, f"log_{entity}", result, compact=True)
+                except Exception as exc:
+                    attempt.events.append({"event": f"log_{entity}_failed", "message": str(exc)})
+        else:
+            self._record_event(
+                attempt,
+                "node_logs_skipped",
+                ToolResult(True, {"system_booted": False}, "system graph was not booted"),
+                compact=True,
+            )
+
+        calls = [
             ("px4_safety", lambda: self.tools.px4_safety(timeout_sec=5.0)),
-            ("system_status", lambda: self.tools.system("status", timeout_sec=10.0)),
             ("simulation_status", lambda: self.tools.simulation("status", timeout_sec=10.0)),
-            ("critical_nodes", lambda: self.tools.critical_node_safety(entities=CRITICAL_NODES, timeout_sec=8.0)),
-        ]:
+        ]
+        if system_booted:
+            calls.append(
+                ("critical_nodes", lambda: self.tools.critical_node_safety(entities=CRITICAL_NODES, timeout_sec=8.0))
+            )
+        for name, call in calls:
             try:
                 self._record_event(attempt, name, call(), compact=True)
             except Exception as exc:

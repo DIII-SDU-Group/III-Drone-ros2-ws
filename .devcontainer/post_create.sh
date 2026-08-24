@@ -12,11 +12,20 @@ ensure_workspace_runtime_ownership() {
     local target_user="iii"
     local target_group="iii"
 
-    sudo mkdir -p /home/iii/ws/.config /home/iii/ws/runtime /home/iii/ws/runtime_logs
+    sudo mkdir -p \
+        /home/iii/ws/.config \
+        /home/iii/ws/runtime \
+        /home/iii/ws/runtime_logs \
+        /home/iii/ws/build \
+        /home/iii/ws/install \
+        /home/iii/ws/log
     sudo chown -R "${target_user}:${target_group}" \
         /home/iii/ws/.config \
         /home/iii/ws/runtime \
-        /home/iii/ws/runtime_logs
+        /home/iii/ws/runtime_logs \
+        /home/iii/ws/build \
+        /home/iii/ws/install \
+        /home/iii/ws/log
 }
 
 ensure_source_line() {
@@ -50,6 +59,6 @@ fi
 rosdep update && rosdep install --from-paths src --ignore-src -y
 
 # Some devcontainer lifecycle steps and VS Code helper commands may run as root.
-# Normalize the writable runtime/config paths back to the container user so live
-# parameter snapshots and other runtime artifacts can always be persisted.
+# Normalize writable/generated paths back to the container user so runtime and
+# colcon artifacts can always be updated by the remote user.
 ensure_workspace_runtime_ownership

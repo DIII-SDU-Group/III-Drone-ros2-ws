@@ -73,6 +73,10 @@ from iii_drone_mcp.simulation_observation import (
     write_json,
 )
 from iii_drone_mcp.fixture_ids import canonical_fixture_id, normalize_fixture_id
+from iii_drone_mcp.simulation_frames import (
+    GAZEBO_TO_ROS_POSITION_YAW_RAD,
+    rotate_gazebo_xy_delta_to_ros,
+)
 from lifecycle_msgs.msg import State as LifecycleState
 from lifecycle_msgs.srv import GetState as LifecycleGetState
 from std_srvs.srv import SetBool
@@ -243,6 +247,7 @@ class DroneAgentTools:
                 y=pose["y"] + float(kwargs.get("dy", 0.0)),
                 z=target_z,
                 yaw=pose["yaw"] + float(kwargs.get("dyaw", 0.0)),
+                ignore_altitude=bool(kwargs.get("ignore_altitude", False)),
                 timeout_sec=kwargs.get("timeout_sec"),
             )
         method = getattr(self.operations, name)
@@ -373,6 +378,7 @@ class DroneAgentTools:
             y=float(target_data["y"]),
             z=float(target_data["z"]),
             yaw=float(target_data["yaw"]),
+            ignore_altitude=bool(kwargs.get("ignore_altitude", False)),
             send_timeout_sec=float(send_timeout_sec),
             cancel_existing=bool(cancel_existing),
             clear_queue=bool(clear_queue),
@@ -777,7 +783,7 @@ class DroneAgentTools:
             )
 
     def _wait_no_active_operation_goal(self, timeout_sec: float = 5.0) -> bool:
-        deadline = time.monotonic() + timeout_sec
+        deadline = time.monotonic() + min(timeout_sec, 2.0)
         while rclpy.ok() and time.monotonic() < deadline:
             if self._active_operation_record() is None:
                 return True
@@ -936,6 +942,7 @@ class DroneAgentTools:
                 "z": target_z,
                 "yaw": pose["yaw"] + float(kwargs.get("dyaw", 0.0)),
                 "blend_to_next": bool(kwargs.get("blend_to_next", False)),
+                "ignore_altitude": bool(kwargs.get("ignore_altitude", False)),
                 "_relative_start": pose,
                 "_relative_requested_displacement_m": requested_displacement_m,
                 "_relative_target_displacement_m": target_displacement_m,
@@ -950,6 +957,7 @@ class DroneAgentTools:
                 "z": float(kwargs["z"]),
                 "yaw": float(kwargs["yaw"]),
                 "blend_to_next": bool(kwargs.get("blend_to_next", False)),
+                "ignore_altitude": bool(kwargs.get("ignore_altitude", False)),
             }
             return (
                 "fly_to_position",
@@ -968,6 +976,7 @@ class DroneAgentTools:
                 "y": float(kwargs["y"]),
                 "z": float(kwargs["z"]),
                 "yaw": float(kwargs["yaw"]),
+                "ignore_altitude": bool(kwargs.get("ignore_altitude", False)),
             }
             return (
                 "cable_aware_fly_to_position",
@@ -1296,6 +1305,12 @@ class DroneAgentTools:
                     StringStamped,
                     min(1.0, remaining),
                     required=True,
+                    qos_profile=QoSProfile(
+                        reliability=ReliabilityPolicy.BEST_EFFORT,
+                        durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                        history=HistoryPolicy.KEEP_LAST,
+                        depth=1,
+                    ),
                 )
                 return ToolResult(
                     True,
@@ -1725,16 +1740,15 @@ class DroneAgentTools:
                 "failed to map simulation geometry into live ROS world for powerline overview validation",
             )
         yaw_offset = self._normalize_angle(float(live_ros["yaw"]) - float(live_gazebo["yaw"]))
-        cos_offset = math.cos(yaw_offset)
-        sin_offset = math.sin(yaw_offset)
 
         def map_gazebo_point_to_ros(point: dict[str, Any]) -> dict[str, float]:
             dx = float(point["x"]) - float(live_gazebo["x"])
             dy = float(point["y"]) - float(live_gazebo["y"])
             dz = float(point["z"]) - float(live_gazebo["z"])
+            delta_ros_x, delta_ros_y = rotate_gazebo_xy_delta_to_ros(dx, dy)
             return {
-                "x": float(live_ros["x"]) + cos_offset * dx - sin_offset * dy,
-                "y": float(live_ros["y"]) + sin_offset * dx + cos_offset * dy,
+                "x": float(live_ros["x"]) + delta_ros_x,
+                "y": float(live_ros["y"]) + delta_ros_y,
                 "z": float(live_ros["z"]) + dz,
             }
 
@@ -1783,6 +1797,7 @@ class DroneAgentTools:
                 "live_ros_drone_pose": live_ros,
                 "live_gazebo_drone_pose": live_gazebo,
                 "yaw_offset": yaw_offset,
+                "position_yaw_offset": GAZEBO_TO_ROS_POSITION_YAW_RAD,
             },
         }
         if max_error > float(max_line_error_m):
@@ -2337,7 +2352,7 @@ class DroneAgentTools:
                     "id": parts[0],
                     "name": parts[1],
                     "devcontainer_local_folder": parts[2] if len(parts) > 2 else "",
-                    "exec_prefix": ["docker", "exec", parts[0]],
+                    "exec_prefix": ["docker", "exec", "-u", "iii", parts[0]],
                 }
             )
         data["containers"] = containers
@@ -2505,6 +2520,114 @@ class DroneAgentTools:
                 await client.close_async()
 
         return asyncio.run(asyncio.wait_for(run(), timeout=timeout_sec))
+
+    def battery_reset(
+        self,
+        remaining_pct: float = 100.0,
+        timeout_sec: float = 10.0,
+        tolerance_pct: float = 1.0,
+    ) -> ToolResult:
+        try:
+            from px4_msgs.msg import BatteryStatus
+        except ImportError as exc:
+            raise RuntimeError("px4_msgs is required for simulated battery reset verification") from exc
+
+        target_pct = float(remaining_pct)
+        tolerance_pct = max(0.1, float(tolerance_pct))
+        if not 0.0 <= target_pct <= 100.0:
+            raise ValueError(f"remaining_pct must be within [0, 100], got {target_pct}")
+
+        before = self._take_message(
+            "/fmu/out/battery_status", BatteryStatus, min(2.0, timeout_sec), required=False
+        )
+        floor_result = self.px4("get_param", param_name="SIM_BAT_MIN_PCT", timeout_sec=timeout_sec)
+        floor_pct = float(floor_result.data["param_value"])
+        if target_pct + tolerance_pct < floor_pct:
+            raise ValueError(
+                f"remaining_pct={target_pct} is below SIM_BAT_MIN_PCT={floor_pct}; "
+                "lower the simulation floor first"
+            )
+
+        initial_result = self.px4(
+            "set_param",
+            param_name="SIM_BAT_INIT_PCT",
+            param_value=target_pct,
+            param_type=9,
+            timeout_sec=timeout_sec,
+        )
+        token_result = self.px4("get_param", param_name="SIM_BAT_RESET", timeout_sec=timeout_sec)
+        previous_token = int(round(float(token_result.data["param_value"])))
+        previous_ack_result = self.px4(
+            "get_param", param_name="SIM_BAT_RST_ACK", timeout_sec=timeout_sec
+        )
+        previous_ack_token = int(round(float(previous_ack_result.data["param_value"])))
+        next_token = max(previous_token, previous_ack_token) + 1
+        if next_token > 2_147_483_647:
+            next_token = 0
+        reset_result = self.px4(
+            "set_param",
+            param_name="SIM_BAT_RESET",
+            param_value=next_token,
+            param_type=6,
+            timeout_sec=timeout_sec,
+        )
+
+        acknowledgement = None
+        acknowledgement_token = None
+        acknowledgement_deadline = time.monotonic() + timeout_sec
+        while time.monotonic() < acknowledgement_deadline:
+            acknowledgement = self.px4(
+                "get_param",
+                param_name="SIM_BAT_RST_ACK",
+                timeout_sec=max(0.1, acknowledgement_deadline - time.monotonic()),
+            )
+            acknowledgement_token = int(round(float(acknowledgement.data["param_value"])))
+            if acknowledgement_token == next_token:
+                break
+            time.sleep(min(0.1, max(0.0, acknowledgement_deadline - time.monotonic())))
+
+        deadline = time.monotonic() + timeout_sec
+        after = None
+        observed_pct = None
+        while acknowledgement_token == next_token and time.monotonic() < deadline and rclpy.ok():
+            after = self._take_message(
+                "/fmu/out/battery_status",
+                BatteryStatus,
+                min(0.5, max(0.1, deadline - time.monotonic())),
+                required=False,
+            )
+            if after is not None and math.isfinite(float(after.remaining)):
+                observed_pct = float(after.remaining) * 100.0
+                if abs(observed_pct - target_pct) <= tolerance_pct:
+                    break
+
+        data = {
+            "target_remaining_pct": target_pct,
+            "tolerance_pct": tolerance_pct,
+            "minimum_remaining_pct": floor_pct,
+            "previous_reset_token": previous_token,
+            "previous_acknowledgement_token": previous_ack_token,
+            "reset_token": next_token,
+            "acknowledgement_token": acknowledgement_token,
+            "acknowledgement_parameter": None if acknowledgement is None else acknowledgement.data,
+            "initial_percentage_parameter": initial_result.data,
+            "reset_parameter": reset_result.data,
+            "battery_before": None if before is None else self._message_to_nested_dict(before),
+            "battery_after": None if after is None else self._message_to_nested_dict(after),
+            "observed_remaining_pct": observed_pct,
+            "observed_within_tolerance": (
+                observed_pct is not None and abs(observed_pct - target_pct) <= tolerance_pct
+            ),
+        }
+        if acknowledgement_token != next_token:
+            return ToolResult(False, data, "battery simulator did not acknowledge the reset request")
+        if observed_pct is None:
+            return ToolResult(False, data, "battery reset was acknowledged but no battery status was observed")
+        return ToolResult(
+            True,
+            data,
+            f"simulated battery reset applied at {target_pct:.1f}%; current status {observed_pct:.1f}%",
+        )
 
     async def _px4_arm_when_health_stable(
         self,
@@ -3534,6 +3657,32 @@ class DroneAgentTools:
             return self._run_tool_command([str(script), "--status"], timeout_sec=timeout_sec)
         raise ValueError(f"unknown simulation command: {command}")
 
+    @staticmethod
+    def _simulation_status_flags(stdout: str) -> dict[str, bool]:
+        lines = {line.strip() for line in str(stdout).splitlines()}
+        session_running = "tmux_session: running" in lines
+        px4_instance_present = "px4_instance_state: lock_or_socket_present" in lines
+        gazebo_transport_available = "gazebo_transport: available" in lines
+        simulation_processes_running = any(
+            line.startswith("simulation_process_groups:") and not line.endswith("none")
+            for line in lines
+        )
+        return {
+            "session_running": session_running,
+            "simulation_processes_running": simulation_processes_running,
+            "px4_instance_present": px4_instance_present,
+            "gazebo_transport_available": gazebo_transport_available,
+            "backend_processes_ready": (
+                session_running and simulation_processes_running and px4_instance_present
+            ),
+        }
+
+    @staticmethod
+    def _system_status_booted(result: ToolResult) -> bool:
+        if not result.success or not isinstance(result.data, dict):
+            return False
+        return "Booted: True" in str(result.data.get("stdout", "")).splitlines()
+
     def _wait_for_simulation_ready(self, launch_result: ToolResult, timeout_sec: float) -> ToolResult:
         started = time.monotonic()
         deadline = started + timeout_sec
@@ -3544,10 +3693,8 @@ class DroneAgentTools:
             status = self.simulation("status", timeout_sec=10.0, wait_ready=False)
             attempts.append({"status": status.data})
             stdout = status.data.get("stdout", "")
-            has_session = "tmux_session: running" in stdout
-            has_gazebo = "gazebo_transport: available" in stdout
-            has_px4_state = "px4_instance_state: lock_or_socket_present" in stdout
-            if has_session and has_gazebo and has_px4_state:
+            status_flags = self._simulation_status_flags(stdout)
+            if status_flags["backend_processes_ready"]:
                 px4 = Px4CommandClient(self._px4_system_address)
                 try:
                     remaining = max(1.0, deadline - time.monotonic())
@@ -3561,6 +3708,13 @@ class DroneAgentTools:
                     data["ready_after_sec"] = time.monotonic() - started
                     data["ready_attempts"] = attempts
                     data["px4_telemetry"] = asdict(telemetry)
+                    data["simulation_status_flags"] = status_flags
+                    data["readiness_warnings"] = []
+                    if not status_flags["gazebo_transport_available"]:
+                        data["readiness_warnings"].append(
+                            "Gazebo scene-service discovery was not confirmed by this status sample; "
+                            "backend processes and PX4 telemetry are ready."
+                        )
                     return ToolResult(True, data, "simulation ready")
                 except Exception as exc:
                     last_error = str(exc)
@@ -3847,7 +4001,9 @@ class DroneAgentTools:
             gazebo_pose = self._lookup_gazebo_drone_model_pose(timeout_sec=float(kwargs.get("gazebo_timeout_sec", 5.0)))
             record["gazebo_ground_truth_pose"] = gazebo_pose
             record["recorded_from"]["gazebo_world"] = "hca_full_pylon_setup"
-            record["recorded_from"]["gazebo_model"] = "d4s_dc_drone_0"
+            record["recorded_from"]["gazebo_model"] = os.environ.get(
+                "III_GAZEBO_DRONE_MODEL", "d4s_dc_drone_0"
+            )
             record["recorded_from"]["gazebo_model_pose"] = {
                 "position": gazebo_pose["position"],
                 "orientation": gazebo_pose["orientation"],
@@ -3943,6 +4099,67 @@ class DroneAgentTools:
             "yaw": float(yaw),
         }
 
+    def apply_fixture_pose(
+        self,
+        position_id: str,
+        *,
+        geometry_path: str = "",
+        timeout_sec: float = 5.0,
+    ) -> ToolResult:
+        """Place the Gazebo aircraft at a stored fixture for simulation setup."""
+        if os.environ.get("SIMULATION", "").strip().lower() not in {"1", "true", "yes", "on"}:
+            return ToolResult(False, message="fixture pose application is available only in simulation")
+        position = self._find_fixture_position(position_id, geometry_path=geometry_path)
+        if position is None:
+            return ToolResult(False, message=f"unknown fixture position: {position_id}")
+        gazebo_pose = self._fixture_gazebo_pose(position)
+        if gazebo_pose is None:
+            return ToolResult(False, message=f"fixture has no Gazebo ground-truth pose: {position_id}")
+
+        try:
+            from gz.msgs10.boolean_pb2 import Boolean
+            from gz.msgs10.pose_pb2 import Pose
+            from gz.transport13 import Node
+        except ImportError as exc:
+            raise RuntimeError("gz.msgs10 and gz.transport13 are required for fixture pose application") from exc
+
+        recorded_from = position.get("recorded_from") if isinstance(position.get("recorded_from"), dict) else {}
+        world = str(recorded_from.get("gazebo_world") or "hca_full_pylon_setup")
+        model = os.environ.get(
+            "III_GAZEBO_DRONE_MODEL",
+            str(recorded_from.get("gazebo_model") or "d4s_dc_drone_0"),
+        )
+        half_yaw = gazebo_pose["yaw"] / 2.0
+        request = Pose()
+        request.name = model
+        request.position.x = gazebo_pose["x"]
+        request.position.y = gazebo_pose["y"]
+        request.position.z = gazebo_pose["z"]
+        request.orientation.z = math.sin(half_yaw)
+        request.orientation.w = math.cos(half_yaw)
+        ok, response = Node().request(
+            f"/world/{world}/set_pose",
+            request,
+            Pose,
+            Boolean,
+            int(float(timeout_sec) * 1000),
+        )
+        if not ok or not bool(response.data):
+            return ToolResult(False, message=f"Gazebo rejected fixture pose application: {position_id}")
+        return ToolResult(
+            True,
+            {
+                "fixture_id": position_id,
+                "geometry_path": position.get("_fixture_path"),
+                "fixture_section": position.get("_fixture_section"),
+                "gazebo_world": world,
+                "gazebo_model": model,
+                "gazebo_pose": gazebo_pose,
+                "setup_only": True,
+            },
+            f"applied simulation fixture pose: {position_id}",
+        )
+
     def _map_gazebo_fixture_to_live_ros_world(
         self,
         gazebo_pose: dict[str, float],
@@ -3975,17 +4192,23 @@ class DroneAgentTools:
             "z": float(gazebo_pose["z"]) - float(live_gazebo["z"]),
             "yaw": self._normalize_angle(float(gazebo_pose["yaw"]) - float(live_gazebo["yaw"])),
         }
-        cos_offset = math.cos(yaw_offset)
-        sin_offset = math.sin(yaw_offset)
+        delta_ros_x, delta_ros_y = rotate_gazebo_xy_delta_to_ros(
+            delta_gazebo["x"],
+            delta_gazebo["y"],
+        )
         delta_ros = {
-            "x": cos_offset * delta_gazebo["x"] - sin_offset * delta_gazebo["y"],
-            "y": sin_offset * delta_gazebo["x"] + cos_offset * delta_gazebo["y"],
+            "x": delta_ros_x,
+            "y": delta_ros_y,
             "z": delta_gazebo["z"],
             "yaw": delta_gazebo["yaw"],
         }
+        live_gazebo_ros_x, live_gazebo_ros_y = rotate_gazebo_xy_delta_to_ros(
+            float(live_gazebo["x"]),
+            float(live_gazebo["y"]),
+        )
         offset = {
-            "x": float(live_ros["x"]) - float(live_gazebo["x"]),
-            "y": float(live_ros["y"]) - float(live_gazebo["y"]),
+            "x": float(live_ros["x"]) - live_gazebo_ros_x,
+            "y": float(live_ros["y"]) - live_gazebo_ros_y,
             "z": float(live_ros["z"]) - float(live_gazebo["z"]),
             "yaw": yaw_offset,
         }
@@ -3996,7 +4219,8 @@ class DroneAgentTools:
             "yaw": self._normalize_angle(float(gazebo_pose["yaw"]) + offset["yaw"]),
             "gazebo_ground_truth_pose": gazebo_pose,
             "live_mapping": {
-                "method": "target_ros_xy = live_ros_xy + R(live_ros_yaw - live_gazebo_yaw) * (fixture_gazebo_xy - live_gazebo_xy); target_ros_z = live_ros_z + fixture_gazebo_z - live_gazebo_z; target_yaw = fixture_gazebo_yaw + (live_ros_yaw - live_gazebo_yaw)",
+                "method": "target_ros_xy = live_ros_xy + R(-pi/2) * (fixture_gazebo_xy - live_gazebo_xy); target_ros_z = live_ros_z + fixture_gazebo_z - live_gazebo_z; target_yaw = fixture_gazebo_yaw + (live_ros_yaw - live_gazebo_yaw)",
+                "position_yaw_offset": GAZEBO_TO_ROS_POSITION_YAW_RAD,
                 "attempts": attempt,
                 "live_ros_drone_pose": live_ros,
                 "live_gazebo_drone_pose": live_gazebo,
@@ -4010,9 +4234,10 @@ class DroneAgentTools:
         self,
         *,
         world: str = "hca_full_pylon_setup",
-        model_name: str = "d4s_dc_drone_0",
+        model_name: str | None = None,
         timeout_sec: float = 5.0,
     ) -> dict[str, Any]:
+        model_name = model_name or os.environ.get("III_GAZEBO_DRONE_MODEL", "d4s_dc_drone_0")
         result = self.gazebo(
             "topic_once",
             topic=f"/world/{world}/dynamic_pose/info",
@@ -6141,10 +6366,19 @@ class DroneAgentTools:
 
     def _write_artifact(self, filename: str, content: str | bytes) -> Path:
         path = self.artifact_dir / filename
-        if isinstance(content, bytes):
-            path.write_bytes(content)
-        else:
-            path.write_text(content, encoding="utf-8")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            if isinstance(content, bytes):
+                temporary_path.write_bytes(content)
+            else:
+                temporary_path.write_text(content, encoding="utf-8")
+            # Replace through the writable artifact directory instead of
+            # truncating the existing inode. This remains usable when an
+            # earlier root-run MCP process created the named artifact.
+            os.replace(temporary_path, path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
         return path
 
     def _plot_path_echo(self, echo_text: str, filename: str) -> Path:

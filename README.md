@@ -68,13 +68,23 @@ The supervision daemon adds service control, process tracking, lifecycle orchest
 
 ## Quick Start (Development/Simulation)
 
+From the host workspace root, the complete operator stack can be started and
+managed without entering the devcontainer terminal:
+
 ```bash
-# Run these inside the VS Code devcontainer terminal
+./iii-dev stack start
+./iii-dev stack status
+./iii-dev system attach
+./iii-dev stack stop
+```
 
-# Boot system (canonical flow)
+See [`docs/host-development-commands.md`](docs/host-development-commands.md)
+for individual simulation, III CLI, tmux, shell, and ground-control commands.
+
+The underlying canonical commands remain available inside the devcontainer:
+
+```bash
 iii system boot
-
-# Attach to running tmux session
 iii system attach
 ```
 

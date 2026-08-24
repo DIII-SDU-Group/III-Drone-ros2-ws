@@ -27,6 +27,11 @@ ros2 launch iii_drone_supervision system.launch.py profile:=sim
 
 That path launches the same canonical launch graph but does not provide daemon-managed services, service readiness gates, socket control, or tmux automation.
 
+For real inspection operation, use the staged startup, manual overview capture,
+mission, takeover, and shutdown sequence in the authoritative
+[`field-inspection-operations.md`](field-inspection-operations.md). Direct ROS
+launch and simulation fixture staging are not field operator procedures.
+
 ## 2. Launch Group Composition
 
 The authoritative launch topology comes from the canonical system specification in:

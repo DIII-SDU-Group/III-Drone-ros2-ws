@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+exec "${WORKSPACE_ROOT}/scripts/workspace/iii_dev.sh" "$@"

@@ -208,6 +208,7 @@ class DroneMcpServer:
                         "z": {"type": "number"},
                         "yaw": {"type": "number"},
                         "blend_to_next": {"type": "boolean"},
+                        "ignore_altitude": {"type": "boolean", "default": False},
                         "timeout_sec": {"type": "number"},
                         "send_timeout_sec": {"type": "number"},
                         "cancel_existing": {"type": "boolean"},
@@ -230,6 +231,7 @@ class DroneMcpServer:
                         "min_z": {"type": "number"},
                         "dyaw": {"type": "number"},
                         "blend_to_next": {"type": "boolean"},
+                        "ignore_altitude": {"type": "boolean", "default": False},
                         "tf_timeout_sec": {"type": "number"},
                         "timeout_sec": {"type": "number"},
                         "send_timeout_sec": {"type": "number"},
@@ -250,6 +252,7 @@ class DroneMcpServer:
                         "y": {"type": "number"},
                         "z": {"type": "number"},
                         "yaw": {"type": "number"},
+                        "ignore_altitude": {"type": "boolean", "default": False},
                         "timeout_sec": {"type": "number"},
                         "send_timeout_sec": {"type": "number"},
                         "cancel_existing": {"type": "boolean"},
@@ -286,6 +289,7 @@ class DroneMcpServer:
                         "gazebo_timeout_sec": {"type": "number"},
                         "tf_timeout_sec": {"type": "number"},
                         "overview_timeout_sec": {"type": "number"},
+                        "ignore_altitude": {"type": "boolean", "default": False},
                         "clear_queue_timeout_sec": {"type": "number"},
                     },
                     ["position_id"],
@@ -503,6 +507,7 @@ class DroneMcpServer:
                         "z": {"type": "number"},
                         "yaw": {"type": "number"},
                         "blend_to_next": {"type": "boolean"},
+                        "ignore_altitude": {"type": "boolean", "default": False},
                         "send_timeout_sec": {"type": "number"},
                         "cancel_existing": {"type": "boolean"},
                         "clear_queue": {"type": "boolean"},
@@ -678,6 +683,12 @@ class DroneMcpServer:
                     },
                 ),
                 lambda args: self.tools.activate_mission_mode(**args),
+            ),
+            ToolSpec(
+                "mission.status",
+                "Read the current mission executor state, active specification, registered modes, readiness, and control owner.",
+                _object_schema({"timeout_sec": {"type": "number"}}),
+                lambda args: self.tools.mission_status(**args),
             ),
             ToolSpec(
                 "payload.gripper",
@@ -964,6 +975,24 @@ class DroneMcpServer:
                 "Inspect PX4 preflight, arming, navigation, land-detector, failsafe, and latest command ACK state.",
                 _object_schema({"timeout_sec": {"type": "number"}, "stable_sec": {"type": "number"}}),
                 lambda args: self.tools.px4_health(**args),
+            ),
+            ToolSpec(
+                "battery.reset",
+                "Reset the PX4 SITL battery state without restarting PX4, Gazebo, or the III system.",
+                _object_schema(
+                    {
+                        "remaining_pct": {
+                            "type": "number",
+                            "description": "Battery percentage to apply; defaults to 100.",
+                        },
+                        "tolerance_pct": {
+                            "type": "number",
+                            "description": "Maximum overshoot accepted in the observed battery status.",
+                        },
+                        "timeout_sec": {"type": "number"},
+                    }
+                ),
+                lambda args: self.tools.battery_reset(**args),
             ),
             ToolSpec(
                 "px4.safety",

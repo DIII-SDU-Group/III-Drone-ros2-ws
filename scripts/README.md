@@ -53,6 +53,7 @@ Current scope:
 
 - docker compose helpers
 - curated III-only test-suite runners
+- `iii-dev`, the host-to-devcontainer development/operator command bridge
 
 Rule of thumb: if the script helps a developer inspect, build, or test the
 workspace locally, it belongs here.

@@ -49,6 +49,14 @@ Runtime API responsibilities:
 - typed command dispatch for PX4, custom operation, payload, perception,
   configuration, rosbag, logs, map, and simulation surfaces.
 
+The Mission page is the routine inspection workspace: it exposes manual mapper
+and current-position overview capture, readiness, the fixed inspection mission,
+recharge intents, recording, and recovery state. The Runtime page owns III
+lifecycle and service controls. Configuration edits are server-authorized;
+constant changes are persisted for a cold restart. Simulation battery reset is
+available only under the sim profile and is never exposed as a real-aircraft
+operation.
+
 GC proxy responsibilities:
 
 - mDNS discovery of `_iii-runtime-api._tcp.local` runtime APIs.

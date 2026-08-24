@@ -9,6 +9,7 @@ The server exposes operations for:
 - Configuration inspection and updates.
 - PX4/Gazebo/QGroundControl simulation tool lifecycle control.
 - PX4/QGroundControl-equivalent MAVSDK/MAVLink commands and PX4 external nav-state activation.
+- Resettable PX4 SITL battery state through `battery.reset`, without restarting the simulation stack.
 - ROS topic listing, endpoint inspection, and timed/message-count capture artifacts.
 - Gazebo inspection helpers, GUI camera pose control, and PNG image snapshots.
 
@@ -32,6 +33,10 @@ When invoked as root in the devcontainer, the server re-execs as the `iii`
 runtime user by default so ROS 2, Gazebo, and PX4 tooling share the same user
 context as the supervised system. Set `III_DRONE_MCP_ALLOW_ROOT=1` to disable
 that behavior.
+
+Container discovery returns a `docker exec -u iii ...` prefix for the same
+reason. Do not use a root `docker exec` prefix for workspace commands that can
+write `build/`, `install/`, `log/`, runtime state, or configuration artifacts.
 
 For editable installation into the current Python environment:
 

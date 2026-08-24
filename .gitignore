@@ -19,6 +19,15 @@ runtime_logs/**/latest
 artifacts/
 tmp/
 
+# Simulator/runtime outputs
+core.*
+dataman
+datasets/
+runtime_logs/
+symlink_install_manifest.txt
+/etc
+/test_data
+
 testing/*
 !testing/*.sh
 !testing/*.py

@@ -14,10 +14,15 @@ from typing import Any, Callable
 
 from iii_drone_mcp.agent_tools import DroneAgentTools, ToolResult
 from iii_drone_mcp.fixture_ids import canonical_fixture_id, fixture_id_suggestions, normalize_fixture_id
+from iii_drone_mcp.simulation_frames import (
+    GAZEBO_TO_ROS_POSITION_YAW_RAD,
+    rotate_gazebo_xy_delta_to_ros,
+)
 
 
 DEFAULT_GEOMETRY_PATH = Path(__file__).resolve().parents[1] / "config" / "hca_full_pylon_setup_geometry.json"
 DEFAULT_POSITION_ID = "mid_corridor_taken_off_conductors_visible"
+DEFAULT_INSPECTION_MISSION_START_POSITION_ID = "low_entry_side"
 DEFAULT_GAZEBO_WORLD = "hca_full_pylon_setup"
 DEFAULT_GAZEBO_DRONE_MODEL = "d4s_dc_drone_0"
 GEOMETRY_POSITION_SECTIONS = ("mission_start_positions", "drone_positions", "demo_overview_positions")
@@ -142,6 +147,7 @@ class MissionDeployWorkflow:
                 ),
                 pose_step_name="wait_pose_at_staging_position",
                 fallback_operation_name="fly_to_position" if overview.success else None,
+                ignore_altitude=True,
             )
 
             self._step("start_pl_mapper", lambda: tools.pl_mapper("start", reset=True, timeout_sec=3.0))
@@ -383,30 +389,6 @@ class MissionDeployWorkflow:
             )
             return
 
-        manual_input_available = False
-        safety = self._step(
-            "check_px4_manual_input_before_automation_bypass",
-            lambda: tools.px4_safety(timeout_sec=self.args.px4_timeout_sec),
-            required=False,
-        )
-        if safety.success and isinstance(safety.data, dict):
-            ros_data = safety.data.get("ros") if isinstance(safety.data.get("ros"), dict) else {}
-            failsafe_flags = ros_data.get("failsafe_flags") if isinstance(ros_data.get("failsafe_flags"), dict) else {}
-            manual_input_available = failsafe_flags.get("manual_control_signal_lost") is False
-        if manual_input_available:
-            self._append_step(
-                "disable_px4_manual_input_requirement_for_automation",
-                "skipped",
-                {
-                    "reason": (
-                        "PX4 already receives manual control input; keeping COM_RC_IN_MODE unchanged "
-                        "so QGroundControl virtual joystick remains usable"
-                    ),
-                    "px4_safety": safety.data,
-                },
-            )
-            return
-
         current = self._step(
             "read_px4_manual_input_mode_before_automation",
             lambda: tools.px4(
@@ -554,15 +536,16 @@ class MissionDeployWorkflow:
             wait_step_name=wait_step_name,
             pose_step_name="wait_pose_at_mission_start_position",
             fallback_operation_name=fallback_operation_name,
+            ignore_altitude=True,
         )
 
     def _mission_start_fly_operation(self) -> tuple[str, str, str, str | None]:
         mission_mode = self._normalize_mission_mode_key(str(getattr(self.args, "mission_mode", "") or ""))
         if mission_mode == "inspection_demo":
             return (
-                "fly_to_position",
-                "start_fly_to_mission_start_position",
-                "wait_fly_to_mission_start_position",
+                "cable_aware_fly_to_position",
+                "start_cable_aware_fly_to_mission_start_position",
+                "wait_cable_aware_fly_to_mission_start_position",
                 None,
             )
         return (
@@ -843,6 +826,7 @@ class MissionDeployWorkflow:
             wait_step_name="wait_cable_aware_fly_to_demo_over_corridor",
             pose_step_name="wait_pose_at_demo_over_corridor",
             fallback_operation_name="fly_to_position",
+            ignore_altitude=True,
         )
         self._fly_to_target(
             tools,
@@ -852,6 +836,7 @@ class MissionDeployWorkflow:
             wait_step_name="wait_fly_to_demo_pylon_1",
             pose_step_name="wait_pose_at_demo_pylon_1",
             verify_pose=False,
+            ignore_altitude=True,
         )
         self._fly_to_target(
             tools,
@@ -861,6 +846,7 @@ class MissionDeployWorkflow:
             wait_step_name="wait_fly_to_demo_pylon_2",
             pose_step_name="wait_pose_at_demo_pylon_2",
             verify_pose=False,
+            ignore_altitude=True,
         )
         self._fly_to_target(
             tools,
@@ -869,6 +855,7 @@ class MissionDeployWorkflow:
             start_step_name="start_fly_to_demo_over_corridor_after_pylons",
             wait_step_name="wait_fly_to_demo_over_corridor_after_pylons",
             pose_step_name="wait_pose_at_demo_over_corridor_after_pylons",
+            ignore_altitude=True,
         )
         self._step("replace_demo_pylon_overview", lambda: self._replace_demo_pylon_overview(tools, pylon_1, pylon_2))
         self._append_step(
@@ -996,7 +983,10 @@ class MissionDeployWorkflow:
             value = getattr(self.args, key)
             if value is not None:
                 target[key] = float(value)
-        if target["z"] < self.args.minimum_staging_z:
+        if (
+            not isinstance(target.get("gazebo_ground_truth_pose"), dict)
+            and target["z"] < self.args.minimum_staging_z
+        ):
             target["z"] = self.args.minimum_staging_z
             target["z_adjusted_to_minimum"] = True
         return target
@@ -1011,25 +1001,31 @@ class MissionDeployWorkflow:
                 self.args.mission_start_yaw,
             )
         )
-        if not self.args.mission_start_position_id and not has_direct_pose:
+        mission_start_position_id = self.args.mission_start_position_id
+        mission_mode = self._normalize_mission_mode_key(
+            str(getattr(self.args, "mission_mode", "") or "")
+        )
+        if not mission_start_position_id and not has_direct_pose and mission_mode == "inspection_demo":
+            mission_start_position_id = DEFAULT_INSPECTION_MISSION_START_POSITION_ID
+        if not mission_start_position_id and not has_direct_pose:
             return None
         target = (
-            self._target_from_geometry(self.args.mission_start_position_id, tools=tools)
-            if self.args.mission_start_position_id
+            self._target_from_geometry(mission_start_position_id, tools=tools)
+            if mission_start_position_id
             else None
         )
         if target is None:
             if not has_direct_pose:
-                raise RuntimeError(self._missing_geometry_position_message("mission start position", self.args.mission_start_position_id))
+                raise RuntimeError(self._missing_geometry_position_message("mission start position", mission_start_position_id))
             target = {
-                "position_id": self.args.mission_start_position_id or "direct_mission_start_pose",
+                "position_id": mission_start_position_id or "direct_mission_start_pose",
                 "frame_id": self.args.mission_start_frame_id or "world",
                 "x": 0.0,
                 "y": 0.0,
                 "z": self.args.takeoff_altitude,
                 "yaw": 0.0,
             }
-        target["position_id"] = self.args.mission_start_position_id or target.get("position_id") or "direct_mission_start_pose"
+        target["position_id"] = mission_start_position_id or target.get("position_id") or "direct_mission_start_pose"
         target["frame_id"] = self.args.mission_start_frame_id or target.get("frame_id") or "world"
         overrides = {
             "x": self.args.mission_start_x,
@@ -1055,6 +1051,7 @@ class MissionDeployWorkflow:
         start_step_name: str,
         wait_step_name: str,
         pose_step_name: str,
+        ignore_altitude: bool,
         fallback_operation_name: str | None = None,
         verify_pose: bool = True,
     ) -> None:
@@ -1064,6 +1061,7 @@ class MissionDeployWorkflow:
                 target,
                 start_step_name=start_step_name,
                 wait_step_name=wait_step_name,
+                ignore_altitude=ignore_altitude,
             ):
                 self._verify_or_skip_pose(tools, target, pose_step_name, verify_pose)
                 return
@@ -1075,6 +1073,7 @@ class MissionDeployWorkflow:
                 wait_step_name=wait_step_name,
                 pose_step_name=pose_step_name,
                 verify_pose=verify_pose,
+                ignore_altitude=ignore_altitude,
                 failed_result=self._last_cable_aware_fallback_reason
                 or {"reason": "cable-aware fly-to-position failed before goal acceptance/completion"},
             )
@@ -1089,6 +1088,7 @@ class MissionDeployWorkflow:
                 y=target["y"],
                 z=target["z"],
                 yaw=target["yaw"],
+                ignore_altitude=ignore_altitude,
                 send_timeout_sec=self.args.fly_send_timeout_sec,
                 clear_queue=False,
                 cancel_existing=True,
@@ -1113,6 +1113,7 @@ class MissionDeployWorkflow:
                 wait_step_name=wait_step_name,
                 pose_step_name=pose_step_name,
                 verify_pose=verify_pose,
+                ignore_altitude=ignore_altitude,
                 failed_result=wait_result.data,
             )
             return
@@ -1128,6 +1129,7 @@ class MissionDeployWorkflow:
         wait_step_name: str,
         pose_step_name: str,
         verify_pose: bool,
+        ignore_altitude: bool,
         failed_result: Any,
     ) -> None:
         self._step(
@@ -1174,6 +1176,7 @@ class MissionDeployWorkflow:
             pose_step_name=pose_step_name,
             fallback_operation_name=None,
             verify_pose=verify_pose,
+            ignore_altitude=ignore_altitude,
         )
 
     def _verify_or_skip_pose(
@@ -1208,6 +1211,7 @@ class MissionDeployWorkflow:
         *,
         start_step_name: str,
         wait_step_name: str,
+        ignore_altitude: bool,
     ) -> bool:
         attempts: list[dict[str, Any]] = []
         max_attempts = max(1, int(self.args.cable_aware_fly_attempts))
@@ -1275,6 +1279,7 @@ class MissionDeployWorkflow:
                 y=target["y"],
                 z=target["z"],
                 yaw=target["yaw"],
+                ignore_altitude=ignore_altitude,
                 send_timeout_sec=self.args.fly_send_timeout_sec,
                 clear_queue=False,
                 cancel_existing=True,
@@ -1546,6 +1551,7 @@ class MissionDeployWorkflow:
         ) ** 0.5
         latest_gazebo_pose: dict[str, float] | None = None
         latest_gazebo_xy_error: float | None = None
+        latest_gazebo_error: float | None = None
         gazebo_ok = True
         gazebo_target = target.get("gazebo_ground_truth_pose") if isinstance(target.get("gazebo_ground_truth_pose"), dict) else None
         if gazebo_target is not None:
@@ -1555,7 +1561,11 @@ class MissionDeployWorkflow:
                     (latest_gazebo_pose["x"] - float(gazebo_target["x"])) ** 2
                     + (latest_gazebo_pose["y"] - float(gazebo_target["y"])) ** 2
                 ) ** 0.5
-                gazebo_ok = latest_gazebo_xy_error <= self.args.gazebo_position_tolerance_m
+                latest_gazebo_error = (
+                    latest_gazebo_xy_error**2
+                    + (latest_gazebo_pose["z"] - float(gazebo_target["z"])) ** 2
+                ) ** 0.5
+                gazebo_ok = latest_gazebo_error <= self.args.gazebo_position_tolerance_m
             except Exception as exc:
                 latest_gazebo_pose = {"error": str(exc)}
                 gazebo_ok = False
@@ -1568,6 +1578,7 @@ class MissionDeployWorkflow:
                 "target": target,
                 "position_error_m": latest_error,
                 "gazebo_position_xy_error_m": latest_gazebo_xy_error,
+                "gazebo_position_error_m": latest_gazebo_error,
                 "tolerance_m": self.args.position_tolerance_m,
                 "gazebo_tolerance_m": self.args.gazebo_position_tolerance_m if gazebo_target is not None else None,
             },
@@ -1591,6 +1602,20 @@ class MissionDeployWorkflow:
         label: str,
     ) -> dict[str, Any]:
         step_name = f"adjust_{label}_altitude_for_ground_estimate"
+        if isinstance(target.get("gazebo_ground_truth_pose"), dict):
+            self._append_step(
+                step_name,
+                "skipped",
+                {
+                    "reason": (
+                        "target is an authoritative Gazebo fixture remapped into the live ROS world; "
+                        "the ROS ground estimate uses a different vertical datum"
+                    ),
+                    "target": target,
+                },
+            )
+            return target
+
         try:
             from iii_drone_interfaces.msg import CombinedDroneAwareness
         except ImportError as exc:
@@ -1883,17 +1908,23 @@ class MissionDeployWorkflow:
             "z": float(gazebo_pose["z"]) - float(live_gazebo["z"]),
             "yaw": self._normalize_angle(float(gazebo_pose["yaw"]) - float(live_gazebo["yaw"])),
         }
-        cos_offset = math.cos(yaw_offset)
-        sin_offset = math.sin(yaw_offset)
+        delta_ros_x, delta_ros_y = rotate_gazebo_xy_delta_to_ros(
+            delta_gazebo["x"],
+            delta_gazebo["y"],
+        )
         delta_ros = {
-            "x": cos_offset * delta_gazebo["x"] - sin_offset * delta_gazebo["y"],
-            "y": sin_offset * delta_gazebo["x"] + cos_offset * delta_gazebo["y"],
+            "x": delta_ros_x,
+            "y": delta_ros_y,
             "z": delta_gazebo["z"],
             "yaw": delta_gazebo["yaw"],
         }
+        live_gazebo_ros_x, live_gazebo_ros_y = rotate_gazebo_xy_delta_to_ros(
+            float(live_gazebo["x"]),
+            float(live_gazebo["y"]),
+        )
         offset = {
-            "x": float(live_ros["x"]) - float(live_gazebo["x"]),
-            "y": float(live_ros["y"]) - float(live_gazebo["y"]),
+            "x": float(live_ros["x"]) - live_gazebo_ros_x,
+            "y": float(live_ros["y"]) - live_gazebo_ros_y,
             "z": float(live_ros["z"]) - float(live_gazebo["z"]),
             "yaw": yaw_offset,
         }
@@ -1904,7 +1935,8 @@ class MissionDeployWorkflow:
             "yaw": self._normalize_angle(float(gazebo_pose["yaw"]) + offset["yaw"]),
             "gazebo_ground_truth_pose": gazebo_pose,
             "live_mapping": {
-                "method": "target_ros_xy = live_ros_xy + R(live_ros_yaw - live_gazebo_yaw) * (fixture_gazebo_xy - live_gazebo_xy); target_ros_z = live_ros_z + fixture_gazebo_z - live_gazebo_z; target_yaw = fixture_gazebo_yaw + (live_ros_yaw - live_gazebo_yaw)",
+                "method": "target_ros_xy = live_ros_xy + R(-pi/2) * (fixture_gazebo_xy - live_gazebo_xy); target_ros_z = live_ros_z + fixture_gazebo_z - live_gazebo_z; target_yaw = fixture_gazebo_yaw + (live_ros_yaw - live_gazebo_yaw)",
+                "position_yaw_offset": GAZEBO_TO_ROS_POSITION_YAW_RAD,
                 "live_ros_drone_pose": live_ros,
                 "live_gazebo_drone_pose": live_gazebo,
                 "offset": offset,
@@ -1974,6 +2006,7 @@ class MissionDeployWorkflow:
         latest_gazebo_pose: dict[str, float] | None = None
         latest_error = float("inf")
         latest_gazebo_xy_error = float("inf")
+        latest_gazebo_error = float("inf")
         last_progress_log = 0.0
         gazebo_target = target.get("gazebo_ground_truth_pose") if isinstance(target.get("gazebo_ground_truth_pose"), dict) else None
         while time.monotonic() < deadline:
@@ -1991,7 +2024,11 @@ class MissionDeployWorkflow:
                         (latest_gazebo_pose["x"] - float(gazebo_target["x"])) ** 2
                         + (latest_gazebo_pose["y"] - float(gazebo_target["y"])) ** 2
                     ) ** 0.5
-                    gazebo_ok = latest_gazebo_xy_error <= self.args.gazebo_position_tolerance_m
+                    latest_gazebo_error = (
+                        latest_gazebo_xy_error**2
+                        + (latest_gazebo_pose["z"] - float(gazebo_target["z"])) ** 2
+                    ) ** 0.5
+                    gazebo_ok = latest_gazebo_error <= self.args.gazebo_position_tolerance_m
                 except Exception as exc:
                     latest_gazebo_pose = {"error": str(exc)}
                     gazebo_ok = False
@@ -2007,6 +2044,7 @@ class MissionDeployWorkflow:
                             "target": target,
                             "position_error_m": latest_error,
                             "gazebo_position_xy_error_m": latest_gazebo_xy_error if gazebo_target is not None else None,
+                            "gazebo_position_error_m": latest_gazebo_error if gazebo_target is not None else None,
                             "tolerance_m": self.args.position_tolerance_m,
                             "gazebo_tolerance_m": self.args.gazebo_position_tolerance_m if gazebo_target is not None else None,
                             "settle_sec": self.args.position_settle_sec,
@@ -2025,6 +2063,7 @@ class MissionDeployWorkflow:
                         "target_position_id": target.get("position_id"),
                         "position_error_m": latest_error,
                         "gazebo_position_xy_error_m": latest_gazebo_xy_error if gazebo_target is not None else None,
+                        "gazebo_position_error_m": latest_gazebo_error if gazebo_target is not None else None,
                         "tolerance_m": self.args.position_tolerance_m,
                         "gazebo_tolerance_m": self.args.gazebo_position_tolerance_m if gazebo_target is not None else None,
                         "gazebo_ok": gazebo_ok,
@@ -2041,6 +2080,7 @@ class MissionDeployWorkflow:
                 "target": target,
                 "position_error_m": latest_error,
                 "gazebo_position_xy_error_m": latest_gazebo_xy_error if gazebo_target is not None else None,
+                "gazebo_position_error_m": latest_gazebo_error if gazebo_target is not None else None,
                 "tolerance_m": self.args.position_tolerance_m,
                 "gazebo_tolerance_m": self.args.gazebo_position_tolerance_m if gazebo_target is not None else None,
                 "settle_sec": self.args.position_settle_sec,

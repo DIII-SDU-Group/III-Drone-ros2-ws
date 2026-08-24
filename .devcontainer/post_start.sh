@@ -14,11 +14,20 @@ ensure_workspace_runtime_ownership() {
     local target_user="iii"
     local target_group="iii"
 
-    sudo mkdir -p /home/iii/ws/.config /home/iii/ws/runtime /home/iii/ws/runtime_logs
+    sudo mkdir -p \
+        /home/iii/ws/.config \
+        /home/iii/ws/runtime \
+        /home/iii/ws/runtime_logs \
+        /home/iii/ws/build \
+        /home/iii/ws/install \
+        /home/iii/ws/log
     sudo chown -R "${target_user}:${target_group}" \
         /home/iii/ws/.config \
         /home/iii/ws/runtime \
-        /home/iii/ws/runtime_logs
+        /home/iii/ws/runtime_logs \
+        /home/iii/ws/build \
+        /home/iii/ws/install \
+        /home/iii/ws/log
 }
 
 ensure_source_line() {
