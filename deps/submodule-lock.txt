@@ -1,7 +1,7 @@
 # Submodule dependency lock file for III-Drone-ros2-ws.
 # Format: <path> <commit-sha>
 # Managed by scripts/git/update_submodule_lock.sh
-PX4-Autopilot 9622cd6769260a265aba650f7e7d10479eae28ce
+PX4-Autopilot 7f41496535c54924dfb33a25a27be88b4b134a30
 PX4-Autopilot/boards/modalai/voxl2/libfc-sensor-api 85151aaf6ba8b24ce82b387e088452c63f7e2096
 PX4-Autopilot/platforms/nuttx/NuttX/apps e37940d8535f603a16b8f6f21c21edaf584218aa
 PX4-Autopilot/platforms/nuttx/NuttX/nuttx 886acbbdb4f061e5c0ce1a76afbcfa7cb7df9849
@@ -47,8 +47,8 @@ src/III-Drone-GC cbd9be2848bfeab3832e308d6f21ef150c0a22f4
 src/III-Drone-Interfaces 595451377a5eb53050ef33367f8d34578cdab601
 src/III-Drone-Mission 7ac61844405c8db068986cfc2531f8dca13e60df
 src/III-Drone-Runtime 864a12e0116796ffcedde015f05f8f74b24c081b
-src/III-Drone-Simulation 142134f94392f7495d19c89b85c26ec7f0da930a
-src/III-Drone-Simulation/Gazebo-simulation-assets d1ed023f7e0637ac465694f7a884badb873f3bec
+src/III-Drone-Simulation 20aa27cb9e4377e8661204507e3ce5b63d666567
+src/III-Drone-Simulation/Gazebo-simulation-assets 1b4c73936dbb7dcebda97d325717f67edac5c81e
 src/III-Drone-Supervision 162517f948cc62da1960ff59130bcef317cf7f71
 src/iwr6843aop-ROS2-pkg c2c03ae19c51f07b8c540a90ac61e457b410a482
 src/micro-ROS-Agent 52abdf5a9897637b2539cb1c239e1ec4fa92e01c
