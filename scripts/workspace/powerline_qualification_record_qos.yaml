@@ -1,0 +1,30 @@
+/sensor/cable_camera/image_raw:
+  history: keep_last
+  depth: 1000
+  reliability: best_effort
+  durability: volatile
+/sensor/mmwave/points_full:
+  history: keep_last
+  depth: 1000
+  reliability: best_effort
+  durability: volatile
+/simulation/ground_truth/cable_camera/conductor_instance_mask:
+  history: keep_last
+  depth: 1000
+  reliability: best_effort
+  durability: volatile
+/simulation/ground_truth/cable_camera/frame:
+  history: keep_last
+  depth: 1000
+  reliability: best_effort
+  durability: volatile
+/simulation/ground_truth/mmwave/scan:
+  history: keep_last
+  depth: 1000
+  reliability: best_effort
+  durability: volatile
+/simulation/ground_truth/drone/state:
+  history: keep_last
+  depth: 1000
+  reliability: best_effort
+  durability: volatile

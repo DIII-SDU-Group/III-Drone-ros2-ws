@@ -14,11 +14,20 @@ ensure_workspace_runtime_ownership() {
     local target_user="iii"
     local target_group="iii"
 
-    sudo mkdir -p /home/iii/ws/.config /home/iii/ws/runtime /home/iii/ws/runtime_logs
+    sudo mkdir -p \
+        /home/iii/ws/.config \
+        /home/iii/ws/runtime \
+        /home/iii/ws/runtime_logs \
+        /home/iii/ws/build \
+        /home/iii/ws/install \
+        /home/iii/ws/log
     sudo chown -R "${target_user}:${target_group}" \
         /home/iii/ws/.config \
         /home/iii/ws/runtime \
-        /home/iii/ws/runtime_logs
+        /home/iii/ws/runtime_logs \
+        /home/iii/ws/build \
+        /home/iii/ws/install \
+        /home/iii/ws/log
 }
 
 ensure_source_line() {
@@ -69,7 +78,9 @@ complete -o nospace -o default -F _iii_python_argcomplete iii
 EOF
 fi
 
-# Reinstall the III-Drone-CLI
+# Refresh Python dependencies for existing devcontainers, then reinstall the
+# editable III-Drone-CLI wrapper.
+pip3 install -r ./requirements.txt
 pip3 uninstall -y iii 2> /dev/null
 pip3 install -e ./tools/III-Drone-CLI
 
@@ -128,3 +139,4 @@ COLCON_HOME=/home/iii/ws colcon build \
 
 # Install and run the daemon through systemd so dev mirrors onboard runtime ownership.
 ./scripts/systemd/install_dev_systemd_service.sh
+./scripts/systemd/install_runtime_api_service.sh

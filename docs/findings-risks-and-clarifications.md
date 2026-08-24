@@ -5,7 +5,7 @@
 Confirmed by maintainer clarification:
 - Canonical bringup is III CLI driven (`iii system boot`) with tmux session bootstrapping.
 - Supervisor then performs lifecycle/state orchestration on running nodes/wrappers.
-- Sim profile uses a managed wrapper that launches simulated sensors (`sensors_sim_launch.yaml`).
+- Sim profile uses a managed wrapper that launches simulated Gazebo asset bridges (`sim_assets_launch.yaml`).
 - Real profile handles camera and mmWave as separate supervised nodes.
 
 1. Launch composition mismatch in main launch:

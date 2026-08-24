@@ -67,3 +67,11 @@
 [submodule "PX4-Autopilot"]
 	path = PX4-Autopilot
 	url = git@github.com:DIII-SDU-Group/PX4-Autopilot.git
+[submodule "src/III-Drone-Contracts"]
+	path = src/III-Drone-Contracts
+	url = git@github.com:DIII-SDU-Group/III-Drone-Contracts.git
+	branch = main
+[submodule "src/III-Drone-Runtime"]
+	path = src/III-Drone-Runtime
+	url = git@github.com:DIII-SDU-Group/III-Drone-Runtime.git
+	branch = main

@@ -17,6 +17,27 @@ source $SCRIPT_DIR/paths.bash
 export SIMULATION="true"
 export III_SYSTEM_PROFILE="sim"
 
+# Gazebo Transport discovers peers over UDP multicast by default. For the local
+# simulation stack all Gazebo transport peers run on the same host, so bind to
+# loopback by default. This avoids Gazebo selecting transient external or down
+# Docker bridge interfaces and wedging simulation-side bridge nodes. Operators
+# can still set GZ_IP explicitly before sourcing this profile.
+if [ -z "${GZ_IP:-}" ]; then
+    export GZ_IP="127.0.0.1"
+fi
+
+III_DRONE_SIM_PLUGIN_DIR="$WORKSPACE_DIR/install/iii_drone_simulation/lib"
+if [ -d "$III_DRONE_SIM_PLUGIN_DIR" ]; then
+    case ":${GZ_SIM_SYSTEM_PLUGIN_PATH:-}:" in
+        *":$III_DRONE_SIM_PLUGIN_DIR:"*)
+            ;;
+        *)
+            export GZ_SIM_SYSTEM_PLUGIN_PATH="$III_DRONE_SIM_PLUGIN_DIR${GZ_SIM_SYSTEM_PLUGIN_PATH:+:$GZ_SIM_SYSTEM_PLUGIN_PATH}"
+            ;;
+    esac
+fi
+unset III_DRONE_SIM_PLUGIN_DIR
+
 export COLCON_HOME="$WORKSPACE_DIR"
 
 source $SCRIPT_DIR/remote.bash

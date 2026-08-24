@@ -13,6 +13,21 @@ runtime_logs/**/latest
 .config/*
 !.config/.gitignore
 
+.cache/
+.pytest_cache/
+.playwright-mcp/
+artifacts/
+tmp/
+
+# Simulator/runtime outputs
+core.*
+dataman
+datasets/
+runtime_logs/
+symlink_install_manifest.txt
+/etc
+/test_data
+
 testing/*
 !testing/*.sh
 !testing/*.py
@@ -26,3 +41,4 @@ node_modules/.package-lock.json
 **/__pycache__/
 **/.pytest_cache/
 *.pyc
+*.egg-info/

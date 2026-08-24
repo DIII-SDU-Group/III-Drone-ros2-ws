@@ -1,6 +1,20 @@
-# AGENT.md - III-Drone ROS2 Workspace Guide
+# AGENTS.md - III-Drone ROS2 Workspace Guide
 
 This file defines how coding agents should work in this repository.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs live in GitHub Issues for `DIII-SDU-Group/III-Drone-ros2-ws`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default triage label vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repo uses a multi-context domain-doc layout, with `CONTEXT-MAP.md` at the root pointing to relevant per-context `CONTEXT.md` files. See `docs/agents/domain.md`.
 
 ## 1) Repository Purpose
 
@@ -23,6 +37,10 @@ Bringup flow:
 3. Use supervision/configuration services for lifecycle/state management.
 
 Do not assume direct `ros2 launch ...` alone matches operational behavior.
+
+For agent-operated runtime work, prefer the III-Drone MCP tools over ad hoc
+`docker exec` commands. See `tools.md` for the MCP registration expectations,
+tool map, and the Docker-exec-to-MCP audit.
 
 ## 3) Environment And Build Baseline
 

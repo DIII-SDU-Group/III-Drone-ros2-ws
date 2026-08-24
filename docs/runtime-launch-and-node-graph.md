@@ -27,6 +27,11 @@ ros2 launch iii_drone_supervision system.launch.py profile:=sim
 
 That path launches the same canonical launch graph but does not provide daemon-managed services, service readiness gates, socket control, or tmux automation.
 
+For real inspection operation, use the staged startup, manual overview capture,
+mission, takeover, and shutdown sequence in the authoritative
+[`field-inspection-operations.md`](field-inspection-operations.md). Direct ROS
+launch and simulation fixture staging are not field operator procedures.
+
 ## 2. Launch Group Composition
 
 The authoritative launch topology comes from the canonical system specification in:
@@ -65,7 +70,7 @@ Examples from the specification:
 ### 2.2 Simulation profile entities
 
 - managed TF simulation launch wrapper (`tf`)
-- managed simulation sensor launch wrapper (`sensors`)
+- managed simulation asset launch wrapper (`sim_assets`)
 
 ### 2.3 Common profile services
 
@@ -105,7 +110,12 @@ Examples from the specification:
 - `managed_node_wrapper`: lifecycle wrapper for external processes and nested launch fragments.
 
 ### 3.6 Ground Control
-- `iii_gc` node inside GUI process for telemetry, command, and parameter interactions.
+- GUI v2 frontend/proxy run on the ground-control computer without ROS/DDS.
+- `iii-runtime-api` runs on the runtime host and bridges GUI/remote CLI
+  requests to the III daemon, ROS graph, MAVLink/MAVSDK, logs, configuration,
+  rosbag, and map/perception aggregators.
+- `iii_gc` remains the legacy Tk GUI node for parity/reference and is not the
+  GUI v2 runtime boundary.
 
 ## 4. Communication Patterns
 
@@ -150,4 +160,6 @@ Typical complete system topology (sim or real profile dependent):
 7. Perception chain stabilizes powerline state.
 8. Control primitives become available via action servers.
 9. Mission executor registers PX4 modes and drives behavior trees when PX4 readiness is present.
-10. Ground control observes status and injects operator commands/parameter changes.
+10. GUI v2 observes status and injects operator commands/parameter changes
+    through `iii-runtime-api`; the legacy Tk `iii_gc` node remains available as
+    reference tooling but is not the primary operator GUI.

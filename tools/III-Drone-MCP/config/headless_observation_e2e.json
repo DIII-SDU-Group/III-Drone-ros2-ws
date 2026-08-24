@@ -1,0 +1,145 @@
+[
+  {
+    "tool": "simulation",
+    "arguments": {
+      "command": "restart",
+      "headless": true,
+      "timeout_sec": 180
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "daemon_restart",
+      "timeout_sec": 45
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "boot",
+      "timeout_sec": 120
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "start",
+      "timeout_sec": 120
+    }
+  },
+  {
+    "tool": "px4.health",
+    "arguments": {
+      "timeout_sec": 60,
+      "stable_sec": 2.0
+    }
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "arm",
+      "timeout_sec": 45,
+      "postcondition_timeout_sec": 20,
+      "health_stable_sec": 2.0
+    }
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "takeoff",
+      "timeout_sec": 45,
+      "postcondition_timeout_sec": 35,
+      "min_altitude_m": 2.0
+    }
+  },
+  {
+    "tool": "operation.activate",
+    "arguments": {
+      "timeout_sec": 15,
+      "postcondition_timeout_sec": 10,
+      "stable_sec": 1.0
+    }
+  },
+  {
+    "tool": "operation.fly_relative",
+    "arguments": {
+      "dx": 0.2,
+      "dy": 0.0,
+      "dz": 0.0,
+      "min_z": 2.0,
+      "dyaw": 0.0,
+      "tf_timeout_sec": 10
+    }
+  },
+  {
+    "tool": "sim.geometry_state",
+    "arguments": {
+      "tf_timeout_sec": 5
+    }
+  },
+  {
+    "tool": "sim.visibility_state",
+    "arguments": {
+      "tf_timeout_sec": 5
+    }
+  },
+  {
+    "tool": "sim.trajectory_state",
+    "arguments": {
+      "sample_duration_sec": 1.0,
+      "sample_period_sec": 0.2,
+      "timeout_sec": 5
+    }
+  },
+  {
+    "tool": "sim.plot_state",
+    "arguments": {
+      "sample_duration_sec": 1.0,
+      "sample_period_sec": 0.2,
+      "prefix": "headless_observation"
+    }
+  },
+  {
+    "tool": "sim.observe_window",
+    "arguments": {
+      "duration_sec": 2.0,
+      "sample_period_sec": 0.2,
+      "capture_snapshots": false,
+      "expected_corridor": true,
+      "prefix": "headless_observe_window",
+      "filename": "headless_observe_window.json",
+      "timeout_sec": 10
+    }
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "land",
+      "timeout_sec": 45,
+      "postcondition_timeout_sec": 35
+    }
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "disarm",
+      "timeout_sec": 20,
+      "postcondition_timeout_sec": 10
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "shutdown",
+      "timeout_sec": 120
+    }
+  },
+  {
+    "tool": "simulation",
+    "arguments": {
+      "command": "stop",
+      "timeout_sec": 30
+    }
+  }
+]

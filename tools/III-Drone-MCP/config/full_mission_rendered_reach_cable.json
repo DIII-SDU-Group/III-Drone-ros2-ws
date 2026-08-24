@@ -1,0 +1,182 @@
+[
+  {
+    "tool": "simulation",
+    "arguments": {
+      "command": "restart",
+      "headless": false,
+      "timeout_sec": 180
+    }
+  },
+  {
+    "tool": "simulation",
+    "arguments": {
+      "command": "status",
+      "timeout_sec": 10
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "daemon_restart",
+      "timeout_sec": 45
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "boot",
+      "timeout_sec": 120
+    }
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "start",
+      "timeout_sec": 180
+    }
+  },
+  {
+    "tool": "px4.health",
+    "arguments": {
+      "timeout_sec": 90,
+      "stable_sec": 2.0
+    }
+  },
+  {
+    "tool": "perception.update_powerline_overview",
+    "arguments": {
+      "timeout_s": 5,
+      "timeout_sec": 20
+    }
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "arm",
+      "timeout_sec": 60,
+      "postcondition_timeout_sec": 25,
+      "health_stable_sec": 2.0
+    }
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "takeoff",
+      "timeout_sec": 60,
+      "postcondition_timeout_sec": 45,
+      "min_altitude_m": 2.0
+    }
+  },
+  {
+    "tool": "sim.render_snapshot_set",
+    "arguments": {
+      "views": ["topdown", "follow_drone", "corridor", "perception_fov"],
+      "prefix": "mission_before",
+      "timeout_sec": 20
+    }
+  },
+  {
+    "tool": "mission.activate_mode",
+    "arguments": {
+      "mode_key": "reach_cable",
+      "timeout_sec": 15,
+      "postcondition_timeout_sec": 15,
+      "stable_sec": 1.0
+    }
+  },
+  {
+    "tool": "sim.observation_timeline",
+    "arguments": {
+      "duration_sec": 6.0,
+      "sample_period_sec": 0.25,
+      "warmup_sec": 0.0,
+      "max_returned_samples": 40,
+      "filename": "mission_timeline.json"
+    }
+  },
+  {
+    "tool": "sim.observe_window",
+    "arguments": {
+      "duration_sec": 30.0,
+      "sample_period_sec": 0.25,
+      "capture_snapshots": true,
+      "expected_corridor": true,
+      "expected_mission_mode": "reach_cable",
+      "expected_mission_success": true,
+      "fail_on_mission_failure": true,
+      "prefix": "main_mission",
+      "filename": "main_mission_observe.json",
+      "timeout_sec": 75
+    }
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "status",
+      "timeout_sec": 10
+    }
+  },
+  {
+    "tool": "px4.ulog_events",
+    "arguments": {
+      "filename": "px4_ulog_events.json",
+      "max_events": 200
+    }
+  },
+  {
+    "tool": "logs",
+    "arguments": {
+      "command": "capture",
+      "entity_id": "mission_executor",
+      "history": true,
+      "tail_lines": 260,
+      "filename": "system_log_mission_executor.log",
+      "timeout_sec": 10
+    }
+  },
+  {
+    "tool": "logs",
+    "arguments": {
+      "command": "capture",
+      "entity_id": "maneuver_controller",
+      "history": true,
+      "tail_lines": 260,
+      "filename": "system_log_maneuver_controller.log",
+      "timeout_sec": 10
+    }
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "land",
+      "timeout_sec": 60,
+      "postcondition_timeout_sec": 45
+    },
+    "cleanup": true
+  },
+  {
+    "tool": "px4",
+    "arguments": {
+      "command": "disarm",
+      "timeout_sec": 30,
+      "postcondition_timeout_sec": 15
+    },
+    "cleanup": true
+  },
+  {
+    "tool": "system",
+    "arguments": {
+      "command": "shutdown",
+      "timeout_sec": 120
+    },
+    "cleanup": true
+  },
+  {
+    "tool": "simulation",
+    "arguments": {
+      "command": "stop",
+      "timeout_sec": 45
+    },
+    "cleanup": true
+  }
+]

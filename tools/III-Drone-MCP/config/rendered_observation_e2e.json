@@ -1,0 +1,82 @@
+[
+  {
+    "tool": "simulation",
+    "arguments": {
+      "command": "restart",
+      "headless": false,
+      "timeout_sec": 180
+    }
+  },
+  {
+    "tool": "sim.render_snapshot",
+    "arguments": {
+      "view": "custom",
+      "filename": "snapshot_custom.png",
+      "world": "hca_full_pylon_setup",
+      "x": -4.5,
+      "y": -8.0,
+      "z": 4.0,
+      "target_x": -4.5,
+      "target_y": 0.5,
+      "target_z": 2.0,
+      "timeout_sec": 10
+    }
+  },
+  {
+    "tool": "sim.render_snapshot",
+    "arguments": {
+      "view": "topdown",
+      "filename": "snapshot_topdown.png",
+      "timeout_sec": 10
+    }
+  },
+  {
+    "tool": "sim.render_snapshot",
+    "arguments": {
+      "view": "follow_drone",
+      "filename": "snapshot_follow_drone.png",
+      "timeout_sec": 10
+    }
+  },
+  {
+    "tool": "sim.render_snapshot",
+    "arguments": {
+      "view": "corridor",
+      "filename": "snapshot_corridor.png",
+      "timeout_sec": 10
+    }
+  },
+  {
+    "tool": "sim.render_snapshot",
+    "arguments": {
+      "view": "target",
+      "filename": "snapshot_target.png",
+      "target_x": -0.03,
+      "target_y": 0.0,
+      "target_z": 1.45,
+      "timeout_sec": 10
+    }
+  },
+  {
+    "tool": "sim.render_snapshot",
+    "arguments": {
+      "view": "perception_fov",
+      "filename": "snapshot_perception_fov.png",
+      "timeout_sec": 10
+    }
+  },
+  {
+    "tool": "sim.render_snapshot_set",
+    "arguments": {
+      "views": ["topdown", "follow_drone", "corridor", "perception_fov"],
+      "timeout_sec": 10
+    }
+  },
+  {
+    "tool": "simulation",
+    "arguments": {
+      "command": "stop",
+      "timeout_sec": 30
+    }
+  }
+]
