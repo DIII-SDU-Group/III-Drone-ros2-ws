@@ -38,6 +38,25 @@ def test_submodules_have_no_release_branch() -> None:
         validate_pr_source(BRANCH, repository_kind="submodule", base="release", head="main")
 
 
+def test_qualified_tag_ruleset_is_active_immutable_and_has_no_bypass() -> None:
+    ruleset = json.loads(
+        (ROOT / "deployment/governance/rulesets/workspace-qualified-tags.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert ruleset["target"] == "tag"
+    assert ruleset["enforcement"] == "active"
+    assert ruleset["bypass_actors"] == []
+    assert ruleset["conditions"]["ref_name"] == {
+        "exclude": [],
+        "include": ["refs/tags/v*"],
+    }
+    assert {rule["type"] for rule in ruleset["rules"]} == {
+        "deletion",
+        "non_fast_forward",
+    }
+
+
 def test_mechanical_diff_accepts_only_lock_and_gitlinks() -> None:
     validate_mechanical_diff(BRANCH, ["deps/submodule-lock.txt", "src/III-Drone-Core"])
     with pytest.raises(ContractError, match="non-gitlink"):

@@ -1,0 +1,11 @@
+{
+  "name": "Qualified tag protection",
+  "target": "tag",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {"ref_name": {"exclude": [], "include": ["refs/tags/v*"]}},
+  "rules": [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"}
+  ]
+}

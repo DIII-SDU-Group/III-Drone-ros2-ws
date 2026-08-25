@@ -18,6 +18,7 @@ The lock file ensures everyone uses the same dependency commits unless a change 
 - Stacked PR helper: `scripts/git/create_stack_prs.sh`
 - Develop-to-main release helper: `scripts/git/create_develop_to_main_prs.sh`
 - Main-to-release helper: `scripts/git/create_main_to_release_pr.sh`
+- Qualified-tag publisher: `scripts/release/publish_qualified_tag.py`
 - Stacked PR post-merge pointer refresh: `scripts/git/refresh_workspace_submodule_pointers.sh`
 - Post-PR local sync helper: `scripts/git/post_pr_sync.sh`
 - CI workflow: `.github/workflows/dependency-governance.yml`
@@ -150,6 +151,32 @@ Only the workspace has a `release` branch. Create or update the direct protected
 
 The helper fixes both source and target names, cannot carry release-only
 implementation changes, and never creates submodule `release` branches.
+
+### Qualified tag publication
+
+After the workspace-only `main -> release` PR merges, create a retained
+`iii.qualification-evidence/v1` document bound to the exact release commit,
+version, dependency-lock hash, governance audit, and required passing checks.
+Publication is read-only unless `--apply` is explicit:
+
+```bash
+python scripts/release/publish_qualified_tag.py \
+  --version v1.2.3 \
+  --evidence .iii/evidence/v1.2.3-preflight.json \
+  --operation-id publish-v1-2-3
+python scripts/release/publish_qualified_tag.py \
+  --version v1.2.3 \
+  --evidence .iii/evidence/v1.2.3-preflight.json \
+  --operation-id publish-v1-2-3 \
+  --apply
+```
+
+Apply is refused unless `HEAD` is the exact clean `origin/release` head,
+recursive submodule worktrees and the dependency lock verify, all evidence is
+complete and identity-bound, and the version is unused locally and remotely.
+The pushed tag triggers qualified CI; local tooling never produces a qualified
+artifact. Active GitHub tag protection blocks ordinary deletion or movement of
+all `v*` refs. A failed version is investigated and never silently reused.
 
 GitHub-native alternative (no local update needed):
 1. Open workspace repo Actions tab.
