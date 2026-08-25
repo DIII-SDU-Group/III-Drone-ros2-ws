@@ -212,6 +212,52 @@ def test_operation_contract_covers_every_settled_automation_boundary() -> None:
     assert CONTRACT["trusted_boundaries"]["pull_request_body"] == "untrusted transport only"
 
 
+@pytest.mark.parametrize("operation", sorted(CONTRACT["operations"]))
+def test_every_operation_family_produces_the_same_versioned_plan_contract(operation: str) -> None:
+    specification = CONTRACT["operations"][operation]
+    kind = specification["mutation_kinds"][0]
+    plan = create_plan(
+        operation_id="operation-family-test",
+        operation=operation,
+        created_at="2026-08-26T00:00:00Z",
+        policy={"operation": operation},
+        trusted_inputs={"source": "authenticated"},
+        repositories=[
+            {
+                "repository": "DIII-SDU-Group/III-Drone-ros2-ws",
+                "ref": "refs/tags/v1.2.3" if kind == "tag-publish" else "refs/heads/develop",
+                "expected_old_sha": None,
+                "new_sha": "2" * 40,
+            }
+        ],
+        checks=[
+            {"id": "contract-test", "status": "passed", "evidence_sha256": "3" * 64}
+        ],
+        permissions=[
+            {
+                "repository": "DIII-SDU-Group/III-Drone-ros2-ws",
+                "permission": permission,
+            }
+            for permission in specification["permissions"]
+        ],
+        mutations=[
+            {
+                "id": "family-mutation",
+                "kind": kind,
+                "repository": "DIII-SDU-Group/III-Drone-ros2-ws",
+                "ref": "refs/tags/v1.2.3" if kind == "tag-publish" else "refs/heads/develop",
+                "expected_old_sha": None,
+                "new_sha": "2" * 40,
+                "parameters": {"non_interactive": True},
+            }
+        ],
+        contract=CONTRACT,
+        registry=REGISTRY,
+    )
+    assert plan["schema"] == "iii.automation-plan/v1"
+    assert plan_result(plan).payload["plan"] == plan
+
+
 def test_plan_refuses_undeclared_mutation_and_missing_permission() -> None:
     with pytest.raises(ContractError, match="unsupported mutations"):
         _plan(_mutation("bad-mutation", "tag-publish"))
@@ -233,9 +279,10 @@ def test_workflows_are_pinned_bounded_least_privilege_and_trust_explicit() -> No
     )
     assert root_workflow["permissions"] == {}
     assert root_workflow["concurrency"]["cancel-in-progress"] is False
-    for job in root_workflow["jobs"].values():
+    for job_id, job in root_workflow["jobs"].items():
         assert 1 <= job["timeout-minutes"] <= 10
         assert "permissions" in job
+        assert all(value != "write" for value in job["permissions"].values()), job_id
         for step in job.get("steps", []):
             if "uses" in step:
                 assert re.fullmatch(r"[^@]+@[a-f0-9]{40}", step["uses"])
@@ -246,6 +293,7 @@ def test_workflows_are_pinned_bounded_least_privilege_and_trust_explicit() -> No
     assert checkout["with"]["persist-credentials"] is False
     assert "verify_linked_submodule_prs.py" in linked["steps"][1]["run"]
     assert all("legacy" not in job_id for job_id in root_workflow["jobs"])
+    assert "comment-iii-submodule-status" not in root_workflow["jobs"]
     workflow_source = (
         ROOT / ".github/workflows/dependency-governance.yml"
     ).read_text(encoding="utf-8")
@@ -268,3 +316,7 @@ def test_linked_pr_verifier_emits_machine_marker_and_human_summary() -> None:
     source = (ROOT / "scripts/ci/verify_linked_submodule_prs.py").read_text(encoding="utf-8")
     assert "iii-linked-submodule-pr-verification-v1" in source
     assert "Linked III Submodule PR Gate" in source
+    workflow = (ROOT / ".github/workflows/dependency-governance.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "iii-submodule-target-verification-v1" in workflow

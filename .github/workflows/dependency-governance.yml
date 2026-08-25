@@ -183,6 +183,24 @@ jobs:
           [[ "$target" == "release" ]] && target=main
           ./scripts/ci/verify_iii_submodule_commits_on_branch_ci.sh --target-branch "$target"
 
+      - name: Summarize exact III submodule target state
+        if: always()
+        run: |
+          {
+            echo '<!-- iii-submodule-target-verification-v1 -->'
+            echo '### III Submodule Target Branch Gate'
+            echo
+            echo '| Submodule | SHA | Status | Detail |'
+            echo '|---|---|---|---|'
+            if [[ -f .ci/iii-submodule-status.tsv ]]; then
+              while IFS=$'\t' read -r path sha status detail; do
+                printf '| `%s` | `%s` | %s | %s |\n' "$path" "${sha:0:12}" "$status" "$detail"
+              done < .ci/iii-submodule-status.tsv
+            else
+              echo '| _No retained status file_ | — | FAIL | verifier did not emit evidence |'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload III submodule status artifact
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -193,91 +211,6 @@ jobs:
           overwrite: false
           retention-days: 14
 
-  comment-iii-submodule-status:
-    if: always() && github.event_name == 'pull_request' && contains(fromJSON('["develop","main","release"]'), github.base_ref)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      actions: read
-      contents: read
-      pull-requests: write
-    needs:
-      - verify-iii-submodules-on-target-branch
-    steps:
-      - name: Download III submodule status artifact
-        continue-on-error: true
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
-        with:
-          name: iii-submodule-status
-          path: .ci
-
-      - name: Upsert PR status comment
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
-        with:
-          script: |
-            const fs = require('fs');
-            const marker = '<!-- iii-submodule-status-bot -->';
-            const path = '.ci/iii-submodule-status.tsv';
-            let lines = [];
-            if (fs.existsSync(path)) {
-              lines = fs.readFileSync(path, 'utf8')
-                .split('\n')
-                .filter(Boolean);
-            }
-
-            const rows = [];
-            let mismatches = 0;
-            for (const line of lines) {
-              const [submodule, sha, status, detail] = line.split('\t');
-              const shortSha = (sha || '').slice(0, 8);
-              if (status === 'MISMATCH') mismatches++;
-              rows.push(`| \`${submodule}\` | \`${shortSha}\` | ${status} | ${detail} |`);
-            }
-
-            const state = mismatches === 0 ? 'PASS' : 'FAIL';
-            const targetBranch = context.payload.pull_request.base.ref;
-            const header = `${marker}\n### III Submodule Target Branch Gate (${targetBranch}): ${state}\n`;
-            const summary = mismatches === 0
-              ? `All pinned III submodule commits exactly match \`origin/${targetBranch}\` HEAD.`
-              : `${mismatches} submodule(s) do not match \`origin/${targetBranch}\` HEAD.`;
-
-            const table = rows.length
-              ? [
-                  '',
-                  '| Submodule | Pinned SHA | Status | Detail |',
-                  '|---|---:|---|---|',
-                  ...rows
-                ].join('\n')
-              : '\n_No status artifact found._';
-
-            const body = `${header}\n${summary}\n${table}\n`;
-
-            const { owner, repo } = context.repo;
-            const issue_number = context.issue.number;
-
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number,
-              per_page: 100
-            });
-
-            const existing = comments.find(c => c.body && c.body.includes(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: existing.id,
-                body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body
-              });
-            }
 
   verify-linked-submodule-prs-merged:
     if: github.event_name == 'pull_request' && contains(fromJSON('["develop","main","release"]'), github.base_ref)
