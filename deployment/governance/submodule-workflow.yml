@@ -4,6 +4,10 @@ on:
   pull_request:
     branches: [develop, main]
 
+concurrency:
+  group: iii-repository-governance-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -15,6 +19,7 @@ jobs:
       - name: Checkout candidate repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Checkout trusted workspace policy
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -23,6 +28,7 @@ jobs:
           ref: develop
           path: .iii-governance
           fetch-depth: 1
+          persist-credentials: false
       - name: Validate feature/develop/main source
         run: |
           PYTHONPATH=.iii-governance/deployment/src python .iii-governance/scripts/ci/verify_submodule_pr.py \
@@ -39,6 +45,7 @@ jobs:
       - name: Checkout candidate repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Checkout trusted workspace policy
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -47,6 +54,7 @@ jobs:
           ref: develop
           path: .iii-governance
           fetch-depth: 1
+          persist-credentials: false
       - name: Validate target-specific feature/develop/main source
         run: |
           PYTHONPATH=.iii-governance/deployment/src python .iii-governance/scripts/ci/verify_submodule_pr.py \
@@ -61,6 +69,8 @@ jobs:
     steps:
       - name: Checkout candidate repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
       - name: Checkout trusted workspace policy
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -68,5 +78,6 @@ jobs:
           ref: develop
           path: .iii-governance
           fetch-depth: 1
+          persist-credentials: false
       - name: Run trusted editable-repository baseline
         run: python .iii-governance/scripts/ci/check_editable_iii_repository.py --repository-root "$GITHUB_WORKSPACE"

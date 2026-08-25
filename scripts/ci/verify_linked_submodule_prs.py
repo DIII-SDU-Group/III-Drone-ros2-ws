@@ -36,6 +36,27 @@ def _gh(endpoint: str, *, paginate: bool = False) -> Any:
     return value
 
 
+def _write_summary(report: dict[str, Any]) -> None:
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary_path:
+        return
+    lines = [
+        "<!-- iii-linked-submodule-pr-verification-v1 -->",
+        f"### Linked III Submodule PR Gate: {report['outcome'].upper()}",
+        "",
+        "| Submodule | Verified API URL | Merged | Base |",
+        "|---|---|---:|---|",
+    ]
+    lines.extend(
+        f"| `{row['path']}` | {row['url']} | {row['merged']} | `{row['base']}` |"
+        for row in report["rows"]
+    )
+    if not report["rows"]:
+        lines.append("| _No changed III gitlinks_ | — | — | — |")
+    with Path(summary_path).open("a", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--event", type=Path, default=Path(os.environ.get("GITHUB_EVENT_PATH", "")))
@@ -85,6 +106,7 @@ def main() -> int:
             "rows": rows,
             "failures": failures,
         }
+        _write_summary(report)
         print(json.dumps(report, sort_keys=True, separators=(",", ":")))
         return 0 if not failures else 20
     except (ContractError, OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
