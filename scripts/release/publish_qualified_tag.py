@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "deployment" / "src"))
 
 from iii_deployment.contracts import ContractError  # noqa: E402
+from iii_deployment.governance_audit import GhClient, GitHubAuditError, audit_governance  # noqa: E402
 from iii_deployment.qualification import inspect_qualification  # noqa: E402
 from iii_deployment.result import CommandResult, NextAction, Outcome  # noqa: E402
 
@@ -65,6 +66,11 @@ def main() -> int:
             mode="publish",
             release_ref=f"refs/remotes/{args.remote}/release",
         ).require_verified()
+        governance = audit_governance(ROOT, GhClient())
+        if governance["outcome"] != "passed":
+            raise ContractError(
+                f"live governance audit found {len(governance['findings'])} drift finding(s)"
+            )
         remote_release, remote_tag = _remote_refs(args.remote, args.version)
         if remote_release != report.source_commit:
             raise ContractError(
@@ -82,7 +88,11 @@ def main() -> int:
                 code="III_QUALIFIED_TAG_PLAN_READY",
                 operation_id=args.operation_id,
                 state="planned",
-                payload={"preflight": report.to_dict(), "mutations": [{"command": mutation}]},
+                payload={
+                    "preflight": report.to_dict(),
+                    "governance_audit": governance,
+                    "mutations": [{"command": mutation}],
+                },
                 next_actions=(NextAction(tuple([sys.executable, str(Path(__file__).resolve()), "--version", args.version, "--evidence", str(args.evidence.resolve()), "--remote", args.remote, "--operation-id", args.operation_id, "--apply"]), "Publish the preflighted immutable tag.", mutating=True, prerequisites=("Review the exact source commit and retained evidence.",), confirmation_required=True),),
             )
         else:
@@ -96,13 +106,17 @@ def main() -> int:
                 code="III_QUALIFIED_TAG_PUBLISHED",
                 operation_id=args.operation_id,
                 state="completed",
-                evidence=(str(args.evidence.resolve()),),
-                payload={"preflight": report.to_dict(), "remote": args.remote},
+                evidence=(str(args.evidence.resolve()), governance["audit_id"]),
+                payload={
+                    "preflight": report.to_dict(),
+                    "governance_audit": governance,
+                    "remote": args.remote,
+                },
                 terminal_reason="The tag-triggered qualified CI pipeline now owns build and publication.",
             )
         _render(result, args.json)
         return result.exit_code
-    except (ContractError, OSError) as exc:
+    except (ContractError, GitHubAuditError, OSError) as exc:
         result = CommandResult(
             command="iii release publish",
             outcome=Outcome.REJECTED,

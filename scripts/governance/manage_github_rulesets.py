@@ -13,13 +13,9 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
-OWNER = "DIII-SDU-Group"
-EDITABLE_REPOSITORIES = (
-    "III-Drone-Configuration", "III-Drone-Contracts", "III-Drone-Core",
-    "III-Drone-GC", "III-Drone-Interfaces", "III-Drone-Mission",
-    "III-Drone-Runtime", "III-Drone-Simulation", "III-Drone-Supervision",
-    "III-Drone-CLI",
-)
+sys.path.insert(0, str(ROOT / "deployment" / "src"))
+
+from iii_deployment.governance_audit import EDITABLE_REPOSITORIES, OWNER  # noqa: E402
 
 
 class GitHubError(RuntimeError):

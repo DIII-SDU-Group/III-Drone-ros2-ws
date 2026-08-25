@@ -2277,7 +2277,7 @@ and workspace PR #31 passed the full protected stack and merged.
 
 #### P0.T9: Protect Qualified Tags And Release Entry Points
 
-**Status: In-Progress.**
+**Status: Completed (2026-08-26).**
 
 Description:
 Define immutable `vX.Y.Z` tag rules and enforce that qualified release builds
@@ -2287,17 +2287,27 @@ state but cannot request, imitate, or replace qualified status.
 
 Acceptance:
 
-- [ ] Qualified tags cannot be moved or deleted through normal developer access.
-- [ ] A tag outside workspace `release` cannot produce a qualified manifest.
-- [ ] Missing/dirty/lock-divergent/test-incomplete release state fails closed.
-- [ ] Only an accepted qualified deployment replaces the protected recovery anchor.
+- [x] Qualified tags cannot be moved or deleted through normal developer access.
+- [x] A tag outside workspace `release` cannot produce a qualified manifest.
+- [x] Missing/dirty/lock-divergent/test-incomplete release state fails closed.
+- [x] Only an accepted qualified deployment replaces the protected recovery anchor.
 
 Tests:
 
 - Qualification fixtures for valid release tags and invalid branch, dirty,
   moved-tag, lock, evidence, and field-release cases.
 
+Implementation note (2026-08-26): workspace PR #32 added a versioned complete
+qualification-evidence contract, dry-run-by-default strict-SemVer publisher,
+independent tag-build preflight, qualified-manifest binding, and fail-closed
+protected-anchor selection. The publisher checks the live remote `release` head
+and refuses reused tags. All 72 deployment tests and protected PR gates passed.
+Live ruleset 21496168 is active for `refs/tags/v*`, blocks deletion and
+non-fast-forward changes, and has zero bypass actors.
+
 #### P0.T10: Audit Governance Enforcement
+
+**Status: Completed (2026-08-26).**
 
 Description:
 Add a read-only audit command or script that compares repository policy with the
@@ -2306,16 +2316,26 @@ Run it during release preparation and document remediation for drift.
 
 Acceptance:
 
-- [ ] Audit reports missing branches, rulesets, required checks, source gates,
+- [x] Audit reports missing branches, rulesets, required checks, source gates,
       tag protection, and unexpected bypass actors.
-- [ ] Output is concise enough to retain as qualified-release evidence.
+- [x] Output is concise enough to retain as qualified-release evidence.
 
 Tests:
 
 - Read-only GitHub ruleset audit script verifies expected enforcement across
   the workspace and editable III submodule repositories.
 
+Implementation note (2026-08-26): added a pagination-safe read-only GitHub
+adapter, exact desired/live comparison, stable drift IDs and exit codes, compact
+content-addressed JSON evidence, human output, and reviewed remediation. Release
+publication reruns and embeds the audit. Fake-client drift fixtures cover missing
+branches/rulesets, missing target-specific source checks, tag weakening,
+unexpected rulesets, and bypass insertion. The live audit passed across all 11
+repositories with all 24 rulesets observed and zero findings.
+
 #### P0.T11: Define CI/CD And AI Automation Contracts
+
+**Status: In-Progress.**
 
 Description:
 Define one composable automation contract for feature PR creation, stacked
