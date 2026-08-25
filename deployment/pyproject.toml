@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "ROS-independent deployment contracts and tooling for III-Drone"
 requires-python = ">=3.10"
 dependencies = [
+  "iii==0.2.0",
   "cryptography==45.0.6",
   "jsonschema==4.25.1",
   "PyYAML==6.0.2",

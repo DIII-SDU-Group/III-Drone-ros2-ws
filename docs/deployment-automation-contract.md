@@ -6,6 +6,35 @@ plans and durable operation state validate against
 `operation-state.schema.json`. The same ROS-independent Python primitives are
 used by local commands and CI adapters.
 
+The universal command envelope is implemented once in
+`tools/III-Drone-CLI/iii/result.py` and packaged with its JSON schema. Deployment
+modules retain `iii_deployment.result` only as a compatibility import of those
+exact CLI types. Install the local CLI and deployment distributions together;
+the deployment package pins `iii==0.2.0` so a mismatched envelope cannot be
+silently selected.
+
+## Universal CLI boundary
+
+Every current parser leaf is inventoried and dispatched by the CLI runner. New
+system, build/deploy/release, host/GC/QGC/PX4, mission/config/capture/log/records,
+governance, field, and documentation providers must register through the same
+runner and may only add a versioned command-specific payload schema.
+
+- `--output=json` writes exactly one `iii.command-result/v1` object to stdout;
+  handler and child-process output is captured in its payload and diagnostics
+  use stderr.
+- `--dry-run` retains an exact content-addressed plan without calling a mutating
+  handler. `--operation-id`, `--confirm`, and `--resume` bind apply/retry to that
+  plan and atomically persisted state.
+- `--non-interactive` never prompts. Missing confirmation, host, user, password,
+  or other input returns `III_REQUIRED_INPUT` with an argv-safe next action.
+- Ctrl-C returns 130, retains the durable checkpoint, and reports the exact
+  operation-bound reattach command. A completed operation is a no-op on replay;
+  changed argv or context with the same ID is rejected.
+- Help, parser failures, missing setup, warnings, policy rejection, execution
+  failure, partial success, interruption, cancellation, and terminal states all
+  use the same next-action/terminal-reason invariant.
+
 ## Lifecycle
 
 1. **Plan** resolves authenticated repository refs and policy, records exact old
@@ -46,9 +75,9 @@ The workflow summary carries
 Governance workflows use exact action commit pins, bounded timeouts, explicit
 least-privilege permissions, non-cancelling concurrency groups, non-persisted
 checkout credentials, and immutable short-retention intermediate artifacts.
-Write-capable status-comment jobs consume generated evidence only. Candidate PR
-code or metadata is never executed with a write token, and trusted policy gates
-execute code checked out from the protected base.
+PR-triggered governance jobs are read-only. Candidate PR code or metadata is
+never executed with a write token, and trusted policy gates execute code checked
+out from the protected base.
 
 ## Failure handling
 

@@ -29,8 +29,12 @@ def test_result_requires_a_next_action_or_terminal_reason() -> None:
 
 
 @pytest.mark.parametrize("outcome", list(Outcome))
-def test_exit_codes_are_stable_and_unique(outcome: Outcome) -> None:
-    codes = {candidate.exit_code for candidate in Outcome}
-    assert len(codes) == len(Outcome)
+def test_exit_codes_use_stable_families(outcome: Outcome) -> None:
+    assert {candidate.exit_code for candidate in Outcome} == {0, 10, 20, 30, 31, 64, 70, 130}
     assert isinstance(outcome.exit_code, int)
 
+
+def test_deployment_import_is_the_canonical_cli_type() -> None:
+    from iii.result import CommandResult as CliCommandResult
+
+    assert CommandResult is CliCommandResult
