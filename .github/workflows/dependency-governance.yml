@@ -8,9 +8,11 @@ on:
       - develop
       - release
 
-permissions:
-  contents: read
-  pull-requests: write
+concurrency:
+  group: dependency-governance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
 
 jobs:
   promotion-source:
@@ -24,6 +26,7 @@ jobs:
       - name: Checkout exact PR head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           fetch-depth: 0
           submodules: recursive
       - name: Validate source and mechanical diff
@@ -48,6 +51,7 @@ jobs:
       - name: Checkout exact PR head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           fetch-depth: 0
           submodules: recursive
       - name: Validate target-specific source and mechanical diff
@@ -71,6 +75,7 @@ jobs:
       - name: Checkout exact PR head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           fetch-depth: 0
           submodules: recursive
       - name: Fetch untrusted signed promotion evidence transport
@@ -113,6 +118,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           submodules: recursive
       - name: Install pinned deployment contract dependencies
         run: python -m pip install --disable-pip-version-check ./deployment[test]
@@ -121,11 +127,15 @@ jobs:
 
   verify-submodule-lock:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           submodules: recursive
 
       - name: Verify submodule lock
@@ -134,11 +144,15 @@ jobs:
   verify-iii-branch-policy:
     if: github.event_name == 'pull_request' && github.base_ref != 'release'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           fetch-depth: 0
           submodules: recursive
 
@@ -151,11 +165,15 @@ jobs:
   verify-iii-submodules-on-target-branch:
     if: github.event_name == 'pull_request' && contains(fromJSON('["develop","main","release"]'), github.base_ref)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           fetch-depth: 0
           submodules: recursive
 
@@ -172,10 +190,17 @@ jobs:
           name: iii-submodule-status
           path: .ci/iii-submodule-status.tsv
           if-no-files-found: ignore
+          overwrite: false
+          retention-days: 14
 
   comment-iii-submodule-status:
     if: always() && github.event_name == 'pull_request' && contains(fromJSON('["develop","main","release"]'), github.base_ref)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
     needs:
       - verify-iii-submodules-on-target-branch
     steps:
@@ -257,6 +282,30 @@ jobs:
   verify-linked-submodule-prs-merged:
     if: github.event_name == 'pull_request' && contains(fromJSON('["develop","main","release"]'), github.base_ref)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout trusted base policy only
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+      - name: Verify untrusted PR locators against trusted gitlinks and API state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/ci/verify_linked_submodule_prs.py --json
+
+  legacy-linked-submodule-marker-gate-disabled:
+    # Kept disabled for one rollout PR so the new required context is produced
+    # only by trusted base code. Remove after the protected workflow lands.
+    if: ${{ false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    permissions: {}
     steps:
       - name: Verify linked III submodule PRs are merged
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd

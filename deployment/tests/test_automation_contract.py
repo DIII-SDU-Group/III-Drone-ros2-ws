@@ -3,8 +3,10 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 from pathlib import Path
+import re
 
 import pytest
+import yaml
 
 from iii_deployment.automation import (
     MutationAdapter,
@@ -223,3 +225,43 @@ def test_plan_refuses_undeclared_mutation_and_missing_permission() -> None:
             checks=[], permissions=[{"repository": "DIII-SDU-Group/III-Drone-Core", "permission": "contents:write"}],
             mutations=[_mutation("push-core")], contract=CONTRACT, registry=REGISTRY,
         )
+
+
+def test_workflows_are_pinned_bounded_least_privilege_and_trust_explicit() -> None:
+    root_workflow = yaml.safe_load(
+        (ROOT / ".github/workflows/dependency-governance.yml").read_text(encoding="utf-8")
+    )
+    assert root_workflow["permissions"] == {}
+    assert root_workflow["concurrency"]["cancel-in-progress"] is False
+    for job in root_workflow["jobs"].values():
+        assert 1 <= job["timeout-minutes"] <= 10
+        assert "permissions" in job
+        for step in job.get("steps", []):
+            if "uses" in step:
+                assert re.fullmatch(r"[^@]+@[a-f0-9]{40}", step["uses"])
+    linked = root_workflow["jobs"]["verify-linked-submodule-prs-merged"]
+    assert linked["permissions"] == {"contents": "read", "pull-requests": "read"}
+    checkout = linked["steps"][0]
+    assert checkout["with"]["ref"] == "${{ github.event.pull_request.base.sha }}"
+    assert checkout["with"]["persist-credentials"] is False
+    assert "verify_linked_submodule_prs.py" in linked["steps"][1]["run"]
+    legacy = root_workflow["jobs"]["legacy-linked-submodule-marker-gate-disabled"]
+    assert legacy["if"] == "${{ false }}"
+
+    submodule_workflow = yaml.safe_load(
+        (ROOT / "deployment/governance/submodule-workflow.yml").read_text(encoding="utf-8")
+    )
+    assert submodule_workflow["permissions"] == {"contents": "read"}
+    assert submodule_workflow["concurrency"]["cancel-in-progress"] is False
+    for job in submodule_workflow["jobs"].values():
+        assert job["timeout-minutes"] == 10
+        for step in job["steps"]:
+            if "uses" in step:
+                assert re.fullmatch(r"[^@]+@[a-f0-9]{40}", step["uses"])
+                assert step.get("with", {}).get("persist-credentials") is False
+
+
+def test_linked_pr_verifier_emits_machine_marker_and_human_summary() -> None:
+    source = (ROOT / "scripts/ci/verify_linked_submodule_prs.py").read_text(encoding="utf-8")
+    assert "iii-linked-submodule-pr-verification-v1" in source
+    assert "Linked III Submodule PR Gate" in source
