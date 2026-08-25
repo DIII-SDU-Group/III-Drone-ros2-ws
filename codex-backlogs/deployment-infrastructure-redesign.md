@@ -2222,6 +2222,12 @@ Tests:
 
 - Organization-wide read-only ruleset audit and representative controlled PR checks.
 
+Implementation note (2026-08-25): the rollout uses target-specific required
+contexts (`promotion-source-develop` and `promotion-source-main`) so a successful
+check attached to one commit on a develop-targeting PR cannot be reused by a
+main-targeting PR. The original context remains as a non-required compatibility
+check during rollout.
+
 #### P0.T8: Update Coordinated Promotion Automation
 
 Description:
