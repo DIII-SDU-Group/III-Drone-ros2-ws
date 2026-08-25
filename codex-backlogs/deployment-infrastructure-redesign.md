@@ -2335,7 +2335,7 @@ repositories with all 24 rulesets observed and zero findings.
 
 #### P0.T11: Define CI/CD And AI Automation Contracts
 
-**Status: In-Progress.**
+**Status: Completed (2026-08-26).**
 
 Description:
 Define one composable automation contract for feature PR creation, stacked
@@ -2347,23 +2347,23 @@ mutation, and reporting so every write is previewable and attributable.
 
 Acceptance:
 
-- [ ] Every operation supports non-interactive invocation, preflight/dry-run,
+- [x] Every operation supports non-interactive invocation, preflight/dry-run,
       stable exit codes, and versioned structured output in addition to concise
       human output.
-- [ ] Every result exposes Q112-compliant context-aware next commands in human and
+- [x] Every result exposes Q112-compliant context-aware next commands in human and
       structured output without bypassing mutation planning or confirmation.
-- [ ] Plans identify exact repositories, refs, expected old/new SHAs, checks,
+- [x] Plans identify exact repositories, refs, expected old/new SHAs, checks,
       permissions, and mutations before any push, PR, merge, tag, or publication.
-- [ ] Mutating runs have an operation ID, persist sufficient state to resume or
+- [x] Mutating runs have an operation ID, persist sufficient state to resume or
       safely retry, and report partial success with deterministic recovery steps.
-- [ ] Local and CI entry points call the same policy/build primitives rather
+- [x] Local and CI entry points call the same policy/build primitives rather
       than implementing branch or qualification rules twice.
-- [ ] GitHub workflows use least-privilege job permissions, pinned actions,
+- [x] GitHub workflows use least-privilege job permissions, pinned actions,
       concurrency controls, timeouts, immutable artifacts, and explicit trusted
       event boundaries for write-capable jobs.
-- [ ] AI-agent guidance states allowed operations, required checks, dirty-tree
+- [x] AI-agent guidance states allowed operations, required checks, dirty-tree
       handling, submodule policy, and when explicit maintainer intent is needed.
-- [ ] PR bodies and workflow summaries carry machine-readable markers and
+- [x] PR bodies and workflow summaries carry machine-readable markers and
       human-readable evidence without allowing PR text to become trusted input.
 
 Tests:
@@ -2372,7 +2372,25 @@ Tests:
   for plan/apply, interrupted runs, retries, stale refs, partial submodule PR
   creation, permission denial, and untrusted PR metadata.
 
+Implementation note (2026-08-26): added the versioned automation plan and
+operation-state schemas plus a content-addressed planner/state engine covering
+feature PRs, stacked PRs, both promotions, qualification, artifact retrieval,
+and deployment handoff. Atomic persisted operations support dry-run, apply,
+resume, retry, interruption, stale-ref rejection, partial success, permission
+failure, and deterministic recovery actions through one structured/human result
+contract. The trusted linked-submodule gate derives changed gitlinks and
+repository ownership from the base commit, then verifies untrusted PR locators
+against GitHub. Root and all ten editable III repositories now use pinned
+actions, explicit least-privilege permissions, non-cancelling concurrency,
+timeouts, immutable evidence, and trusted-event boundaries; PR text is never a
+trusted policy input. Workspace PRs #34-#36 and ten submodule hardening PRs
+merged through protected branches. Verification passed 98 deployment tests,
+Python compilation, submodule-lock validation, every required GitHub check, and
+the live 11-repository governance audit with 24/24 rulesets and zero findings.
+
 #### P0.T12: Implement The Universal III CLI Result And Operation Contract
+
+**Status: In-Progress.**
 
 Description:
 Implement the P0.T11/Q112 contract once in `tools/III-Drone-CLI` and migrate every

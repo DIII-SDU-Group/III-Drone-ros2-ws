@@ -180,6 +180,10 @@ When implementing changes:
 
 ### 7.1 Deployment and repository automation
 
+- Route every `iii` command through the canonical result/operation library in
+  `tools/III-Drone-CLI`; do not add a private envelope or render human and JSON
+  outcomes separately. New command providers must be included in parser-leaf
+  inventory tests and declare whether each leaf mutates or requires a terminal.
 - Use the versioned `iii.automation-plan/v1` contract for feature/stacked PRs,
   promotions, qualification, artifact retrieval, and deployment handoff. Planning
   is read-only; never infer `--apply` from a plan request.
