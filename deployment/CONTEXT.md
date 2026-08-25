@@ -71,6 +71,12 @@ The newest accepted qualified release retained as the recovery baseline and neve
 replaceable or collectable by field-development deployment.
 _Avoid_: Previous build
 
+**Qualified-Tag Preflight**:
+A read-only, fail-closed proof that a proposed strict-SemVer tag identifies the
+exact clean workspace `origin/release` head, the dependency lock verifies, and
+complete retained check evidence is bound to that commit, version, and lock.
+_Avoid_: Tagging from a clean-looking checkout
+
 **Commissioned**:
 A provisioned shared hardware-class target with a qualified anchor and signed,
 current hardware/PX4/activation/rollback/GC/recovery evidence. A provisioned host
@@ -116,10 +122,16 @@ _Avoid_: Removing old scripts first
   completion, deadline, reconciliation, and rollback without a connected client.
 - Qualified and field-development releases use the same signed artifact and
   activation path, but their classification and retention authority differ.
+- Qualified tag publication defaults to a plan. Apply pushes one previously
+  unused version ref only after exact release-head, recursive cleanliness, lock,
+  and evidence checks pass. Tag-triggered CI independently rechecks tag identity
+  and release reachability before it can classify a manifest as qualified.
+- Only a receiver-accepted qualified activation updates the protected qualified
+  anchor. Staging, failed/rolled-back activation, and every field-development
+  result preserve the existing anchor.
 - Deployment activation, configuration reconciliation, and source promotion are
   separate transactions with distinct authority and evidence.
 - Total SSH-credential loss has no software bypass. Recovery is read-only salvage,
   physical reimage, restore of portable state, fresh enrollment, and recommissioning.
 - The operating manual, CLI schemas, CI, and agent instructions share one policy
   implementation; PR text and decorative output are never trusted inputs.
-

@@ -2240,7 +2240,7 @@ branch exists.
 
 #### P0.T8: Update Coordinated Promotion Automation
 
-**Status: In-Progress.**
+**Status: Completed (2026-08-26).**
 
 Description:
 Update `scripts/git/create_stack_prs.sh`,
@@ -2253,18 +2253,31 @@ release-only implementation changes.
 
 Acceptance:
 
-- [ ] Dry-run remains the default for local automation that pushes or opens PRs.
-- [ ] Main promotion creates/updates linked submodule PRs, refreshes resulting
+- [x] Dry-run remains the default for local automation that pushes or opens PRs.
+- [x] Main promotion creates/updates linked submodule PRs, refreshes resulting
       main gitlinks and the lock, and satisfies P0.T5.
-- [ ] Main-to-release promotion carries exactly the main workspace state.
-- [ ] Old `staging` and ambiguous `release/develop-to-main-*` terminology is removed.
+- [x] Main-to-release promotion carries exactly the main workspace state.
+- [x] Old `staging` and ambiguous `release/develop-to-main-*` terminology is removed.
 
 Tests:
 
 - Shell tests with fake Git/GitHub adapters for feature, main-promotion, pointer
   refresh, rerun/idempotence, and main-to-release flows.
 
+Implementation note (2026-08-26): the fixed
+`promote/develop-to-main/<promotion-id>` prepare/refresh lifecycle now defaults
+to a mutation-free dry run, updates linked submodule pull requests, pins exact
+merged `main` heads, and refreshes and verifies the workspace lock. The
+workspace-only `main -> release` helper is idempotent and cannot carry
+release-only implementation changes. Promotion-source validation audits the
+mechanical candidate against `develop` while retaining the actual base-to-head
+impact identity. Fake Git/GitHub adapter coverage includes reruns and invalid
+namespaces; 63 deployment tests passed. Ten Node 24 submodule workflow updates
+and workspace PR #31 passed the full protected stack and merged.
+
 #### P0.T9: Protect Qualified Tags And Release Entry Points
+
+**Status: In-Progress.**
 
 Description:
 Define immutable `vX.Y.Z` tag rules and enforce that qualified release builds

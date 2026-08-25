@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/qualification-evidence.schema.json",
+  "title": "III qualified release preflight evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "schema",
+    "evidence_type",
+    "source_commit",
+    "version",
+    "dependency_lock_sha256",
+    "governance_verified",
+    "required_checks",
+    "evidence_complete"
+  ],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "schema": {"const": "iii.qualification-evidence/v1"},
+    "evidence_type": {"const": "qualified-release-preflight"},
+    "source_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "version": {
+      "type": "string",
+      "pattern": "^v(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$"
+    },
+    "dependency_lock_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "governance_verified": {"const": true},
+    "required_checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "evidence_sha256"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+          "status": {"const": "passed"},
+          "evidence_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    },
+    "evidence_complete": {"const": true}
+  }
+}

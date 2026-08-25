@@ -50,7 +50,12 @@ class ContractRegistry:
             raise ContractError(f"{name} contract rejected: {details}")
 
 
-def classify_release(manifest: Mapping[str, Any], *, requested: str) -> str:
+def classify_release(
+    manifest: Mapping[str, Any],
+    *,
+    requested: str,
+    preflight: Mapping[str, Any] | None = None,
+) -> str:
     """Return effective class, failing closed if qualified authority is invalid."""
 
     if requested not in {"qualified", "field-development"}:
@@ -62,6 +67,8 @@ def classify_release(manifest: Mapping[str, Any], *, requested: str) -> str:
     signing = manifest["signing"]
     version = manifest.get("version")
     failures: list[str] = []
+    if manifest.get("release_class") != "qualified":
+        failures.append("manifest does not declare qualified class")
     if source["branch"] != "release":
         failures.append("workspace branch is not release")
     if not source["clean"] or source["tracked_patch_sha256"] is not None or source["untracked"]:
@@ -80,6 +87,17 @@ def classify_release(manifest: Mapping[str, Any], *, requested: str) -> str:
         failures.append("explicit qualified action is absent")
     if signing["authority"] != "ci-qualified":
         failures.append("signer lacks CI qualification authority")
+    if preflight is None:
+        failures.append("independent qualified-tag preflight is absent")
+    else:
+        if preflight.get("schema") != "iii.qualification-preflight-result/v1":
+            failures.append("qualified-tag preflight schema is invalid")
+        if preflight.get("mode") != "build" or preflight.get("verified") is not True:
+            failures.append("qualified-tag build preflight is not verified")
+        if preflight.get("source_commit") != source["workspace_commit"]:
+            failures.append("qualified-tag preflight commit differs from manifest")
+        if preflight.get("version") != version:
+            failures.append("qualified-tag preflight version differs from manifest")
     if failures:
         raise ContractError("qualified classification refused: " + "; ".join(failures))
     return "qualified"
@@ -120,4 +138,3 @@ def validate_status_transition(previous: Mapping[str, Any] | None, current: Mapp
         raise ContractError("status predecessor does not identify previous statement")
     if predecessor.get("sha256") != content_identity(previous):
         raise ContractError("status predecessor checksum mismatch")
-

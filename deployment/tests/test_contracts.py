@@ -27,9 +27,21 @@ def manifest() -> dict:
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
 
 
+def _preflight(manifest: dict) -> dict:
+    return {
+        "schema": "iii.qualification-preflight-result/v1",
+        "mode": "build",
+        "version": manifest["version"],
+        "source_commit": manifest["source"]["workspace_commit"],
+        "release_commit": manifest["source"]["workspace_commit"],
+        "verified": True,
+        "checks": [{"id": "test", "passed": True, "detail": "fixture"}],
+    }
+
+
 def test_clean_qualified_manifest(manifest: dict) -> None:
     REGISTRY.validate("release-manifest", manifest)
-    assert classify_release(manifest, requested="qualified") == "qualified"
+    assert classify_release(manifest, requested="qualified", preflight=_preflight(manifest)) == "qualified"
 
 
 @pytest.mark.parametrize(
@@ -45,8 +57,17 @@ def test_clean_qualified_manifest(manifest: dict) -> None:
 def test_invalid_qualified_claim_fails_closed(manifest: dict, mutation, reason: str) -> None:
     mutation(manifest)
     with pytest.raises(ContractError, match=reason):
-        classify_release(manifest, requested="qualified")
+        classify_release(manifest, requested="qualified", preflight=_preflight(manifest))
     assert classify_release(manifest, requested="field-development") == "field-development"
+
+
+def test_qualified_classification_requires_independent_bound_build_preflight(manifest: dict) -> None:
+    with pytest.raises(ContractError, match="preflight is absent"):
+        classify_release(manifest, requested="qualified")
+    preflight = _preflight(manifest)
+    preflight["source_commit"] = "0" * 40
+    with pytest.raises(ContractError, match="commit differs"):
+        classify_release(manifest, requested="qualified", preflight=preflight)
 
 
 def test_modified_submodule_and_untracked_content_identify_field_state(manifest: dict) -> None:
@@ -118,4 +139,3 @@ def test_record_contract_correlates_capture_and_release_without_absolute_paths()
     record["content"][0]["path"] = "/home/operator/private"
     with pytest.raises(ContractError):
         REGISTRY.validate("record", record)
-
