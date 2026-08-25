@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/operation-state.schema.json",
+  "title": "III resumable automation operation state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "operation_id", "plan_id", "state", "attempt", "completed_mutations", "evidence", "failure"],
+  "properties": {
+    "schema": {"const": "iii.operation-state/v1"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "plan_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "state": {"enum": ["planned", "applying", "partial", "interrupted", "completed", "rejected"]},
+    "attempt": {"type": "integer", "minimum": 0},
+    "completed_mutations": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "evidence": {"type": "array", "items": {"type": "string"}},
+    "failure": {"type": ["object", "null"], "additionalProperties": false, "required": ["code", "detail", "mutation_id"], "properties": {
+      "code": {"type": "string"}, "detail": {"type": "string"}, "mutation_id": {"type": ["string", "null"]}
+    }}
+  }
+}
