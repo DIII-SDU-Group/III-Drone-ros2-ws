@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/automation-plan.schema.json",
+  "title": "III automation plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "plan_id", "operation_id", "operation", "created_at", "policy_sha256", "trusted_input_sha256", "repositories", "checks", "permissions", "mutations"],
+  "properties": {
+    "schema": {"const": "iii.automation-plan/v1"},
+    "plan_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "operation": {"enum": ["feature-pr", "stacked-pr", "develop-to-main", "main-to-release", "qualification", "artifact-fetch", "deployment-handoff"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "policy_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "trusted_input_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "repositories": {
+      "type": "array", "minItems": 1,
+      "items": {"type": "object", "additionalProperties": false, "required": ["repository", "ref", "expected_old_sha", "new_sha"], "properties": {
+        "repository": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+        "ref": {"type": "string", "pattern": "^refs/(?:heads|tags)/[^ ]+$"},
+        "expected_old_sha": {"type": ["string", "null"], "pattern": "^[a-f0-9]{40}$"},
+        "new_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"}
+      }}
+    },
+    "checks": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "status", "evidence_sha256"], "properties": {
+      "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+      "status": {"const": "passed"},
+      "evidence_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+    }}},
+    "permissions": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["repository", "permission"], "properties": {
+      "repository": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+      "permission": {"type": "string", "pattern": "^[a-z-]+:(?:read|write|submit)$"}
+    }}},
+    "mutations": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["id", "kind", "repository", "ref", "expected_old_sha", "new_sha", "parameters"], "properties": {
+      "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,63}$"},
+      "kind": {"enum": ["push", "pr-upsert", "tag-publish", "release-publish", "artifact-fetch", "deployment-handoff"]},
+      "repository": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+      "ref": {"type": "string", "pattern": "^refs/(?:heads|tags)/[^ ]+$"},
+      "expected_old_sha": {"type": ["string", "null"], "pattern": "^[a-f0-9]{40}$"},
+      "new_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+      "parameters": {"type": "object"}
+    }}}
+  }
+}

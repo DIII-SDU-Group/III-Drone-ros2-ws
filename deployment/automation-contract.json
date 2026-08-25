@@ -1,0 +1,54 @@
+{
+  "schema": "iii.automation-contract/v1",
+  "operations": {
+    "feature-pr": {
+      "entry_point": "iii automation feature-pr",
+      "mutation_kinds": ["push", "pr-upsert"],
+      "permissions": ["contents:write", "pull-requests:write"],
+      "next_command": ["iii", "automation", "status"]
+    },
+    "stacked-pr": {
+      "entry_point": "iii automation stacked-pr",
+      "mutation_kinds": ["push", "pr-upsert"],
+      "permissions": ["contents:write", "pull-requests:write"],
+      "next_command": ["iii", "automation", "status"]
+    },
+    "develop-to-main": {
+      "entry_point": "iii automation develop-to-main",
+      "mutation_kinds": ["push", "pr-upsert"],
+      "permissions": ["contents:write", "pull-requests:write"],
+      "next_command": ["iii", "automation", "status"]
+    },
+    "main-to-release": {
+      "entry_point": "iii automation main-to-release",
+      "mutation_kinds": ["pr-upsert"],
+      "permissions": ["pull-requests:write"],
+      "next_command": ["iii", "automation", "status"]
+    },
+    "qualification": {
+      "entry_point": "iii release publish",
+      "mutation_kinds": ["tag-publish", "release-publish"],
+      "permissions": ["contents:write"],
+      "next_command": ["iii", "release", "show"]
+    },
+    "artifact-fetch": {
+      "entry_point": "iii release fetch",
+      "mutation_kinds": ["artifact-fetch"],
+      "permissions": ["contents:read"],
+      "next_command": ["iii", "deploy", "plan"]
+    },
+    "deployment-handoff": {
+      "entry_point": "iii deploy apply",
+      "mutation_kinds": ["deployment-handoff"],
+      "permissions": ["receiver:submit"],
+      "next_command": ["iii", "deploy", "status"]
+    }
+  },
+  "trusted_boundaries": {
+    "repository_policy": "trusted checked-out base/release code",
+    "github_ref_state": "authenticated GitHub API",
+    "pull_request_body": "untrusted transport only",
+    "workflow_summary": "untrusted display only",
+    "promotion_evidence": "schema, identity, signature, and policy binding required"
+  }
+}
