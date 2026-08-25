@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/target-abi-probe.schema.json",
+  "title": "III target ABI probe",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "target_id", "source_image_digest", "os", "os_version", "os_codename", "architecture", "dpkg_architecture", "endianness", "pointer_bits", "ros", "python_version", "python_abi", "python_soabi", "libc_name", "libc_version", "compiler_id", "compiler_version", "compiler_target"],
+  "properties": {
+    "schema": {"const": "iii.target-abi-probe/v1"},
+    "target_id": {"type": "string", "minLength": 1},
+    "source_image_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "os": {"type": "string", "minLength": 1},
+    "os_version": {"type": "string", "minLength": 1},
+    "os_codename": {"type": "string", "minLength": 1},
+    "architecture": {"type": "string", "minLength": 1},
+    "dpkg_architecture": {"type": "string", "minLength": 1},
+    "endianness": {"enum": ["little", "big"]},
+    "pointer_bits": {"enum": [32, 64]},
+    "ros": {"type": ["string", "null"]},
+    "python_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "python_abi": {"type": "string", "pattern": "^cp[0-9]+$"},
+    "python_soabi": {"type": "string", "minLength": 1},
+    "libc_name": {"type": "string", "minLength": 1},
+    "libc_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
+    "compiler_id": {"const": "gcc"},
+    "compiler_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "compiler_target": {"type": "string", "minLength": 1}
+  }
+}

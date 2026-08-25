@@ -2012,9 +2012,9 @@ the task In-Progress; it does not create an implicit follow-up task.
 Phase acceptance:
 
 - [x] Every open decision that affects implementation has an agreed answer.
-- [ ] Domain terms and architecture decisions are recorded without duplicating
+- [x] Domain terms and architecture decisions are recorded without duplicating
       runtime ownership already defined by the existing ADRs.
-- [ ] Release, configuration, safety, and recovery contracts are concrete enough
+- [x] Release, configuration, safety, and recovery contracts are concrete enough
       for later tasks to be implemented independently.
 
 Delivery order:
@@ -2390,7 +2390,7 @@ the live 11-repository governance audit with 24/24 rulesets and zero findings.
 
 #### P0.T12: Implement The Universal III CLI Result And Operation Contract
 
-**Status: In-Progress.**
+**Status: Completed (2026-08-26).**
 
 Description:
 Implement the P0.T11/Q112 contract once in `tools/III-Drone-CLI` and migrate every
@@ -2404,26 +2404,26 @@ payload schemas. Help and parser errors must use the same next-action mechanism.
 
 Acceptance:
 
-- [ ] One result library and schema are used by `iii system`, build/deploy/release,
+- [x] One result library and schema are used by `iii system`, build/deploy/release,
       host/GC/QGC/PX4, mission/config/capture/log/records, governance, field, and
       documentation commands; no command maintains a private incompatible envelope.
-- [ ] Every success, no-op, warning, rejection, failure, partial result,
+- [x] Every success, no-op, warning, rejection, failure, partial result,
       interruption/detach, cancellation, and help/parser result contains at least
       one valid context-aware next action or an explicit terminal-state reason when
       no command can follow.
-- [ ] Human `Next:` rendering and structured `next_actions[]` are generated from
+- [x] Human `Next:` rendering and structured `next_actions[]` are generated from
       identical data and identify command, reason, mutation flag, prerequisites,
       target/profile/operation arguments, and confirmation requirements.
-- [ ] Stable exit-code families distinguish success, completed-with-warning,
+- [x] Stable exit-code families distinguish success, completed-with-warning,
       policy/safety rejection, execution failure, usage error, and internal error;
       accepted remote work interrupted by Ctrl-C reports conventional interruption
       while retaining operation ID and exact reattach command.
-- [ ] Structured output written to stdout is machine-clean; progress and diagnostics
+- [x] Structured output written to stdout is machine-clean; progress and diagnostics
       use declared stderr/event channels and never require ANSI/decorative parsing.
-- [ ] Non-interactive mode refuses prompts, returns a structured required-input
+- [x] Non-interactive mode refuses prompts, returns a structured required-input
       finding, and never silently accepts a default for destructive or external
       mutation. Interactive and non-interactive paths invoke the same plan/policy.
-- [ ] Existing CLI commands are inventory-tested for coverage, including commands
+- [x] Existing CLI commands are inventory-tested for coverage, including commands
       implemented in editable submodules and forwarded local/remote variants.
 
 Tests:
@@ -2432,6 +2432,23 @@ Tests:
   cleanliness, help/parser failures, prompt refusal, next-action argument escaping,
   every-command inventory coverage, remote detach/reattach, and no-next-action
   terminal-state fixtures.
+
+Implementation note (2026-08-26): `III-Drone-CLI` v0.2.0 now owns the sole
+`iii.command-result/v1` implementation and result/plan/state schemas. Every
+existing parser leaf is inventoried and dispatched through one runner; required
+future command families are declared and agent guidance forbids private
+envelopes. Human and JSON output share the same model, child-process stdout is
+contained, diagnostics use stderr, and help/usage/setup/internal failures use
+the same next-action invariant. Mutating commands receive content-addressed
+dry-run plans, explicit non-interactive confirmation, atomic private operation
+state, idempotent completed replay, content-identity/state-binding verification,
+symlink rejection, Ctrl-C status 130, and exact argv-safe reattachment. The
+deployment package pins CLI v0.2.0 and re-exports the exact canonical types while
+keeping trusted policy-only imports frontend-independent. CLI PRs #11-#12 and
+workspace PRs #37-#38 passed protected governance and merged. Final host and
+Jazzy-devcontainer verification passed 101 deployment tests, 49 CLI tests,
+Python compilation, isolated two-package installation, submodule lock, every CI
+gate, and the live 11-repository audit with 24/24 rulesets and zero findings.
 
 ### P1: Build Reproducible Offboard Releases
 
@@ -2453,6 +2470,8 @@ Delivery order:
 
 #### P1.T0: Establish The Canonical ARM64 Target Environment
 
+**Status: Completed.**
+
 Description:
 Replace the Humble/Jazzy and host/sysroot ambiguity with one versioned target
 definition covering Ubuntu, ROS, architecture, Python ABI, compiler, system
@@ -2461,16 +2480,37 @@ without copying mutable state from an aircraft.
 
 Acceptance:
 
-- [ ] `setup_real.bash`, build images, and manifest target metadata agree.
-- [ ] Builder inputs are digest-pinned and reproducible.
-- [ ] Target incompatibility is detected before transfer or activation.
-- [ ] The target definition distinguishes the final Q93 Ansible-owned host
+- [x] `setup_real.bash`, build images, and manifest target metadata agree.
+- [x] Builder inputs are digest-pinned and reproducible.
+- [x] Target incompatibility is detected before transfer or activation.
+- [x] The target definition distinguishes the final Q93 Ansible-owned host
       baseline from release-local dependencies and records compatible package/
       ABI constraints without requiring an aircraft-derived sysroot.
 
 Tests:
 
 - Build and run a target ABI probe in an ARM64 target-equivalent environment.
+
+Implementation notes (2026-08-26):
+
+- Added the content-addressed `iii.target-definition/v1` contract for Raspberry
+  Pi 5 / Ubuntu 24.04 Noble / AArch64 / ROS Jazzy / CPython 3.12 cp312 /
+  glibc 2.39 / GCC 13.3, including the Q93 Ansible host baseline and an
+  explicitly disjoint release-owned dependency boundary.
+- Replaced the legacy Humble and aircraft-derived sysroot flow with digest-
+  pinned ROS ARM64 and Ubuntu amd64 OCI inputs, an Ubuntu snapshot, exact
+  cross-toolchain package versions, and `/opt/iii/sysroot` generated solely
+  from the immutable target seed.
+- Added fail-closed target-definition identity, manifest derivation, ABI probe,
+  and pre-transfer/pre-activation compatibility checks. Release manifests now
+  bind the target-definition content ID.
+- Reworked native real setup and both build entrypoints to use ROS Jazzy and
+  `/opt/iii/current`, without sysroot impersonation or host executable symlinks.
+- Verification: the real emulated ARM64 probe passed with AArch64/Noble/Jazzy,
+  Python 3.12.3 cp312, glibc 2.39, and GCC 13.3.0 against platform digest
+  `sha256:d849b6203853848bf20f5e5d6d77c1275bff1ff727d93ab055799cb33c2dac7a`;
+  114/114 deployment tests passed on the host and in the ROS Jazzy
+  devcontainer; shell/Python syntax, diff hygiene, and submodule lock passed.
 
 #### P1.T1: Capture Dirty Workspace Provenance
 

@@ -87,14 +87,40 @@ Post hooks:
 - not the primary onboard process-supervision boundary
 
 3. `Dockerfile.cc`
-- Cross-compilation oriented image
-- arm64 sysroot composition and toolchain setup
+- Reproducible amd64-to-arm64 cross-compilation image
+- digest-pinned Ubuntu 24.04 builder and ROS Jazzy target seed
+- snapshot-pinned GCC 13.3 toolchain and generated, aircraft-independent sysroot
+
+### Canonical ARM64 target
+
+`deployment/targets/v1/raspberry-pi-5-noble-arm64.json` is the single,
+content-addressed target definition. It fixes Raspberry Pi 5, Ubuntu 24.04
+Noble, AArch64, ROS Jazzy, CPython 3.12/cp312, glibc 2.39, and GCC 13.3. Both
+OCI inputs and every cross-builder package are immutable inputs. The target
+sysroot comes from the pinned ARM64 ROS image; copying `/`, `/home`, package
+state, logs, or configuration from an aircraft is forbidden.
+
+The Q93 Ansible baseline owns Ubuntu, ROS, system Python, platform/hardware
+libraries, systemd, udev, firmware, and drivers. A release owns only the III
+install tree, private release libraries, compatible cp312 wheels, missions,
+and its release environment. Normal deployment must not invoke a package
+manager or replace host-owned ABI components.
+
+Run the executable compatibility proof with:
+
+```bash
+PYTHONPATH=deployment/src python3 scripts/build/run_target_abi_probe.py
+```
+
+The command compiles an AArch64 binary with the pinned cross-compiler, executes
+it in the pinned ARM64 target image, validates OS/ROS/Python/libc/compiler ABI,
+and fails before any transfer or activation when the release target differs.
 
 ## 5. Entrypoints
 
 - `entrypoint_dev.sh`: source ROS + workspace install if exists.
-- `entrypoint_real.sh`: source target runtime setup + `setup_real.bash`.
-- `entrypoint_cc.sh`: source arm64 ROS path.
+- `entrypoint_real.sh`: source native ROS Jazzy and the atomically activated release.
+- `entrypoint_cc.sh`: expose the immutable ARM64 Jazzy sysroot to build tools.
 
 ## 6. Dependency Installation Strategy
 

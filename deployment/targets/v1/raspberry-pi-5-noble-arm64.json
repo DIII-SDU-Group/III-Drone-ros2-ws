@@ -1,0 +1,85 @@
+{
+  "schema": "iii.target-definition/v1",
+  "definition_id": "c7f26d6551e6ffa1a23cda44fffdc2e456b0b9032ea96d9032873098b37d548e",
+  "target": {
+    "target_id": "raspberry-pi-5-noble-arm64",
+    "board": "raspberry-pi-5",
+    "os": "ubuntu",
+    "os_version": "24.04",
+    "os_codename": "noble",
+    "architecture": "aarch64",
+    "dpkg_architecture": "arm64",
+    "endianness": "little",
+    "pointer_bits": 64,
+    "ros": {"distro": "jazzy", "prefix": "/opt/ros/jazzy"},
+    "python": {"implementation": "cpython", "major_minor": "3.12", "abi": "cp312", "soabi": "cpython-312-aarch64-linux-gnu"},
+    "libc": {"name": "glibc", "minimum": "2.39", "maximum_exclusive": "2.40"}
+  },
+  "images": {
+    "target_seed": {
+      "reference": "docker.io/library/ros:jazzy-ros-base",
+      "index_digest": "sha256:2589a8fba5257307857890173c069852c2abf913a0be7970f172478baecb09e4",
+      "platform": "linux/arm64/v8",
+      "platform_digest": "sha256:d849b6203853848bf20f5e5d6d77c1275bff1ff727d93ab055799cb33c2dac7a"
+    },
+    "builder": {
+      "reference": "docker.io/library/ubuntu:24.04",
+      "index_digest": "sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517",
+      "platform": "linux/amd64",
+      "platform_digest": "sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316"
+    }
+  },
+  "apt_snapshot": {
+    "uri": "https://snapshot.ubuntu.com/ubuntu/20260810T000000Z",
+    "timestamp": "2026-08-10T00:00:00Z",
+    "suites": ["noble", "noble-updates", "noble-security"],
+    "components": ["main", "universe"]
+  },
+  "toolchain": {
+    "target_triple": "aarch64-linux-gnu",
+    "c_compiler": "/usr/bin/aarch64-linux-gnu-gcc-13",
+    "cxx_compiler": "/usr/bin/aarch64-linux-gnu-g++-13",
+    "compiler_version": "13.3.0",
+    "compiler_package_version": "13.3.0-6ubuntu2~24.04.1cross1",
+    "libc_dev_package_version": "2.39-0ubuntu8cross1",
+    "cmake_version": "3.28.3-1build7",
+    "ninja_version": "1.11.1-2"
+  },
+  "sysroot": {
+    "source": "pinned-oci-target-seed",
+    "aircraft_derived": false,
+    "seed_sha256": "d849b6203853848bf20f5e5d6d77c1275bff1ff727d93ab055799cb33c2dac7a",
+    "path": "/opt/iii/sysroot",
+    "mutable_host_paths_forbidden": ["/home", "/var/lib/iii", "/var/log/iii", "/run/iii", "/etc/iii"]
+  },
+  "host_baseline": {
+    "contract_id": "33310a8e56be547d7692a38c0896b6e4ea63c8bd2e585bfbd8e62e7c64213cd3",
+    "owner": "ansible",
+    "converged_by": "Q93 aircraft host baseline",
+    "owns": ["ubuntu", "kernel-firmware", "glibc-loader", "ros-jazzy", "systemd", "udev-hardware", "platform-libraries", "system-python"],
+    "package_constraints": [
+      {"name": "libc6", "constraint": ">=2.39,<2.40", "abi_role": "platform"},
+      {"name": "libstdc++6", "constraint": ">=14.2.0-4ubuntu2~24.04,<15", "abi_role": "platform"},
+      {"name": "python3", "constraint": ">=3.12.3,<3.13", "abi_role": "python"},
+      {"name": "ros-jazzy-ros-base", "constraint": "jazzy", "abi_role": "ros"},
+      {"name": "ros-jazzy-rmw-cyclonedds-cpp", "constraint": "jazzy", "abi_role": "ros"},
+      {"name": "libopencv-core4.6t64", "constraint": ">=4.6,<4.7", "abi_role": "platform"},
+      {"name": "libpcl-common1.14", "constraint": ">=1.14,<1.15", "abi_role": "platform"},
+      {"name": "libzmq5", "constraint": ">=4.3.5,<4.4", "abi_role": "platform"},
+      {"name": "udev", "constraint": ">=255.4,<256", "abi_role": "hardware"}
+    ]
+  },
+  "release_boundary": {
+    "owns": ["iii-install-tree", "iii-python-wheels", "release-private-libraries", "missions", "release-environment"],
+    "python_wheel_abi": "cp312-manylinux_2_39_aarch64",
+    "may_bundle": ["III-private shared libraries", "hash-pinned cp312 wheels without platform ownership"],
+    "must_not_bundle": ["glibc", "dynamic-loader", "ros-jazzy", "kernel-modules", "gpu-drivers", "system-python", "ansible-host-units"],
+    "normal_deployment_may_run_package_manager": false
+  },
+  "compatibility": {
+    "probe_schema": "iii.target-abi-probe/v1",
+    "exact_fields": ["target_id", "os", "os_version", "os_codename", "architecture", "dpkg_architecture", "endianness", "pointer_bits", "ros", "python_abi", "python_soabi", "compiler_target"],
+    "range_fields": ["libc_version", "compiler_version"],
+    "check_before": ["transfer", "activation"]
+  }
+}

@@ -1,8 +1,10 @@
+ARG TARGET_BASE_IMAGE=docker.io/library/ros:jazzy-ros-base@sha256:2589a8fba5257307857890173c069852c2abf913a0be7970f172478baecb09e4
+
+FROM --platform=linux/arm64 ${TARGET_BASE_IMAGE}
+
 ARG ROS_DISTRO=jazzy
-
-FROM ros:${ROS_DISTRO}-ros-base
-
-ARG ROS_DISTRO
+ENV III_TARGET_ID=raspberry-pi-5-noble-arm64 \
+    ROS_DISTRO=${ROS_DISTRO}
 
 # Make transient Ubuntu mirror failures less likely to abort long image builds.
 RUN printf '%s\n' \
@@ -28,8 +30,7 @@ RUN set -eux; \
 RUN groupadd --gid 1000 iii && \
     useradd --uid 1000 --gid 1000 -m iii && \
     mkdir -p /home/iii/ws/src && \
-    chown -R iii:iii /home/iii/ws && \
-    ln -s / /arm64-sysroot
+    chown -R iii:iii /home/iii/ws
 
 # Install stable apt dependencies in one layer. Avoid full apt upgrades: the
 # base image pins the OS/ROS baseline, while upgrades are slow and
@@ -56,7 +57,7 @@ RUN echo "iii ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/iii && \
     usermod -a -G dialout iii && \
     usermod -a -G video iii
 
-WORKDIR /arm64-sysroot/home/iii/ws
+WORKDIR /home/iii/ws
 
 COPY requirements.txt /requirements.txt
 RUN chown -R iii:iii /requirements.txt

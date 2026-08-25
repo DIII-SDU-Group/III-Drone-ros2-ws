@@ -1,17 +1,12 @@
-#!/bin/bash
-# set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-# # Source the ROS2 setup script
-# source /opt/ros/humble/setup.bash
-
-# # Source the workspace setup script
-# if [ -f /home/iii/ws/install/setup.bash ]; then
-#     source /home/iii/ws/install/setup.bash
-# fi
-
-source /arm64-sysroot/home/iii/.bashrc
-source /arm64-sysroot/home/iii/ws/setup/setup_real.bash
-cd /arm64-sysroot/home/iii/ws
-
-# Execute the command passed to the entrypoint
+readonly workspace="${III_WORKSPACE_ROOT:-/home/iii/ws}"
+if [[ ! -r "${workspace}/setup/setup_real.bash" ]]; then
+  echo "III real setup is unavailable: ${workspace}/setup/setup_real.bash" >&2
+  exit 30
+fi
+export III_WORKSPACE_INSTALL="${workspace}/install"
+source "${workspace}/setup/setup_real.bash"
+cd "${workspace}"
 exec "$@"
