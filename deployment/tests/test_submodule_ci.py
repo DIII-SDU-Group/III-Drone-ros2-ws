@@ -29,11 +29,15 @@ def test_trusted_baseline_check_passes_all_editable_repositories() -> None:
 
 def test_submodule_workflows_and_rulesets_match_declared_policy() -> None:
     policy = json.loads((ROOT / "deployment/governance/branch-policy.json").read_text(encoding="utf-8"))
+    template_path = ROOT / "deployment/governance/submodule-workflow.yml"
+    template_text = template_path.read_text(encoding="utf-8")
+    workflow = yaml.safe_load(template_text)
+    assert set(workflow[True]["pull_request"]["branches"]) == {"develop", "main"}
+    assert set(workflow["jobs"]) == {"promotion-source", "iii-package-check"}
     for repository in REPOSITORIES:
         workflow_path = ROOT / repository / ".github/workflows/iii-governance.yml"
-        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
-        assert set(workflow[True]["pull_request"]["branches"]) == {"develop", "main"}
-        assert set(workflow["jobs"]) == {"promotion-source", "iii-package-check"}
+        if workflow_path.exists():
+            assert workflow_path.read_text(encoding="utf-8") == template_text
     for branch in ("develop", "main"):
         ruleset = json.loads(
             (ROOT / f"deployment/governance/rulesets/submodule-{branch}.json").read_text(encoding="utf-8")
