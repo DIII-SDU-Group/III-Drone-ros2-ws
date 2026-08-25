@@ -33,7 +33,10 @@ def test_submodule_workflows_and_rulesets_match_declared_policy() -> None:
     template_text = template_path.read_text(encoding="utf-8")
     workflow = yaml.safe_load(template_text)
     assert set(workflow[True]["pull_request"]["branches"]) == {"develop", "main"}
-    assert set(workflow["jobs"]) == {"promotion-source", "iii-package-check"}
+    assert set(workflow["jobs"]) == {
+        "promotion-source", "promotion-source-target", "iii-package-check",
+    }
+    assert workflow["jobs"]["promotion-source-target"]["name"] == "promotion-source-${{ github.base_ref }}"
     for repository in REPOSITORIES:
         workflow_path = ROOT / repository / ".github/workflows/iii-governance.yml"
         if workflow_path.exists():
