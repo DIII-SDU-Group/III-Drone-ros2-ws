@@ -245,8 +245,11 @@ def test_workflows_are_pinned_bounded_least_privilege_and_trust_explicit() -> No
     assert checkout["with"]["ref"] == "${{ github.event.pull_request.base.sha }}"
     assert checkout["with"]["persist-credentials"] is False
     assert "verify_linked_submodule_prs.py" in linked["steps"][1]["run"]
-    legacy = root_workflow["jobs"]["legacy-linked-submodule-marker-gate-disabled"]
-    assert legacy["if"] == "${{ false }}"
+    assert all("legacy" not in job_id for job_id in root_workflow["jobs"])
+    workflow_source = (
+        ROOT / ".github/workflows/dependency-governance.yml"
+    ).read_text(encoding="utf-8")
+    assert "context.payload.pull_request.body" not in workflow_source
 
     submodule_workflow = yaml.safe_load(
         (ROOT / "deployment/governance/submodule-workflow.yml").read_text(encoding="utf-8")
