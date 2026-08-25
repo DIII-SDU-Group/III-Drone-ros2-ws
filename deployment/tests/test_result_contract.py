@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -38,3 +42,17 @@ def test_deployment_import_is_the_canonical_cli_type() -> None:
     from iii.result import CommandResult as CliCommandResult
 
     assert CommandResult is CliCommandResult
+
+
+def test_package_policy_import_does_not_eagerly_require_cli(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[2]
+    environment = {**os.environ, "PYTHONPATH": str(root / "deployment" / "src")}
+    process = subprocess.run(
+        [sys.executable, "-S", "-c", "import iii_deployment; assert 'iii.result' not in __import__('sys').modules"],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert process.returncode == 0, process.stderr
