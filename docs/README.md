@@ -63,8 +63,20 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     Workspace-root commands for devcontainer, simulation, III CLI, tmux, and
     ground-control operation from the development host.
 
+19. `automation-ready-authoring-contract.md`
+    Required structure, authority, evidence, recovery, structured-output, and
+    next-action contract for every executable operator or automation workflow.
+
+20. `legacy-deployment-retirement.md`
+    Historical-data destination map and the evidence gate that must pass before
+    the retired deployment repository can be archived.
+
 Domain language and context ownership are indexed by the root
 `CONTEXT-MAP.md`.
+
+Deployment domain terms live in [`../deployment/CONTEXT.md`](../deployment/CONTEXT.md).
+Deployment ADRs extend this index without reopening the existing Operations
+Interface or runtime-ownership decisions.
 
 ## Scope Notes
 

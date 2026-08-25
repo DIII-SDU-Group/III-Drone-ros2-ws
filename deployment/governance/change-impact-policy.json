@@ -1,0 +1,17 @@
+{
+  "schema": "iii.change-impact-policy/v1",
+  "version": 1,
+  "default_categories": ["static-unit", "local-simulation"],
+  "rules": [
+    {"id": "DEPLOYMENT", "patterns": ["deployment/**", ".github/**", "scripts/git/**", "scripts/ci/**"], "categories": ["static-unit", "local-simulation", "provisioned-drone-bench-smoke"]},
+    {"id": "FLIGHT_CRITICAL", "patterns": ["src/III-Drone-Core/**", "src/III-Drone-Mission/**", "src/III-Drone-Interfaces/**", "src/III-Drone-Contracts/**"], "categories": ["static-unit", "local-simulation", "provisioned-drone-bench-smoke", "field-flight"]},
+    {"id": "HARDWARE", "patterns": ["deployment/hardware/**", "src/III-Drone-Core/udev/**"], "categories": ["static-unit", "provisioned-drone-bench-smoke", "field-flight"]},
+    {"id": "CONFIGURATION", "patterns": ["src/III-Drone-Configuration/**", "deployment/px4/**", "deployment/qgc/**"], "categories": ["static-unit", "local-simulation", "provisioned-drone-bench-smoke"]},
+    {"id": "SUPERVISION_RUNTIME", "patterns": ["src/III-Drone-Supervision/**", "src/III-Drone-Runtime/**"], "categories": ["static-unit", "local-simulation", "provisioned-drone-bench-smoke"]},
+    {"id": "GC", "patterns": ["src/III-Drone-GC/**"], "categories": ["static-unit", "local-simulation"]},
+    {"id": "DOCS_ONLY", "patterns": ["README.md", "docs/**", "CONTEXT.md", "CONTEXT-MAP.md", "AGENTS.md"], "categories": ["static-unit"]}
+  ],
+  "non_waivable": ["source-governance", "dependency-lock", "build", "static-unit", "artifact-integrity", "artifact-signing", "deployment-safety"],
+  "physical_waivable": ["provisioned-drone-bench-smoke", "opti-track", "field-flight"]
+}
+

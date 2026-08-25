@@ -1,0 +1,19 @@
+{
+  "schema": "iii.filesystem-contract/v1",
+  "runtime_user": "iii",
+  "runtime_group": "iii",
+  "paths": [
+    {"path": "/opt/iii/releases", "owner": "root", "group": "iii", "mode": "0750", "kind": "immutable-release-root", "persistence": "reimage-destroys"},
+    {"path": "/opt/iii/current", "owner": "root", "group": "iii", "mode": "0750", "kind": "atomic-selector", "persistence": "receiver-reconciled"},
+    {"path": "/opt/iii/receiver", "owner": "root", "group": "root", "mode": "0755", "kind": "receiver-ab-root", "persistence": "ansible-recovery"},
+    {"path": "/etc/iii", "owner": "root", "group": "iii", "mode": "0750", "kind": "host-policy-and-secrets", "persistence": "reprovision"},
+    {"path": "/var/lib/iii", "owner": "iii", "group": "iii", "mode": "0750", "kind": "persistent-state", "persistence": "portable-backup"},
+    {"path": "/var/lib/iii/incoming", "owner": "iii", "group": "iii", "mode": "0750", "kind": "unprivileged-upload", "persistence": "bounded-partial"},
+    {"path": "/var/log/iii", "owner": "iii", "group": "iii", "mode": "0750", "kind": "bounded-logs", "persistence": "retention-policy"},
+    {"path": "/run/iii", "owner": "iii", "group": "iii", "mode": "0750", "kind": "transient", "persistence": "recreated-on-boot"}
+  ],
+  "protected_release_subpaths": ["manifest.json", "install", "python", "lib", "missions", "environment.bash"],
+  "host_systemd_units": ["iii-deployment-receiver.service", "iii-system-daemon.service", "iii-runtime-api.service"],
+  "minimum_storage_reserve": {"bytes": 2147483648, "percent": 10}
+}
+

@@ -1,0 +1,19 @@
+{
+  "schema_version": "1",
+  "safety": {"telemetry_max_age_ms": 1000, "stable_preflight_s": 3, "acceptance_stable_s": 10},
+  "activation": {"target_acceptance_s": 60, "hard_deadline_s": 120, "rollback_target_s": 60},
+  "receiver": {"self_update_deadline_s": 30},
+  "network": {"confirmation_deadline_s": 90, "ethernet_dhcp_required": true},
+  "storage": {"minimum_reserve_bytes": 2147483648, "minimum_reserve_percent": 10},
+  "logging": {"degraded_max_records": 10000, "degraded_max_bytes": 16777216, "protected_completed_sessions": 4, "retention_days": 14, "maximum_bytes": 1073741824, "maximum_filesystem_percent": 5, "debug_session_max_bytes": 268435456, "deployment_audits": 50, "failed_diagnostics_days": 30},
+  "signing": {"agent_timeout_h": 8, "agent_max_timeout_h": 24},
+  "transfer": {"target_s": 120, "partial_expiry_days": 7},
+  "clock": {"minimum_samples": 5, "maximum_rtt_ms": 500, "gate_maximum_offset_ms": 250, "backward_discontinuity_ms": 250, "forward_discontinuity_ms": 2000, "active_warning_offset_ms": 250, "active_resync_offset_ms": 1000},
+  "px4_mirror": {"debounce_s": 2, "reconcile_period_s": 60},
+  "gc_cache": {"quota_bytes": 53687091200, "minimum_reserve_bytes": 10737418240, "minimum_reserve_percent": 10},
+  "backup": {"external_archive_warning_days": 30},
+  "authorization": {"nonce_expiry_s": 300},
+  "bundle": {"maximum_unpacked_bytes": 21474836480, "maximum_entries": 200000, "maximum_path_bytes": 255, "maximum_path_depth": 32},
+  "status": {"offline_age_warning_days": 7}
+}
+

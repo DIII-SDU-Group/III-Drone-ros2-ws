@@ -43,7 +43,9 @@ Development uses the VS Code devcontainer as the reference OS-equivalent environ
 - Cross-compilation container: `Dockerfile.cc`
 - Entrypoints: `entrypoint_dev.sh`, `entrypoint_real.sh`, `entrypoint_cc.sh`
 
-The deployment repository owns native systemd installation. This workspace owns the internal daemon, launch graph, service model, and devcontainer behavior.
+The workspace-owned [`deployment/`](deployment/) package and Ansible assets own
+native host installation. This workspace also owns the internal daemon, launch
+graph, service model, and devcontainer behavior.
 
 ## Canonical Bringup Model
 

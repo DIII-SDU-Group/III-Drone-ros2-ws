@@ -1,0 +1,38 @@
+{
+  "schema": "iii.legacy-hardware-observations/v1",
+  "source": {
+    "repository": "DIII-SDU-Group/III-Drone-deployment",
+    "branch": "v2.2-staging",
+    "commit": "4ab4ae76013ba3ff904189777e7c97af107d94e1",
+    "path": "udev/99-diii-usb.rules"
+  },
+  "authority": "historical-observation-only",
+  "observations": [
+    {
+      "role_hint": "mmwave-cli",
+      "vendor_id": "10c4",
+      "product_id": "ea70",
+      "serial": "00DEEC69",
+      "interface_number": "00",
+      "legacy_symlink": "mmWaveCli"
+    },
+    {
+      "role_hint": "mmwave-data",
+      "vendor_id": "10c4",
+      "product_id": "ea70",
+      "serial": "00DEEC69",
+      "interface_number": "01",
+      "legacy_symlink": "mmWaveData"
+    },
+    {
+      "role_hint": "charger-gripper",
+      "vendor_id": "2341",
+      "product_id": "8054",
+      "serial": null,
+      "interface_number": null,
+      "legacy_symlink": "charger"
+    }
+  ],
+  "warning": "These observations conflict with newer workspace rules and are not active match policy. Physical commissioning decides the shared hardware-role manifest."
+}
+
