@@ -121,7 +121,10 @@ bridge. It discovers the associated devcontainer, sources the development
 profile inside it, and delegates to the existing simulation launcher and III
 CLI. See [`host-development-commands.md`](host-development-commands.md).
 
-On the real drone, the deployment repository should install a native `systemd` unit for the III daemon. Inside the devcontainer, the workspace installs the dev unit automatically and `iii system boot` uses `systemctl start iii-system-daemon.service`.
+On the real drone, workspace-owned Ansible assets under `deployment/` install the
+native `systemd` units and stable launchers. Inside the devcontainer, the workspace
+installs the development unit automatically and `iii system boot` uses
+`systemctl start iii-system-daemon.service`.
 
 Runtime ownership is:
 

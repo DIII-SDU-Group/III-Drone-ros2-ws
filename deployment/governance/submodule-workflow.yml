@@ -1,0 +1,48 @@
+name: III Repository Governance
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  promotion-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout candidate repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Checkout trusted workspace policy
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: DIII-SDU-Group/III-Drone-ros2-ws
+          ref: develop
+          path: .iii-governance
+          fetch-depth: 1
+      - name: Validate feature/develop/main source
+        run: |
+          PYTHONPATH=.iii-governance/deployment/src python .iii-governance/scripts/ci/verify_submodule_pr.py \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --base "${{ github.base_ref }}" \
+            --head "${{ github.head_ref }}" \
+            --head-sha "${{ github.event.pull_request.head.sha }}"
+
+  iii-package-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout candidate repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Checkout trusted workspace policy
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: DIII-SDU-Group/III-Drone-ros2-ws
+          ref: develop
+          path: .iii-governance
+          fetch-depth: 1
+      - name: Run trusted editable-repository baseline
+        run: python .iii-governance/scripts/ci/check_editable_iii_repository.py --repository-root "$GITHUB_WORKSPACE"

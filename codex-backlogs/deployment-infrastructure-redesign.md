@@ -24,6 +24,14 @@ until field operators can work entirely from published release artifacts.
 - The target platform baseline is Ubuntu Server 24.04 LTS ARM64 with ROS 2
   Jazzy. Ubuntu 24.04 is the first Ubuntu LTS supporting Raspberry Pi 5 and the
   matching Jazzy ARM64 Tier 1 platform.
+- Raw SD-card provisioning starts from a checksum-pinned official Ubuntu Server
+  24.04 ARM64 Raspberry Pi image. Deployment generates first-boot cloud-init
+  data and then applies Ansible convergence; III does not maintain a custom
+  disk-image fork initially.
+- Field deployment, rollback, target inspection, log retrieval, tuning capture,
+  and repeated Ansible convergence work without internet access when the laptop
+  and aircraft have a local connection. Initial dependency-cache population and
+  fresh SD provisioning may require internet access in the first implementation.
 - All III builds happen on a separate development computer or CI builder using
   a target-compatible ARM64 build environment.
 - The normal near-term workflow starts from a local clone of this workspace.
@@ -35,30 +43,108 @@ until field operators can work entirely from published release artifacts.
   schema, and build time.
 - Clean, locked, tagged workspaces produce **qualified releases**. Both release
   classes use the same artifact and onboard activation path.
-- Host systemd remains the top-level onboard process owner. Whether it starts
-  the III daemon and independently supervised runtime API natively or as a
-  small number of release-image containers is unresolved by Q3. In either
-  case, the III daemon owns the canonical ROS launch graph and daemon-managed
-  processes; deployment must not recreate per-node ownership.
-- Production does not depend on a Git checkout, `/home/iii/ws`, or build trees
-  on the aircraft. Docker/Compose use is pending Q3; the legacy per-node Compose
-  graph remains rejected.
+- Qualified/full releases may be produced only from the currently uncreated
+  release branch, with a clean committed top-level workspace and clean governed
+  submodules, verified dependency lock, complete required build/tests, explicit
+  version tag, signed evidence-bearing manifest, and explicit qualified deploy
+  action. Any other branch or workspace state produces only a field-development
+  release, regardless of whether it builds or tests successfully.
+- Host systemd is the top-level onboard process owner and runs the III daemon
+  and independently supervised runtime API natively. The III daemon owns the
+  canonical ROS launch graph and daemon-managed processes; deployment must not
+  recreate per-node ownership.
+- Production does not depend on a Git checkout, `/home/iii/ws`, Docker,
+  Docker Compose, or build trees on the aircraft.
 - Releases are immutable and installed side by side. Activation and rollback
   are atomic; persistent aircraft data lives outside release directories.
 - Deployment and self-update transport uses SSH. Remote runtime operation uses
   `iii-runtime-api`; the deployment path must remain usable while that process
   is being updated or restarted.
+- A host-installed onboard deployment receiver, independently supervised by
+  systemd and outside replaceable release directories, owns staging state,
+  activation, health deadlines, acceptance, boot reconciliation, and rollback.
+  Once an activation request is accepted, loss of the CLI, SSH, network, or
+  operator computer cannot prevent timeout handling or rollback.
+- Initial Ansible convergence installs the trusted deployment receiver and its
+  host recovery substrate. Normal signed deployment bundles may update the
+  receiver through a separately transactional self-update path; application
+  release switching must never directly overwrite the running receiver.
 - The III CLI remains the operator-facing deployment surface.
 - GUI parameter tuning persists onboard. Every field test has an identifiable
   baseline and release, accepted changes are journaled, and the final state can
   be captured back to the development computer.
 - Captured tuning is not automatically merged into tracked defaults. Promotion
-  is deliberate and classifies changes as global defaults, hardware-class
-  defaults, aircraft-specific configuration, retained experiments, or rejected
-  changes.
+  is deliberate and classifies changes as tracked defaults, retained
+  experiments, or rejected changes.
+- Deployment never overwrites an existing onboard value for a parameter that
+  remains in the release manifest and never discards a removed parameter value.
+  It reconciles every applicable active onboard parameter set to the current
+  manifest: newly introduced keys are inserted with release defaults, existing
+  current-schema values are preserved, and removed/legacy keys are atomically
+  moved with their last active values and provenance into a persistent onboard
+  shadow store outside the active configuration tree. Active files contain the
+  current schema; the shadow survives releases and supports compatible rollback.
+  Reconciliation is transactional, journaled, and independent of release files.
+- Pulling tuned parameters from either `iii.local` or simulation into source is
+  a first-class III CLI workflow. Captures can be promoted only as changes to
+  the tracked `real` or `sim` profile default in `III-Drone-Configuration`,
+  validated against the source manifest, committed through the governed
+  feature/stacked-PR workflow, and thereby included in a later release. Git
+  commits provide default history; a qualified release tag fixes the exact
+  defaults packaged by that release. Deployment never performs source promotion.
+- Deployment models one shared logical aircraft target. Physically different
+  Raspberry Pis are not distinguished in inventory: they use the same hardware
+  class, setup, runtime identity, credentials, and configuration, and at most
+  one is connected to the operator at a time. No central or per-aircraft fleet
+  inventory is in scope.
+- SSH deployment trusts that the single `iii.local` endpoint on the local
+  operator network is the intended target. Physical Pi host keys are not
+  inventoried or authenticated. This explicitly accepts local DNS/mDNS spoofing
+  and man-in-the-middle risk; server identity is outside the initial threat model.
+- SSH client authentication is key-based with one keypair per authorized
+  operator computer. Cloud-init installs the first public key; an authenticated,
+  audited deployment workflow can add and revoke public keys later. Private keys
+  are never copied between the development workstation and ground-control computer.
+- The `iii` SSH account remains unprivileged. Passwordless elevation is limited
+  to a root-owned deployment helper and explicitly required systemd operations;
+  unrestricted `NOPASSWD:ALL` is prohibited. Broader bootstrap authority used
+  by initial Ansible provisioning is narrowed after convergence.
+- Every qualified and field-development release bundle is cryptographically
+  signed. The root deployment helper verifies a trusted signer and all content
+  checksums before staging; unsigned, unknown-signer, or tampered bundles are rejected.
+- Each build computer owns an independent release-signing keypair. Targets trust
+  revocable public signing keys provisioned through the deployment helper;
+  private signing keys are never shared between computers. Computers that only
+  operate the runtime do not require a signing key.
+- Normal release activation requires fresh PX4 telemetry proving landed and
+  disarmed, with no Mission Execution, Custom Operation, or active Reference
+  Owner. If a broken runtime cannot report safety state, recovery requires an
+  explicit interactive maintenance override that first stops all III units,
+  requires physical-safety confirmation, and is audit logged. Unattended use of
+  the override is prohibited by default.
+- Release retention has two tracks. The latest qualified/full release is a
+  protected recovery anchor that field-development deployment cannot replace or
+  garbage-collect. During field development the target also retains the active
+  field-development release and the immediately previous field-development
+  release, plus one temporary staged candidate. Failed candidate contents may
+  be removed after retaining their manifest and diagnostics.
+- The expected workflow is: build and deploy a qualified/full release from the
+  home workstation; update the same workspace branch on the ground-control
+  laptop; then make, cross-compile, sign, and deploy field-development releases
+  from that laptop while preserving the qualified recovery anchor.
 - Code rollback and configuration rollback are related but independently
   tracked. Schema compatibility must be checked before either activation or
   rollback.
+- Repository governance assumes a solo maintainer. Pull requests and required
+  machine checks remain mandatory for `develop`, `main`, and `release`, but no
+  human approval count is required. Promotion intent, evidence, and resulting
+  mutations must be explicit and auditable; the design must not depend on a
+  second reviewer or a broad maintainer bypass.
+- Release and pull-request tooling is designed as a deterministic CI/CD and
+  AI-agent interface as well as a human interface: non-interactive operation,
+  structured input/output, stable exit codes, preflight/dry-run support,
+  idempotent retries, resumable state, bounded permissions, and retained
+  evidence are first-class contracts. Human-readable summaries remain required.
 - No implementation changes begin until this backlog's grilling phase resolves
   the full design scope.
 - Grilling questions are numbered sequentially (`Q1`, `Q2`, ...) and their
@@ -88,51 +174,253 @@ until field operators can work entirely from published release artifacts.
   operator-selected parameter sets. It does not yet define release/schema
   compatibility, transactional migrations, provenance-rich tuning sessions, or
   reversible promotion.
+- The current Configuration GUI stages edits only in browser memory until the
+  operator presses Apply. Apply sends each edited key sequentially rather than
+  as one atomic multi-key transaction. Each successful key is validated, pushed
+  live to every declaring node, read back, and immediately persisted onboard as
+  a full automatically named runtime snapshot; constants are persisted for the
+  next boot. There is no tuning-session identity or per-change history.
+- Onboard persistence updates the active-profile selector, so accepted values
+  are intended to survive an ordinary reboot. Snapshot YAML and selector writes
+  are direct file writes rather than a fsync/atomic-rename transaction, however,
+  so power-loss durability is not guaranteed. Automatic snapshot replacement is
+  tracked only in server memory; after a server restart, older automatic
+  snapshots may accumulate.
+- The GUI can explicitly save, list, load, and select named onboard snapshots.
+  The backend's download operation returns YAML only for the currently active
+  snapshot. The frontend currently discards that returned content and merely
+  shows a success notification, so it does not create a ground-control file.
+- Configuration state is hydrated when the GUI websocket connects, but normal
+  periodic state publication and generic configuration-command handling do not
+  publish or merge a refreshed configuration state. The displayed table and
+  snapshot list can therefore remain stale after apply/save/load/default/list
+  commands until a full rehydration. Existing frontend tests verify command
+  dispatch but do not cover local download or post-command state refresh.
+- There is currently no continuous or accepted-change mirror on the ground-
+  control computer, no immutable tuning capture, no operator/session provenance,
+  and no direct path from GUI tuning into the repository promotion workflow.
 - `src/III-Drone-Runtime` already places the runtime API onboard, separates it
   from the ground-control computer, enforces real-profile identity/secrets, and
   exposes runtime and configuration operations used by GUI v2.
+- Supervision currently accepts `opti_track`, but treats every non-`sim` profile
+  through the real-entity branch and filters entities by profile membership. There
+  is no dedicated OptiTrack setup script, configuration profile/default, PX4
+  manifest, mocap service/readiness contract, target descriptor, or deployment
+  flow. The current name is therefore a partial profile placeholder, not an
+  operationally commissioned integration.
+- `src/III-Drone-GC` currently defines a ROS-free React frontend and thin FastAPI
+  discovery/proxy. Production operation is Docker-Compose-based, configured by a
+  manually copied `~/.config/iii-ground-control.env`, and launched through the
+  workspace `iii_ground_control.sh` helper rather than a converged host installer
+  or transactional GC application manager.
+- Current GC discovery uses mDNS/manual runtime endpoints and intentionally keeps
+  ROS, DDS, MAVSDK, daemon sockets, and runtime-host systemd access off the GC.
+  QGroundControl configuration, III CLI/operator setup, cross-build tooling,
+  signing keys, offline caches, clock synchronization, and tuning capture are not
+  yet one provisioned GC-computer baseline.
+- Simulation tooling currently launches `/home/iii/QGroundControl.AppImage` from
+  inside the devcontainer/tmux simulation session and carries container-specific
+  QGroundControl paths and settings. This must move to the host-native GC installer
+  and launcher used by field operation; the devcontainer should launch only the
+  simulator/backend and communicate with host QGroundControl over explicit LAN/
+  host networking.
+- PX4 configuration is not currently represented by a canonical real-FMU
+  parameter manifest in this workspace. Simulation defaults are embedded as
+  `param set-default` statements in the custom airframe under the editable
+  simulation submodule. The PX4 source tree contains unrelated example parameter
+  files but is not an operational parameter inventory.
+- `tools/QGroundControl.org/QGroundControl.ini` is a raw mutable user/machine
+  snapshot, not a safe release baseline: it contains `/home/iii`, window geometry,
+  map position, and public automatic telemetry-upload preferences. Its ParamCache
+  is generated/version-coupled data. Release ownership needs a sanitized managed-
+  key manifest plus explicit preservation of non-managed user state.
+- Behavior trees and mission specifications currently live as mutable source-tree
+  files in `III-Drone-Mission`, selected through `MISSION_SPECIFICATION_DIR` and
+  `BEHAVIOR_TREES_DIR` environment-expanded paths. The package install rules do
+  not install these asset directories. The directory mixes the default inspection
+  mission, alternate/test/legacy trees, FTP/up-down specifications, and an
+  OptiTrack-specific test specification without a release catalog, content IDs,
+  dependency closure, compatibility metadata, or qualification classification.
+- Mission tooling currently has three related representations that can drift:
+  mission YAML uses `$BEHAVIOR_TREES_DIR` file paths, behavior-tree XML names node
+  IDs/subtrees, and `models.xml` plus `Project.btproj` manually describe subsets of
+  custom nodes for the Groot editor. Repository search finds no runtime/build
+  consumer of `models.xml`; actual runtime builders/ports are registered separately
+  in `TreeExecutor::registerNodes()`. The mission executor can already export a
+  BehaviorTree.CPP `TreeNodesModel` from its live factory, but this is exposed as a
+  runtime file-writing service rather than a deterministic build artifact. There
+  is no build-time proof that registered builders/ports and every catalog tree agree.
+- The active mission executor exposes a live override service that accepts an
+  arbitrary mission-specification file path. It rejects changes while a mission is
+  active, constructs and validates a replacement, rebuilds the executor, and tries
+  to restore the previous specification if rebuilding fails. It does not enforce
+  catalog identity/profile allowlists or the full landed/disarmed maintenance-safe
+  gate, and selection is reported as a mutable filesystem path.
+- `III-Drone-Configuration` already uses `ament_cmake_python` and installs its
+  complete immutable `config/` tree under the package share directory. Its newer
+  Python seeding code can resolve that installed copy, but deliberately prefers a
+  workspace source tree when present and overwrites installed schema/manifest
+  files into writable runtime state on every seed. A parallel legacy
+  `scripts/install.sh` plus `update_installed_parameters.py` path mutates files
+  non-transactionally, invokes an unquoted shell copy, and has no shadow-store,
+  reintroduction-review, release identity, or power-loss transaction semantics.
+  Static package installation and live-state reconciliation therefore need one
+  package-native source of truth with a strict immutable-source/writable-state
+  boundary.
+- Development already has a living, profile-separated runtime configuration tree:
+  `setup/paths.bash` points `CONFIG_BASE_DIR` at workspace-local `.config`, making
+  sim sets live under `.config/iii_drone/parameter_sets/sim/` alongside a separate
+  `real/` tree. Supervision seeds and selects from this tree before launch, and the
+  configuration server/GUI reads, updates, and snapshots the selected profile there.
+  The redesign preserves this runtime tree while changing its seed source from the
+  checkout-preferred package source to validated installed package data.
 - The workspace dependency lock freezes top-level submodule revisions and is a
   required input to every qualified or field-development release identity.
+- GitHub currently enforces an active ruleset only on the workspace `main`
+  branch. It requires a pull request and resolved review threads but requires
+  zero approvals and no status checks. Workspace `develop` is unprotected.
+- The ten editable III submodule repositories currently have no GitHub rulesets
+  or classic branch protection on `main` or `develop`.
+- `.github/workflows/dependency-governance.yml` implements useful lock, III
+  branch-stack, exact target-head, and linked-submodule-PR checks, but those
+  checks are not currently required by a ruleset. It references `staging`,
+  which does not exist, and has no `release` behavior.
+- `scripts/git/create_develop_to_main_prs.sh` deliberately uses coordinated
+  temporary promotion branches. After submodule PRs merge into `main`, the
+  workspace promotion branch must refresh gitlinks to the resulting submodule
+  `main` merge commits before the exact-target-head gate can pass. A literal
+  workspace PR whose head remains `develop` cannot represent those refreshed
+  pointers without adding commits to `develop` or weakening that gate.
+- Existing promotion automation is split across stateful local shell helpers
+  and a manually dispatched, write-capable pointer-refresh workflow. The local
+  helpers have useful dry-run defaults, but the combined workflow has no single
+  structured plan/result schema, persisted operation identity, resume contract,
+  or machine-readable recovery instructions.
+- Hardware mapping is inconsistent across generations. The retired deployment
+  udev file binds an mmWave device with serial `00DEEC69` and a generic charger,
+  while `src/III-Drone-Core/udev/99-diii-usb.rules` binds mmWave serial
+  `00E241A0`, exact FMU/charger serials, and no stable cable-camera role despite
+  legacy runtime use of `/dev/video0`. These literals must not silently become
+  the new shared hardware-class contract.
+- `.github/workflows/dependency-governance.yml` mixes independent policy checks
+  and PR-comment side effects in one workflow and currently has no qualified
+  build, release evidence, immutable artifact publication, deployment handoff,
+  or reusable local/CI command boundary.
+- Repository documentation currently contradicts the settled governance and
+  deployment direction in operationally significant places. Root `README.md`,
+  `docs/dependency-governance.md`, `docs/repo-boundary-map.md`, workflow triggers,
+  and Git helpers still describe `staging` or temporary
+  `release/develop-to-main-*` branches. GC and testing docs still prescribe Docker
+  Compose, simulation docs launch QGroundControl from a container-owned path, and
+  `setup/remote.bash` still points directly at the retired deployment repository.
+- Root `AGENTS.md` correctly protects strict submodule governance but its editable
+  III-repository list predates `src/III-Drone-Contracts` and
+  `src/III-Drone-Runtime`. Documentation migration must derive and validate this
+  inventory from governed repository policy rather than maintain another drifting
+  hand-written list.
+- Maintained documentation is distributed across root/workspace docs and editable
+  III submodules alongside large generated and vendored documentation trees. The
+  migration must classify ownership first and exclude generated, vendored, third-
+  party, archived-evidence, build, install, log, dataset, and artifact content; a
+  blind repository-wide rewrite would be unsafe and infeasible.
 
-### Provisional onboard layout
-
-The exact paths remain subject to grilling, but the design starts from:
+### Settled onboard layout
 
 ```text
 /opt/iii/releases/<release-id>/    immutable releases
 /opt/iii/current                   active release selector
-/opt/iii/previous                  rollback selector
+/opt/iii/receiver/                 receiver A/B slots and recovery bootstrap
 /etc/iii/                          host identity, environment, secrets
 /var/lib/iii/                      configuration, calibration, snapshots, state
 /var/log/iii/                      retained runtime and deployment logs
 /run/iii/                          sockets, locks, transient state
 ```
 
-### Open decision register
+### Settled workspace implementation boundary
 
-- Raspberry Pi boot firmware policy, attached hardware declaration, and when a
-  second hardware class becomes justified.
-- Whether attached hardware introduces a driver constraint beyond the stock
-  Ubuntu 24.04 Raspberry Pi kernel.
-- Whether immutable releases are native install bundles or OCI images, and the
-  exact split between host systemd and container process ownership.
-- Factory installation medium and whether image creation must work offline.
-- Expected fleet size and whether aircraft inventory is local-only or shared.
-- Whether most tuned parameters are global, hardware-class, or aircraft-specific.
-- Whether the full accepted parameter-change journal or only checkpoints must
-  survive power loss.
-- Required field-update transfer time, downtime, free-storage reserve, and
-  retention count for old releases.
-- Whether deployment is allowed only while fresh PX4 telemetry proves landed
-  and disarmed, and what offline maintenance override is acceptable.
-- Artifact signing, key custody, SSH trust bootstrap, secrets storage, and
-  operator authorization policy.
-- Whether PX4 firmware participates in III releases or remains independently
-  commissioned.
-- OS update policy: controlled package maintenance and physical reimage versus
-  a future A/B root-filesystem updater.
-- Required recovery behavior after power loss during staging, migration,
-  activation, first boot, and rollback.
+The implementation starts as one ROS-independent Python distribution rooted at
+`deployment/`, with distribution name `iii-deployment` and import package
+`iii_deployment`, plus declarative assets. It
+is installed on supported operator hosts and installs only the receiver-side subset
+on the Pi. This gives the CLI, Ansible filters/modules, CI, and receiver one tested
+contract library without placing deployment logic in a ROS package or copying it
+between shell scripts. The intended ownership is:
+
+```text
+deployment/
+  pyproject.toml                 package, pinned host dependencies, entry points
+  src/iii_deployment/            manifests, policy, archive, transport, receiver
+  schemas/                       versioned JSON Schemas and compatibility policy
+  profiles/                      target, runtime-profile, hardware, impact policy
+  builder/                       pinned ARM64 builder definitions and cache policy
+  packaging/                     deterministic bundle and install-layout rules
+  ansible/                       aircraft and GC inventories, roles, playbooks
+  image/                         Ubuntu image metadata and cloud-init templates
+  systemd/                       production receiver/daemon/API unit templates
+  qgc/ and px4/                  managed integration manifests, not mutable caches
+  tests/                         host-independent contract/integration fixtures
+```
+
+`tools/III-Drone-CLI` remains the user-facing command parser and thin orchestration
+client; it consumes the installed `iii_deployment` API and schemas rather than
+reimplementing policy. Editable domain repositories continue to own their runtime
+code and source artifacts: Configuration owns III parameter manifests/defaults,
+Mission owns CMake-registered mission/tree assets, Runtime owns the LAN runtime API,
+Supervision owns the ROS process graph, and GC owns frontend/proxy application code.
+`.github/workflows/` invokes the same package APIs. Top-level `scripts/` may retain
+thin compatibility launchers during migration but cannot become a second policy
+implementation. Keep one source distribution and one contract/schema implementation.
+Privilege and host-role boundaries use separate entry points, system packages,
+service users, and narrowly selected installed assets; they do not authorize a
+second policy library or divergent receiver/CLI schema implementation.
+
+### Feasibility and integrity sweep
+
+The final design was rechecked against the repository and external platform
+contracts on 2026-08-25:
+
+- ROS REP-2000 lists Jazzy (supported through May 2029) on Ubuntu Noble 24.04
+  `arm64` as Tier 1 with Debian packages, archives, and source support. Canonical's
+  Raspberry Pi support documentation still publishes Ubuntu 24.04 preinstalled
+  server ARM64 Raspberry Pi images and Raspberry Pi 5 guidance. The native Pi 5 +
+  Ubuntu 24.04 + Jazzy baseline is therefore supported; the implementation must pin
+  one exact still-published image/checksum rather than follow the Ubuntu download
+  page's moving “latest” link.
+- Live GitHub inspection confirms workspace branches `develop` and `main`, no
+  `release` branch, one active `main` ruleset, and only the two currently checked-in
+  workflows. All ten governed editable III repositories have `develop` and `main`
+  branches and no active rulesets. P0's governance work is required and its current-
+  state assumptions are not speculative.
+- The legacy deployment repository is present on branch `v2.2-staging` and contains
+  only the Compose file, setup/install scripts, README, and udev rules already
+  inventoried here. No undiscovered database, package registry, image source, or
+  fleet inventory needs migration. Preserve its Git history and exact final commit.
+- A real AArch64 cross-toolchain against a pinned Noble/Jazzy sysroot is feasible on
+  supported x86_64 hosts. QEMU remains a bounded fallback for target-native build
+  steps, not the normal compiler and never runs onboard. Native ARM64 CI is an
+  optimization, not a different target contract.
+- Stock Raspberry Pi images plus cloud-init and Ansible can establish the baseline
+  without a custom image factory. Physical SD readback, EEPROM/boot behavior, USB
+  role matching, real driver closure, field-WLAN transfer budget, and power-loss
+  behavior cannot be proven from GitHub CI; they are explicit commissioning/matrix
+  evidence, not hidden assumptions.
+- GitHub-hosted CI cannot run the authoritative III Gazebo/physical acceptance
+  environment. Q118–Q122's signed local-evidence handoff is the feasible merge gate:
+  CI verifies source identity, policy, signature, and result contracts while local
+  pinned tooling owns simulation/bench/flight execution.
+- The scope is large but deliverable as six ordered phases with one shared contract
+  package, explicit phase DAGs, and failure-injection acceptance. No task requires
+  future HIL, fleet identity, TLS, per-aircraft state, onboard compilation, onboard
+  Docker, or source-independent field operation to complete this sweep.
+
+Authoritative platform references:
+
+- <https://www.ros.org/reps/rep-2000.html#jazzy-jalisco-may-2024-may-2029>
+- <https://canonical-ubuntu-hardware-support.readthedocs-hosted.com/boards/how-to/ubuntu_supported/raspberry-pi/>
+
+Architecture choices formerly tracked here are resolved in the numbered decision
+log. Physical Raspberry Pi driver/role validation remains commissioning evidence
+to collect, not an unresolved architecture choice.
 
 ### Grilling decision log
 
@@ -142,9 +430,1580 @@ The exact paths remain subject to grilling, but the design starts from:
 - **Q2 — Target OS and ROS baseline:** Settled. Ubuntu Server 24.04 LTS ARM64
   with ROS 2 Jazzy. Remaining work must validate attached hardware drivers and
   remove Humble assumptions.
-- **Q3 — Onboard Docker role:** Unanswered. Decide whether releases are native
-  install bundles or immutable OCI images, while preserving host-systemd
-  ownership and the daemon's canonical ROS graph.
+- **Q3 — Onboard Docker role:** Settled. Do not install or use Docker onboard.
+  Run the real runtime natively under host systemd and deploy immutable ARM64
+  install bundles. Docker may remain an offboard development/builder
+  implementation only.
+- **Q4 — Raw SD-card provisioning:** Settled. Use a checksum-pinned official
+  Ubuntu Server 24.04 ARM64 Raspberry Pi image, generated cloud-init first-boot
+  data, and Ansible convergence. Do not maintain a custom III disk image yet.
+- **Q5 — Offline operation:** Settled. Field deployment, rollback, status,
+  logs, tuning capture, and repeated convergence must work offline over a local
+  laptop-aircraft connection. Initial cache population and fresh SD provisioning
+  may depend on internet access for now.
+- **Q6 — Aircraft inventory scope:** Settled. Model one shared logical aircraft
+  target. Do not distinguish physical aircraft in deployment inventory; all use
+  the same setup, runtime identity, credentials, and configuration, with at most
+  one connected at a time.
+- **Q7 — SSH host trust:** Settled. Assume the sole `iii.local` host on the
+  local network is correct. Do not inventory or authenticate individual Pi host
+  keys. Record local endpoint spoofing/MITM as an accepted initial risk.
+- **Q8 — SSH client authentication:** Settled. Use key-only SSH with a distinct
+  keypair per authorized computer. Provision the first public key via cloud-init
+  and provide authenticated add/revoke/list workflows for later workstation or
+  ground-control keys. Disable password login and never transfer private keys.
+- **Q9 — Deployment privilege:** Settled. Install a narrow root-owned deployment
+  helper and grant the `iii` account passwordless sudo only for that helper and
+  explicitly necessary systemd operations. Do not grant unrestricted sudo;
+  remove or narrow bootstrap authority after initial convergence.
+- **Q10 — Release signing:** Settled. Require cryptographic signatures and
+  content checksums for every qualified and dirty field-development bundle.
+  Verify both before privileged staging and reject unsigned, unknown, or
+  tampered input.
+- **Q11 — Signing-key ownership:** Settled. Use one independently revocable
+  signing keypair per build computer. Provision public signer trust through the
+  deployment helper and never copy private signing keys. A ground-control
+  computer needs signing authority only if it builds or deploys bundles.
+- **Q12 — Deployment safety gate:** Settled. Normal activation requires fresh
+  landed/disarmed PX4 state and no Mission Execution, Custom Operation, or
+  active Reference Owner. Broken-runtime recovery uses an interactive,
+  audit-logged maintenance override that stops III units and requires physical
+  safety confirmation; unattended override is prohibited by default.
+- **Q13 — Onboard release retention:** Settled. Always retain the latest
+  qualified/full release as a protected recovery anchor. During field work also
+  retain the active and immediately previous field-development releases, with
+  one additional temporary candidate while staging. Experimental deployment
+  cannot replace or garbage-collect the qualified anchor.
+- **Q14 — Qualification rule:** Settled. Only the future release branch can
+  produce a qualified/full release. It must be clean and committed with clean
+  governed submodules, pass dependency-lock verification and all required
+  ARM64 build/tests, carry an explicit version tag and signed evidence manifest,
+  and be deployed through an explicit qualified action. Every other branch and
+  every dirty state remains a field-development release.
+- **Q15 — Release branch governance:** Settled. Use the protected promotion
+  chain feature/work-sweep branch -> `develop` -> verified mechanical
+  `promote/develop-to-main/*` branch -> `main` -> workspace-only `release` ->
+  immutable `vX.Y.Z` tag. The mechanical promotion branch may contain only the
+  expected develop-derived state and post-submodule-merge gitlink/lock refresh.
+  Individual III submodule repositories stop at protected `main`; they do not
+  gain `release` branches. Qualified builds require a tag whose commit belongs
+  to workspace `release`.
+- **Q16 — Human review requirements:** Settled. This is a solo-maintainer
+  project. Require PRs, resolved conversations, and all applicable machine
+  checks, but require zero human approvals on `develop`, `main`, and `release`.
+  Record explicit promotion intent and evidence, permit AI-authored PRs, and do
+  not rely on a second reviewer or undocumented bypass.
+- **Q17 — Qualified artifact producer:** Settled. CI is the sole producer and
+  publisher of qualified release bundles. A `vX.Y.Z` tag on workspace `release`
+  triggers an independent ARM64 rebuild, required tests, evidence assembly,
+  signing, and immutable publication. Workstations retrieve and deploy that
+  artifact through the III CLI. Local builders may produce signed field-
+  development releases from any branch or dirty state, but can never classify
+  them as qualified. CI availability is required to create a new qualified
+  release; previously cached qualified releases remain deployable offline.
+- **Q18 — Qualified artifact publication:** Settled. Publish each qualified
+  `vX.Y.Z` bundle, signed manifest/checksums, qualification evidence, compatibility
+  metadata, and release notes as immutable assets on a GitHub Release in this
+  workspace repository. GitHub Actions artifacts are temporary pipeline
+  intermediates, not the authoritative registry. `iii release fetch` downloads,
+  verifies, and caches a selected version for later offline deployment. Field-
+  development bundles remain local unless an operator explicitly exports them;
+  they are not published as GitHub Releases by default.
+- **Q19 — Qualified-release signing mechanism:** Settled. Use a dedicated
+  Ed25519 CI signing key stored as a protected GitHub Actions environment secret
+  and exposed only to the qualified-release signing job for protected
+  `vX.Y.Z` tags on workspace `release`. Provision its public key through the
+  target signer-trust workflow and support independent rotation/revocation.
+  Workstation field-release keys remain separate. GitHub artifact attestations
+  may supplement provenance but are not the onboard trust root because bundle
+  verification must work offline.
+- **Q20 — PX4 firmware ownership:** Settled. PX4 remains independently
+  commissioned flight-controller firmware. III release manifests declare the
+  supported PX4 version/commit range, required message/interface compatibility,
+  and relevant airframe/parameter assumptions. Activation performs a read-only
+  compatibility check and fails closed on mismatch. The III CLI may inspect and
+  report PX4 state and may perform the separately confirmed, backup-first
+  parameter workflow in Q65, but firmware flashing remains a separate explicit
+  maintenance workflow until flight-controller recovery and rollback are designed.
+- **Q21 — Host OS update policy:** Settled. Use controlled hybrid maintenance.
+  Disable unattended upgrades that could alter runtime behavior. Apply security,
+  kernel, ROS, and system package updates only through an explicit III CLI/
+  Ansible host-maintenance workflow that records package changes and reboot
+  requirements and validates the protected qualified recovery release
+  afterward. Normal III release deployment never changes host packages. Use a
+  fresh SD-card reprovision for major Ubuntu/ROS baseline changes or substantial
+  host drift. Defer A/B root-filesystem updates.
+- **Q22 — Power-loss transaction policy:** Settled. Use a durable deployment
+  transaction journal and fail back to the last accepted release/configuration
+  pair unless acceptance was durably committed. Interrupted transfer/staging is
+  resumable or safely discarded without touching active state. Interrupted
+  migration restores its pre-migration checkpoint. Power loss after selector
+  switch but before health acceptance boots the previous accepted pair; power
+  loss after durable acceptance boots the new pair. Boot reconciliation never
+  resumes an incomplete activation or autonomously starts operation. Preserve
+  the failed candidate manifest and diagnostics for explicit inspection/retry.
+- **Q23 — Tuning-journal durability:** Settled. A GUI parameter transaction is
+  acknowledged only after its requested values, previous values, release/schema,
+  session, timestamp, and result are durably journaled and the active parameter
+  set is atomically updated. Multi-parameter requests are atomic. Persistence
+  failure is reported as failure, not apparent GUI success. Older history may
+  be compacted into checkpoints to bound SD-card growth, but retain the complete
+  current field-test session.
+- **Q24 — Removed/legacy parameter storage:** Settled. Keep every active onboard
+  parameter-set file aligned with the current release manifest. When a key is
+  removed from the manifest, atomically move its last active value and provenance
+  into a persistent onboard legacy shadow store rather than retaining it in the
+  active file or discarding it. Captures include both active and shadow state;
+  current-schema source promotion excludes shadow keys while preserving them in
+  capture evidence. Compatible rollback can rehydrate required old keys.
+- **Q25 — Reintroduced parameter behavior:** Settled. Never restore a legacy
+  value automatically. If a current manifest reintroduces a retired canonical
+  key, reconciliation stops before active-state mutation and emits a blocking
+  warning plus a review file. For each key the review shows the canonical old
+  value captured from the selected active parameter file at retirement, the new
+  release default, type/constraint validation, and an explicit unresolved
+  decision. The operator must mark `use_old` or `use_new_default` for every key.
+  If the old value is invalid under the new manifest it remains visible but only
+  `use_new_default` is permitted. Values found in arbitrary inactive, historical,
+  snapshot, or scattered files are never candidates for restoration.
+- **Q26 — Reintroduction review location:** Settled. `iii deploy plan` writes a
+  local review under the repository-local, Git-ignored
+  `.iii/operations/<operation-id>/` directory. Immutable fields bind it to the
+  target release/manifest, onboard pre-reconciliation configuration hash,
+  canonical active-at-retirement record, selected parameter set, and operation
+  ID; only explicit per-key decisions are editable. `iii deploy continue`
+  validates the resolved file before mutation. Stale/mismatched reviews fail
+  closed. Retain immutable copies in the local operation record and onboard
+  deployment audit, but never track review/operation files in Git.
+- **Q27 — Parameter-promotion Git workflow:** Settled. Provide explicit staged
+  operations: `iii config pull` captures without Git mutation; `iii config
+  promote` plans and shows a diff by default; `--apply` writes validated source
+  files and creates focused `III-Drone-Configuration` plus workspace-gitlink
+  commits on the current feature branch; `--pr` creates or updates the coordinated
+  PR stack into `develop`. Never merge automatically or write protected branches.
+  Reject overlap with dirty configuration paths while permitting unrelated dirty
+  workspace state only when it can be safely isolated and left untouched.
+- **Q28 — Tracked parameter-set identity:** Settled for deployment scope. Maintain
+  exactly one release-selected default for each profile: `real` and `sim`. Git
+  commits version each default, and a qualified release tag fixes the exact
+  default files packaged by that release. Packaged defaults seed missing
+  configuration and supply defaults for newly introduced keys but never overwrite
+  existing onboard current-schema values or change the selected onboard state.
+  The repository must eventually support multiple tracked non-default parameter
+  versions, but their catalog, naming, selection, and release semantics are
+  explicitly deferred outside this deployment redesign. Do not make the capture
+  format or promotion interfaces depend on there being only one tracked set.
+- **Q29 — Parameter promotion granularity:** Settled. Capture the complete
+  parameter state, compare it with the current corresponding `real` or `sim`
+  tracked default, and generate a per-key promotion review. Only explicitly
+  accepted differences update source; rejected/unselected values remain only in
+  immutable capture evidence. An explicit accept-all-valid action may exist but
+  is never the default. Promotion remains bound to the capture, manifest, source
+  baseline, profile, and generated diff so stale reviews fail closed.
+- **Q30 — Field activation downtime:** Settled. Build, transfer, verification,
+  and staging occur while the current runtime remains available. Stop runtime
+  only after candidate and configuration plan are ready. Target candidate health
+  acceptance within 60 seconds; after a hard 120-second deadline, initiate
+  automatic rollback onboard. Target restoration of the previous accepted pair
+  within another 60 seconds. Record actual stop/start/health/rollback timings so
+  budgets can be tightened from evidence.
+- **Q31 — Deployment receiver command transport:** Settled. Expose no receiver
+  TCP listener. The CLI transfers bundles over SFTP/SSH into an unprivileged
+  incoming area and invokes a fixed `iii-deploymentctl` command over key-
+  authenticated SSH. That client submits structured requests through a
+  permission-controlled Unix-domain socket. The receiver verifies authorization,
+  signatures, operation hashes, paths, compatibility, and safety state before
+  privileged mutation. Stable operation IDs support disconnect and later status/
+  log reattachment.
+- **Q32 — Receiver self-update recovery:** Settled. Use versioned A/B receiver
+  slots plus a minimal stable host recovery bootstrap installed by Ansible.
+  The current receiver verifies and stages a bundled receiver update into the
+  inactive slot before application activation. The bootstrap switches the
+  selector and requires the new receiver to start, pass self-tests, reopen its
+  Unix socket, understand/resume the durable journal, and report ready within a
+  bounded deadline. Failure restores the previous receiver and aborts application
+  deployment. Always retain the previous working receiver. Update the stable
+  bootstrap, systemd unit, trust root, and recovery selector only through explicit
+  Ansible/host maintenance, never ordinary application deployment.
+- **Q33 — Onboard storage reserve:** Settled. Before transfer/staging, calculate
+  projected peak use for the incoming compressed bundle, extracted candidate,
+  optional receiver slot, configuration/shadow checkpoints, transaction and
+  diagnostic allowance, and every protected retained application/receiver
+  version. After projected peak, require free capacity of at least the greater
+  of 2 GiB or 10% of the deployment filesystem. Garbage-collect only eligible
+  artifacts; never remove active/previous/protected-qualified releases or active/
+  fallback receivers. Fail before runtime mutation with an occupancy report if
+  the reserve cannot be met.
+- **Q34 — Physical device role matching:** Settled. Define one committed,
+  ambiguity-aware shared hardware-role manifest for FMU, mmWave CLI/data,
+  charger/gripper, and cable camera. Prefer vendor/product/interface and stable
+  device properties; add exact serial allowlists only where needed to distinguish
+  ambiguous or safety-critical devices. Generate stable `/dev/iii/*` role paths
+  and provide `iii host inspect`. Missing or ambiguous required roles block real-
+  runtime health acceptance. Do not create per-aircraft inventory. Resolve the
+  conflicting legacy/current serial literals through physical commissioning.
+- **Q35 — Raspberry Pi boot firmware policy:** Settled. Maintain one source-
+  controlled Raspberry Pi 5 boot profile under `deployment/`, based on stock
+  Ubuntu defaults with only documented required overlays/options and no initial
+  overclocking. Inventory firmware, kernel, command line, overlays, and boot
+  configuration. Normal III releases cannot modify boot files; only explicit
+  Ansible/host maintenance may do so, with pre-change backups and reboot
+  validation. Retain previous boot config/kernel where supported. Defer A/B
+  boot/root filesystems and accept physical SD repair/reprovisioning for an
+  unbootable host.
+- **Q36 — Network bootstrap and field connectivity:** Settled. Always support
+  Ethernet DHCP as the physical recovery path. SD preparation generates cloud-
+  init from untracked secret input containing one or more Wi-Fi profiles; store
+  resulting credentials only in root-readable host configuration. Advertise
+  `iii.local` with mDNS on the active interface. Provide transactional III CLI
+  plan/apply operations for network profile changes; if the CLI cannot reconnect
+  and confirm before an onboard deadline, restore the prior network config. Do
+  not initially host an aircraft access point; use a router, laptop hotspot, or
+  Ethernet. Never place network credentials in Git, bundles, logs, or reviews.
+- **Q37 — Runtime API network exposure:** Settled. Keep `iii-runtime-api`
+  directly reachable on the operator LAN for GUI and remote CLI use. Do not make
+  SSH tunneling the normal runtime-operation path. Deployment control remains
+  separate over SSH plus receiver Unix-socket IPC.
+- **Q38 — Runtime API TLS trust:** Settled for the initial scope. Serve plain
+  HTTP/WS on the trusted operator LAN and defer TLS/HTTPS/WSS and private-CA
+  lifecycle work. This explicitly accepts that a party with local-network access
+  may observe or alter runtime API credentials, telemetry, and commands. Keep
+  the deployment receiver and all privileged deployment mutations on SSH; do
+  not let plaintext runtime API authentication authorize deployment operations.
+- **Q39 — Onboard log retention:** Settled. Segment logs by boot/runtime session
+  because the aircraft is power-cycled and continuous operation is not assumed.
+  Retain runtime/host logs for up to 14 days while always preserving the current
+  and a bounded set of newest sessions, capped at the lesser of 1 GiB or 5% of
+  the filesystem. Retain the latest 50 deployment audits plus every record
+  referenced by retained releases. Protect failed activation/rollback diagnostics
+  until pulled/acknowledged or 30 days. Treat current tuning journals and required
+  configuration/shadow checkpoints as persistent state, not ordinary logs.
+  Rosbags/datasets have separate operator-managed retention. Idle healthy runtime
+  must log state transitions rather than repetitive polling/no-op messages;
+  verbose/debug logging is explicitly enabled and bounded per session.
+- **Q40 — Pulled-log pruning trigger:** Settled. Pull never deletes by default.
+  After every local file is hash-verified, record exact content receipts onboard.
+  `iii logs prune --pulled` previews only receipt-backed, non-protected data and
+  requires explicit apply; `iii logs pull --prune` may provide an equally explicit
+  convenience path. Interrupted/unverified pulls create no receipts. Pruning
+  cannot remove current-session logs, active transaction diagnostics, protected
+  release evidence, configuration/tuning state, or other protected records.
+- **Q41 — Normal power-on runtime state:** Settled. On host boot, start the
+  deployment receiver first and reconcile interrupted transactions. Then start
+  the minimal `iii-runtime-api`/III-daemon control plane in `DEGRADED_CLOCK` until
+  the post-boot clock gate in Q59 succeeds; do not boot the canonical real-profile
+  ROS graph or permit runtime operations while that gate is closed. After clock
+  synchronization and buffered-log flush, automatically boot the real graph into
+  operational standby with required sensors/health monitoring active. Never
+  automatically start Mission Execution, Custom Operation, Direct Operation, or
+  a Reference Owner; never arm PX4 or initiate movement. Configuration/hardware/
+  release health failure leaves a diagnosable non-operational state. Keep
+  `iii system boot` idempotent as a manual recovery/bringup command rather than
+  requiring it after every normal power cycle.
+- **Q42 — Future `boot` versus `start` semantics:** Settled. Preserve the current
+  safe split. `iii system boot` ensures the daemon, loads the selected canonical
+  profile, instantiates process topology/supervision, prepares daemon-owned
+  services, and creates the operator view without configuring/activating managed
+  nodes. `iii system start` starts required services and configures/activates
+  managed nodes. Normal host startup may invoke both after receiver reconciliation,
+  but manual recovery can stop after non-activating `boot`.
+- **Q43 — Candidate health-acceptance gate:** Settled. Before durable acceptance,
+  require healthy receiver/bootstrap; daemon and runtime API responses with the
+  expected release/profile identity; durable schema-valid configuration
+  reconciliation; all required hardware roles present/unambiguous; every required
+  daemon service alive/ready; every required managed ROS node at its declared
+  operational lifecycle state; compatible PX4 interface with fresh landed/
+  disarmed state; and no Mission Execution, Custom Operation, Direct Operation,
+  or Reference Owner. Conditions must remain stable for 10 continuous seconds
+  within the 120-second activation deadline. Only profile-declared optional
+  entities may be absent. Persist the acceptance snapshot before committing the
+  selector; any failure/timeout triggers onboard rollback.
+- **Q44 — One-command field iteration:** Settled. Provide `iii deploy field` as
+  a complete plan and `iii deploy field --apply` as the explicit mutation. It
+  snapshots the current clean/dirty workspace including governed submodules and
+  relevant untracked source, infers GC/drone impact, builds only the dependency-
+  complete component set, packages/signs paired field-development artifacts when
+  needed, updates/health-checks GC first, transfers/stages the ARM64 bundle, pauses
+  for required parameter review, requests onboard activation, and reattaches by
+  operation ID for acceptance/rollback diagnostics. Keep every phase separately
+  callable. Never commit, push, or modify the developer working tree.
+- **Q45 — Canonical offboard ARM64 build strategy:** Settled. Use a digest-
+  pinned offboard container with a reproducible Ubuntu 24.04/ROS Jazzy target
+  sysroot and real AArch64 cross-toolchain for normal C/C++ packages. Install
+  architecture-independent Python/assets into the target layout and use QEMU
+  only for unavoidable target-native configure, code-generation, or validation
+  steps. Prefer pinned prebuilt third-party target dependencies; never derive the
+  sysroot from an aircraft. Laptop and CI builders share the same recipe/manifest
+  contract, with native ARM64 CI allowed to omit the crossing layer. Cache
+  toolchain, sysroot, dependencies, and colcon outputs for offline field use.
+- **Q46 — Dirty source snapshot boundary:** Settled. Version the policy in
+  `deployment/source-snapshot.yaml`. Include working-tree content for required
+  tracked files, tracked deletions, governed-submodule state, and non-ignored
+  untracked files under declared III source/build-input roots. Exclude `.git`,
+  `.iii`, build/install/log trees, caches, datasets, rosbags, editor state,
+  credentials, private keys, and generated artifacts. Ignored build inputs need
+  an explicit reviewed allowlist. Reject escaping symlinks, special files,
+  unexpected large files, suspected secrets, and ambiguous dependencies. Show
+  complete include/exclude provenance before building and never mutate the tree.
+- **Q47 — Workstation signing-key storage:** Settled. Generate one Ed25519 key
+  per build computer outside the repository with owner-only permissions and
+  encrypted-at-rest storage. Unlock through the OS keyring or interactive
+  passphrase into a short-lived host signing agent with configurable field-
+  session timeout. Builder containers receive only unsigned bundle hashes; the
+  agent signs schema-valid III manifests, not arbitrary data. Do not share/back
+  up keys between computers. Replace a lost key by authorizing a new machine-
+  specific signer over SSH and revoking the lost signer. CI retains its separate
+  protected qualified-release key.
+- **Q48 — Qualified version and tag publication:** Settled. Use final strict
+  SemVer tags `vMAJOR.MINOR.PATCH`; initially test release candidates as field-
+  development bundles rather than qualified prerelease tags. `iii release
+  prepare` validates progression and creates/updates the workspace-only
+  `main -> release` PR with generated notes. After merge, `iii release publish`
+  plans by default and `--apply` requires the exact clean `origin/release` head,
+  verified lock/governance/checks, and a nonexistent version/tag before creating
+  the protected immutable tag. The tag triggers qualified CI. Qualification
+  failure publishes nothing and requires explicit investigation; never reuse a
+  failed version silently.
+- **Q49 — Receiver/application rollback coupling:** Settled. Keep a successfully
+  updated receiver active when only the application candidate fails. Before a
+  receiver switch, prove it can manage every retained application release, read
+  existing journals/audits, activate/rollback retained manifest formats, restore
+  compatible configuration checkpoints, and communicate with installed bootstrap/
+  CLI protocols. Reject incompatible receiver updates before switching. Restore
+  the prior receiver only for receiver startup, self-test, journal, socket, or
+  compatibility failure—not merely application rollback.
+- **Q50 — Supported operator-computer platform:** Settled. Initially support
+  Ubuntu 22.04 and 24.04 x86_64 workstation/ground-control computers. Containerize
+  and pin the ARM64 builder; install CLI/Ansible dependencies through a repository-
+  managed environment rather than global packages. Linux block-device access is
+  required for SD preparation. Keep signing keys and `.iii` operation/cache state
+  in host user storage outside containers. Treat macOS, Windows/WSL, and ARM64
+  operator computers as unsupported initially.
+- **Q51 — Field bundle transfer strategy:** Settled. Initially transfer a complete
+  compressed immutable bundle, not source synchronization or binary deltas. Use
+  resumable SFTP to a release-ID-specific unprivileged `.partial` path, resuming
+  only when local/remote identity and size agree. Preserve partial uploads across
+  temporary network loss with bounded-age cleanup. The receiver trusts/moves
+  nothing until full signature/checksum verification. Target complete transfer
+  within 120 seconds on representative field WLAN and benchmark commissioning
+  bundles. Add content-addressed chunk reuse only if measurements repeatedly
+  miss the target without changing signed manifests/final release semantics.
+- **Q52 — Live tuning capture and handoff:** Settled. The original close-time
+  pull versus manual-pull choice was rejected as insufficiently live. Current
+  behavior has been inspected: accepted edits persist immediately onboard, but
+  there is no ground-control mirror, session journal, functional GUI download,
+  or reliable live GUI refresh. Recommended implementation:
+  1. Build one profile-parameterized tuning subsystem and protocol used unchanged
+     by `sim` and `real`; profile, target kind, release/workspace identity, and
+     manifest hash are metadata, not separate implementations.
+  2. Make the target runtime the canonical source of truth. Internally open or
+     resume a capture session on the first accepted Apply, with a UUID, immutable
+     baseline, monotonic revision, manifest/release identity, operator identity,
+     and timestamps. Reconnection resumes that internal session instead of
+     creating an implicit new baseline.
+  3. Replace sequential Apply with one idempotent transaction carrying session
+     ID, request ID, expected revision, and all edits. Validate the complete set
+     first; durably append intent; apply and read back all nodes; durably commit
+     the active config and journal before ACK. Compensate all prior node changes
+     on failure. If compensation/readback fails, enter an explicit configuration-
+     divergent fault instead of reporting success or pretending full atomicity.
+  4. Use atomic replace plus file and parent-directory sync for checkpoints and
+     selectors, and a checksummed append-only journal/WAL for power-loss recovery.
+     Record accepted and rejected requests, old/new values, validation, restart
+     semantics, readback, and outcome. Derive rolling snapshots from committed
+     revisions rather than process-memory cleanup state.
+  5. Publish every committed configuration revision over the existing runtime
+     event stream. The GUI merges authoritative patches, detects revision gaps,
+     rehydrates automatically, and shows current, edited/unsaved, persisted, and
+     pending-next-cold-restart values without stale success-only notifications.
+  6. Add a host-side III CLI tuning-mirror companion, automatically started by
+     the GUI/field and simulation workflows. It subscribes to the same event and
+     backfill API, verifies sequence and hashes, and incrementally checkpoints
+     the session under Git-ignored `.iii/operations/<session-id>/`. The browser
+     never owns filesystem persistence. The GUI displays the mirror's last
+     acknowledged revision.
+  7. Keep onboard/simulation-target persistence authoritative when the mirror is
+     absent: show a prominent degraded warning but allow necessary tuning, retain
+     the complete journal, and automatically backfill all missing revisions on
+     reconnection. Never silently claim a revision is mirrored.
+  8. Sealing through the CLI/capture workflow creates an immutable hash-addressed
+     capture on the target and automatically syncs/verifies it locally when
+     connected. Disconnect, GUI close, process restart, and target reboot leave
+     the internal session resumable; an abandoned session can later be explicitly
+     resumed or sealed. Keep explicit `iii config capture pull/verify` recovery
+     operations.
+  9. Replace the GUI's fake download with a real export of a sealed capture (or
+     remove the button in favor of the local mirrored-capture action), and feed
+     the same capture format into the reviewed `real`/`sim` default-promotion
+     workflow already specified below.
+  Adopt this target-canonical, live-resumable mirrored-session design, including
+  allowing parameter application with a visible degraded warning during temporary
+  mirror loss. Do not expose "GUI tuning", start-session, or end-session concepts
+  in the operator UI. Preserve the current interaction model: edit values, show
+  edited/unsaved state, Apply, and identify values pending application on the next
+  cold restart. Session/capture machinery remains internal and CLI-facing.
+- **Q53 — Meaning of cold restart for pending parameters:** Settled. A cold
+  restart is cleanup/unconfiguration followed by fresh configuration and
+  activation of the III runtime graph, including a fresh configuration-server
+  lifecycle, while the system daemon remains booted. `iii system stop` followed
+  by `iii system start` at the configuration lifecycle boundary performs it;
+  `iii system restart --cold` is the direct shorthand. `iii system shutdown` and
+  a subsequent `iii system boot`, an OS reboot, or a power cycle are not required.
+  A warm restart or restart of an unrelated individual node does not apply pending
+  values. The GUI remains an indicator/editor and does not add a configuration-
+  specific restart control. It keeps pending values visible until the freshly
+  configured runtime reports matching active readbacks, then clears them.
+- **Q54 — Arbitrary named parameter-set capture:** Settled. A single end-of-test
+  session capture is insufficient. During a
+  sim or real test, the operator edits and applies values and may save any number
+  of onboard named parameter sets such as A, B, and C. The continuous background
+  journal preserves provenance but is not the operator-facing artifact. At the
+  end, the operator selects any subset of saved sets and downloads each as an
+  immutable local capture with a short operator-provided name and description,
+  exact full values, profile, source snapshot/revision, manifest and release/
+  workspace identity, pending-boot state, timestamps, and integrity hash. Sets
+  remain independently downloadable later; downloading is non-destructive and
+  does not change the active/default set. The same workflow and format apply to
+  simulation and real targets. Later review compares any captured set with the
+  corresponding tracked `sim` or `real` default and selectively promotes values.
+- **Q55 — Onboard retention and deletion of named parameter sets:** Settled.
+  Operator-named sets are durable and never automatically pruned
+  by deployment, journal compaction, restart, or storage cleanup. System-generated
+  checkpoints may be compacted only when no active/default/pending state, named
+  set, or unexported capture references them. Deleting a named set is explicit,
+  blocked while it is active/default/pending, and normally requires a verified
+  local capture receipt; provide a separately confirmed force-delete path for a
+  deliberately unwanted set.
+- **Q56 — Portable capture storage between operator computers:** Settled. Store
+  local captures content-addressed under Git-ignored
+  `.iii/captures/<capture-id>/`, with mutable human-facing name/description kept
+  separately from immutable source identity and payload. Provide `list`, `show`,
+  `diff`, `export`, `import`, and `verify` CLI operations. Export a self-contained
+  signed/checksummed archive suitable for USB or ordinary file transfer between
+  the ground-control laptop and workstation; import verifies before accepting,
+  deduplicates identical capture IDs, permits duplicate display names, and never
+  mutates Git or parameter defaults. Exclude credentials and secrets.
+- **Q57 — Fail-safe sim/real target selection:** Settled with a deferred HIL
+  extension. Current setup derives
+  `III_SYSTEM_PROFILE=sim|real` from sourced environment scripts, while transport
+  selection is separately encoded by `CLI_CONFIGURATION`; this is too implicit
+  for a unified local/remote configuration workflow. Retain
+  convenient profile defaults (`setup_dev` selects local simulation;
+  `setup_field` selects `real` at `iii.local`) and permit an explicit per-command
+  `--target sim|real` override, but never keep a hidden mutable global target.
+  Every target advertises its actual profile and identity during preflight, and
+  every mutating CLI/GUI request carries the expected profile; mismatch fails
+  closed before editing, applying, snapshot loading, capture, or deployment. Show
+  a persistent active-profile target badge and endpoint in the GUI (initially SIM,
+  REAL, and only when commissioned OPTITRACK). Do not encode an
+  invariant that `sim` is always local or `real` is always remote: future HIL
+  runs III on the Pi while Gazebo runs on the workstation over LAN.
+- **Q58 — Deployment preparation for future split-host HIL:** Settled.
+  Current supervision accepts only hard-coded `sim`, `real`, and `opti_track`
+  profiles; development Gazebo transport defaults to loopback; CycloneDDS files
+  hard-code workstation/Pi interface names. Do not implement HIL
+  launch or behavior now, but decouple target endpoint, runtime profile, execution
+  host, and simulator provider in deployment/CLI manifests; make release manifests
+  declare extensible supported-profile/capability data rather than a closed
+  sim/local versus real/remote mapping; parameterize middleware interface/peer
+  configuration from detected stable LAN interfaces; and reserve an opt-in,
+  disabled-by-default network-policy extension for future workstation simulator
+  peers. Keep Gazebo and its assets off the Pi. Add contract tests proving a future
+  split-host profile can be represented and provisioned without changing bundle,
+  receiver, target-selection, or configuration-capture formats. A provisioned
+  drone defaults to the `real` runtime profile. Future HIL may select a separate
+  profile through an explicit III runtime boot/profile argument; defining or
+  implementing that profile remains outside this deployment scope.
+- **Q59 — Clock handling on a power-cycled, sometimes-offline Pi:** Settled.
+  On every Pi boot, start only the receiver and minimal daemon/runtime-API control
+  plane in an explicit `DEGRADED_CLOCK` state. Do not boot/start the ROS graph or
+  permit flight, mission, operation, configuration mutation, capture mutation, or
+  other runtime operations until clock synchronization commits. Permit only
+  read-only identity/status/health/diagnostics plus authenticated clock-sync and
+  deployment/recovery control needed to repair the gate. Buffer III daemon/API
+  logs in a bounded in-memory ring tagged with boot ID and monotonic timestamps;
+  do not persist ordinary III runtime logs while degraded. Keep only the minimal
+  receiver/host audit required for recovery, explicitly marked time-untrusted.
+  An authorized ground-control companion automatically invokes the same clock-
+  sync operation when it discovers `iii.local`, independent of whether the GUI is
+  open. Any computer authorized by its SSH key can invoke `iii system clock sync`
+  manually. The receiver owns the narrow privileged clock-set operation over its
+  authenticated SSH/local-socket control path; never expose clock setting through
+  the unauthenticated plain-HTTP LAN API. At synchronization, anchor operator UTC
+  to target monotonic time, set the clock, reconstruct UTC for buffered entries,
+  flush them in order with reconstruction/uncertainty metadata, durably record
+  the clock-gate transition, and only then automatically boot the `real` graph to
+  operational standby and enable operations. Correctness-critical identities and
+  ordering still use boot ID plus monotonic revisions rather than wall time.
+- **Q60 — Clock validity after initial synchronization:** Settled. After a
+  successful boot-time synchronization, loss of the GC
+  connection or internet/NTP does not re-enter `DEGRADED_CLOCK`; autonomous
+  operation must continue using the Pi's monotonic clock. Re-enter the gate only
+  on the next Pi boot or if the kernel reports a real-time clock discontinuity/
+  invalidation beyond a defined safety threshold. A later manual sync while the
+  runtime is active may measure/report offset but must not step wall time; a large
+  correction requires stopping the graph, re-entering the clock gate, syncing,
+  flushing, and then explicitly starting again. A discontinuity detected while the
+  aircraft is armed, airborne, or has an active Reference Owner must never stop the
+  graph or interrupt the current safety-critical action merely to repair wall time:
+  enter `CLOCK_FAULT_ACTIVE`, continue existing monotonic-time control, buffer
+  time-uncertain logs, and reject new mission/direct/configuration/deployment work.
+  Once landed, disarmed, and owner-free, stop the graph and transition to
+  `DEGRADED_CLOCK` for synchronization. If already maintenance-safe, transition
+  immediately.
+- **Q61 — Ground-control computer deployment scope:** Settled. Current GC v2
+  is a ROS-free React frontend plus thin FastAPI discovery/proxy, packaged through
+  Docker Compose and started by a workspace script with a manually provisioned
+  environment file. QGroundControl assets/configuration and CLI setup are separate,
+  and there is no converged GC-host installer, service baseline, offline update
+  transaction, or integrated tuning-mirror/clock-sync companion. Make GC
+  provisioning a first-class target of this same in-repository deployment
+  system. For the current source-repository field workflow, converge Ubuntu 22.04/
+  24.04 x86_64 with Docker/Compose, the pinned production frontend/proxy, III CLI,
+  tuning mirror and automatic clock-sync companion, QGroundControl, mDNS/network
+  policy, browser launcher, operator keys, logs, offline caches, and the pinned
+  ARM64 build environment. Keep ROS/DDS/MAVSDK off the GC proxy host boundary.
+  Separate this into an operational GC base role and an optional development/
+  cross-build role, but install both on the current GC laptop; this preserves a
+  future source-repo-independent field computer without requiring it now. Manage
+  GC application versions transactionally from the same release metadata, with
+  local rollback and offline installation, while keeping GC host OS maintenance
+  an explicit Ansible workflow. For this sweep, assume every GC computer has this
+  workspace cloned locally. Install and run QGroundControl natively on the host
+  through the same in-repository GC provisioning path for field and simulation;
+  remove the devcontainer-owned QGroundControl AppImage/path and have simulation
+  interoperate with the host process.
+- **Q62 — Coupling GC and drone application releases:** Settled. One workspace
+  release produces a paired, signed GC artifact and
+  ARM64 drone artifact with one release ID and explicit API compatibility range,
+  but each remains independently installable and rollbackable. The GC updater is
+  host-native and outside the frontend/proxy containers. During a coordinated
+  update, install/health-check the new GC first while it proves compatibility with
+  both current and candidate drone APIs, then activate the drone. If GC update
+  fails, never touch the drone; if drone activation fails, roll back the drone and
+  retain the new GC only if it declares compatibility with the restored release,
+  otherwise roll back GC too. Apply the same ordering to dirty field builds.
+- **Q63 — GC boot/login lifecycle:** Settled. Install the GC
+  proxy/static frontend, discovery, tuning mirror, and clock-sync companion as
+  managed user-session services that start automatically when the operator logs
+  into the graphical Ubuntu session, restart on failure, and remain available
+  without opening a browser. Automatically discover only `iii.local`, perform the
+  Q59 clock handshake for a `real` target, and backfill captures. A `sim` target
+  explicitly skips clock alignment and never enters the Pi-specific clock gate.
+  Do not automatically launch a browser
+  window or QGroundControl. Expose an III GUI desktop launcher plus `iii gc
+  open/start/stop/restart/status` for the GC stack, and a separate QGroundControl
+  launcher plus `iii qgc start/stop/restart/status` for host-native QGC. Logout
+  cleanly stops graphical/user services without affecting the drone.
+- **Q64 — QGroundControl version and update ownership:** Settled. Treat the host-
+  native QGroundControl AppImage as a pinned,
+  checksum-verified GC dependency owned by the in-repository deployment path, not
+  as an independently self-updating application. Cache/install versioned binaries,
+  select one active version atomically, retain the previous known-good version,
+  and update only through a tested GC release or explicit GC host-maintenance
+  operation. Preserve user settings/logs outside the binary slot, remove hard-coded
+  `/home/iii` paths, back up settings before migrations, and use the same active
+  binary for simulation and real operation.
+- **Q65 — Release-owned PX4 parameters and QGroundControl configuration:**
+  Settled. Add versioned declarative manifests for the complete
+  expected real and sim PX4 parameter sets and a sanitized QGroundControl managed-
+  settings baseline. Each release records their content hashes, compatible PX4/
+  QGC versions, and generated inventories. Classify PX4 keys as release-required,
+  operator-tunable, or hardware calibration/identity. Activation reads and diffs
+  the FMU but never silently writes it: required mismatch blocks real health;
+  tunable mismatch is reported; calibration/identity is captured and preserved.
+  Provide explicit disarmed `iii px4 params pull/plan/apply/verify` with full FMU
+  backup, per-key review, readback, and recovery, while retaining Q20's separate
+  firmware-flashing boundary. For QGroundControl, manage only declared stable
+  keys, merge them transactionally into user settings with backup, preserve
+  window/layout/local preferences unless explicitly managed, disable public log
+  upload by default, and regenerate/cache version-coupled parameter metadata rather
+  than treating ParamCache as hand-maintained configuration. Use the same release-
+  owned inventory for sim and real, with profile-specific values.
+- **Q66 — Capturing PX4 changes made through QGroundControl:** Settled. After real-
+  target clock sync and while disarmed, the GC companion
+  automatically downloads a complete PX4 baseline with firmware/schema identity.
+  Monitor MAVLink parameter updates and periodically reconcile the complete set;
+  when its content hash changes, mark PX4 configuration modified and mirror an
+  immutable revision locally without claiming QGC-originated edits are III GUI
+  transactions. Allow the operator to save/download arbitrary named PX4 sets with
+  short descriptions through the same untracked capture store used for III sets.
+  At test end, `iii px4 params capture/pull/diff/promote` performs per-key review
+  into the tracked real or sim PX4 manifest, classifies required/tunable/calibration
+  changes, and creates source changes only on the current feature branch. Never
+  auto-commit, auto-promote, or overwrite the FMU during deployment. Use the same
+  workflow against simulated PX4, skipping the real-target clock gate.
+- **Q67 — Capturing and promoting QGroundControl settings changes:** Settled.
+  Maintain a schema-versioned allowlist of release-managed QGC
+  keys plus explicit classes for local preference, generated/cache, sensitive,
+  and prohibited keys. On QGC clean exit and on explicit request, snapshot its
+  settings, redact/exclude non-exportable data, and produce a local immutable diff
+  against the active release baseline. Provide `iii qgc config
+  capture/diff/promote`;
+  promotion reviews each changed key, rejects machine geometry/paths, credentials,
+  generated ParamCache, and unsafe public-upload changes, and writes only accepted
+  managed keys on the current feature branch. Runtime user settings remain
+  untouched until a later GC release transactionally merges the promoted baseline.
+  Use one shared managed baseline for sim and real, with separately declared
+  profile-specific connection settings only where necessary. All QGroundControl-
+  specific installation, lifecycle, status, configuration, and maintenance
+  commands live under `iii qgc`; `iii gc` is reserved for the III frontend/proxy,
+  discovery, mirror, clock companion, and browser-facing ground-control stack.
+- **Q68 — Starting point for GC host provisioning:** Settled. Support a clean,
+  normally installed Ubuntu 22.04 or 24.04 x86_64 system with a
+  graphical user account and this repository clone as the GC provisioning boundary.
+  `iii gc provision` bootstraps a repository-managed environment and runs local
+  Ansible to converge everything above it, with online and prepared-offline modes.
+  Do not automate workstation disk partitioning, Ubuntu installation, full-disk
+  encryption, proprietary hardware drivers, or vendor firmware in this sweep;
+  inspect and report those prerequisites instead.
+- **Q69 — Enrolling credentials on additional GC/operator computers:** Settled.
+  Current real runtime uses one shared browser password and one shared CLI token,
+  while the settled deployment model already requires unique SSH and signing keys
+  per computer. Extend enrollment so every authorized computer has
+  its own revocable SSH key, field signer, and runtime API client credential stored
+  locally with user-only permissions and hashed/identified in the onboard trust
+  store. An already authorized computer adds the new SSH public key; the new
+  computer then completes authenticated `iii access enroll` over SSH to receive
+  its own runtime credential. Keep one human browser-login secret for the solo
+  operator initially, provisioned separately from releases, while the local GC
+  proxy uses its machine credential for companion/CLI traffic. `iii access list`
+  and `revoke` act per computer and never transfer private keys. The accepted
+  plain-HTTP LAN risk remains explicit. Replace the single shared CLI token with
+  this per-computer enrollment model.
+- **Q70 — Component selection for dirty field deployment:** Settled. Make `iii
+  deploy field` analyze the workspace/submodule change
+  graph and produce only affected artifacts: GC-only for frontend/proxy/GC/QGC-
+  baseline changes, drone-only for runtime-only code, and paired GC-then-drone for
+  contracts/interfaces/shared configuration or changes crossing the API boundary.
+  Show the inferred component set and reasons in the default plan. Permit explicit
+  `--component gc|drone|both`, but fail closed if the override omits a dependency-
+  affected component; never let an override create an API-incompatible pair. Build,
+  sign, install, health-check, and rollback GC locally; cross-build and activate
+  the drone through the receiver. PX4 parameter-manifest changes update release
+  expectations and drift reports but never write the FMU implicitly. Preserve Q44's
+  no-commit/no-working-tree-mutation contract.
+- **Q71 — Installed GC release retention:** Settled. Mirror the operational drone
+  policy on the GC: protect the latest qualified GC release as
+  rollback anchor, retain the active GC release and previous field-development GC
+  release, and allow one staged candidate. Keep these identities paired with their
+  compatible drone release metadata, but do not require the GC and drone to occupy
+  the same active version when the compatibility contract permits otherwise.
+  Separately retain downloaded artifact archives in a size-bounded local cache;
+  pruning cache entries never removes installed/protected slots, captures, keys,
+  QGC settings, or offline provisioning dependencies.
+- **Q72 — Safety gate for GC/QGroundControl updates:** Settled. Any GC frontend/
+  proxy/companion, CLI, QGroundControl, or GC host-maintenance
+  update that can restart operator tooling must fail closed while a connected real
+  target is armed, in air, owns a mission/custom/direct operation/reference, or is
+  otherwise not in the settled maintenance-safe state. Drain/reject new browser
+  commands, verify landed/disarmed stability, then transactionally update. Permit
+  updates when no real target is connected, and do not impose the real-flight gate
+  on simulation. Keep an explicit maintenance override only for recovery, with a
+  prominent loss-of-operator-surface warning and retained audit.
+- **Q73 — Offline field-readiness preparation:** Settled. Add `iii field prepare`
+  as an online, non-deploying home workflow that verifies the
+  workspace/submodule policy and populates a content-addressed GC-local cache with
+  the selected paired qualified release, protected previous release metadata,
+  pinned ARM64 builder/toolchain/sysroot, build/test dependencies, GC images and
+  updater, QGroundControl binary, Ansible collections/packages, recovery tooling,
+  and required source/dependency mirrors for dirty incremental builds. Follow it
+  with `iii field verify --offline`, which disables network access for the check,
+  performs representative GC-only/drone-only/paired build and artifact verification
+  probes without deployment, validates credentials and disk reserves, and emits a
+  concise readiness report with exact missing items. Never update or install
+  automatically merely because newer content exists.
+- **Q74 — Deployment preparation for pre-field OptiTrack testing:** Settled. Do
+  not implement mocap transport, frames, estimator tuning, or
+  OptiTrack-server provisioning in this sweep. Make one GC/drone release bundle
+  capable of declaring extensible supported runtime profiles and later booting the
+  same deployed drone release as `opti_track` through an explicit cold profile
+  switch, while `real` remains the installed/power-on default. Treat OptiTrack as a
+  physical-real target for clock sync, credentials, deployment safety, PX4/QGC
+  inventory, logging, rosbag, parameter capture, and rollback. Let a profile
+  descriptor later declare external mocap readiness hooks, network peers, required
+  PX4/III configuration overlays, and an allowlist of limited mission specifications.
+  Initially declare `opti_track` explicitly as an alias of `real`, inheriting its
+  readiness and allowlists by intentional manifest policy rather than accidental
+  non-sim branching; later changing that alias requires a versioned profile-contract
+  change. Display the active profile prominently. Add a
+  pre-field evidence workflow that deploys once, switches to OptiTrack, runs its
+  profile-specific checks/tests, captures evidence, then switches back to `real`
+  and verifies field readiness without redeployment. Keep the profile and artifact
+  boundaries extensible for the later integration change.
+- **Q75 — First-class behavior-tree and mission-specification artifacts:**
+  Settled. Keep source ownership in `III-Drone-Mission`, but
+  have every qualified or field release build a signed, immutable mission-catalog
+  sub-artifact. Each named mission specification receives a stable logical name,
+  content identity, status/classification, full transitive closure of referenced
+  behavior-tree XML/model assets, schema version, and required behavior-node/
+  interface/runtime compatibility hashes. Build-time validation resolves no
+  source-tree/absolute environment paths, rejects missing/escaping references and
+  invalid trees/specs, and records the catalog hash in both paired release
+  manifests. Real operation may select only catalog entries permitted by the
+  active release/profile; raw onboard files and arbitrary path override are
+  rejected. Mission selection and every execution record exact artifact IDs.
+  Asset-only dirty changes may produce a fast field release without recompiling
+  unaffected code, but still pass validation, signing, safety-gated activation,
+  health checks, and rollback; normal deployment never mutates an installed
+  catalog in place. Release rollback restores the matching catalog atomically.
+  Test/legacy assets must be explicitly classified and excluded from qualified
+  real allowlists by default. OptiTrack can later declare its limited allowlist
+  without changing artifact formats. As `III-Drone-Mission` is a CMake package,
+  make CMake own catalog generation, reference closure, validation, dependency
+  setup, and package-owned custom-script invocation. Install the generated catalog,
+  mission specifications, behavior trees, models, and dependency metadata into the colcon install prefix
+  under `share/iii_drone_mission`; resolve them live through the ament package
+  index and catalog identities in `sim`, `real`, and profile aliases. Runtime must
+  never depend on source-tree paths, including during simulation.
+- **Q76 — Package-native parameter installation and reconciliation boundary:**
+  Settled. Treat configuration installation and reconciliation as native Python-
+  package responsibilities. Install immutable manifests, profile descriptors,
+  schemas, and tracked defaults as Python package data in the colcon install
+  space, and expose one importable reconciliation engine. For development and
+  simulation, startup automatically runs that engine against the writable sim
+  parameter sets before any set is selected or applied. For the aircraft, only
+  the deployment receiver runs the same engine as a planned, transactional
+  release-activation step against persistent onboard parameter sets. Both paths
+  obey the settled preserve/add/retire/reintroduction-review rules, but simulation
+  startup is the automatic development convenience while drone mutation remains
+  deployment-owned. Runtime never prefers source-tree configuration over installed
+  package data. Retire the ad hoc shell installer and standalone mutating script
+  after migration.
+- **Q77 — Blocking reintroduction review during simulation startup:** Settled.
+  If automatic pre-simulation reconciliation encounters a
+  reintroduced parameter, block simulation startup before applying any parameter
+  set and create the same review file under repository-local `.iii/` as the drone
+  deployment planner. After every decision is resolved, rerunning sim startup
+  completes reconciliation and launches normally. Do not silently choose the new
+  default merely because the target is simulation; matching semantics are valuable
+  before aircraft deployment.
+- **Q78 — Development freshness for installed mission assets:** Settled. Make
+  the colcon install space the only runtime source even in
+  development. A mission-specification or behavior-tree source edit therefore
+  becomes runnable only after the `iii_drone_mission` package's CMake install/
+  validation step refreshes the installed catalog. With `--symlink-install`, raw
+  assets may remain live-linked where safe, but generated catalog identity and
+  dependency validation must still be refreshed. Before simulation startup, detect
+  source/install catalog drift and automatically run the targeted
+  `iii_drone_mission` build/install/validation step before launch. If generation,
+  compilation, installation, or validation fails, simulation does not start and
+  reports the exact failure. Field deployment likewise performs this build as
+  part of artifact creation.
+- **Q79 — Whether automatic sim reconciliation may edit tracked defaults:**
+  Settled. Never mutate the repository's tracked
+  `sim/tracked/default.yaml` during build or simulation startup. Install it as the
+  immutable baseline, then seed/reconcile the existing living sim parameter tree
+  under workspace-local `.config/iii_drone/parameter_sets/sim/` before applying
+  its selected set. The configuration server and GUI continue to operate on that
+  living tree exactly as they do now. Source defaults
+  change only through the already settled explicit capture/compare/promote workflow,
+  so starting simulation cannot create hidden Git changes or accidentally promote
+  an experiment.
+- **Q80 — Scope and persistence of local simulation state:** Settled. Keep each
+  workspace clone's living sim configuration under its
+  own Git-ignored `.config/iii_drone/` rather than sharing `~/.config` across
+  clones. Preserve it across builds, container recreation, branch switches, and
+  ordinary simulation restarts; let the reconciler handle schema movement in both
+  upgrade and downgrade directions. Provide explicit CLI operations to inspect,
+  checkpoint, and reset the sim profile to the currently installed tracked default,
+  with reset requiring confirmation and retaining a recoverable capture. The sim
+  capture path is the real capture path parameterized by `--target sim`: it uses
+  the same sealed artifact format, names/descriptions, provenance, verification,
+  diff, export/import, and reviewed promotion workflow.
+- **Q81 — Installing development/test missions versus packaging aircraft missions:**
+  Settled. Let the local colcon install space contain every
+  valid, explicitly classified mission catalog entry—including simulation-only,
+  test, and legacy entries—so development can exercise them without alternate
+  source paths. During drone artifact creation, package only entries allowed by
+  the target profile plus their exact transitive dependencies. Drone bundles never
+  include sim-only, test, or legacy entries. A field-development deployment may
+  include an explicitly classified onboard-compatible `experimental` entry after
+  a prominent warning; it must not relabel a local test as aircraft-compatible
+  implicitly. Record the resulting reduced catalog hash in the drone manifest.
+- **Q82 — Authoritative behavior-node and mission dependency declarations:**
+  Settled. `models.xml` is only a manually checked-in BehaviorTree.CPP/Groot
+  editor model; runtime does not consume it. Keep runtime node
+  registration/port declarations authoritative, add a deterministic build-time
+  tool that constructs the same factory, validates every catalog tree against it,
+  and generates `models.xml`/Groot project data as derived install-space artifacts.
+  Mission authors explicitly declare only logical identity, classification,
+  profile allowlist, and entry specification; tooling infers tree/subtree/node
+  dependencies from YAML/XML and writes the resolved catalog closure. Do not make
+  editor metadata or duplicated dependency lists authoritative. The runtime factory
+  plus build-time validation/generation is the model.
+- **Q83 — Runtime mission-catalog selection and persistence:** Settled. Replace
+  arbitrary-path override with `iii mission select
+  <catalog-entry-id>`. For `real`/OptiTrack, require the full maintenance-safe state
+  and an entry allowed by the active profile/release; for `sim`, require only that
+  no mission/operation is active. Reuse the existing transactional rebuild/rollback
+  behavior. Treat selection as temporary runtime-session state: a cold restart or
+  reboot restores the profile's release-defined default mission, while the command
+  can explicitly select another entry again. Changing a profile's persistent
+  default remains a reviewed source/release change, not an onboard mutation.
+  Expand `iii mission` into the first-class mission operator surface:
+  `status` displays active catalog ID/hash, active profile, release-defined default,
+  temporary/default state, executor/mode state, and readiness; `list` shows entries
+  selectable for the active profile and their classification; `list --all` also
+  shows incompatible/unavailable entries with exact reasons; `show <id>` displays
+  metadata and resolved dependencies; `select <id>` performs the safety-gated
+  transactional switch; and `select --default` restores the release default.
+  Mission/profile compatibility originates in CMake registration and is carried
+  into the generated catalog rather than inferred from filenames or paths.
+- **Q84 — CMake mission registration and profile defaults:** Settled. Add one
+  declarative `iii_register_mission(...)` CMake API with
+  required stable ID, specification entry file, classification, and compatible
+  profiles. CMake validates IDs/files/profile names, generates the catalog closure,
+  and fails duplicate or unclassified registration. Separately, each versioned
+  profile descriptor names exactly one default mission from its compatible set.
+  The initial `opti_track` alias inherits `real` compatibility/default policy;
+  when it later becomes distinct, explicit profile metadata can narrow its
+  compatible set and choose its own default.
+- **Q85 — Full mission index versus assets packaged on the drone:** Settled with
+  a target-specific index. The workspace/local install catalog contains
+  all classified entries, but a drone bundle's index and assets contain only the
+  union applicable to onboard profiles: `real`, `opti_track`, and future `hil`.
+  Sim-only, test, and legacy missions are always absent from the drone index as well
+  as its assets. On the drone,
+  `iii mission list --all` means every entry present in that target catalog,
+  including entries incompatible with the currently active onboard profile; it
+  does not reveal source-registry entries intentionally excluded from the bundle.
+  No mission asset is fetched dynamically.
+- **Q86 — How HIL appears before HIL runtime integration exists:** Settled.
+  Reserve `hil` now as a valid onboard profile identity in catalog
+  and release schemas, allowing CMake mission registrations to declare HIL
+  compatibility and ensuring drone bundles retain the required closure. Mark the
+  profile `not_commissioned`/non-bootable until the later Gazebo-over-LAN runtime
+  adapter and readiness checks are implemented; `iii system start --profile hil`
+  then fails clearly instead of accidentally taking a real or sim code path. Real
+  remains the power-on default. Deployment prepares HIL explicitly without
+  claiming it is operational in this sweep.
+- **Q87 — Classification for experimental onboard missions:** Settled. Define
+  `experimental` as a first-class mission classification
+  distinct from `production`, local-only `test`, and `legacy`. An experimental
+  mission must explicitly list an onboard-compatible profile (`real`, `opti_track`,
+  or eventually commissioned `hil`) and pass the same build-time tree/port/
+  dependency validation. It may be included only in a field-development bundle,
+  never a qualified release, and `iii mission status/list/select` must display a
+  persistent prominent warning while it is selected. This supports genuine
+  aircraft experiments without putting test assets on the drone.
+- **Q88 — Selecting experimental missions for a field-development bundle:**
+  Settled. `iii deploy field` detects which registered
+  experimental mission entries are affected by the dirty source snapshot and
+  include those entries by default, showing each one and its dependency reason in
+  the deployment plan. Permit repeatable `--include-mission <id>` for an unchanged
+  experimental entry needed for the test and `--exclude-mission <id>` for an
+  inferred entry only when nothing selected depends on it. Qualified release
+  tooling rejects both options and all experimental entries. Bundle inclusion does
+  not activate an experimental mission; `iii mission select` remains separate.
+  Deployment plan and completion output summarize mission entries, behavior-tree
+  assets, and parameter changes together: added/changed/removed missions with
+  classification/profile compatibility; changed trees/models with every impacted
+  mission ID; manifest keys/defaults added/changed/removed/reintroduced; affected
+  parameter sets and preserve/review actions; and the resulting component/catalog/
+  configuration hashes.
+- **Q89 — Deployment change-report detail and persistence:** Settled. Print a
+  concise grouped summary by default, with warnings and
+  required decisions inline. Persist the complete machine-readable impact graph,
+  parameter reconciliation plan, and final applied result under the operation's
+  Git-ignored `.iii/operations/<operation-id>/` directory, and expose the same data
+  through `iii deploy plan/status --json`. The completion report must distinguish
+  planned, packaged, transferred, activated, skipped, rejected, and rolled-back
+  changes so an interrupted or failed deployment never looks successful.
+- **Q90 — Retention of local deployment-operation records:** Settled. Keep
+  operation metadata, plans, reviews, reports, hashes, and
+  compact diagnostics indefinitely by default because they are small and provide
+  the audit trail for dirty field work. Store large bundles/build outputs only in
+  the separately size-bounded cache. Add explicit `iii deploy operations prune`
+  with dry-run and age/status filters; never prune records referenced by captures,
+  installed/protected releases, unresolved reviews, failed operations not yet
+  acknowledged, or qualified-release evidence.
+- **Q91 — Final onboard filesystem and ownership boundary:** Settled. Standardize
+  immutable application slots under
+  `/opt/iii/releases/<release-id>/` with `/opt/iii/current` as a root-owned atomic
+  selector; receiver A/B slots and stable bootstrap under `/opt/iii/receiver/`;
+  root-owned host policy/trust/environment under `/etc/iii/`; persistent mutable
+  configuration, legacy shadow, journals, deployment state, and unprivileged
+  incoming uploads under `/var/lib/iii/`; bounded logs/audits under `/var/log/iii/`;
+  and sockets/locks/transient state under `/run/iii/`. Run the application and SSH
+  account as unprivileged `iii`; only the narrow receiver/helper owns privileged
+  selectors, host integration, and systemd transitions. No release may write into
+  another release, `/etc/iii`, or arbitrary host paths.
+- **Q92 — Colcon install layout inside immutable releases:** Settled. Preserve
+  the current default isolated colcon layout inside each
+  release (`<release>/install/<package>/...`) rather than introducing
+  `--merge-install`. Start runtime through a release-owned environment wrapper that
+  sources `<release>/install/setup.bash`; resolve all package assets through the
+  ament index, never by assuming physical prefix paths. Package isolation improves
+  provenance and collision detection and matches current development paths, while
+  the wrapper hides layout details from systemd and operators. Bundle no source,
+  build, or colcon log trees. Immutable drone and GC ROS bundles use this isolated
+  install layout; development may continue using `--symlink-install`.
+- **Q93 — Host-provisioned versus release-local dependencies:** Settled. Let
+  Ansible own the stable native platform baseline—Ubuntu,
+  kernel/firmware, ROS Jazzy, systemd, hardware/udev support, and explicitly pinned
+  apt libraries. Make each III release carry its isolated colcon output plus all
+  project-specific Python packages and non-platform runtime libraries needed by
+  that build. The release manifest records the exact compatible host-baseline
+  contract, and activation rejects missing/incompatible host packages. Normal
+  deployment never runs apt or pip on the drone; host-package changes require an
+  explicit `iii host maintenance`/Ansible transaction before application
+  activation.
+- **Q94 — Release-local Python dependency layout:** Settled. Do not cross-build a
+  relocatable virtualenv. Resolve and lock
+  Python dependencies during artifact construction, build/download target-ABI
+  wheels in the pinned builder, and install release-owned packages into a plain
+  target `site-packages` tree inside the immutable release. The release wrapper
+  prepends that tree while retaining the provisioned system Python/ROS Jazzy
+  packages; manifests record Python ABI and every wheel hash. Reject undeclared
+  imports and incompatible native extensions during target-equivalent validation.
+  Never invoke pip on the drone.
+- **Q95 — Release-local native shared-library policy:** Settled. Keep glibc, the
+  dynamic loader, ROS Jazzy, GPU/kernel interfaces,
+  and explicitly provisioned platform libraries host-owned. Package workspace-built
+  and other approved non-platform shared libraries inside the immutable release.
+  During build, scan every ELF dependency/RPATH/RUNPATH against a versioned host-
+  library allowlist; reject unresolved libraries, builder/sysroot paths, accidental
+  host contamination, and bundled platform-library duplicates. Use relocatable
+  `$ORIGIN`-relative RUNPATH where practical plus the release setup wrapper's
+  generated library path. Validate the complete closure on target-equivalent ARM64
+  before signing.
+- **Q96 — Stable systemd units versus release-owned launch definitions:**
+  Settled. Install a small fixed set of root-owned systemd units
+  through Ansible for the receiver/bootstrap, III system daemon, runtime API, and
+  any genuinely host-level companion. Application units invoke stable host launchers
+  that resolve `/opt/iii/current`, verify its manifest/selector, and execute the
+  release-owned environment wrapper. Releases own the ROS/process topology consumed
+  by the III daemon but cannot add, overwrite, enable, or disable host systemd units.
+  Any required host-unit contract change is a separately planned Ansible host-
+  maintenance prerequisite, while ordinary code/process-topology changes remain
+  rollbackable with the release.
+- **Q97 — Automatic rollback after a release has been accepted:** Settled. Allow
+  automatic rollback only while an activation transaction is
+  still in its bounded candidate-health window or while reconciling an interrupted
+  activation on boot. Once the receiver durably accepts a release, later crashes,
+  failed readiness, or hardware faults must not silently switch software versions—
+  especially during or near flight. Stable systemd units may perform bounded
+  process restarts; repeated failure enters a visible non-operational fault while
+  preserving diagnostics. The operator can request rollback only through the
+  normal maintenance-safe gate (or explicit physical recovery override).
+- **Q98 — Mapping runtime profiles to parameter profiles:** Settled. Stop assuming
+  the runtime profile name is also the parameter-set
+  directory name. Add an explicit `parameter_profile` reference to each versioned
+  runtime profile descriptor. Keep the only tracked defaults as settled: `real`
+  and `sim`. Map `real -> real`, `sim -> sim`, initial `opti_track -> real`, and
+  reserved non-bootable `hil -> sim`. The living runtime selector/snapshots remain
+  partitioned by runtime profile where needed so OptiTrack experiments do not
+  silently change the ordinary real selection, while both reconcile from the same
+  tracked real baseline. Future HIL-specific values require an explicit versioned
+  overlay/profile decision outside this sweep, not an accidental third default.
+- **Q99 — HIL composition across non-mission configuration domains:** Settled.
+  Encode profile composition explicitly rather than branching on
+  `profile == sim`. For reserved HIL, use the `sim` III parameter baseline and
+  simulated-PX4 expectation/airframe baseline, plus the common QGroundControl
+  baseline with its sim-specific overlay. Still apply onboard/real policies for
+  deployment receiver, clock gate, credentials, hardware-host identity, logging,
+  and maintenance safety because III runs on the Pi. Mission compatibility remains
+  independently declared as `hil` in CMake. This is schema preparation only; HIL
+  stays non-bootable in this sweep.
+- **Q100 — Deployment-redesign scope closure:** Rejected. Do not freeze the scope
+  yet; continue grilling until the remaining factory, host, release, runtime,
+  ground-control, field-operation, recovery, evidence, and retirement branches
+  have concrete contracts. The previously identified future capabilities remain
+  deferred unless later questions intentionally bring preparation work into scope.
+- **Q101 — First-boot cloud-init secret lifecycle:** Settled. Generate per-imaging
+  cloud-init seed data only from Git-ignored, permission-
+  checked operator inputs. Limit it to initial network profiles, the first SSH
+  public key, bootstrap identity, and a one-time Ansible bootstrap credential—never
+  release/signing private keys or reusable plaintext passwords. On successful
+  convergence, copy required network state into root-only host configuration,
+  remove/overwrite secret-bearing cloud-init seed and instance data where the
+  filesystem permits, disable unintended cloud-init reruns, revoke bootstrap-only
+  authority, and emit an inspection report proving what remains. If sanitization
+  cannot be verified, commissioning fails.
+- **Q102 — Safe SD-card target selection and image verification:** Settled. Make
+  `iii host image` enumerate candidate removable block devices
+  with stable device path, model, serial, size, transport, mount state, and whether
+  any partition backs the running system. Refuse the system/root disk, mounted or
+  in-use devices, unresolved device-mapper relationships, non-removable/internal
+  disks by default, and targets smaller than the pinned image. Require explicit
+  device selection plus typed confirmation containing the device identity; allow
+  no unattended destructive override initially. Verify the downloaded image hash
+  before writing, flush/eject, then read back and verify written image/partition
+  content before generating a commissioning record.
+- **Q103 — SD partition and filesystem layout:** Settled. Keep the checksum-pinned
+  Ubuntu image's supported Raspberry Pi boot partition and
+  auto-expanded ext4 root filesystem. Do not create custom release/data partitions,
+  LVM, encryption, or A/B roots in this sweep; `/opt/iii`, `/var/lib/iii`, and
+  `/var/log/iii` share the root filesystem and rely on the settled reserve/retention
+  rules. Treat physical reimage as destructive to onboard mutable state: require a
+  pre-reimage inspection and explicit backup/export of configuration, captures,
+  PX4/QGC inventories where applicable, deployment audits, and diagnostics, with a
+  separately confirmed `--accept-data-loss` path only for unrecoverable media.
+- **Q104 — Portable host backup and post-reimage restore scope:** Settled. Add
+  `iii host backup` to create a verified, versioned archive of
+  portable persistent state: III parameter sets/selectors, legacy shadow records,
+  tuning journals/captures not already local, deployment audits, hardware/PX4
+  inventories and backups, and retained diagnostics selected by policy. Exclude
+  SSH/signing private keys, runtime/API credentials, Wi-Fi secrets, receiver
+  transaction state, active-release selectors, and host-generated machine identity;
+  reprovision/re-enroll those instead. After reimage and Ansible convergence,
+  `iii host restore` validates the archive, deploys/chooses a compatible release,
+  previews schema reconciliation, restores into a staged persistent root, and
+  activates only after review and health checks. Never overwrite a running target
+  or restore stale transaction machinery.
+- **Q105 — Local backup storage, triggers, and retention:** Settled. Store
+  immutable content-addressed host backups under Git-ignored
+  `.iii/backups/`, with list/show/verify/export/import operations and checksummed
+  portable archives like configuration captures. Require a fresh verified backup
+  before a planned physical reimage and before host maintenance that can invalidate
+  the current system, unless the operator separately confirms unrecoverable-source
+  data loss. Do not require a full host backup before ordinary transactional
+  application deployment. Never auto-prune backups initially; explicit pruning
+  previews contents and refuses backups referenced by restore/audit evidence.
+  Because the settled archive excludes credentials/secrets, integrity verification
+  is mandatory but encryption is optional/operator-managed in this scope.
+- **Q106 — Consistent onboard snapshot for host backup:** Settled. Require the
+  real/OptiTrack target to pass the maintenance-safe
+  gate, then have the onboard receiver briefly quiesce configuration/tuning writers,
+  flush journals, and create a filesystem-independent point-in-time backup staging
+  tree with one manifest/hash boundary. Resume the prior standby runtime state once
+  that local snapshot is sealed; download/compression may continue afterward without
+  holding the runtime stopped. HIL remains non-bootable; sim backup uses the same
+  snapshot engine locally without the physical-flight gate. Never archive a set of
+  files copied concurrently without a coordinated revision/checkpoint.
+- **Q107 — Interrupted first-boot provisioning:** Settled. Make `iii host
+  provision` resumable and Ansible-idempotent. Retain bootstrap access until the
+  permanent operator key, receiver, and recovery path are verified; interrupted
+  privilege narrowing or secret sanitization must resume before commissioning can
+  pass. If the Pi never becomes SSH-reachable, retry through Ethernet recovery. If
+  cloud-init remains unrecoverable without authenticated access, reimage rather
+  than introduce a default password or hidden bypass.
+- **Q108 — Provisioned versus commissioned host state:** Settled. Report
+  `provisioned` when raw-image/cloud-init/Ansible convergence,
+  credentials, sanitization, receiver recovery, storage, network, clock tooling,
+  and host inspection pass. Reserve `commissioned` for a provisioned host that has
+  a qualified release installed as protected anchor, complete hardware-role and
+  PX4 compatibility evidence, successful activation/rollback and power-cycle tests,
+  verified GC connection/QGC baseline, and a fresh portable backup. Field-
+  development bundles may run on a provisioned test host, but cannot create a
+  production commissioning record.
+- **Q109 — Commissioning-record identity, signing, and retention:** Settled.
+  Create an immutable structured commissioning record bound to the
+  shared hardware-class/host-baseline manifest, qualified release, PX4/QGC
+  compatibility evidence, test results, and timestamp—not a fleet aircraft ID.
+  Sign it with the commissioning computer's authorized field-signing key, retain a
+  verified copy onboard and content-addressed under local Git-ignored
+  `.iii/commissioning/`, and support verify/export/import. Redact credentials and
+  network secrets; include exact hardware-role observations needed to reproduce
+  acceptance even if they contain device serials. Do not commit records to Git or
+  publish them automatically.
+- **Q110 — Commissioning validity after system changes:** Settled. Compute current
+  commissioning status against the latest accepted
+  commissioning record. Host-baseline, boot-policy, hardware-role mapping/device,
+  PX4 firmware/required parameters, trust-root, or qualified-anchor changes mark it
+  `recommission_required` until the affected acceptance subset and recovery tests
+  produce a new signed record. Deploying a field-development application/mission
+  bundle does not erase the qualified commissioning anchor, but status must show
+  `commissioned baseline + field development active` and retain the active bundle's
+  warnings. Returning exactly to the commissioned anchor clears that overlay.
+  Ordinary tuned III values within the valid schema do not invalidate commissioning;
+  their journal/capture provenance remains separate.
+- **Q111 — Hardware-device replacement workflow:** Settled. If a replacement
+  device still matches the shared role manifest unambiguously,
+  require role-specific inspection/functional acceptance and a refreshed
+  commissioning record, but no source-manifest change. If it does not match, `iii
+  host hardware inspect` reports the unmatched observations and can export a
+  reviewable capture; updating match rules/serial allowlists occurs only through a
+  feature-branch source change, tests, Ansible convergence, and recommissioning.
+  Never auto-learn a new serial or rewrite udev policy from the connected device.
+- **Q112 — Universal next-command guidance:** Settled. Every III CLI command result,
+  including success, no-op, warning, rejection, failure, interruption, and help,
+  ends with one or more context-aware suggested next commands. Suggestions include
+  exact target/profile/operation IDs where needed, a short reason, whether the
+  command is mutating, and prerequisites. Human output uses a concise `Next:` block;
+  structured output carries versioned `next_actions[]` entries. Suggested mutations
+  retain their normal plan/confirmation gates and are never executed automatically.
+- **Q113 — Interrupt and cancellation semantics for long operations:** Settled.
+  Once a receiver/GC mutation is durably accepted, Ctrl-C or client
+  loss detaches the CLI but does not cancel the operation; output suggests the exact
+  status/reattach command. Provide explicit cancellation only before activation or
+  at a receiver-declared safe checkpoint. After selector switch/activation begins,
+  reject cancellation and suggest status followed by safety-gated rollback if
+  acceptance succeeds, while failed candidates follow automatic transaction
+  rollback. Local build/package phases may be cancelled and later resumed from
+  verified cache state.
+- **Q114 — Concurrency and mutation locking:** Settled. Allow at most one target-
+  wide mutating maintenance transaction at a time across deployment,
+  rollback, receiver update, host maintenance, restore, backup sealing, network
+  reconfiguration, credential/trust mutation, and PX4 parameter application. The
+  onboard receiver owns a durable lease/lock keyed by operation ID and authorized
+  client identity; client disconnect does not release it. Read-only status/log/
+  diagnostics and operation reattachment remain available. Configuration tuning,
+  mission selection, and runtime operations are rejected once a maintenance
+  transaction enters its quiescing/mutation phase; maintenance planning may occur
+  concurrently but must revalidate before lock acquisition. Never offer a force-
+  unlock while the owning operation is alive; stale-lock recovery is receiver/
+  boot-journal driven and audited.
+- **Q115 — Stale-plan and replay prevention:** Settled. Separate reusable content/
+  build plans from short-lived mutation authorization. Every apply
+  request binds artifact IDs, current release/config/profile/commissioning hashes,
+  receiver generation, authorized client, operation ID, and a receiver-issued
+  single-use nonce with a short expiry. The receiver rechecks live maintenance-safe
+  state immediately before mutation, consumes the nonce atomically, and rejects
+  changed state, expiry, duplicate/replayed requests, or a plan produced for another
+  target/profile. Replanning reuses verified build artifacts rather than rebuilding
+  unnecessarily.
+- **Q116 — Deterministic release-bundle container format:** Settled. Use a
+  versioned deterministic `tar.zst` container for both GC and
+  drone artifacts, with canonical path ordering, normalized metadata, no device/
+  special files, no escaping links, and strict unpacked-size/file-count limits. Put
+  a small canonical manifest and content index at a fixed archive location and
+  publish detached Ed25519 signature/checksum files so the CLI/receiver can verify
+  identity before privileged extraction, then verify every extracted file again.
+  Name paired assets by release ID and component, but derive trust from signed
+  contents rather than filenames. Reserve format/schema versioning for future
+  transport changes; never execute archive hooks.
+- **Q117 — Reproducibility proof for qualified payloads:** Settled by rejecting a
+  mandatory double-build gate as excessive for this research system. Require one
+  clean build in the pinned builder with locked inputs, complete manifests, tests,
+  signatures, and retained evidence. Keep deterministic packaging and permit an
+  optional rebuild-comparison diagnostic when investigating drift, but do not block
+  normal qualification on two independent byte-identical builds.
+- **Q118 — Local simulation/physical evidence promotion gate:** Settled. Require
+  signed local evidence before promoting `develop` into stable `main`; CI remains
+  responsible for building/signing the final
+  qualified artifact, but the `main -> release` PR must reference a concise field-
+  validation record produced from the exact `main` commit (or an artifact proven
+  source-identical to it). Require at least the scripted sim suite plus the
+  appropriate provisioned-drone smoke/maintenance-safe checks; require actual flight
+  evidence only when the release changes flight-critical behavior, mission logic,
+  PX4 contracts, hardware interfaces, or safety policy. Pure tooling/docs changes
+  need no flight. CI verifies evidence identity/required categories but does not
+  contact the aircraft. Implement it as a signed local-evidence handoff:
+  1. On a clean checkout of the exact workspace `develop` promotion candidate, `iii release
+     evidence collect` verifies governance/lock state, runs the pinned local
+     devcontainer simulation suite, derives the required physical-test categories
+     from the change-impact policy, and optionally orchestrates the connected
+     provisioned-drone smoke/flight checklist.
+  2. It seals logs/results/environment/source identity into Git-ignored
+     `.iii/release-evidence/<commit>/<run-id>/` and signs a compact schema-versioned
+     attestation with the authorized workstation field-signing key.
+  3. `iii release evidence submit --pr <number>` posts that signed attestation to
+     the verified `develop -> main` promotion PR and triggers a lightweight GitHub verification job.
+     PR text is untrusted transport; the signature, source identity, schema, required
+     categories, and trusted signer are what the required `promotion-evidence` check
+     validates. GitHub never runs simulation or reaches the drone.
+  4. Promotion tooling proves that mechanical submodule merge commits/gitlink-lock
+     refresh preserve the tested source-content identity. `main -> release` reuses
+     the still-valid attestation and requires its own lightweight verification;
+     changed content or policy requires recollection. The final qualified release
+     includes the verified attestation/hashes in its evidence envelope; full local
+     evidence remains exportable for archival.
+- **Q119 — How much local validation evidence must be uploaded:** Settled. Submit
+  only the signed compact attestation and concise summaries
+  to the PR/qualified release by default, including hashes for every detailed log,
+  rosbag, screenshot, and checklist artifact. Keep bulky evidence locally under
+  `.iii/release-evidence/` with verify/export/import and preserve-by-default rules;
+  allow selected artifacts to be attached explicitly when needed for review. Do
+  not require uploading simulation logs or flight rosbags to GitHub for every
+  research release.
+- **Q120 — Reuse of promotion evidence for `main -> release`:** Settled. Permit
+  reuse only when automation proves that the `main` candidate
+  has the same governed source-content identity, dependency state, relevant policy,
+  and required test matrix as the evidence accepted for `develop -> main`.
+  Mechanical commit/gitlink identities may differ only through the already verified
+  promotion process. Do not expire evidence merely because time passes; invalidate
+  it on host/PX4/commissioning/test-policy drift or any relevant content change,
+  then recollect only affected categories before release.
+- **Q121 — Authority for required validation categories:** Settled. Version a
+  repository policy mapping governed packages/paths,
+  interfaces, parameter/PX4 manifests, mission classifications, host/deployment
+  changes, and change types to required evidence categories such as static/unit,
+  local simulation, provisioned-drone bench smoke, OptiTrack, and field flight.
+  `iii release evidence plan` shows the exact reasons. Operators/agents may add
+  stricter tests freely but cannot silently remove a required category; a reduction
+  requires an explicit signed waiver with rationale carried into the promotion and
+  release evidence. Keep the policy conservative but coarse enough for this
+  research system.
+- **Q122 — Validation-waiver limits:** Settled. Allow the solo maintainer to waive
+  only a physical evidence category that is genuinely
+  unavailable or inapplicable, using an explicit `iii release evidence waive`
+  command signed by an authorized field key and bound to one exact candidate/
+  policy version. Require rationale, risk statement, compensating evidence, and
+  prominent PR/release-note visibility. Never allow a waiver for source governance,
+  dependency locks, build success, unit/static checks, artifact integrity/signing,
+  deployment safety gates, or a failing test result; a waiver means “not performed,”
+  never “failed but accepted.”
+- **Q123 — Deployment-focused release notes:** Settled. Generate release notes from
+  the verified change-impact graph, manifests, PR metadata, and
+  evidence rather than relying on a handwritten summary. At minimum show operator-
+  visible features/fixes; GC/drone component changes; mission/behavior-tree catalog
+  additions/removals/classifications; III and PX4 parameter schema/default changes;
+  QGC/host/provisioning changes; compatibility and migration/reintroduction actions;
+  evidence categories and waivers; expected downtime; and required pre/post-deploy
+  commands. Permit concise maintainer annotations but never let prose override
+  machine-derived facts. Publish the same structured notes with the GitHub Release
+  and expose them through `iii release show`.
+- **Q124 — SemVer selection and minimum bump policy:** Settled. Make `iii release
+  prepare` derive and explain a minimum allowed bump from
+  versioned compatibility contracts. Require MAJOR for intentionally unsupported
+  upgrade/API/artifact/schema breaks; MINOR for backward-compatible features,
+  new production missions/profiles, or additive interfaces; PATCH for compatible
+  fixes, tuning/default adjustments, documentation/tooling, and asset changes that
+  preserve contracts. The maintainer chooses the final version and may select a
+  larger bump, but tooling rejects a smaller one. Field-development release IDs
+  remain content/operation based and do not consume SemVer versions.
+- **Q125 — One connected-system field-readiness command:** Settled by delegated
+  authority. Add read-only `iii field check` for the currently connected
+  `iii.local` plus local GC. Report commissioning/field overlay, paired GC/drone
+  release compatibility, clock gate, credentials, storage/reserves, receiver/
+  runtime health, hardware roles, PX4 firmware/required-parameter drift, III config
+  reconciliation/pending cold restart, selected mission/classification, QGC version/
+  managed-settings drift, logging/rosbag capacity, backup freshness, and prepared-
+  offline cache/recovery assets. Produce a concise pass/warn/fail summary and sealed
+  readiness record; never mutate or arm anything. Every finding supplies Q112 next
+  commands. This is the canonical connected-system pre-field checklist, but its
+  record is evidence rather than a reusable authorization token: every later
+  safety-sensitive operation still validates live state.
+- **Q126 — Field-readiness severity and enforcement:** Settled by delegated
+  authority. Use deterministic policy-derived `PASS`, `WARN`, and `FAIL` findings
+  with stable finding IDs. `FAIL` covers conditions that make the declared field
+  workflow unsafe or non-recoverable: invalid commissioning without an allowed
+  field overlay, incompatible GC/drone components, invalid clock gate, unavailable
+  receiver/control plane, required hardware or PX4 mismatch, unresolved parameter
+  reconciliation/reintroduction, invalid selected mission, or violated storage/
+  rollback reserve. `WARN` covers bounded non-safety deviations such as stale but
+  still valid backup/evidence export, optional hardware absence, or offline cache
+  age. The command always emits and seals its result; exit status distinguishes
+  pass, warning, and failure. A runtime-only computer may produce a checksummed
+  diagnostic record; release/commissioning evidence requires signature by an
+  authorized field-signing key. Warnings may be acknowledged with rationale in a
+  new signed readiness record, but acknowledgement never changes a finding's severity
+  or bypasses a live safety gate. Failures cannot be waived by readiness tooling.
+- **Q127 — Withdrawal of a previously qualified release:** Settled by delegated
+  authority. Never delete, replace, or move a qualified tag, manifest, signature,
+  or GitHub Release. Publish an append-only signed release-status statement that
+  identifies the exact qualified release and classifies it as `qualified`,
+  `withdrawn`, or `unsafe`, with reason, timestamp, superseding version when known,
+  and signing authority. `iii field prepare` and online release operations refresh
+  and cache the signed status index; offline operation uses the newest verified
+  cached index and visibly reports its age without imposing an expiry that would
+  strand field operation. Status publication is an emergency-capable but narrow
+  protected workflow running trusted code from workspace `release`: `iii release
+  status set` plans an exact monotonic transition, and explicit apply dispatches a
+  concurrency-locked environment-protected job that signs and publishes an
+  immutable `iii-status-<sequence>` GitHub Release/index snapshot. Its non-SemVer
+  protected tag points at the trusted workflow revision and never triggers a bundle
+  build. Inputs cannot alter code, artifacts, prior statements, or arbitrary refs.
+  `withdrawn` blocks new download/install/activation but
+  does not trigger an automatic switch. `unsafe` additionally invalidates
+  commissioning and blocks flight-capable operation. Revocation never switches
+  code while the aircraft may be operating. An unsafe installed release remains
+  immutable for diagnostics and may be used by the onboard receiver only as a
+  maintenance-safe last-resort control-plane recovery when no non-unsafe accepted
+  release can recover the target; that exceptional state blocks flight and requires
+  an immediate qualified replacement or reprovision. Status signing and CI bundle
+  signing are independently rotatable; a compromised release-status key is removed
+  from trust through explicit host maintenance and recommissioning.
+- **Q128 — Complete operator-credential or workstation loss:** Settled by delegated
+  authority. If any authorized operator computer remains, generate fresh SSH and
+  field-signing keys on the replacement computer, enroll their public keys through
+  `iii access enroll`, verify access, and revoke lost keys. Never copy private keys.
+  Losing only a field-signing key does not require reimaging when authorized SSH
+  access remains. If every authorized SSH credential is lost, provide no password,
+  default account, hidden token, boot-partition key injection, or receiver bypass:
+  power off and remove the SD card, use a safe read-only `iii host salvage` flow to
+  extract declared portable state when the media remains readable, then require
+  physical SD reimage, Ansible reprovisioning, fresh key enrollment, portable-state
+  restore, and recommissioning. Salvage never modifies, boots, or injects access
+  into the old installation and is not a credential-recovery mechanism. A lost
+  GC/workstation is rebuilt
+  from stock supported Ubuntu plus the repository, regenerated machine identity,
+  fresh keys, verified imported records/caches, and a new provisioning record.
+- **Q129 — Disaster recovery for local evidence and operator state:** Settled by
+  delegated authority. Treat Git-ignored `.iii/` state as a schema-versioned local
+  registry whose durable domains include content-addressed release caches,
+  operation records, captures, backups, commissioning/readiness records, release
+  evidence, status indexes, and import/export receipts. Add `iii records
+  inventory/verify/archive/import` to create deterministic checksummed portable
+  archives for user-managed external/offline storage. Archives preserve provenance
+  and cross-domain references, support incremental content reuse, never auto-prune,
+  and clearly report omitted or unavailable bulky content. Exclude all SSH/signing
+  private keys, runtime credentials, Wi-Fi secrets, and machine identity. Repository
+  state and compact GitHub attestations are not substitutes for bulky local evidence;
+  field readiness warns when irreplaceable records have no verified external archive.
+- **Q130 — Codex-intended automation-ready documentation:** Settled by delegated
+  authority. Migrate the workspace and every editable III repository's maintained
+  documentation into one indexed, versioned operating manual usable by humans,
+  Codex/AI agents, local automation, and CI. Exclude third-party, generated,
+  vendored, dependency, historical-evidence, and build-artifact documentation from
+  rewriting. There is no separate agent-only operational truth: docs and `AGENTS.md`
+  route to the same canonical commands and policy schemas. Every runnable workflow
+  states purpose, authority boundary, prerequisites, supported profiles/hosts,
+  plan/dry-run, exact mutation, structured output and exit statuses, evidence,
+  interruption/resume semantics, rollback/recovery, and Q112 next commands. Branch
+  and CI docs encode the exact feature -> `develop` -> verified mechanical promotion
+  -> `main` -> workspace `release` -> immutable tag chain, strict submodule lock and
+  linked-PR policy, local evidence handoff, waiver limits, solo-maintainer rulesets,
+  and AI-safe/non-interactive contracts. Generated command/schema references come
+  from implementation metadata; documentation validation checks links, command
+  existence/help, stale branch names, forbidden legacy paths, ownership, and release
+  inclusion. Documentation changes follow the same branch hygiene as code and are
+  a required qualified-release input, not a post-release cleanup.
+- **Q131 — Final cutover and legacy-retirement gate:** Settled by delegated
+  authority. Retire the legacy repository and old CLI paths only after one exact
+  candidate passes the complete signed acceptance matrix: clean GC provisioning;
+  raw verified SD imaging and interrupted/resumed aircraft provisioning; Ansible
+  idempotence and offline reconvergence; qualified release creation from the
+  protected release chain; dirty/untracked field build from the GC; component-aware
+  GC/drone deployment; activation, client-loss, power-loss, health failure, and
+  automatic rollback; receiver self-update failure recovery; real/OptiTrack profile
+  switching; native QGC plus PX4 inventory; parameter add/remove/reintroduction,
+  live tuning, arbitrary capture, and promotion; log/diagnostic pull and receipt-
+  based prune; key enrollment/revocation and replacement-computer recovery; host
+  backup, destructive reimage, restore, and recommissioning; signed field readiness;
+  and a fully offline prepared field cycle. The matrix must be executable from the
+  automation-ready runbooks, retain machine-verifiable evidence, and prove that no
+  supported path needs the old repository, onboard Docker, password SSH, source
+  synchronization, or direct aircraft filesystem mutation. Archive the legacy
+  repository read-only with a pointer to replacement commands; do not delete its
+  history.
+- **Q132 — Deployment-redesign scope closure:** Settled by delegated authority.
+  The architecture is closed for implementation after the integrity sweep in this
+  backlog. Future source-repository-independent field operation, actual split-host
+  HIL, profile-specific OptiTrack integration, multiple tracked parameter variants,
+  delta transfer, TLS/private-CA operation, and fleet/per-aircraft identity remain
+  explicitly deferred. This sweep may add only the schemas and boundaries already
+  specified for those futures. Implementation discoveries that contradict a
+  load-bearing decision require an ADR/backlog amendment; ordinary technical choices
+  may proceed within these contracts without reopening the design interview.
+
+### Resolved operational policy defaults
+
+The following defaults close previously qualitative terms such as `fresh`,
+`bounded`, `short-lived`, and `periodic`. They live in versioned policy/manifests,
+are printed by plans and readiness output, and may be tightened by a release or host
+profile. They cannot be weakened below these floors by an ad hoc CLI flag:
+
+- **Safety telemetry (Q12/Q43):** activation preflight requires PX4 telemetry no
+  older than one second and continuously landed/disarmed/no-reference-owner for
+  three seconds before acquiring the mutation lock. Candidate acceptance still
+  requires Q43's independent ten-second stable window.
+- **Receiver self-update (Q32):** the new receiver has 30 monotonic seconds after
+  selector switch to start, reopen its socket, pass self-tests, and prove journal/
+  retained-release compatibility before the bootstrap restores the old slot.
+- **Network mutation (Q36):** preserve Ethernet DHCP throughout; a changed network
+  profile has 90 monotonic seconds to reconnect and receive authenticated
+  confirmation before onboard automatic reversion.
+- **Pre-clock buffering and retained sessions (Q39/Q59):** the degraded-clock ring
+  holds at most 10,000 records or 16 MiB, whichever comes first, drops oldest first,
+  and records a loss counter. Normal retention always protects the current plus four
+  newest completed runtime sessions. Debug output has a 256 MiB per-session ceiling
+  inside the existing global 14-day/1-GiB-or-5-percent cap.
+- **Field signer unlock (Q47):** the host signing agent defaults to eight hours,
+  never exceeds 24 hours, forgets decrypted key material on logout/reboot/explicit
+  lock, and never exposes the private key to builder containers.
+- **Partial upload cleanup (Q51):** verified resumable partials expire after seven
+  days of inactivity unless referenced by an active operation; cleanup never uses
+  wall time alone when the target clock is untrusted.
+- **Clock trust (Q59/Q60):** boot synchronization uses at least five samples,
+  rejects samples with round-trip time above 500 ms, and must verify absolute offset
+  at or below 250 ms before opening the gate. Afterward, time synchronization is
+  slew-only. A detected backward discontinuity above 250 ms or forward discontinuity
+  above two seconds triggers Q60's maintenance-safe transition to
+  `DEGRADED_CLOCK`, or `CLOCK_FAULT_ACTIVE` until maintenance-safe if flight/control
+  is active. Active manual measurement warns above 250 ms and requires
+  stop/gate/resync above one second. Runtime ordering never uses wall time.
+- **PX4 mirror (Q66):** parameter events trigger a two-second-debounced full-set
+  reconciliation; while connected and disarmed, a complete reconciliation also runs
+  every 60 seconds and once at clean session end. Armed/in-flight state is read-only
+  and never starts a bulk parameter transfer.
+- **GC artifact cache (Q71/Q73):** default non-protected cache quota is 50 GiB with
+  at least 10 GiB or 10 percent filesystem free, whichever is greater. Prepared
+  offline sets, installed slots, evidence, captures, keys, and provisioning inputs
+  are protected rather than silently evicted; preparation fails with a size report
+  when they cannot fit.
+- **Backup freshness (Q105/Q108):** freshness is state-based, not merely age-based:
+  a backup is fresh only if its sealed persistent-state generation still matches the
+  target and no declared invalidating mutation has occurred. Readiness additionally
+  warns after 30 days without a newly verified external archive even when state is
+  unchanged.
+- **Mutation authorization (Q115):** receiver nonces expire after five monotonic
+  minutes, are single-use, client/operation/state-bound, and are consumed atomically
+  at mutation-lock acquisition.
+- **Bundle extraction (Q116):** each component archive permits at most 20 GiB
+  unpacked content, 200,000 entries, path length 255 bytes, and path depth 32. The
+  signed manifest declares tighter actual limits; streaming extraction enforces both
+  declared and host limits before committing any privileged path.
+- **Readiness/status age (Q125–Q127):** readiness identity becomes stale immediately
+  when boot ID, release, profile, configuration, commissioning, PX4-required state,
+  mission, GC/QGC pair, or policy hash changes. It is evidence, never authorization.
+  A verified release-status index older than seven days is a warning while offline,
+  never an automatic expiry; online preparation must refresh it or fail visibly.
+
+### Decision-to-implementation coverage index
+
+Every independent normative clause in each decision is an acceptance obligation,
+not merely its title. P5.T0 materializes clauses as stable `Q<question>.c<clause>`
+matrix rows and refuses completion when a clause lacks an owning task and test/
+evidence path. The focused owners below implement and test the decision; P5.T0
+additionally verifies traceability and P5.T1/Q131 exercise the physical end-to-end
+subset. This index is normative and must be updated in the same change as any
+decision or task renumbering.
+
+| Decision | Focused implementation owners |
+|---|---|
+| Q1 | P0.T2, P3.T5, P5.T1 |
+| Q2 | P1.T0, P3.T0, P3.T1, P5.T1 |
+| Q3 | P1.T2, P3.T1, P3.T2, P5.T6 |
+| Q4 | P3.T0, P3.T1, P5.T1 |
+| Q5 | P1.T2, P2.T6, P3.T1, P3.T8, P5.T0 |
+| Q6 | P0.T2, P3.T3, P3.T5 |
+| Q7 | P2.T5, P3.T3, P5.T3 |
+| Q8 | P2.T5, P3.T3, P3.T8 |
+| Q9 | P2.T2, P3.T1, P5.T1 |
+| Q10 | P1.T3, P2.T0, P2.T2 |
+| Q11 | P1.T3, P2.T2, P3.T3 |
+| Q12 | P2.T1, P2.T4, P3.T9 |
+| Q13 | P2.T0, P3.T9 |
+| Q14 | P0.T5, P0.T9, P1.T4 |
+| Q15 | P0.T5, P0.T6, P0.T7, P0.T8 |
+| Q16 | P0.T6, P0.T7, P0.T8, P0.T11 |
+| Q17 | P1.T4 |
+| Q18 | P1.T4, P2.T6 |
+| Q19 | P1.T4, P3.T1, P3.T4 |
+| Q20 | P0.T2, P3.T10 |
+| Q21 | P3.T4, P3.T11 |
+| Q22 | P2.T0, P2.T2, P2.T4, P4.T1 |
+| Q23 | P4.T2 |
+| Q24 | P4.T1, P4.T3 |
+| Q25 | P4.T1 |
+| Q26 | P2.T6, P2.T8, P4.T1 |
+| Q27 | P0.T8, P4.T4 |
+| Q28 | P4.T0, P4.T4 |
+| Q29 | P4.T3, P4.T4 |
+| Q30 | P2.T2, P2.T4, P2.T5, P5.T1 |
+| Q31 | P2.T2, P2.T5 |
+| Q32 | P2.T3, P3.T1 |
+| Q33 | P2.T0, P2.T7 |
+| Q34 | P3.T5, P5.T1 |
+| Q35 | P3.T4, P3.T6, P5.T1 |
+| Q36 | P3.T0, P3.T7 |
+| Q37 | P2.T5, P3.T1, P3.T2, P3.T8 |
+| Q38 | P2.T2, P3.T1, P3.T2, P3.T3 |
+| Q39 | P2.T7 |
+| Q40 | P2.T7, P2.T8 |
+| Q41 | P3.T2, P5.T1 |
+| Q42 | P2.T6, P3.T2 |
+| Q43 | P2.T4 |
+| Q44 | P1.T1, P1.T2, P1.T3, P2.T6 |
+| Q45 | P1.T0, P1.T2 |
+| Q46 | P1.T1 |
+| Q47 | P1.T3, P3.T3, P3.T8 |
+| Q48 | P0.T9, P1.T4 |
+| Q49 | P2.T3, P2.T4 |
+| Q50 | P1.T0, P1.T2, P3.T8 |
+| Q51 | P1.T3, P2.T5 |
+| Q52 | P3.T8, P4.T2, P4.T3 |
+| Q53 | P2.T6, P4.T2 |
+| Q54 | P4.T3 |
+| Q55 | P4.T2, P4.T3 |
+| Q56 | P2.T8, P4.T3 |
+| Q57 | P2.T6, P3.T8, P5.T3 |
+| Q58 | P0.T2, P1.T3, P2.T6, P3.T7 |
+| Q59 | P2.T6, P2.T7, P3.T1, P3.T2, P3.T8 |
+| Q60 | P2.T6, P2.T7, P3.T1, P3.T2 |
+| Q61 | P3.T8, P3.T9 |
+| Q62 | P1.T3, P2.T6, P3.T9 |
+| Q63 | P3.T8, P3.T9 |
+| Q64 | P3.T9, P3.T10 |
+| Q65 | P1.T3, P3.T10 |
+| Q66 | P2.T8, P3.T10 |
+| Q67 | P2.T8, P3.T10, P4.T4 |
+| Q68 | P3.T8 |
+| Q69 | P3.T3, P3.T8 |
+| Q70 | P1.T1, P2.T6, P3.T9 |
+| Q71 | P2.T0, P3.T9 |
+| Q72 | P2.T1, P3.T9 |
+| Q73 | P1.T0, P1.T2, P2.T6, P3.T8, P3.T9, P5.T0 |
+| Q74 | P0.T2, P1.T3, P1.T5, P2.T6, P5.T0 |
+| Q75 | P1.T3, P1.T5, P2.T1 |
+| Q76 | P4.T0, P4.T1 |
+| Q77 | P4.T1 |
+| Q78 | P1.T5, P4.T0 |
+| Q79 | P4.T0, P4.T1 |
+| Q80 | P4.T1, P4.T3 |
+| Q81 | P1.T5 |
+| Q82 | P1.T5 |
+| Q83 | P1.T5, P2.T1, P2.T6 |
+| Q84 | P1.T5 |
+| Q85 | P1.T3, P1.T5 |
+| Q86 | P0.T2, P1.T3, P2.T6 |
+| Q87 | P1.T5, P2.T1, P2.T6 |
+| Q88 | P1.T5, P2.T6 |
+| Q89 | P1.T1, P2.T6, P2.T8 |
+| Q90 | P2.T6, P2.T8 |
+| Q91 | P0.T3, P2.T0, P2.T2, P3.T1 |
+| Q92 | P1.T2, P1.T3 |
+| Q93 | P1.T0, P1.T2, P3.T1 |
+| Q94 | P1.T2 |
+| Q95 | P1.T2 |
+| Q96 | P2.T2, P3.T2 |
+| Q97 | P2.T4 |
+| Q98 | P0.T2, P2.T6, P4.T0 |
+| Q99 | P0.T2, P1.T3, P2.T6, P3.T7, P3.T10 |
+| Q100 | P0.T0 |
+| Q101 | P3.T0, P3.T1 |
+| Q102 | P3.T0, P3.T11 |
+| Q103 | P3.T0, P3.T11 |
+| Q104 | P2.T8, P3.T11 |
+| Q105 | P2.T8, P3.T4, P3.T11 |
+| Q106 | P2.T2, P3.T11, P4.T2 |
+| Q107 | P3.T0, P3.T1 |
+| Q108 | P3.T1, P3.T5, P3.T6, P3.T9, P3.T10, P5.T1 |
+| Q109 | P2.T8, P5.T1 |
+| Q110 | P3.T4, P5.T1 |
+| Q111 | P3.T5, P5.T1 |
+| Q112 | P0.T11, P0.T12, P5.T2 |
+| Q113 | P0.T12, P2.T2, P2.T3, P2.T6 |
+| Q114 | P2.T2, P2.T6 |
+| Q115 | P0.T2, P2.T2 |
+| Q116 | P1.T3 |
+| Q117 | P1.T4 |
+| Q118 | P0.T5, P1.T4, P5.T0 |
+| Q119 | P1.T4, P2.T8 |
+| Q120 | P0.T5, P0.T6, P1.T4 |
+| Q121 | P0.T5, P1.T4, P5.T0 |
+| Q122 | P0.T5, P1.T4, P5.T0 |
+| Q123 | P1.T4 |
+| Q124 | P0.T9, P1.T4 |
+| Q125 | P2.T6, P5.T0 |
+| Q126 | P0.T12, P2.T6, P5.T0 |
+| Q127 | P0.T2, P1.T4, P2.T0, P2.T6, P3.T4, P5.T0 |
+| Q128 | P2.T5, P3.T3, P3.T8, P3.T11, P5.T0 |
+| Q129 | P2.T8, P5.T0 |
+| Q130 | P0.T11, P0.T12, P5.T2, P5.T3, P5.T4, P5.T5 |
+| Q131 | P0.T4, P5.T0, P5.T1, P5.T6 |
+| Q132 | P0.T0, P5.T0 |
+
+### Execution and completion contract
+
+Phase numbers express architectural layering, not a strict waterfall. P0 contract
+tasks gate any dependent implementation. P5.T0 and P5.T2 are bootstrap work: the
+clause-level verification matrix and documentation ownership/validation framework
+must exist before an implementation task can be marked complete. P1 artifact work,
+P2 receiver/CLI work, P3 host/GC provisioning, and P4 configuration work may then
+proceed in parallel only where their referenced contracts are already fixed.
+
+A task is implementation-ready when every predecessor named by its phase delivery
+order or acceptance criteria has a fixed contract, its owning repository is known,
+and its required test environment is available or explicitly represented by a
+scripted signed local/physical acceptance row. A task is complete only when all of
+its acceptance items pass, its tests and matrix rows retain evidence, affected
+canonical documentation is updated, dependency-lock/submodule policy is satisfied,
+and no work is hidden in TODOs or deferred acceptance. Partial implementation keeps
+the task In-Progress; it does not create an implicit follow-up task.
 
 ## Incomplete
 
@@ -152,30 +2011,25 @@ The exact paths remain subject to grilling, but the design starts from:
 
 Phase acceptance:
 
-- [ ] Every open decision that affects implementation has an agreed answer.
+- [x] Every open decision that affects implementation has an agreed answer.
 - [ ] Domain terms and architecture decisions are recorded without duplicating
       runtime ownership already defined by the existing ADRs.
 - [ ] Release, configuration, safety, and recovery contracts are concrete enough
       for later tasks to be implemented independently.
 
-#### P0.T0: Complete The Deployment Design Interview
+Delivery order:
 
-Description:
-Use the `grill-me` decision tree to resolve target hardware, platform, image,
-release, transport, safety, configuration, security, fleet, recovery, and
-operational policy. Update this context and downstream tasks after every answer.
-
-Acceptance:
-
-- [ ] The open decision register contains no implementation-blocking ambiguity.
-- [ ] Rejected alternatives and their load-bearing reasons are retained.
-- [ ] Dependencies between decisions are reflected in phase/task ordering.
-
-Tests:
-
-- Manual backlog review against the settled decision record.
+1. Record the closed decisions as domain language, ADRs, and contracts in P0.T1–P0.T3.
+2. Implement governance policy primitives and audits in P0.T5–P0.T12; these may
+   proceed in parallel once manifest and branch contracts are fixed.
+3. Complete P0.T4's retirement mapping before replacement implementation, but do
+   not archive or remove anything until Q131 and all P5 acceptance gates pass.
 
 #### P0.T1: Record Deployment Domain Language And ADRs
+
+**Status: Completed (2026-08-25).** Added the indexed deployment bounded context
+and ADRs 0006–0009. Verification: required-term search passed and the deployment
+contract/documentation suite passed (18 tests).
 
 Description:
 Add deployment terms to the workspace domain documentation and record decisions
@@ -185,10 +2039,12 @@ session, activation, acceptance, and rollback.
 
 Acceptance:
 
-- [ ] `CONTEXT.md` or an indexed deployment `CONTEXT.md` defines stable terms.
-- [ ] ADRs record repository ownership, offboard-only builds, immutable release
+- [x] `CONTEXT.md` or an indexed deployment `CONTEXT.md` defines stable terms.
+- [x] ADRs record repository ownership, offboard-only builds, immutable release
       activation, and persistent configuration separation where warranted.
-- [ ] Existing Operations Interface and runtime ownership ADRs are not reopened.
+- [x] ADRs record release-status withdrawal, total-credential-loss recovery,
+      portable local-record archives, readiness semantics, and final cutover.
+- [x] Existing Operations Interface and runtime ownership ADRs are not reopened.
 
 Tests:
 
@@ -196,24 +2052,46 @@ Tests:
 
 #### P0.T2: Specify Release And Compatibility Manifests
 
+**Status: Completed (2026-08-25).** Added strict v1 release, release-status,
+operational-policy, and portable-record schemas; qualification, target
+compatibility, monotonic withdrawal, content identity, and anti-weakening APIs;
+and clean/dirty/incompatible/incomplete/tampered fixtures. Verification: JSON
+syntax validation and deployment suite passed (30 tests).
+
 Description:
-Define versioned schemas for release identity, source provenance, target
+Define versioned schemas for native release identity, source provenance, target
 platform, dependency lock, toolchain, included packages, checksums, configuration
 schema compatibility, PX4 compatibility, and qualification evidence. Define
 which fields are required for qualified versus field-development releases.
 
 Acceptance:
 
-- [ ] Manifests identify clean, dirty, modified-submodule, and untracked-source states.
-- [ ] A target can reject an incompatible artifact before runtime shutdown.
-- [ ] A release and exported tuning capture can be correlated unambiguously.
-- [ ] Manifest schemas reject unknown incompatible versions.
+- [x] Manifests identify clean, dirty, modified-submodule, and untracked-source states.
+- [x] Manifest classification refuses qualified status unless branch, clean
+      state, lock, test evidence, version tag, signer, and explicit action all comply.
+- [x] A target can reject an incompatible artifact before runtime shutdown.
+- [x] A release and exported tuning capture can be correlated unambiguously.
+- [x] The release-status schema is append-only, independently signed, bound to an
+      exact qualified release, and represents `qualified`, `withdrawn`, and `unsafe`.
+- [x] Readiness, commissioning, evidence, backup, capture, operation, and archive
+      manifests use explicit schema versions and content identities that can be
+      cross-referenced without embedding local absolute paths.
+- [x] One versioned operational-policy schema carries every value in “Resolved
+      operational policy defaults”; plans/results record its hash, reject unknown
+      incompatible policy versions, and do not permit per-command weakening.
+- [x] Manifest schemas reject unknown incompatible versions.
 
 Tests:
 
 - Schema validation fixtures for clean, dirty, incompatible, incomplete, and tampered manifests.
 
 #### P0.T3: Specify Filesystem, Ownership, And Persistence Contracts
+
+**Status: Completed (2026-08-25).** Added the versioned onboard filesystem,
+ownership, persistence, unit, reserve, and fixed receiver-protocol contracts;
+ROS-independent path/storage APIs; and packaged schema/policy assets. Verification:
+temporary-root, hostile-input, reserve, import, and wheel-content checks passed
+(36 tests plus isolated wheel inspection).
 
 Description:
 Finalize release, persistent data, secret, log, and transient paths; ownership;
@@ -222,16 +2100,28 @@ rollback, OS reboot, and physical reimage.
 
 Acceptance:
 
-- [ ] Production runtime has no dependency on `/home/iii/ws` or source paths.
-- [ ] Release activation cannot overwrite persistent aircraft configuration.
-- [ ] Secrets never enter release bundles or Git.
-- [ ] Disk exhaustion behavior is explicit and testable.
+- [x] Production runtime has no dependency on `/home/iii/ws` or source paths.
+- [x] Release activation cannot overwrite persistent aircraft configuration.
+- [x] Secrets never enter release bundles or Git.
+- [x] Disk exhaustion behavior is explicit and testable.
+- [x] The `deployment/` Python distribution is ROS-independent, packages its
+      schemas/declarative assets, and exposes one policy API consumed by CLI,
+      receiver, Ansible/host tooling, tests, and CI without cyclic imports.
+- [x] Privileged receiver entry points expose only fixed schema-validated actions;
+      unprivileged CLI/build/archive code can be installed without root authority.
 
 Tests:
 
 - Filesystem contract test against a temporary target root.
 
 #### P0.T4: Plan Legacy Deployment Retirement
+
+**Status: Completed (2026-08-25).** Inventoried legacy commit
+`4ab4ae76013ba3ff904189777e7c97af107d94e1`, preserved non-authoritative USB
+observations, mapped every behavior to its replacement or explicit rejection,
+and documented the signed Q131 archive gate. No archival mutation was performed.
+Verification: retirement and documentation contract suite passed (38 tests);
+remaining active setup-variable removal is owned by P5.T6 cutover.
 
 Description:
 Inventory any remaining authoritative data in `III-Drone-deployment`, migrate
@@ -241,13 +2131,238 @@ runtime or mutable workspace synchronization.
 
 Acceptance:
 
-- [ ] Every retained legacy behavior has an explicit destination and rationale.
-- [ ] No current documentation directs operators to the legacy repository.
-- [ ] Archival occurs only after replacement provisioning and field update paths pass acceptance.
+- [x] Every retained legacy behavior has an explicit destination and rationale.
+- [x] No current documentation directs operators to the legacy repository.
+- [x] Archival occurs only after replacement provisioning and field update paths pass acceptance.
 
 Tests:
 
 - `rg -n "III-Drone-deployment|docker-compose.yml" README.md docs setup scripts tools deployment`
+
+#### P0.T5: Implement Required Promotion-Source CI
+
+**Status: Completed (2026-08-25).** Added the versioned branch and change-impact
+policies, exact source/base and mechanical-diff gate, governed source-content
+identity, Ed25519 evidence verification, waiver limits, and the required
+least-privilege CI job. Release maps governed submodules to `main`; no submodule
+`release` branch is assumed. Verification: policy/signature/waiver fixtures,
+workflow YAML validation, and deployment suite passed (51 tests).
+
+Description:
+Add a required CI job that validates allowed source/base combinations and the
+content provenance of mechanical promotion branches. Permit feature/work-sweep
+branches into `develop`, only verified `promote/develop-to-main/*` branches into
+`main`, and only `main` into workspace `release`. Prove that a main promotion
+was cut from `develop` and differs only by expected post-submodule-merge gitlink
+and lock refresh. Remove stale `staging` assumptions and map workspace release
+checks to III submodule `main` rather than nonexistent submodule release branches.
+
+Acceptance:
+
+- [x] Feature work cannot target `main` or `release` directly.
+- [x] Main promotion accepts only a verified develop-derived mechanical
+      promotion branch needed for submodule gitlink refresh.
+- [x] Develop-to-main promotion cannot merge without Q118's valid signed local
+      simulation/physical evidence for the tested source-content identity.
+- [x] Required evidence categories are derived and explained by the final Q121
+      versioned impact policy; reductions require a signed retained waiver.
+- [x] Release accepts only workspace `main`, and no release branch is required
+      in each submodule repository.
+- [x] Release PR checks compare governed III gitlinks with exact submodule
+      `origin/main` heads and verify the dependency lock.
+
+Tests:
+
+- CI fixtures for allowed feature-to-develop, develop-derived promotion-to-main,
+  main-to-release, and rejected source/base combinations.
+
+#### P0.T6: Protect Workspace Integration And Release Branches
+
+**Status: In-Progress.**
+
+Description:
+Create active GitHub rulesets for workspace `develop`, `main`, and the new
+long-lived `release` branch. Require pull requests, the settled approval policy,
+resolved review threads, promotion-source CI, dependency-governance checks, and
+the applicable III test suite. Prevent deletion and non-fast-forward updates;
+define narrowly justified bypass actors, if any.
+
+Acceptance:
+
+- [ ] `develop`, `main`, and `release` rulesets are active and target only their
+      intended refs.
+- [ ] Required checks block merge when pending, failing, or absent.
+- [ ] Workspace `main` requires the promotion-evidence check; workspace `release`
+      requires proof-based evidence reuse or recollection according to Q120.
+- [ ] Direct pushes, deletion, and force-pushes are blocked according to policy.
+- [ ] The rulesets contain no undocumented bypass.
+
+Tests:
+
+- Read-only GitHub ruleset audit plus controlled allowed/rejected test PRs.
+
+#### P0.T7: Protect Editable III Submodule Branches
+
+**Status: In-Progress.**
+
+Description:
+Create matching active GitHub rulesets for `develop` and `main` in each editable
+`src/III-*` and `tools/III-*` repository. Require feature-to-develop and verified
+develop-derived promotion-to-main pull requests, applicable package checks, and
+the settled review policy. Do not create submodule `release` branches.
+
+Acceptance:
+
+- [ ] Every editable III repository has active `develop` and `main` protection.
+- [ ] Direct pushes, deletion, force-pushes, and invalid promotion sources are blocked.
+- [ ] Workspace linked-PR checks and submodule rulesets agree on target branches.
+- [ ] Third-party and forked repositories are not mutated by this task.
+
+Tests:
+
+- Organization-wide read-only ruleset audit and representative controlled PR checks.
+
+#### P0.T8: Update Coordinated Promotion Automation
+
+Description:
+Update `scripts/git/create_stack_prs.sh`,
+`scripts/git/create_develop_to_main_prs.sh`, pointer-refresh scripts, manual
+GitHub workflow inputs, and documentation to use the agreed
+feature -> develop -> verified promotion -> main flow. Give mechanical branches
+the `promote/develop-to-main/*` namespace and make their allowed diff auditable.
+Add a main-to-release helper or documented direct PR workflow that cannot carry
+release-only implementation changes.
+
+Acceptance:
+
+- [ ] Dry-run remains the default for local automation that pushes or opens PRs.
+- [ ] Main promotion creates/updates linked submodule PRs, refreshes resulting
+      main gitlinks and the lock, and satisfies P0.T5.
+- [ ] Main-to-release promotion carries exactly the main workspace state.
+- [ ] Old `staging` and ambiguous `release/develop-to-main-*` terminology is removed.
+
+Tests:
+
+- Shell tests with fake Git/GitHub adapters for feature, main-promotion, pointer
+  refresh, rerun/idempotence, and main-to-release flows.
+
+#### P0.T9: Protect Qualified Tags And Release Entry Points
+
+Description:
+Define immutable `vX.Y.Z` tag rules and enforce that qualified release builds
+and deploy actions accept only clean tagged commits reachable from workspace
+`release`. Field-development builds remain available from any branch and dirty
+state but cannot request, imitate, or replace qualified status.
+
+Acceptance:
+
+- [ ] Qualified tags cannot be moved or deleted through normal developer access.
+- [ ] A tag outside workspace `release` cannot produce a qualified manifest.
+- [ ] Missing/dirty/lock-divergent/test-incomplete release state fails closed.
+- [ ] Only an accepted qualified deployment replaces the protected recovery anchor.
+
+Tests:
+
+- Qualification fixtures for valid release tags and invalid branch, dirty,
+  moved-tag, lock, evidence, and field-release cases.
+
+#### P0.T10: Audit Governance Enforcement
+
+Description:
+Add a read-only audit command or script that compares repository policy with the
+actual GitHub rulesets for the workspace and editable III submodule repositories.
+Run it during release preparation and document remediation for drift.
+
+Acceptance:
+
+- [ ] Audit reports missing branches, rulesets, required checks, source gates,
+      tag protection, and unexpected bypass actors.
+- [ ] Output is concise enough to retain as qualified-release evidence.
+
+Tests:
+
+- Read-only GitHub ruleset audit script verifies expected enforcement across
+  the workspace and editable III submodule repositories.
+
+#### P0.T11: Define CI/CD And AI Automation Contracts
+
+Description:
+Define one composable automation contract for feature PR creation, stacked
+submodule PR orchestration, develop-to-main promotion, main-to-release
+promotion, qualification, artifact retrieval, and deployment handoff. Commands
+must work for humans, CI jobs, and AI agents without parsing decorative terminal
+text or relying on an interactive shell. Separate planning, policy validation,
+mutation, and reporting so every write is previewable and attributable.
+
+Acceptance:
+
+- [ ] Every operation supports non-interactive invocation, preflight/dry-run,
+      stable exit codes, and versioned structured output in addition to concise
+      human output.
+- [ ] Every result exposes Q112-compliant context-aware next commands in human and
+      structured output without bypassing mutation planning or confirmation.
+- [ ] Plans identify exact repositories, refs, expected old/new SHAs, checks,
+      permissions, and mutations before any push, PR, merge, tag, or publication.
+- [ ] Mutating runs have an operation ID, persist sufficient state to resume or
+      safely retry, and report partial success with deterministic recovery steps.
+- [ ] Local and CI entry points call the same policy/build primitives rather
+      than implementing branch or qualification rules twice.
+- [ ] GitHub workflows use least-privilege job permissions, pinned actions,
+      concurrency controls, timeouts, immutable artifacts, and explicit trusted
+      event boundaries for write-capable jobs.
+- [ ] AI-agent guidance states allowed operations, required checks, dirty-tree
+      handling, submodule policy, and when explicit maintainer intent is needed.
+- [ ] PR bodies and workflow summaries carry machine-readable markers and
+      human-readable evidence without allowing PR text to become trusted input.
+
+Tests:
+
+- Contract tests for JSON/schema output and exit codes; fake Git/GitHub tests
+  for plan/apply, interrupted runs, retries, stale refs, partial submodule PR
+  creation, permission denial, and untrusted PR metadata.
+
+#### P0.T12: Implement The Universal III CLI Result And Operation Contract
+
+Description:
+Implement the P0.T11/Q112 contract once in `tools/III-Drone-CLI` and migrate every
+existing and new `iii` command—not only deployment commands—to it. Introduce a
+versioned result envelope containing command identity, outcome, stable finding/error
+codes, operation ID/state where applicable, affected target/profile/release, evidence
+references, and ordered `next_actions[]`. Render human output from the same envelope
+so decorative text cannot disagree with JSON. Centralize operation-state storage,
+Ctrl-C detach reporting, and exit-code mapping while allowing command-specific
+payload schemas. Help and parser errors must use the same next-action mechanism.
+
+Acceptance:
+
+- [ ] One result library and schema are used by `iii system`, build/deploy/release,
+      host/GC/QGC/PX4, mission/config/capture/log/records, governance, field, and
+      documentation commands; no command maintains a private incompatible envelope.
+- [ ] Every success, no-op, warning, rejection, failure, partial result,
+      interruption/detach, cancellation, and help/parser result contains at least
+      one valid context-aware next action or an explicit terminal-state reason when
+      no command can follow.
+- [ ] Human `Next:` rendering and structured `next_actions[]` are generated from
+      identical data and identify command, reason, mutation flag, prerequisites,
+      target/profile/operation arguments, and confirmation requirements.
+- [ ] Stable exit-code families distinguish success, completed-with-warning,
+      policy/safety rejection, execution failure, usage error, and internal error;
+      accepted remote work interrupted by Ctrl-C reports conventional interruption
+      while retaining operation ID and exact reattach command.
+- [ ] Structured output written to stdout is machine-clean; progress and diagnostics
+      use declared stderr/event channels and never require ANSI/decorative parsing.
+- [ ] Non-interactive mode refuses prompts, returns a structured required-input
+      finding, and never silently accepts a default for destructive or external
+      mutation. Interactive and non-interactive paths invoke the same plan/policy.
+- [ ] Existing CLI commands are inventory-tested for coverage, including commands
+      implemented in editable submodules and forwarded local/remote variants.
+
+Tests:
+
+- Result-schema golden tests, human/JSON equivalence, exit-code matrix, stdout
+  cleanliness, help/parser failures, prompt refusal, next-action argument escaping,
+  every-command inventory coverage, remote detach/reattach, and no-next-action
+  terminal-state fixtures.
 
 ### P1: Build Reproducible Offboard Releases
 
@@ -256,6 +2371,16 @@ Phase acceptance:
 - [ ] Neither qualified nor field-development release construction executes on an aircraft.
 - [ ] The same target contract drives laptop and CI builders.
 - [ ] Built output is immutable, complete, attributable, and target-compatible.
+- [ ] Once required caches exist, field-development releases can be built and
+      packaged without internet access.
+
+Delivery order:
+
+1. P1.T0 fixes the target ABI and host/release dependency boundary.
+2. P1.T1 and P1.T2 may then proceed in parallel; both feed P1.T3.
+3. P1.T5 may proceed once P0 manifests and package installation contracts are
+   fixed, but its output must be consumed by P1.T3.
+4. P1.T4 qualifies and publishes only the already-tested P1.T3 artifact format.
 
 #### P1.T0: Establish The Canonical ARM64 Target Environment
 
@@ -270,6 +2395,9 @@ Acceptance:
 - [ ] `setup_real.bash`, build images, and manifest target metadata agree.
 - [ ] Builder inputs are digest-pinned and reproducible.
 - [ ] Target incompatibility is detected before transfer or activation.
+- [ ] The target definition distinguishes the final Q93 Ansible-owned host
+      baseline from release-local dependencies and records compatible package/
+      ABI constraints without requiring an aircraft-derived sysroot.
 
 Tests:
 
@@ -289,6 +2417,9 @@ Acceptance:
 - [ ] Modified submodules and untracked source change the identity.
 - [ ] Secrets, build trees, logs, datasets, and unrelated artifacts are excluded.
 - [ ] A human-readable provenance report accompanies every field-development release.
+- [ ] Change-impact analysis selects GC-only, drone-only, or paired artifacts from
+      the governed dependency graph and explains every cause; unsafe manual
+      component omission fails closed.
 
 Tests:
 
@@ -308,7 +2439,17 @@ Acceptance:
 - [ ] No build action is sent to the aircraft.
 - [ ] Incremental field builds reuse caches without contaminating release output.
 - [ ] The output contains no absolute developer-workspace dependencies.
+- [ ] Release output follows the final Q92 colcon layout, includes a release-owned
+      environment wrapper, resolves package data through ament, and contains no
+      source/build/log tree or development symlink escaping the release root.
 - [ ] Failed partial builds cannot be packaged as complete releases.
+- [ ] All non-host runtime dependencies declared by Q93 are present inside the
+      immutable release and verified without apt/pip/network access on target.
+- [ ] Python dependency packaging follows the final Q94 target-ABI, lock, hash,
+      import-validation, and release-local path contract without embedding builder
+      paths or requiring a relocatable virtualenv.
+- [ ] Native library closure follows the final Q95 host allowlist/bundling/RUNPATH
+      contract and passes complete ELF dependency validation before packaging.
 
 Tests:
 
@@ -318,20 +2459,157 @@ Tests:
 #### P1.T3: Package And Verify Release Bundles
 
 Description:
-Package the install tree, release manifest, installed runtime assets, migration
-metadata, and checksums into a transportable artifact. Add signing after the
-key policy is settled. Keep generated bundles outside Git.
+Produce paired but independently installable drone and GC artifacts under one
+workspace release record. Package the native ARM64 install tree, installed runtime
+assets and migrations for the drone; package pinned frontend/proxy images, CLI/
+companion payloads, and host-native GC application metadata separately. Declare
+exact API/schema compatibility ranges and checksums. Sign every bundle according
+to the trusted-signer policy. Keep generated bundles and private signing keys
+outside Git.
 
 Acceptance:
 
 - [ ] Extraction recreates a complete release without source/build trees.
 - [ ] Corruption or manifest/content disagreement is detected.
+- [ ] Unsigned, unknown-signer, and invalid-signature bundles are rejected.
+- [ ] Signer add/list/revoke operations support key rotation without sharing
+      private material or accidentally removing the final trusted signer.
 - [ ] Qualified and field-development release classes share one artifact format.
+- [ ] Paired GC/drone artifacts share release identity and compatibility evidence
+      while remaining independently verifiable, installable, and rollbackable.
+- [ ] Release records bind exact real/sim PX4 parameter-manifest and managed QGC-
+      settings hashes plus their compatible PX4/QGC versions.
+- [ ] Profile support is extensible release metadata rather than a hard-coded
+      sim-local/real-remote dichotomy; uncommissioned profiles fail closed.
 - [ ] Bundle contents and compressed size are inspectable before deployment.
+- [ ] Bundle serialization, detached verification, extraction limits, path/link/
+      special-file rejection, and schema versioning follow the final Q116 format;
+      filenames and archive hooks are never trusted.
+- [ ] Streaming extraction enforces both manifest-declared and host ceilings of
+      20 GiB unpacked data, 200,000 entries, 255-byte paths, and depth 32 before
+      privileged commit; limit violations leave no staged release.
 
 Tests:
 
 - Round-trip package/extract/verify and tampered-content rejection.
+
+#### P1.T4: Implement The Qualified Release CI/CD Pipeline
+
+Description:
+Implement the settled qualified-artifact producer policy as a protected,
+reproducible pipeline. Starting from an immutable `vX.Y.Z` tag on workspace
+`release`, independently revalidate governance and source state, build/test the
+ARM64 target and x86_64 GC application, assemble evidence, sign both paired
+artifacts, publish them immutably, and make
+it retrievable by the III CLI for local deployment to `iii.local`. A CI system
+must never require network reachability to the aircraft.
+
+Acceptance:
+
+- [ ] Qualification starts only from an immutable version tag whose commit is
+      on workspace `release` and whose dependency state passes all policy gates.
+- [ ] The required `develop -> main` promotion-evidence check verifies Q118's
+      signed local attestation against source-content identity and change-derived
+      simulation/physical categories without running Gazebo or contacting an
+      aircraft in GitHub-hosted CI; `main -> release` revalidates or recollects it
+      according to the final Q120 reuse contract.
+- [ ] Build inputs, test results, manifests, checksums, signer identity, logs,
+      and artifact identity are retained as one auditable release record.
+- [ ] Qualified payload reproducibility follows Q117's single clean pinned-build
+      contract; optional rebuild comparison is diagnostic rather than a release gate.
+- [ ] Rerunning a version is idempotent and cannot silently replace a published
+      artifact with different bytes.
+- [ ] Publication and signing jobs receive only the minimum required secrets
+      and cannot run for untrusted pull-request code.
+- [ ] The dedicated Ed25519 CI key is isolated in a protected Actions
+      environment, its public identity is included in evidence, and documented
+      rotation/revocation does not require sharing private key material.
+- [ ] The III CLI can list, fetch, verify, cache, and deploy a qualified artifact
+      while actual aircraft transfer remains a local operator action.
+- [ ] Publication maintains an append-only signed release-status index and can
+      publish Q127 withdrawal/unsafe statements without mutating tags or assets.
+- [ ] `iii release status set` uses trusted `release`-branch workflow code,
+      monotonic transition rules, protected environment authority, serialized
+      sequence allocation, immutable non-SemVer `iii-status-<sequence>` publication,
+      and cannot execute or sign user-supplied code/data outside the status schema.
+- [ ] `iii release list/show/fetch` verifies and reports cached release status;
+      withdrawn releases cannot be newly fetched as deployable and unsafe status
+      is never hidden by an offline or stale cache.
+- [ ] A version tag is only an immutable qualification attempt trigger, not proof
+      of a qualified release. Failed qualification retains the protected tag and
+      failure evidence, publishes no deployable release/artifact, marks that SemVer
+      version unusable, and requires a new version for the next attempt.
+- [ ] Deployment-focused human/structured release notes follow the final Q123
+      machine-derived contract and are identical in GitHub publication and
+      `iii release show`, with prose unable to mask manifest facts.
+
+Tests:
+
+- Workflow tests for valid tag, wrong branch, stale policy, dirty/impossible
+  source claim, failed ARM64 build/test, signing failure, duplicate version,
+  tampered download, signed withdrawal/unsafe publication, stale/invalid status
+  index, and successful offline deployment from a populated cache.
+
+#### P1.T5: Build And Validate Mission Catalog Artifacts
+
+Description:
+Turn release-approved mission specifications, behavior trees, models, and their
+transitive references into a signed immutable catalog sub-artifact. Replace
+source-tree/environment-expanded runtime paths with catalog-relative content IDs,
+bind compatibility to behavior-node/interface/runtime identities, and classify
+production, profile-limited, test, and legacy entries explicitly.
+
+Acceptance:
+
+- [ ] Every catalog entry has stable logical name, content hash, schema, status,
+      profile allowlist, compatibility hashes, and complete referenced assets.
+- [ ] Missions are declared through the final Q84 CMake registration contract;
+      duplicate IDs, missing specifications, unknown profiles, missing
+      classification, and incompatible profile defaults fail configuration/build.
+- [ ] Validation rejects missing/escaping/absolute references, duplicate IDs,
+      malformed YAML/XML, unavailable behavior nodes/ports, incompatible contracts,
+      and unclassified test/legacy content.
+- [ ] Behavior-node registration and the generated node/port model share one
+      authoritative descriptor; validation fails if runtime registration, model
+      generation, XML use, or port contracts diverge.
+- [ ] Qualified onboard allowlists contain only production missions; local-only
+      test and legacy missions cannot enter any drone catalog.
+- [ ] Local catalogs retain all classified development entries, while drone
+      catalogs contain only onboard-profile (`real`, `opti_track`, future `hil`)
+      entries and always omit sim-only/test/legacy metadata and assets. The final
+      Q87 contract governs explicitly onboard-compatible experimental entries.
+- [ ] Experimental entries pass production-grade validation, are impossible to
+      publish in qualified artifacts, remain visibly marked in CLI/runtime state,
+      and follow the final Q88 field-bundle inclusion contract.
+- [ ] Paired GC/drone release manifests bind the exact catalog hash, while the
+      installed immutable catalog is packaged independently of source directories.
+- [ ] Package-owned custom generators/validators run from CMake, emit only
+      deterministic build-tree outputs, and establish the required mission-
+      specification/behavior-tree dependency closure without mutating source files.
+- [ ] CMake installs the catalog and all referenced assets beneath
+      `share/iii_drone_mission`; runtime resolves them through the ament package
+      index and catalog identities in both simulation and deployed profiles, with
+      no `WORKSPACE_DIR`, source-checkout, or absolute-path fallback.
+- [ ] Simulation preflight detects when mission sources and the installed catalog
+      differ, automatically runs the targeted mission-package build/install/
+      validation step, and never launches stale or invalid assets.
+- [ ] Asset-only dirty changes can create a dependency-complete field artifact
+      without recompiling unaffected code and without bypassing signing/validation.
+- [ ] Runtime mission selection accepts catalog IDs rather than filesystem paths,
+      enforces profile allowlists and the final Q83 safety/persistence contract,
+      and transactionally restores the previous entry after rebuild failure.
+- [ ] `iii mission status/list/list --all/show/select` and `select --default` expose active
+      identity, hash, profile compatibility, classification, resolved dependencies,
+      release default, temporary override state, runtime readiness, and safe
+      selection without displaying or accepting target filesystem paths; `--all`
+      explains incompatible and unavailable entries rather than hiding them.
+
+Tests:
+
+- Valid multi-tree closure, malformed/missing/escaping reference, duplicate name,
+  unavailable node/port, compatibility mismatch, production/test classification,
+  qualified allowlist, asset-only build, install-space-only sim/real lookup,
+  source-tree absence, tamper, and deterministic rebuild tests.
 
 ### P2: Implement Transactional Onboard Release Management
 
@@ -339,7 +2617,18 @@ Phase acceptance:
 
 - [ ] A staged release never mutates the active release.
 - [ ] Activation, health acceptance, and rollback survive command interruption and power loss.
+- [ ] An onboard host component completes or rolls back accepted transactions
+      without requiring the CLI, SSH connection, network, or operator computer.
 - [ ] Runtime safety gates prevent deployment during aircraft operation.
+
+Delivery order:
+
+1. Implement P2.T0 staging and P2.T2 receiver transaction/journal primitives.
+2. Add P2.T3 receiver A/B self-update compatibility, then P2.T1 safety
+   authorization and P2.T4 health/rollback before production activation.
+3. Add P2.T5 transport and P2.T6 CLI orchestration only through those primitives.
+4. P2.T7 logging and P2.T8 local records integrate before end-to-end evidence or
+   destructive host workflows are considered complete.
 
 #### P2.T0: Implement Release Staging And Retention
 
@@ -352,17 +2641,29 @@ Acceptance:
 
 - [ ] Re-staging the same release is idempotent.
 - [ ] An active or rollback release cannot be garbage-collected.
+- [ ] Field-development retention preserves the active and immediately previous
+      field release plus the protected qualified anchor.
+- [ ] Only an explicitly qualified release can replace the protected anchor.
 - [ ] Insufficient storage fails before modifying runtime state.
+- [ ] The unprivileged SSH account cannot directly modify active release paths.
+- [ ] Only bundles with a trusted signature and valid checksums can enter the
+      privileged staged-release area.
+- [ ] Q127 release status is checked before staging and again immediately before
+      activation; `withdrawn` and `unsafe` candidates fail closed.
+- [ ] A newly learned unsafe status never deletes an installed release or causes
+      an autonomous selector switch; the target exposes its recovery-only state
+      and blocks flight-capable operation as specified by Q127.
 
 Tests:
 
 - Temporary-root tests for first install, duplicate install, low disk, retention,
-  interrupted extraction, and corrupt staging.
+  interrupted extraction, corrupt staging, withdrawn candidate, unsafe active/
+  anchor release, stale status index, and last-resort recovery-only behavior.
 
 #### P2.T1: Implement Safety-Gated Activation
 
 Description:
-Before stopping runtime, verify aircraft identity, release compatibility, fresh
+Before stopping runtime, verify the shared logical target identity, release compatibility, fresh
 PX4 state, control ownership, Mission Execution state, and configuration
 migration readiness according to the settled maintenance policy. Persist the
 transaction before each irreversible step.
@@ -370,20 +2671,111 @@ transaction before each irreversible step.
 Acceptance:
 
 - [ ] Activation is rejected while safety state is stale or operational gates fail.
-- [ ] Any maintenance override is explicit, audited, narrowly authorized, and cannot be accidental.
+- [ ] The maintenance override is interactive, audited, narrowly authorized,
+      stops all III units first, requires physical-safety confirmation, and is
+      unavailable to unattended scripts by default.
 - [ ] Activation never starts Mission Execution or a Direct Operation.
+- [ ] Activation switches code, configuration checkpoint, and mission catalog as
+      one compatible release transaction; rollback restores the matching catalog.
+- [ ] Real runtime rejects mission selection by arbitrary filesystem path and
+      records exact catalog/spec/tree IDs for selection and execution evidence.
 
 Tests:
 
 - State-matrix tests for landed/disarmed, armed, airborne, Mission-owned,
   Custom Operation, stale PX4, unavailable runtime API, and maintenance override.
 
-#### P2.T2: Implement Activation Health And Automatic Rollback
+#### P2.T2: Implement The Onboard Deployment Receiver
+
+Description:
+Create a minimal host-installed, root-owned deployment receiver that validates
+structured requests and owns the privileged filesystem, transaction journal,
+release selector, systemd, authorized-key, and host-configuration mutations
+needed by deployment. Install and supervise it independently from replaceable
+III releases. Once it accepts activation, it—not the remote CLI—owns health
+deadlines, durable acceptance, rollback, and boot reconciliation. Expose only
+the settled narrow authenticated command transport; reject arbitrary commands,
+paths, unit names, and environment injection. Narrow initial Ansible bootstrap
+elevation after this receiver is installed and verified.
+
+Acceptance:
+
+- [ ] `iii` has no unrestricted passwordless sudo path.
+- [ ] Only declared III release paths and systemd units can be mutated.
+- [ ] Requests and results are audit logged without secrets.
+- [ ] Key-management uses add -> prove new credential -> revoke old sequencing and
+      rejects in-band removal of the final usable SSH operator key. Complete key
+      loss follows Q128 physical salvage/reimage; there is no receiver override.
+- [ ] Receiver binaries/configuration are not stored under `/opt/iii/releases`,
+      and replacing or breaking an III release cannot replace or stop the receiver.
+- [ ] Accepted operations continue through their deadline after SSH/network/client
+      loss, and status can be reattached by operation ID after reconnection.
+- [ ] Target-wide mutations obey the final Q113–Q114 detach/cancel/concurrency
+      contract with one durable receiver-owned operation lease, read-only
+      observability, safe-checkpoint cancellation, and audited stale-lock recovery.
+- [ ] Apply authorization follows the final Q115 state-bound, expiring, single-use
+      nonce contract and its five-minute monotonic default; stale/replayed/cross-
+      target plans cannot mutate the host.
+- [ ] Receiver restart or host reboot deterministically reconciles every durable
+      transaction state without starting autonomy.
+- [ ] The 60/120/60-second target/deadline/rollback budgets are enforced onboard
+      using monotonic deadlines where applicable and reported with measurements.
+- [ ] The receiver cannot update the stable bootstrap, systemd recovery unit,
+      trust root, or final selector fallback through a normal release operation.
+
+Tests:
+
+- Privilege and hostile-input tests covering path traversal, arbitrary units,
+  environment injection, unsupported operations, direct unprivileged writes,
+  client/network loss, receiver restart, host reboot, deadline expiry, successful
+  boot-journal reconciliation, final-key denial, stale/replay rejection, and
+  bootstrap-mutation rejection.
+
+#### P2.T3: Implement Transactional Receiver A/B Self-Update
+
+Description:
+Implement the Q32/Q49 receiver update path on top of P2.T2 without coupling it to
+application health. Stage a signed receiver payload into the inactive receiver slot,
+prove it can manage all retained application/configuration/journal/protocol formats,
+switch only through the minimal Ansible-installed bootstrap, and restore the old
+receiver on any readiness failure. A successful receiver remains active when a later
+application candidate fails; the receiver changes no stable bootstrap/unit/trust
+contract itself.
+
+Acceptance:
+
+- [ ] Receiver payloads are separately identified/signed, extracted into an
+      inactive slot, and cannot overwrite active/fallback/bootstrap content.
+- [ ] Before switch, compatibility proves read/resume of durable journals/audits,
+      activation/rollback of every retained release manifest, configuration
+      checkpoint handling, and installed bootstrap/CLI protocol ranges.
+- [ ] The stable bootstrap owns selector switch/revert and grants the new receiver
+      30 monotonic seconds to start, reopen its socket, pass self-tests, and report
+      exact generation/compatibility readiness.
+- [ ] Startup, timeout, socket, self-test, journal, retained-release, or protocol
+      failure restores the prior slot and aborts before application activation.
+- [ ] Host/CLI/network loss cannot suppress the bootstrap deadline or reversion;
+      reboot at every persisted self-update stage reconciles deterministically.
+- [ ] A successful receiver update remains active across application rollback only
+      after proving compatibility with the restored application/configuration pair.
+- [ ] Ordinary receiver payloads cannot modify bootstrap code, systemd recovery
+      unit, trust roots, selector fallback, or host-maintenance policy.
+
+Tests:
+
+- Successful A/B handoff, incompatible retained release/journal/CLI, bad signature,
+  failed extraction/start/socket/self-test, 30-second timeout, client/network loss,
+  power loss at every selector/journal stage, application rollback under new
+  receiver, and forbidden bootstrap/trust mutation.
+
+#### P2.T4: Implement Activation Health And Automatic Rollback
 
 Description:
 Atomically select the candidate, restart required systemd/runtime processes,
 verify daemon/runtime/configuration/ROS/hardware readiness, mark acceptance, and
-restore code plus configuration checkpoints on failure.
+restore code plus configuration checkpoints on failure. Health evaluation and
+rollback execution run under the onboard receiver and never depend on remote
+polling continuing.
 
 Acceptance:
 
@@ -391,32 +2783,60 @@ Acceptance:
 - [ ] Failed health restores a known previous release without activating autonomy.
 - [ ] Recovery resumes correctly after power loss at every transaction stage.
 - [ ] Diagnostic evidence is retained for failed activation and rollback.
+- [ ] Disconnecting or terminating the CLI immediately after activation request
+      acceptance cannot suppress health timeout or rollback.
+- [ ] Acceptance requires a 10-second stable window within the 120-second
+      deadline and persists an evidence snapshot before selector commit.
+- [ ] Health proves release identity agreement across daemon/runtime API,
+      configuration reconciliation, required hardware, required services,
+      required managed-node states, and compatible fresh landed/disarmed PX4.
+- [ ] Active mission/custom/direct operation or Reference Owner blocks acceptance;
+      only canonical-profile entities explicitly marked optional may be absent.
+- [ ] Automatic release rollback authority ends when acceptance is durably
+      committed according to the final Q97 contract; later failures use bounded
+      process restart, visible fault state, retained diagnostics, and explicitly
+      safety-gated operator rollback.
 
 Tests:
 
 - Fault injection at each persisted transaction stage and each health gate.
 
-#### P2.T3: Replace The SSH Deployment Adapter
+#### P2.T5: Replace The SSH Deployment Adapter
 
 Description:
-Replace password files, `sshpass`, disabled host-key checks, agent forwarding,
-and shell-interpolated commands with key-based SSH, strict host identity,
-structured command execution, explicit transfer destinations, and least-privilege
-elevation.
+Replace password files, `sshpass`, agent forwarding, and shell-interpolated
+commands with the settled shared client-authentication mechanism, explicit
+local-network host-trust behavior, structured command execution, explicit
+transfer destinations, and least-privilege elevation.
 
 Acceptance:
 
-- [ ] Unknown or changed host keys fail closed.
+- [ ] The adapter consistently targets only `iii.local` and clearly reports the
+      accepted lack of server host-key authentication.
+- [ ] Complete bundles upload to release-ID-specific unprivileged partial paths,
+      resume only after identity/size agreement, and are never privileged-staged
+      before full signature/checksum verification.
+- [ ] Temporary disconnect preserves resumable state; stale partial cleanup is
+      limited to partials inactive for seven days, uses monotonic/boot evidence when
+      target wall time is untrusted, and cannot remove an active upload.
+- [ ] Commissioning measures complete transfer against the 120-second field-WLAN
+      target and records whether content-addressed optimization is justified.
 - [ ] Secrets are never printed, placed in release artifacts, or stored in world-readable files.
-- [ ] Aircraft IDs are verified independently of hostname/address.
+- [ ] Key list/add/revoke operations never expose private key material and
+      cannot remove the final usable SSH key in-band. Rotation must first enroll
+      and verify a replacement; complete authority loss follows Q128 reimage and
+      recommissioning, not an override.
+- [ ] The shared logical runtime identity is checked after connection, without
+      claiming that it cryptographically authenticates the physical host.
 - [ ] User-controlled values cannot alter remote command structure.
 
 Tests:
 
-- SSH adapter tests for trusted, unknown, changed-key, unreachable, unauthorized,
-  interrupted-transfer, and hostile-argument cases.
+- SSH adapter tests for `iii.local`, unreachable, unauthorized,
+  interrupted/resumed/mismatched/stale-partial transfer, hostile argument,
+  representative transfer budget, and unexpected logical-runtime cases.
 
-#### P2.T4: Rebuild The III CLI Deployment Surface
+#### P2.T6: Rebuild The III CLI Deployment Surface
 
 Description:
 Replace legacy `install`, `container`, and raw synchronization behavior with
@@ -427,13 +2847,130 @@ operation on the existing `iii system ...` path.
 Acceptance:
 
 - [ ] Every mutation supports a useful dry-run or preflight report.
-- [ ] CLI output always names target aircraft and release identity.
+- [ ] `iii deploy field` plans dependency-aware GC/drone component selection,
+      permits only compatibility-safe overrides, updates GC before drone for paired
+      changes, and never turns PX4 manifest drift into an implicit FMU write.
+- [ ] Plan and completion output group mission, behavior-tree, and parameter
+      changes with dependency reasons and resulting identities; the final Q89
+      contract persists structured impact and actual-result records per operation.
+- [ ] CLI output always names target endpoint, expected/advertised profile, and
+      release identity; mutating profile mismatch fails closed.
+- [ ] Sourced dev/field profiles provide convenient defaults, `--target sim|real`
+      overrides per command, and no hidden mutable global target is retained.
+- [ ] Target descriptors decouple endpoint, execution host, runtime profile, and
+      simulator provider so future Pi-runtime/workstation-Gazebo HIL does not
+      require a bundle, receiver, deployment-protocol, or capture-format redesign.
+- [ ] The same deployed release can cold-switch from default `real` to a declared
+      future `opti_track` profile and back without redeployment, while missing
+      profile contracts/readiness fail closed.
+- [ ] Middleware interface/peer policy uses detected stable LAN interfaces and
+      supports a disabled-by-default future simulator-peer extension without
+      installing Gazebo or simulator assets onboard.
 - [ ] Commands return machine-meaningful failure status and retain diagnostics.
+- [ ] Local operation records and large artifact caches are separate; record
+      retention/pruning follows the final Q90 protection contract and all durable
+      local domains use P2.T8 registry/archive primitives.
+- [ ] `iii field prepare` refreshes and verifies the signed Q127 release-status
+      index, records offline-cache completeness, and never makes a withdrawn or
+      unsafe release newly deployable.
+- [ ] Read-only `iii field check` implements Q125–Q126 with stable finding IDs,
+      deterministic pass/warn/fail exit statuses, human/JSON output, sealed local
+      records, optional signed warning acknowledgement, and no mutation/arming or
+      authorization-token behavior.
+- [ ] `iii system clock sync` works from every authorized operator computer via
+      receiver/SSH without the GUI, and the GC companion invokes the same operation
+      automatically on discovery.
+- [ ] `DEGRADED_CLOCK` blocks runtime mutations while retaining read-only status,
+      diagnostics, authenticated clock sync, deployment, and recovery surfaces.
 - [ ] Legacy destructive synchronization is unavailable.
 
 Tests:
 
 - CLI parser and orchestration tests plus a local fake-target end-to-end test.
+- Field prepare/check tests for online/offline status refresh, stale/invalid status
+  signatures, stable findings/exit statuses, warning acknowledgement, live-state
+  drift after a sealed record, and unwaivable failure.
+
+#### P2.T7: Implement Session-Aware Log And Diagnostic Lifecycle
+
+Description:
+Segment runtime/host logs by boot and runtime session, bound idle logging, retain
+deployment/configuration evidence according to its stronger persistence rules,
+and provide hash-verified local pull plus receipt-aware onboard pruning. Keep
+rosbags/datasets outside automatic log retention. Integrate projected log use
+with the deployment storage reserve.
+
+Acceptance:
+
+- [ ] The current session and four newest completed sessions survive age-based
+      cleanup despite intermittent aircraft power cycles.
+- [ ] Runtime/host logs obey the 14-day and lesser-of-1-GiB-or-5% cap without
+      deleting protected deployment/configuration evidence.
+- [ ] Healthy idle operation emits no unbounded repetitive info logs; debug/
+      verbose mode is explicit, session-scoped, capped at 256 MiB, and still obeys
+      the global storage limit.
+- [ ] Before clock trust, ordinary III logs are bounded in memory and carry boot/
+      monotonic ordering; after synchronization they flush once with reconstructed
+      UTC and explicit uncertainty metadata, without duplicates or false precision.
+- [ ] The degraded-clock ring enforces 10,000-record/16-MiB limits, drops oldest
+      first, and persists the exact dropped-record count after clock trust.
+- [ ] The latest 50 deployment records and records referenced by retained
+      releases remain available; failed activation diagnostics honor their
+      pull/acknowledgement-or-30-day protection.
+- [ ] `iii logs pull` and `iii deploy diagnostics pull` produce immutable local
+      manifests/checksums and record onboard receipts only after local verification.
+- [ ] Pruning accepts only exact receipt-backed content identities and cannot
+      remove the current session, active transaction, protected release evidence,
+      tuning journals, configuration/shadow checkpoints, or rosbag datasets.
+
+Tests:
+
+- Multi-boot/session retention, invalid clock, idle log-rate, debug cap, size/
+  age pressure, interrupted/corrupt pull, verified receipt, duplicate pull,
+  receipt-bound prune, protected-data denial, and deployment-reserve interaction.
+
+#### P2.T8: Implement The Local Operator Record Registry And Portable Archive
+
+Description:
+Create one host-user-owned, Git-ignored `.iii/` registry for local release caches,
+operation records, captures, backups, commissioning/readiness records, release
+evidence, signed release-status indexes, and import/export receipts. Each domain
+keeps its own schema and retention policy while sharing content-addressed blobs,
+atomic metadata updates, reference tracking, integrity verification, and portable
+archive primitives. Implement `iii records inventory/verify/archive/import` for
+workstation/GC disaster recovery without treating the repository or GitHub as a
+backup for bulky evidence. Archives go only to an explicit operator-selected path;
+the CLI does not invent cloud storage or silently copy data.
+
+Acceptance:
+
+- [ ] Registry paths never enter Git and never depend on a container filesystem or
+      one absolute workspace checkout path.
+- [ ] Every record has schema version, content identity, creation source, logical
+      target/profile where applicable, cross-domain references, and integrity state.
+- [ ] Concurrent CLI processes cannot corrupt indexes; writes use lock, staging,
+      fsync/atomic replacement, and deterministic crash recovery.
+- [ ] Archive planning reports included domains, referenced blobs, total size,
+      omitted/missing content, destination capacity, and whether the result is full
+      or incremental before writing.
+- [ ] Archives and imports are deterministic, path-safe, checksummed, idempotent,
+      and preserve references without overwriting conflicting content.
+- [ ] SSH/signing private keys, runtime/API credentials, Wi-Fi secrets, machine
+      identity, and unredacted secret-bearing inputs are always excluded and make
+      archive creation fail if a schema incorrectly attempts to include them.
+- [ ] No automatic pruning occurs. Explicit prune operations show protected
+      references and cannot remove records required by retained releases, restore,
+      commissioning, promotion, or unarchived irreplaceable evidence.
+- [ ] `iii field check` can report last verified external archive coverage and age
+      without making an external archive mandatory for ordinary operation.
+
+Tests:
+
+- Empty and mixed-domain registries; duplicate content; concurrent writers; crash
+  during metadata/blob commit; full and incremental archives; insufficient
+  destination space; path traversal/symlink/special-file attacks; corrupt and
+  partial import; cross-computer import; secret-exclusion fixtures; protected prune;
+  and loss/rebuild of local indexes from archive manifests.
 
 ### P3: Provision Raw Ubuntu Into A Converged Aircraft Host
 
@@ -442,19 +2979,43 @@ Phase acceptance:
 - [ ] A documented raw-image workflow creates an SSH-reachable target.
 - [ ] Ansible converges that target into the complete III host baseline.
 - [ ] A second convergence run reports no unintended changes.
+- [ ] Re-convergence succeeds offline from the prepared development laptop.
 
-#### P3.T0: Create Autoinstall And First-Boot Profiles
+Delivery order:
+
+1. P3.T0 and P3.T1 establish bootstrap and convergence; P3.T2–P3.T7 layer on the
+   resulting stable host contract and may be developed independently where safe.
+2. P3.T3 credentials and P3.T7 networking must pass before remote deployment is
+   commissioned. P3.T5 hardware and P3.T6 boot evidence must pass before real
+   runtime commissioning.
+3. P3.T8–P3.T10 complete the paired GC/QGC/PX4 surface.
+4. P3.T11 backup/restore and P3.T4 maintenance are accepted only after the
+   receiver, local record registry, and qualified recovery anchor exist.
+
+#### P3.T0: Create SD Imaging And First-Boot Cloud-Init Profiles
 
 Description:
-Define the minimal image/bootstrap layer for storage, boot, host identity,
+Pin and verify the official Ubuntu Server 24.04 ARM64 Raspberry Pi image, then
+define the generated cloud-init bootstrap layer for storage, boot, host identity,
 networking, initial key trust, and Ansible reachability. Keep application
-installation out of cloud-init beyond what is necessary to establish the host.
+installation out of cloud-init beyond what is necessary to establish the host;
+do not fork or rebuild the Ubuntu disk image initially.
 
 Acceptance:
 
 - [ ] Profiles are validated before writing media.
+- [ ] Partition growth/layout and destructive reimage preflight follow the final
+      Q103 contract and never imply that `/var/lib/iii` survives physical reimage.
+- [ ] The upstream image checksum and release identity are verified before use.
+- [ ] Destructive media selection, confirmation, system-disk/in-use rejection,
+      write flushing, readback verification, and evidence follow the final Q102
+      contract; automation cannot bypass the interactive target proof.
 - [ ] No production password or aircraft secret is embedded in committed files.
+- [ ] Cloud-init inputs, on-media seed data, bootstrap authority, post-convergence
+      sanitization, and residual-secret inspection follow the final Q101 contract.
 - [ ] Failed first boot leaves diagnosable local evidence.
+- [ ] Provisioning resumes safely after host/CLI/network interruption and follows
+      Q107's Ethernet-recovery/reimage boundary without a bypass credential.
 
 Tests:
 
@@ -465,8 +3026,8 @@ Tests:
 Description:
 Create roles for OS baseline, ROS installation, III user/groups, directories,
 udev, hardware dependencies, network/time, firewall, log retention, systemd,
-release installer prerequisites, and health inspection. Do not encode the ROS
-runtime graph outside `system_spec.py`.
+deployment receiver/bootstrap/recovery substrate, release installer prerequisites,
+and health inspection. Do not encode the ROS runtime graph outside `system_spec.py`.
 
 Acceptance:
 
@@ -474,6 +3035,19 @@ Acceptance:
 - [ ] Second application is idempotent.
 - [ ] Hardware-class variation is data-driven rather than copied playbooks.
 - [ ] OS package changes are pinned/auditable and separated from application deployment.
+- [ ] Host time is UTC with normal Ubuntu synchronization configured, while all
+      correctness-critical journals use boot identity and monotonic sequencing.
+- [ ] Post-gate host synchronization is configured slew-only; no NTP/system service
+      can step wall time behind the receiver's Q59–Q60 gate and audit path.
+- [ ] Authenticated preflight measures operator/target offset and supports a
+      narrow audited clock-set operation only while the III graph is stopped;
+      active runtime is never subjected to an automatic wall-clock step.
+- [ ] First convergence installs and verifies the receiver service, local socket,
+      control client, separate bundle/status signing trust, transaction paths, and
+      independent recovery hook before narrowing bootstrap privilege.
+- [ ] Runtime API firewall/service configuration exposes only the documented
+      plain-HTTP/WS operator-LAN port and credentials, never privileged deployment
+      operations; SSH/receiver transport remains the only deployment authority.
 
 Tests:
 
@@ -485,119 +3059,622 @@ Tests:
 Description:
 Create production units and stable launcher/environment files for the III daemon
 and runtime API. Use the active immutable release, real profile, persistent
-paths, unique identity, external secret files, restart policy, and correct
+paths, shared non-development identity, external secret files, restart policy, and correct
 ordering without sourcing development shell profiles.
+Follow Q96's host/release boundary: Ansible owns fixed units and stable selector-
+aware launchers; releases own only the daemon-consumed runtime topology and wrappers.
 
 Acceptance:
 
 - [ ] Units contain no dev credentials, sim profile, or `/home/iii/ws` dependency.
+- [ ] Application bundles cannot create, replace, enable, or disable host units;
+      a unit-contract change is detected as a host-maintenance prerequisite before
+      release activation.
+- [ ] On host boot, receiver and minimal control plane enter `DEGRADED_CLOCK`;
+      the real ROS graph is not booted until clock synchronization and buffered-
+      log flush commit successfully.
+- [ ] Ordinary daemon/API output remains in a bounded monotonic in-memory buffer
+      while degraded and cannot leak to persistent journald/file sinks; minimal
+      recovery audit is separately persisted and marked time-untrusted.
+- [ ] The post-sync transition reconstructs UTC metadata, flushes logs durably,
+      records the gate transition, and then boots real-profile standby in order.
+- [ ] Clock synchronization enforces the settled sampling/RTT/offset thresholds;
+      post-gate discontinuity enters `CLOCK_FAULT_ACTIVE` without interrupting
+      active monotonic-time control, then transitions to `DEGRADED_CLOCK` only when
+      maintenance-safe. New operations remain blocked throughout the fault.
 - [ ] Runtime Stop can leave the independently supervised runtime API online.
 - [ ] A broken active release fails visibly and remains recoverable through SSH.
 
 Tests:
 
 - `systemd-analyze verify` plus boot, restart, failure, and release-switch tests.
+- Clock tests cover invalid boot time, high RTT, threshold edges, slew-only service
+  configuration, discontinuity while standby, discontinuity during active control,
+  maintenance-safe transition, buffered-log uncertainty, and explicit resync/start.
 
-#### P3.T3: Implement Inventory, Identity, And Secret Provisioning
+#### P3.T3: Implement Shared Target Identity And Secret Provisioning
 
 Description:
-Define aircraft and hardware-class inventory data while keeping real secrets and
-private local inventory outside Git. Provision stable aircraft/runtime IDs,
-runtime API credentials, SSH trust, and operator-network policy.
+Define one shared target profile for the Raspberry Pi 5 hardware class while
+keeping real secrets outside Git. Provision the shared runtime/system IDs,
+the solo-operator browser secret, per-computer runtime API credentials and SSH
+public-key authorization, and
+operator-network policy without a per-aircraft inventory. Provide authenticated
+key list/add/revoke flows for moving from the provisioning workstation to a
+ground-control computer without copying private keys.
 
 Acceptance:
 
-- [ ] Example inventory is safe to commit and sufficient to document all fields.
-- [ ] Real aircraft identity is stable across release changes and physical reboot.
+- [ ] The committed example target profile is safe and documents all non-secret fields.
+- [ ] The shared logical target identity is stable across release changes,
+      physical reboot, and replacement Pis.
 - [ ] Missing/generic identity or development credentials fail real-profile startup.
+- [ ] A second computer can be authorized, verified, and later revoked through
+      the documented deployment workflow.
+- [ ] `iii access enroll/list/revoke` manages independently identified machine
+      credentials without copying private SSH/signing keys or retaining one shared
+      all-computers CLI token; onboard values are stored as verifiers/hashes.
+- [ ] Workstation/GC field-signing keys are generated outside the repository with
+      owner-only storage and OS-keyring/passphrase protection; the signing agent
+      enforces the settled 8-hour default/24-hour maximum and signs only validated
+      manifest/status/evidence digests, never arbitrary builder-container input.
+- [ ] Replacement-computer recovery generates fresh machine identity and keys,
+      verifies enrollment before revoking an old computer, and imports only
+      verified non-secret records/caches through P2.T8.
+- [ ] If all authorized SSH credentials are unavailable, every remote recovery or
+      boot-partition injection attempt is rejected and documentation directs the
+      operator to backup inspection, physical reimage, restore, and recommission.
+- [ ] Losing or revoking a field-signing key does not remove runtime-only access;
+      signing and SSH authorities are reported and recovered independently.
 
 Tests:
 
-- Inventory schema tests and converged-host identity/security acceptance.
+- Inventory schema tests; first/second-computer enrollment; signing-only loss;
+  staged replacement with old-key revocation; all-SSH-key-loss denial; attempted
+  default password/bypass; and reimage/restore/recommission recovery acceptance.
+
+#### P3.T4: Implement Controlled Host Maintenance
+
+Description:
+Add an explicit III CLI and Ansible workflow for Ubuntu, kernel, ROS, and system
+package maintenance. Keep it separate from release deployment, suppress
+unattended package mutation, snapshot package state before/after, report reboot
+requirements, and validate the protected qualified recovery release after the
+maintenance reboot. Route major platform transitions to SD-card reprovisioning.
+
+Acceptance:
+
+- [ ] Normal qualified and field-release deployments cannot invoke package
+      installation, upgrade, removal, or repository changes.
+- [ ] Host maintenance requires explicit operator intent and produces a retained
+      before/after package and platform report.
+- [ ] Offline runs fail before mutation when required packages are absent from
+      the local cache; cached maintenance is supported where practical.
+- [ ] Kernel/reboot-required changes schedule an explicit reboot and post-boot
+      validation rather than rebooting unexpectedly.
+- [ ] Failure to validate the protected qualified release is surfaced with a
+      documented recovery or reprovision recommendation.
+- [ ] Major Ubuntu/ROS baseline changes are rejected by in-place maintenance.
+- [ ] Bundle signer, release-status signer, SSH authority, and runtime credential
+      rotation are separate planned changes; trust-root replacement is backup-first,
+      cannot strand the final usable operator, and triggers Q110 recommissioning.
+- [ ] A compromised release-status signer can be removed and replaced without
+      mutating historical release/status records; conflicting statements remain
+      visible and are resolved by the newly commissioned trust policy.
+
+Tests:
+
+- Idempotent no-change run, cached/offline update, unavailable-package failure,
+  reboot-required update, interrupted Ansible run, post-boot validation failure,
+  major-baseline rejection, signer rotation, compromised-status-key replacement,
+  final-operator-stranding rejection, and post-trust-change recommissioning.
+
+#### P3.T5: Implement And Commission The Shared Hardware-Role Manifest
+
+Description:
+Define the shared Raspberry Pi 5 attached-device contract for FMU, mmWave CLI/
+data interfaces, charger/gripper, and cable camera. Generate udev rules and
+stable `/dev/iii/*` paths from ambiguity-aware vendor/product/interface/stable-
+property matching, using exact serial allowlists only when commissioning proves
+they are necessary. Add host inspection and runtime health integration. Reconcile
+the conflicting retired/current udev literals through physical evidence.
+
+Acceptance:
+
+- [ ] One committed manifest, not per-aircraft inventory, declares required and
+      optional roles and the evidence used to match each role.
+- [ ] Generated rules are deterministic and installed idempotently by Ansible.
+- [ ] `iii host inspect` reports raw device evidence, resolved roles, missing
+      roles, and ambiguity without exposing unrelated sensitive host data.
+- [ ] Required missing/ambiguous roles block real-profile health acceptance;
+      optional-device absence is reported without pretending it is present.
+- [ ] Camera selection does not rely on unstable `/dev/video0` enumeration.
+- [ ] Legacy and current serial-specific rules are retired only after every role
+      passes physical unplug/replug, reboot, and swapped-port commissioning.
+- [ ] Replacement devices matching an existing role contract require role-specific
+      functional evidence and recommissioning without manifest mutation; unmatched
+      devices produce a reviewable capture and can become supported only through a
+      feature-branch manifest/rule change, tests, convergence, and recommissioning.
+- [ ] Inspection/commissioning never auto-learns serials or rewrites matching rules
+      from observed hardware.
+
+Tests:
+
+- Manifest/schema and rule-generation fixtures for exact, missing, ambiguous,
+  duplicate, changed USB port, and optional devices; physical Pi commissioning
+  for unplug/replug, reboot, port swap, simultaneous-device enumeration, matching
+  replacement, unmatched replacement capture, and auto-learn rejection.
+
+#### P3.T6: Manage The Raspberry Pi Boot Baseline
+
+Description:
+Define the source-controlled Raspberry Pi 5 boot profile and host inventory for
+firmware, kernel, command line, device-tree overlays, and Ubuntu boot settings.
+Keep stock defaults unless the hardware contract documents a requirement. Route
+all changes through host maintenance with backups and reboot validation; normal
+application releases must not mutate the boot partition.
+
+Acceptance:
+
+- [ ] Provisioning produces a deterministic documented boot profile with no
+      unsupported overclocking or unexplained options.
+- [ ] `iii host inspect` reports effective firmware/kernel/boot configuration
+      and drift from the declared profile.
+- [ ] Application bundle activation has no permission or operation capable of
+      modifying boot files.
+- [ ] Host maintenance backs up changed boot files and records package/settings
+      deltas before requesting an explicit reboot.
+- [ ] Physical SD repair/reprovisioning steps are documented and tested because
+      A/B boot/root recovery is intentionally deferred.
+
+Tests:
+
+- Profile rendering/drift tests, application-mutation denial, no-change
+  idempotence, boot-setting change with backup, reboot validation, and physical
+  SD repair/reprovision rehearsal.
+
+#### P3.T7: Provision Transactional Operator Networking
+
+Description:
+Generate first-boot Ethernet/Wi-Fi configuration from safe committed templates
+and untracked secret inputs, advertise `iii.local` through mDNS, and provide
+receiver-backed network profile management with automatic reversion when the
+new configuration is not confirmed. Keep Ethernet DHCP available as physical
+recovery and do not initially provision an onboard access point.
+
+Acceptance:
+
+- [ ] SD preparation supports Ethernet-only and one-or-more Wi-Fi profiles
+      without writing credentials to Git, logs, artifacts, or review files.
+- [ ] Installed network secrets are root-readable and survive application
+      releases independently from release directories.
+- [ ] `iii.local` resolves on supported operator networks without a fixed IP.
+- [ ] Network plan/apply reports connectivity-impacting changes before mutation
+      and uses the settled 90-second monotonic onboard confirmation deadline
+      independent of the CLI process.
+- [ ] Failure to reconnect/confirm restores the previous working configuration;
+      successful confirmation commits the new profile set durably.
+- [ ] Ethernet DHCP remains usable after broken Wi-Fi configuration.
+
+Tests:
+
+- Cloud-init rendering with redaction, Ethernet-only boot, multiple Wi-Fi
+  profiles, mDNS resolution, successful profile switch, CLI/network loss with
+  automatic reversion, reboot persistence, and Ethernet recovery.
+
+#### P3.T8: Provision The Ground-Control Host Baseline
+
+Description:
+Create GC-host inventory and idempotent Ansible roles for supported graphical Ubuntu
+x86_64 computers. Preserve the ROS-free frontend/proxy boundary. Separate an
+operational role (CLI prerequisites, container runtime for GC frontend, user
+services, discovery, mirror, clock companion, browser integration, keys/log paths)
+from an optional repository/development/cross-build role; current field laptops
+receive both because the repository clone remains a prerequisite in this sweep.
+
+Acceptance:
+
+- [ ] `iii gc provision` converges stock Ubuntu 22.04/24.04 plus a local clone in
+      online or prepared-offline mode and reports excluded disk/OS/vendor prerequisites.
+- [ ] The operational role installs native user-session owners for frontend/proxy,
+      discovery, mirror, clock companion, and browser launcher without installing
+      ROS/DDS/MAVSDK into the proxy boundary.
+- [ ] The development role installs strict submodule tooling, repository-managed
+      CLI/Ansible environment, pinned ARM64 builder, and offline caches without
+      making container-local state authoritative.
+- [ ] Secrets, SSH/signing keys, `.iii` state, captures, logs, and mutable settings
+      use declared host-user paths/permissions and survive role/application updates.
+- [ ] A second convergence is idempotent; drift output distinguishes operational,
+      development, application, and unmanaged user state.
+- [ ] A replacement GC creates fresh machine identity/keys and restores only
+      verified non-secret records/caches through P2.T8 before enrollment; no prior
+      private key or machine credential is copied.
+- [ ] User-login starts required GC companions without opening browser/QGC; logout
+      stops only local graphical/user services and never affects the drone.
+- [ ] Discovery targets only `iii.local`, invokes Q59 clock sync only for `real`,
+      and skips Pi clock alignment for `sim`.
+
+Tests:
+
+- Clean 22.04/24.04 operational/development matrices, online/offline convergence,
+  second-run idempotence, drift separation, permissions/secrets, login/logout,
+  real/sim discovery and clock behavior, and complete replacement-GC rebuild/import.
+
+#### P3.T9: Install And Transactionally Update GC/QGroundControl Applications
+
+Description:
+Install paired GC application artifacts using the workspace release identity while
+keeping GC and drone slots independently rollbackable. Retain pinned production
+containers for the React/FastAPI frontend/proxy under a host-native updater/service
+owner. Install QGroundControl as a host-native pinned AppImage with its own atomic
+slots. Connect the devcontainer PX4/Gazebo backend to the same host QGC used in real
+operation. Keep host package maintenance separate from application updates.
+
+Acceptance:
+
+- [ ] Release-bound frontend/proxy container digests install and roll back offline;
+      containers own no QGC binary, host credentials, `.iii` state, signer, Ansible,
+      updater, or ARM64 builder control plane.
+- [ ] QGroundControl is checksum/version pinned, self-update disabled, atomically
+      selected, shared by sim/real, and retains a previous known-good binary while
+      preserving backed-up user settings/logs outside slots.
+- [ ] `iii gc open/start/stop/restart/status` owns frontend/proxy/discovery/mirror/
+      clock/browser behavior; `iii qgc start/stop/restart/status/config ...` owns
+      every QGC operation. Neither namespace silently invokes the other application.
+- [ ] Simulation launches only PX4/Gazebo in the devcontainer and reaches host QGC
+      over explicit tested networking; no devcontainer QGC path/lifecycle remains.
+- [ ] Paired updates install/health-check compatible GC first, then drone. GC
+      failure leaves drone untouched; drone failure retains new GC only when it is
+      compatible with the restored drone, otherwise rolls GC back too.
+- [ ] Connected-real updates drain/reject new browser commands and enforce the
+      maintenance-safe gate; disconnected/sim updates are permitted, and recovery
+      override is separately confirmed/audited.
+- [ ] GC slots protect qualified anchor, active, previous field release, and staged
+      candidate. Non-protected cache defaults to 50 GiB and reserves at least
+      10 GiB or 10 percent free; offline sets and protected domains are not evicted.
+- [ ] Application update failure/interruption/logout/reboot reaches a compatible
+      recorded pair without losing secrets, captures, `.iii`, or QGC user state.
+
+Tests:
+
+- GC-only/drone-only/paired online and offline install, QGC checksum/slot/settings,
+  container ownership denial, sim host networking, real safety rejection/override,
+  GC-first/drone-failure compatibility rollback, interruption/reboot, cache pressure,
+  CLI namespace separation, and native QGC launch.
+
+#### P3.T10: Inventory And Manage PX4/QGroundControl Release Configuration
+
+Description:
+Create release-owned real/sim PX4 parameter manifests and a sanitized managed-key
+QGroundControl baseline. Inventory current sources, classify ownership, bind them
+to PX4/QGC versions and release identity, and implement explicit backup-first
+inspection/application workflows without expanding into PX4 firmware flashing.
+
+Acceptance:
+
+- [ ] Complete expected PX4 sets are versioned per real/sim profile with required,
+      tunable, and calibration/identity classifications and release hashes.
+- [ ] Real activation reads the full FMU inventory and fails health on required
+      mismatch without silently writing any PX4 parameter.
+- [ ] `iii px4 params pull/plan/apply/verify` requires disarmed safe state, creates
+      a complete restorable backup, presents per-key changes, writes only confirmed
+      keys, and verifies readback/recovery.
+- [ ] The GC companion captures a complete disarmed baseline, observes/reconciles
+      MAVLink parameter changes, and mirrors immutable content revisions without
+      inventing unavailable operator/transaction provenance for direct QGC edits.
+- [ ] PX4 event handling uses a two-second debounce followed by a complete-set
+      reconciliation, repeats every 60 seconds while connected/disarmed, and runs
+      once at clean session end; armed/in-flight monitoring never starts a bulk
+      parameter transfer or write.
+- [ ] Arbitrary named PX4 sets can be captured, described, exported, verified,
+      compared, and selectively promoted through the same untracked evidence and
+      feature-branch workflow principles as III parameter sets.
+- [ ] QGroundControl release configuration contains only declared stable managed
+      keys; merge is transactional with backup and preserves unowned user state.
+- [ ] A schema-versioned QGC key policy classifies managed, local-preference,
+      generated/cache, sensitive, and prohibited settings.
+- [ ] Clean-exit/explicit QGC captures are redacted immutable local evidence, and
+      per-key promotion writes only reviewed managed keys on a feature branch;
+      geometry, host paths, credentials, caches, and unsafe upload changes fail.
+- [ ] Public telemetry/log upload is disabled by the managed baseline unless the
+      operator explicitly opts in outside release defaults.
+- [ ] QGC ParamCache and equivalent version-coupled generated data is reproducibly
+      generated/cached and not treated as hand-maintained policy.
+- [ ] Sim and real use the same manifest schemas, inventory tooling, release
+      provenance, and diff/report formats with profile-specific values.
+
+Tests:
+
+- Full/partial FMU inventory, required/tunable/calibration drift, disarmed/armed
+  apply, backup/restore, interrupted write, failed readback, sim/real manifests,
+  QGC clean merge, user-state preservation, settings migration rollback, public-
+  upload default, and generated-cache compatibility.
+
+#### P3.T11: Implement Portable Host Backup And Reimage Restore
+
+Description:
+Implement the Q104–Q106 backup contract across receiver, CLI, persistent-state
+owners, and commissioning workflows. Seal a coordinated point-in-time portable
+state archive, verify and store it content-addressed offboard, and restore only
+through staged compatibility/reconciliation after clean reprovisioning. Also add
+`iii host salvage --device <explicit-device>` for Q128: with the Pi powered off,
+identify the removed SD using Q102's safe block-device proof, mount supported
+filesystems read-only in a private temporary mount namespace, inspect a known III
+layout, and extract only the portable-state schema into a normal verified backup.
+Salvage must never modify the source media, reset credentials, or make it bootable.
+
+Acceptance:
+
+- [ ] Backup includes every declared portable state domain and proves a single
+      coordinated revision/hash boundary without copying live-changing files.
+- [ ] Credentials, private keys, network secrets, host identity, active selectors,
+      and receiver transaction machinery are structurally excluded and detected if
+      accidentally present.
+- [ ] Real/OptiTrack backup requires maintenance-safe state, briefly quiesces and
+      flushes writers, seals locally, and resumes standby before long transfer.
+- [ ] `.iii/backups/` supports content-addressed list/show/verify/export/import;
+      explicit pruning cannot remove referenced restore/audit evidence.
+- [ ] Planned reimage and host-baseline replacement require a fresh verified backup
+      or a separately confirmed, audited unrecoverable-data-loss override.
+- [ ] Backup freshness is bound to the sealed persistent-state generation and all
+      declared invalidating mutations, not timestamp alone; readiness warns when
+      no verified external archive has been produced for 30 days.
+- [ ] Restore requires a clean converged host, compatible deployed release, staged
+      schema review/reconciliation, atomic persistent-root activation, and health
+      validation without restoring stale machine/transaction identity.
+- [ ] Salvage refuses the running system disk, mounted/in-use media, unsupported or
+      inconsistent filesystems, dirty/mid-transaction state that cannot be safely
+      interpreted, and any request for secrets/credentials; source mounts are
+      kernel-enforced read-only and unmounted on success, failure, or interruption.
+- [ ] A successful salvage records source block-device identity, filesystem/layout
+      evidence, recoverable domains, omissions, transaction consistency, hashes,
+      and a prominent statement that fresh credentials and recommissioning remain
+      mandatory.
+
+Tests:
+
+- Concurrent-writer rejection, quiesced snapshot, interrupted transfer, tamper,
+  prohibited-secret fixture, export/import, duplicate content, incompatible schema,
+  staged restore failure, successful post-reimage restore, data-loss override,
+  loopback SD salvage, running/in-use-device rejection, forced read-only proof,
+  interrupted salvage cleanup, inconsistent transaction refusal, secret exclusion,
+  and salvage-to-reimage-to-recommission acceptance.
 
 ### P4: Make Field Tuning Durable And Traceable
 
 Phase acceptance:
 
 - [ ] GUI tuning survives runtime restart and release deployment as intended.
-- [ ] Every captured value can be traced to aircraft, release, schema, baseline,
-      session, and operator action.
+- [ ] Every captured value can be traced to release, schema, baseline, session,
+      and operator action.
 - [ ] Promotion to tracked configuration is deliberate and reviewable.
 
-#### P4.T0: Version Configuration Compatibility And Migrations
+Delivery order:
+
+1. P4.T0 establishes immutable installed configuration contracts.
+2. P4.T1 implements writable-state reconciliation against those contracts.
+3. P4.T2 adds durable transactions/journals against the reconciled state API.
+4. P4.T3 captures immutable states from those journals and P2.T8 stores them.
+5. P4.T4 promotes only verified P4.T3 captures through P0 governance.
+
+#### P4.T0: Package Immutable Configuration And Compatibility Contracts
 
 Description:
-Add explicit schema versions, supported upgrade/downgrade ranges, migration
-planning, staged-copy validation, backups, and reversible activation behavior
-around the existing configuration seeding model.
+Give `III-Drone-Configuration` explicit schema versions, supported upgrade/
+downgrade ranges, runtime-profile descriptors, exactly one tracked default each for
+`real` and `sim`, and immutable package-share manifests. Install these through the
+existing `ament_cmake_python` package and expose a side-effect-free planning API.
+Remove source-tree preference so every environment consumes the same installed
+contract before any writable-state migration begins.
 
 Acceptance:
 
-- [ ] Compatibility is checked before runtime shutdown.
-- [ ] Migration never edits the only copy of aircraft configuration.
-- [ ] Rollback either proves compatibility or restores the paired checkpoint.
+- [ ] Compatibility can be evaluated from old/new installed manifests before
+      runtime shutdown or writable-state access.
+- [ ] Package build/install deterministically includes schemas, profile descriptors,
+      migration metadata, and `real`/`sim` tracked defaults without reading or
+      mutating a writable runtime root.
+- [ ] Runtime profile descriptors explicitly map `real -> real`, `sim -> sim`,
+      initial `opti_track -> real`, and reserved non-bootable `hil -> sim`; living
+      selectors remain runtime-profile-scoped so aliases cannot overwrite each other.
+- [ ] Runtime package resolution uses the ament index and never silently selects a
+      workspace source tree; development edits become inputs only after normal
+      colcon build/install.
+- [ ] The public Python API requires explicit immutable input and writable-state
+      roots, returns typed plans/results, and is shared by receiver, configuration
+      service, CLI, simulation startup, and tests without duplicate policy logic.
+- [ ] Tracked-default/capture interfaces remain extensible to future non-default
+      tracked sets without implementing that deferred catalog now.
 
 Tests:
 
-- N-1 to N, N to N-1, incompatible, failed migration, interrupted migration,
-  and preserved-snapshot fixtures.
+- Package-build side-effect isolation, deterministic install, ament-only resolution,
+  source-tree shadow rejection, profile mapping/alias isolation, compatibility
+  range fixtures, malformed/unknown schema rejection, and API import tests.
 
-#### P4.T1: Implement Tuning Sessions And Change Journaling
+#### P4.T1: Implement Transactional Parameter Reconciliation And Legacy Shadow
 
 Description:
-Introduce an explicit session identity and baseline. Journal accepted and
-rejected GUI parameter edits with old/new values, restart semantics, aircraft,
-release, schema, operator/request identity, timestamp, and result. Define
-power-loss durability after the interview settles the required guarantee.
+Implement the installed writable-state reconciliation API across every applicable
+parameter set. Preserve current keys/values, add new keys with release defaults,
+retire removed keys into canonical persistent shadow records, and block reintroduced
+keys for explicit review. Simulation invokes it automatically before startup;
+only the onboard receiver invokes it transactionally during aircraft activation or
+rollback. Remove the legacy shell/standalone mutation path after parity.
+
+Acceptance:
+
+- [ ] Development/simulation startup reconciles every writable sim set before
+      selecting/applying one; failure or unresolved reintroduction prevents launch.
+- [ ] Aircraft reconciliation is never a build/install/runtime-start side effect;
+      only the receiver executes the preplanned transaction against a staged copy.
+- [ ] Migration never edits the only aircraft copy; activation/rollback either
+      proves compatibility or atomically restores the paired checkpoint.
+- [ ] Existing valid values are never overwritten, every new key receives the
+      release default, and every applicable selected/unselected set is normalized.
+- [ ] Removed keys leave active files only after the selected active-at-retirement
+      value/provenance is durable in a release/schema/set-scoped shadow record;
+      inactive/snapshot/scattered values never become restoration candidates.
+- [ ] Shadow data remains outside release/active trees, is never executed as current
+      configuration, is included in captures/backups, and supports deterministic
+      compatible rollback rehydration.
+- [ ] Reintroduction produces the bound `.iii/operations/<operation-id>/` review
+      showing old canonical value, new default, validation, provenance, and one
+      unresolved `use_old|use_new_default` decision per key without mutation.
+- [ ] Invalid old values stay visible but cannot be selected; incomplete, stale,
+      edited, cross-release, cross-manifest, cross-target, or cross-state reviews fail.
+- [ ] Reconciliation is idempotent, journaled, fsync/atomic-rename power-loss safe,
+      and emits a complete per-set plan/result consumed by deployment reporting.
+- [ ] `iii config sim inspect/checkpoint/reset` operates on the current clone's
+      Git-ignored living sim tree; reset is confirmed, first seals a recoverable
+      capture, and never edits the tracked default.
+- [ ] Legacy `scripts/install.sh` and `update_installed_parameters.py` callers are
+      migrated, then removed or fail with the canonical replacement next action.
+
+Tests:
+
+- Upgrade/downgrade/incompatible, preserved/new/removed keys, selected and inactive
+  sets, shadow corruption, rollback rehydration, valid/invalid/partial/stale review,
+  active-at-retirement provenance, scattered-value rejection, repeated/interrupted
+  reconciliation, automatic sim blocking/resume, receiver-only aircraft mutation,
+  sim inspect/checkpoint/reset/capture, and legacy-entry-point retirement.
+
+#### P4.T2: Implement Tuning Sessions And Change Journaling
+
+Description:
+Implement one profile-parameterized session and transaction engine for simulation
+and real targets. Introduce an explicit session identity, immutable baseline,
+monotonic revision, target/profile, release/workspace identity, and manifest hash.
+Keep this machinery internal: automatically open/resume it on accepted Apply and
+do not add tuning-session start/end concepts to the GUI.
+Journal accepted and rejected GUI parameter transactions with request identity,
+old/new values, restart semantics, validation, readback, operator identity,
+timestamp, and result. Replace per-key Apply with validate-all, durable intent,
+apply/readback-all, durable commit, and compensating rollback semantics. Use an
+append-only checksummed WAL and atomically replaced, file-and-directory-synced
+checkpoints/selectors rather than direct YAML writes and process-memory cleanup.
 
 Acceptance:
 
 - [ ] Session baseline cannot be confused with current mutable state.
 - [ ] Constant/restart-required values and pending boot state are represented.
+- [ ] Pending values become active after whole-graph `system stop`/`system start`
+      at the configuration lifecycle boundary or `system restart --cold`; daemon
+      shutdown/boot, OS reboot, and power cycling are unnecessary.
+- [ ] Pending indications clear only after the freshly configured runtime reports
+      matching active readbacks; warm or unrelated-node restarts do not clear them.
 - [ ] A test may restore its baseline without changing code release.
+- [ ] The GUI receives success only after both journal and active-set mutation
+      are durable; failure leaves neither a partial multi-parameter transaction
+      nor an unreported value change.
+- [ ] Request IDs and expected revisions make retries idempotent and reject stale
+      concurrent edits.
+- [ ] A failed distributed node update compensates already-applied nodes; failed
+      compensation enters an explicit configuration-divergent fault with exact
+      observed values and blocks further writes pending reconciliation.
+- [ ] Restart and power-loss recovery deterministically complete or abort every
+      prepared transaction without inventing an accepted revision.
+- [ ] Journal compaction retains checkpoints and the complete current session.
+- [ ] The same conformance suite passes against `sim` and `real` profiles; only
+      target adapters and profile data may differ.
 
 Tests:
 
 - Runtime, constant, rejected, repeated, concurrent, restart, rollback, and
   power-loss journal tests.
 
-#### P4.T2: Export Provenance-Rich Tuning Captures
+#### P4.T3: Export Provenance-Rich Tuning Captures
 
 Description:
-Create an immutable capture containing manifest, baseline, final values, ordered
-changes, pending boot values, relevant runtime events, and operator notes. Pull
-it through the III CLI to a local field-capture directory without mutating Git.
+Publish committed revisions on the existing runtime event stream and add a host-
+side III CLI mirror companion, automatically started by GUI field/simulation
+workflows. It verifies hash/sequence continuity, backfills gaps, and checkpoints
+incrementally under Git-ignored `.iii/operations/<session-id>/`. The GUI preserves
+its current edit, edited/unsaved, and Apply interaction; it additionally shows
+pending-next-cold-restart values and a compact degraded mirror warning when needed,
+automatically rehydrates gaps, and never treats a success toast as state
+synchronization. Support selecting and downloading arbitrary saved parameter sets
+from either `iii.local` or a simulation runtime. Each selected set becomes an
+independent immutable local capture with an operator-provided short name and
+description, exact full values, profile, source snapshot and journal revision,
+manifest, release/workspace identity, pending boot values, relevant provenance,
+timestamps, and integrity hash. Pulls are non-destructive, repeatable, and never
+change the active/default set. The target journal remains authoritative during
+mirror loss and automatically backfills after reconnection.
 
 Acceptance:
 
 - [ ] Capture integrity and release/schema correlation are verifiable offline.
 - [ ] Repeating capture does not overwrite prior evidence.
+- [ ] Any saved set, active or inactive, can be downloaded independently or as
+      part of a multi-selection without first loading or making it default.
+- [ ] Each downloaded set receives a short name and description without changing
+      its immutable source identity or onboard snapshot.
+- [ ] Deployment, restart, journal compaction, and generic storage cleanup never
+      prune operator-named sets.
+- [ ] Deletion is blocked for active/default/pending sets and normally requires a
+      verified local capture receipt; force deletion is separate and confirmed.
+- [ ] System-generated checkpoints compact only when no retained state, named set,
+      or unexported capture references them.
 - [ ] Partial or interrupted captures are distinguishable from complete captures.
+- [ ] Drone and simulation use the same capture format and promotion input contract.
+- [ ] GUI close, mirror restart, network loss, and target reboot preserve session
+      resumability and never silently lose or duplicate accepted revisions.
+- [ ] Mirror loss is visibly degraded but does not block target-durable tuning;
+      detailed mirror/capture state remains CLI-facing rather than becoming a GUI
+      tuning-session workflow.
+- [ ] The GUI exposes no tuning-session start/end vocabulary or controls and
+      clearly distinguishes edited/unsaved values from values pending application
+      on the next cold restart.
+- [ ] Snapshot list and parameter state update immediately from authoritative
+      revisions, with gap detection and full rehydration fallback.
+- [ ] GUI download either exports a real sealed capture or is replaced by the
+      local mirrored-capture action; it never reports discarded YAML as downloaded.
+- [ ] Captures are content-addressed under Git-ignored `.iii/captures/`; display
+      metadata is separate from immutable identity.
+- [ ] CLI list/show/diff/verify/export/import supports portable checksummed
+      archives, verified deduplication, duplicate display names, and no secrets,
+      Git mutation, or parameter-default mutation.
 
 Tests:
 
-- Capture/export/verify round trip, collision handling, interrupted transfer,
-  and tampered capture rejection.
+- Sim/real protocol conformance, live revision propagation, gap/backfill,
+  reconnect, GUI/mirror/target restart, target reboot, mirror-absent tuning,
+  capture/export/verify round trip, collision handling, interrupted transfer,
+  stale UI prevention, and tampered capture rejection.
 
-#### P4.T3: Implement Configuration Comparison And Promotion
+#### P4.T4: Implement Configuration Comparison And Promotion
 
 Description:
 Compare a capture with its recorded baseline and current tracked configuration.
-Support explicit classification into global default, hardware-class default,
-aircraft-specific override, retained experiment, or rejection. Detect source
-changes since the field baseline and require reconciliation instead of silently
-overwriting files.
+Support explicit classification into the shared tracked default, retained
+capture evidence, or rejection. Write promoted values only into the corresponding
+`real` or `sim` tracked default in `III-Drone-Configuration`, validate against the
+source manifest, and integrate the resulting configuration-submodule commit and
+workspace gitlink through the governed feature/stacked-PR workflow. Detect
+source changes since the field baseline and require reconciliation instead of
+silently overwriting files. Keep capture/export separate from source mutation.
 
 Acceptance:
 
 - [ ] Promotion produces a reviewable minimal change.
-- [ ] Per-aircraft calibration cannot silently become a fleet default.
-- [ ] Wrong schema, baseline, aircraft, or release provenance fails closed.
+- [ ] Experimental tuning cannot silently become the shared tracked default.
+- [ ] Wrong schema, baseline, logical target, or release provenance fails closed.
+- [ ] Promotion has plan/apply modes, supports both `real` and `sim`, and never
+      commits directly to protected `develop`, `main`, or `release`.
+- [ ] This deployment-scope promotion updates the selected profile's release
+      default. Its capture and comparison interfaces remain extensible to future
+      tracked non-default sets, whose catalog semantics are deferred.
+- [ ] Git commit identity and the eventual qualified release tag provide the
+      version history and release binding for both defaults.
+- [ ] Successful promotion can create the coordinated configuration-submodule
+      and workspace commits/PR metadata needed for inclusion in a later release.
 
 Tests:
 
-- Clean promotion, concurrent source change, schema mismatch, aircraft mismatch,
-  partial promotion, and rejection fixtures.
+- Clean promotion, concurrent source change, schema mismatch, logical target/profile mismatch,
+  simulation capture, real/sim default promotion, partial selection,
+  stacked-PR integration, deprecated-key policy, and rejection fixtures.
 
 ### P5: Validate, Document, Commission, And Retire Legacy Paths
 
@@ -607,24 +3684,86 @@ Phase acceptance:
       qualified release deployment, rollback, and recovery pass end to end.
 - [ ] Operators can perform normal workflows through the III CLI without source
       knowledge or direct filesystem mutation on the aircraft.
+- [ ] Every maintained III document routes humans and AI agents through tested,
+      automation-ready canonical commands and the settled branch/CI policy.
 - [ ] Legacy deployment paths are removed or clearly blocked.
 
+Delivery order:
+
+1. P5.T0 continuously assembles the verification matrix while P1–P4 land; it is
+   not deferred until the end.
+2. P5.T2 establishes documentation ownership/templates/validation early enough
+   that each implementation task updates its own affected docs.
+3. P5.T3–P5.T5 migrate and validate maintained documentation against the finished
+   interfaces while P5.T1 executes the physical commissioning walkthrough.
+4. P5.T6 is the irreversible cutover and runs only after every Q131 matrix row,
+   documentation gate, recovery rehearsal, and commissioning check passes.
+
 #### P5.T0: Build The Deployment Verification Matrix
+
+**Status: In-Progress.** Bootstrap implementation started on 2026-08-25; this
+task remains open until all software, target-equivalent, and physical acceptance
+rows have final retained results.
 
 Description:
 Create layered tests for manifest/schema logic, source capture, builder output,
 temporary-root release management, fake SSH targets, target-equivalent ARM64
-hosts, first-boot images, and physical Raspberry Pi/hardware acceptance.
+hosts, first-boot images, and physical Raspberry Pi/hardware acceptance. Maintain
+one machine-readable matrix mapping every settled decision and task acceptance
+criterion to its test level, environment, owner command, required evidence,
+blocking status, and most recent result. GitHub runs hardware-independent checks
+and verifies signed local attestations; it never pretends to run Gazebo, QGC,
+OptiTrack, PX4 hardware, or aircraft tests it cannot host.
 
 Acceptance:
 
+- [ ] A repository-owned parser materializes every independent normative clause
+      in Q1–Q132 as a stable `Q<question>.c<clause>` identifier; changing clause
+      text, splitting/merging clauses, or renumbering a question requires an
+      explicit reviewed mapping so traceability cannot silently drift.
+- [ ] The coverage-index audit resolves every focused-owner reference to exactly
+      one extant backlog task, rejects duplicate/missing question rows and stale
+      task identifiers, and rejects any clause whose owner task has no matching
+      acceptance criterion and test/evidence path.
+- [ ] Every Q1–Q132 load-bearing contract and every backlog acceptance criterion
+      maps to at least one automated check, scripted local check, or explicit
+      signed physical acceptance step; uncovered rows fail the matrix audit.
 - [ ] CI runs all hardware-independent tests.
-- [ ] Hardware-required tests are scripted and produce retained evidence.
+- [ ] Simulation and hardware-required tests are scripted locally, selected by
+      Q121 change-impact policy, and produce P2.T8-retained signed evidence that CI
+      verifies by source/policy identity without replaying the test.
 - [ ] Upgrade and rollback cover clean and dirty releases plus tuned configuration.
+- [ ] `iii field prepare` populates every declared offline dependency and `iii
+      field verify --offline` proves representative GC-only, drone-only, and paired
+      build/package verification without network or target mutation.
+- [ ] A scripted pre-field matrix can cold-switch one deployed release through a
+      commissioned OptiTrack profile, collect profile-tagged evidence, return to
+      default `real`, and revalidate field readiness without reinstalling artifacts.
+- [ ] `iii field check` implements the final Q125 connected GC/drone readiness
+      contract, seals a non-mutating readiness record, and emits exact next actions
+      for every warning/failure.
+- [ ] Readiness fixtures enforce Q126 stable finding IDs, pass/warn/fail exit
+      statuses, signed warning acknowledgement without severity mutation, stale-
+      record non-authorization, and unwaivable failure behavior.
+- [ ] Release-status tests cover Q127 withdrawal/unsafe propagation online and
+      offline, no automatic in-operation switch, blocked flight, retained evidence,
+      last-resort maintenance recovery, and qualified replacement.
+- [ ] Credential tests cover Q128 surviving-computer enrollment, signing-only loss,
+      complete SSH-authority loss, mandatory reimage, state restore, and
+      recommissioning with no hidden bypass.
+- [ ] P2.T8 record/archive tests prove a clean replacement GC can recover all
+      declared non-secret local state from a verified external archive while
+      generating new identity and keys.
+- [ ] Q131 has a versioned cutover matrix row for every factory, release, field,
+      failure, configuration, evidence, offline, documentation, and retirement
+      scenario; all rows reference one exact candidate set and pass before cutover.
 
 Tests:
 
-- Repository deployment test runner documented by this task.
+- A repository-owned `iii verify deployment` entry point emits human summary,
+  versioned JSON, JUnit where applicable, evidence paths, skipped-with-reason rows,
+  and Q112 next actions. Unit fixtures validate matrix completeness; a signed local
+  acceptance run validates the final physical matrix.
 
 #### P5.T1: Commission The First Aircraft From Raw Image
 
@@ -638,47 +3777,261 @@ Acceptance:
 - [ ] A wiped target reaches a healthy inactive real-profile runtime using only documented inputs.
 - [ ] PX4, mmWave, camera, charger/gripper, runtime API, logs, and configuration pass acceptance.
 - [ ] Recovery from deliberately interrupted activation is demonstrated.
+- [ ] Power interruption is injected at each durable receiver/application selector
+      boundary and boot reconciliation always reaches the specified old/new pair.
+- [ ] Receiver A/B failure, withdrawn/unsafe anchor handling, low-storage rejection,
+      network rollback, and `DEGRADED_CLOCK` recovery are physically demonstrated.
+- [ ] A native-QGC GC performs qualified deployment, dirty/untracked field
+      deployment, parameter/PX4/QGC capture, log/diagnostic pull, and fully offline
+      rollback using only prepared caches.
+- [ ] Provisioned and commissioned states are distinct and the final Q108
+      commissioning evidence cannot be produced from a field-development bundle.
+- [ ] Commissioning records and live validity follow Q109–Q110, including signed
+      local/onboard evidence, invalidation by contract-changing maintenance, and a
+      visible field-development overlay that preserves the qualified anchor.
 
 Tests:
 
-- Signed commissioning record with artifact IDs and captured command output.
+- Signed commissioning and Q131 acceptance records with exact artifact/source IDs,
+  captured structured command output, power-cycle evidence, and external P2.T8
+  archive receipt.
 
-#### P5.T2: Publish Operator And Maintainer Runbooks
+#### P5.T2: Establish Automation-Ready Documentation Architecture And Validation
+
+**Status: In-Progress.** Documentation ownership inventory and offline validation
+framework started on 2026-08-25; maintained-document migration remains active.
 
 Description:
-Document factory provisioning, builder setup, dirty field deployment, qualified
-release creation, target inspection, tuning sessions, capture/promotion,
-rollback, log retrieval, OS maintenance, lost credentials, disk pressure, and
-physical recovery.
+Inventory every maintained Markdown/reStructuredText document in the workspace and
+editable III submodules, then classify it in a committed documentation manifest as
+canonical, generated reference, contextual design, ADR, runbook, test/qualification
+procedure, historical record, or excluded generated/vendor/third-party artifact.
+Define one information architecture rooted at `docs/README.md` and
+`CONTEXT-MAP.md`, with context ownership and explicit links from root/package
+READMEs and `AGENTS.md`. Add a repository-owned `iii docs check` (or equivalent
+shared library plus thin CLI command) so documentation drift is an enforceable
+build/PR/release property rather than a manual cleanup exercise.
 
 Acceptance:
 
-- [ ] Commands match tested CLI behavior.
-- [ ] Safety-critical steps state prerequisites and stop conditions.
-- [ ] Runbooks identify which workflows require source checkout and which do not.
+- [ ] A versioned documentation manifest lists every maintained document's owner,
+      context, audience, authority/canonical status, lifecycle, source-of-truth,
+      generated status, and qualified-release inclusion policy.
+- [ ] Generated, vendored, third-party, dependency-cache, build/install/log,
+      dataset/artifact, and sealed historical-evidence trees are excluded by
+      explicit rules and cannot accidentally become migration targets.
+- [ ] One authoring contract requires executable workflows to state purpose,
+      scope/authority, prerequisites, supported host/profile, safety state,
+      plan/dry-run, exact mutation, human and structured results, stable exit
+      statuses, evidence, interruption/resume, rollback/recovery, and Q112 next
+      commands. Non-runnable architecture docs link to owning contracts instead
+      of duplicating operational steps.
+- [ ] `AGENTS.md`, `docs/agents/*`, `CONTEXT-MAP.md`, ADR indexes, root docs, and
+      package docs form a non-cyclic discoverable hierarchy with one canonical
+      location per rule. Agent instructions are concise routers, not a divergent
+      copy of the operating manual.
+- [ ] The editable III repository inventory is generated or validated against the
+      governed submodule policy and includes Contracts, Runtime, GC, CLI, and all
+      other workspace-owned III repositories while excluding forks/third parties.
+- [ ] `iii docs check` validates manifest coverage, internal links/anchors, command
+      existence and help signatures, JSON-schema references, file ownership,
+      duplicate canonical rules, forbidden legacy terms/paths, and generated-
+      reference freshness with deterministic human/JSON output.
+- [ ] Documentation validation runs in local preflight and required CI without
+      network or aircraft access and is included in qualified-release evidence.
 
 Tests:
 
-- Independent walkthrough against a clean development computer and aircraft.
+- Manifest coverage fixtures, generated/vendor exclusion, broken links/anchors,
+  missing command, stale help/schema output, duplicate authority, missing editable
+  repository, forbidden legacy path/branch term, deterministic regeneration, and
+  clean offline validation.
 
-#### P5.T3: Remove Legacy CLI And Deployment Behavior
+#### P5.T3: Migrate Deployment, Field, Recovery, And Operator Documentation
 
 Description:
-After replacement acceptance, remove branch-based remote install, Docker image
-deployment, password SSH, source/build/log synchronization, stale remote branch
-variables, Humble/sysroot runtime assumptions, and documentation references.
-Archive the old deployment repository according to P0.T4.
+Rewrite the canonical operator manual and affected package runbooks around the III
+CLI workflows delivered by P1–P4. Cover the complete lifecycle from stock Ubuntu
+and raw SD through commissioning, home release preparation, native GC/QGC setup,
+dirty field iteration, tuning/capture, maintenance, diagnostics, disaster recovery,
+and final retirement. Keep concise happy paths linked to detailed failure runbooks;
+do not make an operator reconstruct a workflow from architecture notes or shell
+implementation details.
+
+Acceptance:
+
+- [ ] Canonical runbooks cover builder/GC provisioning, SD imaging, first boot,
+      Ansible convergence, provisioned/commissioned states, qualified release
+      fetch/deploy, dirty/untracked field deploy, component selection, profile/
+      mission selection, field prepare/check, clock sync, and offline operation.
+- [ ] Configuration runbooks cover live GUI edit/unsaved/apply semantics, pending
+      cold restart, sim/real reconciliation, removed/reintroduced values, named
+      parameter-set capture, compare/promotion, PX4 parameter capture/apply, and
+      QGC managed-setting capture without inventing a separate “GUI tuning” mode.
+- [ ] Recovery runbooks cover activation/receiver/network failure, client loss and
+      reattachment, onboard automatic rollback, low disk, log pull/prune, unsafe
+      release withdrawal, host maintenance, backup/reimage/restore, surviving-key
+      enrollment, total credential loss, replacement GC, and physical SD recovery.
+- [ ] Every command block is executable from its declared environment, matches
+      tested CLI help, identifies whether source checkout is required, and shows
+      representative result/next-action structure without embedding volatile IDs,
+      secrets, machine paths, or stale screenshots as normative truth.
+- [ ] Safety-critical procedures state exact stop conditions and never normalize
+      maintenance overrides, credential bypasses, direct filesystem mutation,
+      onboard compilation, or flight while readiness/clock/commissioning is failed.
+- [ ] The offline operator subset and matching generated command/schema reference
+      ship with qualified GC assets/GitHub Release so field use does not depend on
+      internet access; release manifests identify the documentation revision.
+
+Tests:
+
+- Independent human walkthrough and clean-computer scripted walkthrough from raw
+  provisioning through Q131 cutover; documentation command extraction/help checks;
+  offline rendering/search; and deliberate failure-recovery exercises.
+
+#### P5.T4: Migrate CI, Branch Hygiene, Release, And AI-Agent Instructions
+
+Description:
+Replace current `staging`, ambiguous temporary “release branch,” manual pointer
+refresh, and advisory-only governance prose with an exact automation-first model
+shared by root docs, editable submodule docs, GitHub workflows/templates, scripts,
+and agent instructions. Document the solo-maintainer policy without weakening PRs,
+checks, provenance, or change authority. Optimize instructions for Codex/AI agents:
+small discoverable contracts, deterministic commands, explicit mutation boundaries,
+structured outputs, resumable operation IDs, and evidence-bearing handoffs.
+
+Acceptance:
+
+- [ ] A canonical branch matrix defines allowed source/base pairs and exact chain:
+      feature/work-sweep -> `develop` -> `promote/develop-to-main/*` -> `main` ->
+      workspace-only `release` -> immutable `vX.Y.Z`; editable submodules stop at
+      `main`, and no maintained instruction refers to `staging` as a live branch.
+- [ ] Docs explain strict gitlink/lock governance, linked submodule PR markers,
+      post-merge gitlink refresh, content-identity equivalence, Q118 local evidence,
+      Q121 impact categories, Q122 waiver limits, Q120 evidence reuse, SemVer,
+      release notes, signed status withdrawal, and protected tag/publication flow.
+- [ ] Root and editable-repository `AGENTS.md`/agent docs state safe read-only work,
+      allowed edit boundaries, dirty-worktree preservation, no-touch forks/third
+      parties, required checks, plan/apply authority, external mutation rules, and
+      how to resume partial PR/release/deploy operations through stable operation IDs.
+- [ ] PR templates, generated summaries, and workflow docs use machine-readable
+      markers only as untrusted transport; signatures, refs, schemas, and queried
+      GitHub state remain authoritative.
+- [ ] Human and agent workflows invoke the same P0.T11 primitives; no documentation
+      instructs an AI to parse decorative output, bypass confirmation, push directly
+      to protected branches, fabricate evidence, or assume a second reviewer.
+- [ ] Current `README.md`, `docs/dependency-governance.md`,
+      `docs/repo-boundary-map.md`, `scripts/README.md`, workflow descriptions,
+      promotion helper help, and agent-routing docs are reconciled in coordinated
+      workspace/submodule PRs.
+
+Tests:
+
+- Policy-table fixtures for every allowed/rejected PR pair; documentation scans for
+  stale `staging`/legacy promotion language; agent dry-run scenarios for feature PR,
+  develop promotion, release publication, partial retry, stale ref, dirty tree, and
+  permission denial; and live read-only ruleset audit comparison.
+
+#### P5.T5: Reconcile Remaining Maintained III Documentation And Release References
+
+Description:
+Migrate all other maintained workspace and editable-III documentation through the
+P5.T2 contract. Reconcile architecture, build/environment, runtime, supervision,
+configuration, mission, simulation, GC, testing, operations, package README, ADR,
+and context documents with the installed native runtime, host-QGC model, profile
+composition, canonical III CLI, and repository boundaries. Preserve sealed research
+evidence and historical documents as immutable history with clear status rather than
+rewriting their past commands into present recommendations.
+
+Acceptance:
+
+- [ ] Every document classified as maintained passes its assigned migration review;
+      every intentionally historical document is visibly labeled/indexed and cannot
+      be mistaken for current instructions.
+- [ ] Build/environment docs distinguish host, devcontainer simulation, pinned ARM64
+      builder, native aircraft, and native GC/QGC paths; production instructions do
+      not source `/home/iii/ws`, Humble, mutable sysroots, or onboard Docker.
+- [ ] Runtime/mission/configuration docs use installed ament resources, catalog IDs,
+      explicit profile composition, durable parameter state, and daemon/runtime API
+      ownership without duplicating the canonical supervision graph.
+- [ ] Simulation docs retain `/home/iii/ws` only where it is explicitly the
+      devcontainer workspace, launch QGC natively on the host, skip clock alignment,
+      and do not imply that deferred HIL or profile-specific OptiTrack work exists.
+- [ ] Generated CLI command reference and structured-output/schema reference are
+      reproducible from source and included in docs/release checks; handwritten docs
+      link to them rather than copy option lists that can drift.
+- [ ] Cross-repository links resolve at the governed source revision or use stable
+      repository-relative locations; package docs remain useful when read from their
+      own repository and from the composed workspace.
+- [ ] A qualified release records the exact documentation manifest/revision and
+      publishes the offline operator manual plus generated references beside its
+      artifacts and release notes.
+
+Tests:
+
+- Full `iii docs check`; built-document link/reference validation; generated-help
+  diff; forbidden production-path scan; maintained/historical classification audit;
+  package-standalone link checks; and qualified-release documentation assembly.
+
+#### P5.T6: Remove Legacy CLI And Deployment Behavior
+
+Description:
+After replacement acceptance, remove branch-based remote install, onboard
+Docker image deployment, password SSH, source/build/log synchronization, stale remote branch
+variables, Humble/sysroot runtime assumptions, devcontainer-owned QGroundControl
+binary/configuration/lifecycle paths, and documentation references.
+Archive the old deployment repository according to P0.T4 and Q131. Preserve its
+history read-only and add a final migration pointer; do not copy its onboard
+Compose-per-node runtime ownership into the replacement or delete historical
+evidence. The Q61–Q63 pinned GC frontend/proxy containers remain host-managed by
+the native GC updater and user-session services; they are not onboard runtime
+containers and are not a legacy path.
 
 Acceptance:
 
 - [ ] No supported CLI path can perform the retired destructive workflow.
 - [ ] Dependency and documentation searches find no accidental old entry point.
 - [ ] Historical migration notes identify the last legacy version and replacement commands.
+- [ ] `setup/remote.bash`, old deployment variables, password SSH, mutable branch
+      checkout, `latest` image publication, `rsync --delete`, onboard build/image
+      commands, onboard production containers, and devcontainer-owned QGroundControl
+      entry points are removed or fail with exact replacement next actions. The
+      host-managed GC frontend/proxy container path remains supported and tested.
+- [ ] The legacy repository is archived only after the signed Q131 matrix passes;
+      its archive metadata names the final commit/branch, replacement release/docs,
+      and recovery location, and no active workflow depends on write access to it.
+- [ ] A clean workstation and commissioned target complete normal operation after
+      all legacy local clones/caches are removed from the test environment.
 
 Tests:
 
-- CLI regression tests and repository-wide retired-pattern audit.
+- CLI regression tests; repository/documentation retired-pattern audit; clean-host
+  run with the legacy repository absent; archived-repository link verification; and
+  final signed Q131 no-legacy-dependency rerun.
 
 ## In-Progress
 
 ## Completed
+
+### P0: Resolve Architecture And Contracts
+
+#### P0.T0: Complete The Deployment Design Interview
+
+Description:
+Used the `grill-me` decision tree and delegated closure authority to resolve target
+hardware, platform, image, release, transport, safety, configuration, security,
+fleet, recovery, evidence, documentation, and operational policy, then reconciled
+the resulting decisions into the implementation tasks.
+
+Acceptance:
+
+- [x] The open decision register contains no implementation-blocking ambiguity.
+- [x] Q1–Q132 are settled or explicitly rejected with a retained reason; no entry
+      remains `Unanswered`.
+- [x] Rejected alternatives and their load-bearing reasons are retained.
+- [x] Dependencies between decisions are reflected in phase/task ordering.
+
+Tests:
+
+- Completed manual backlog review against the settled decision record.
+- Passed `! rg -n '^- \*\*Q[0-9]+ .*Unanswered' codex-backlogs/deployment-infrastructure-redesign.md`.

@@ -1,9 +1,11 @@
 # III-Drone Context Map
 
-The workspace currently has one domain context document:
+The workspace has two bounded-context documents:
 
 - [`CONTEXT.md`](CONTEXT.md): workspace integration, runtime ownership,
   package boundaries, operator-control language, and architecture decisions.
+- [`deployment/CONTEXT.md`](deployment/CONTEXT.md): release, activation,
+  persistent configuration, recovery, evidence, and deployment cutover language.
 
 Operational and subsystem detail is indexed by [`docs/README.md`](docs/README.md).
 The field inspection operator workflow is authoritative in

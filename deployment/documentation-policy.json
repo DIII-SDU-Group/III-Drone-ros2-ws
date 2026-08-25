@@ -1,0 +1,32 @@
+{
+  "schema": "iii.documentation-policy/v1",
+  "repositories": [
+    {"id": "workspace", "path": ".", "governed": true},
+    {"id": "configuration", "path": "src/III-Drone-Configuration", "governed": true},
+    {"id": "contracts", "path": "src/III-Drone-Contracts", "governed": true},
+    {"id": "core", "path": "src/III-Drone-Core", "governed": true},
+    {"id": "ground-control", "path": "src/III-Drone-GC", "governed": true},
+    {"id": "interfaces", "path": "src/III-Drone-Interfaces", "governed": true},
+    {"id": "mission", "path": "src/III-Drone-Mission", "governed": true},
+    {"id": "runtime", "path": "src/III-Drone-Runtime", "governed": true},
+    {"id": "simulation", "path": "src/III-Drone-Simulation", "governed": true},
+    {"id": "supervision", "path": "src/III-Drone-Supervision", "governed": true},
+    {"id": "cli", "path": "tools/III-Drone-CLI", "governed": true}
+  ],
+  "exclusions": [
+    {"pattern": ".agents/skills/**", "reason": "bundled agent-skill source, not operating-manual content"},
+    {"pattern": "build/**", "reason": "generated build output"},
+    {"pattern": "install/**", "reason": "generated install output"},
+    {"pattern": "log/**", "reason": "generated test/runtime logs"},
+    {"pattern": ".iii/**", "reason": "untracked operator records and evidence"},
+    {"pattern": "datasets/**", "reason": "operator-managed datasets"},
+    {"pattern": "artifacts/**", "reason": "generated artifacts"}
+  ],
+  "canonical_roots": ["docs/README.md", "CONTEXT-MAP.md"],
+  "forbidden_current_terms": [
+    "~/Workspace/repos/III-Drone-deployment",
+    "rsync --delete",
+    "sshpass"
+  ]
+}
+

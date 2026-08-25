@@ -1,5 +1,6 @@
 build/*
 !build/.gitignore
+deployment/build/
 install/*
 !install/.gitignore
 log/*
@@ -14,6 +15,7 @@ runtime_logs/**/latest
 !.config/.gitignore
 
 .cache/
+.iii/
 .pytest_cache/
 .playwright-mcp/
 artifacts/

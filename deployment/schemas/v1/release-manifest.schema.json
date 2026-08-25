@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/release-manifest.schema.json",
+  "title": "III release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "manifest_type", "release_id", "release_class", "components", "source", "target", "toolchain", "dependency_lock", "packages", "checksums", "configuration", "px4", "qgc", "profiles", "mission_catalog", "qualification", "signing", "operational_policy", "build"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "manifest_type": {"const": "release"},
+    "release_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "release_class": {"enum": ["qualified", "field-development"]},
+    "version": {"type": ["string", "null"], "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "components": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["drone", "gc"]}},
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["workspace_commit", "branch", "clean", "content_identity", "tracked_patch_sha256", "untracked", "submodules"],
+      "properties": {
+        "workspace_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "branch": {"type": "string", "minLength": 1},
+        "clean": {"type": "boolean"},
+        "content_identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "tracked_patch_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "untracked": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}},
+        "submodules": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "commit", "state", "content_identity"], "properties": {"path": {"type": "string", "pattern": "^(?:src|tools)/III-Drone-[A-Za-z-]+$"}, "commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"}, "state": {"enum": ["clean", "modified", "untracked"]}, "content_identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}}
+      }
+    },
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["target_id", "os", "os_version", "architecture", "python_abi", "host_baseline", "ros"],
+      "properties": {
+        "target_id": {"enum": ["raspberry-pi-5-noble-arm64", "gc-ubuntu-x86_64"]},
+        "os": {"const": "ubuntu"}, "os_version": {"enum": ["22.04", "24.04"]},
+        "architecture": {"enum": ["aarch64", "x86_64"]},
+        "python_abi": {"type": "string", "pattern": "^cp3[0-9]+$"},
+        "host_baseline": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "ros": {"type": ["string", "null"], "enum": ["jazzy", null]}
+      }
+    },
+    "toolchain": {"type": "object", "additionalProperties": false, "required": ["builder_digest", "compiler", "sysroot_sha256"], "properties": {"builder_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "compiler": {"type": "string", "minLength": 1}, "sysroot_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+    "dependency_lock": {"type": "object", "additionalProperties": false, "required": ["sha256", "verified"], "properties": {"sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "verified": {"type": "boolean"}}},
+    "packages": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["name", "version", "content_sha256"], "properties": {"name": {"type": "string", "pattern": "^[a-z0-9_+-]+$"}, "version": {"type": "string"}, "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}},
+    "checksums": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "propertyNames": {"pattern": "^(?!/)(?!.*\\.\\.).+$"}},
+    "configuration": {"type": "object", "additionalProperties": false, "required": ["schema_version", "manifest_sha256", "compatible_from", "capture_contract"], "properties": {"schema_version": {"type": "integer", "minimum": 1}, "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "compatible_from": {"type": "array", "items": {"type": "integer", "minimum": 1}, "uniqueItems": true}, "capture_contract": {"const": "iii.capture/v1"}}},
+    "px4": {"type": "object", "additionalProperties": false, "required": ["manifest_sha256", "firmware_range", "interface_sha256"], "properties": {"manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "firmware_range": {"type": "string", "minLength": 1}, "interface_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+    "qgc": {"type": "object", "additionalProperties": false, "required": ["managed_settings_sha256", "compatible_versions"], "properties": {"managed_settings_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "compatible_versions": {"type": "array", "minItems": 1, "items": {"type": "string"}}}},
+    "profiles": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["id", "bootable", "parameter_profile", "capabilities", "default_mission"], "properties": {"id": {"enum": ["sim", "real", "opti_track", "hil"]}, "bootable": {"type": "boolean"}, "parameter_profile": {"enum": ["sim", "real"]}, "capabilities": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}, "default_mission": {"type": "string", "minLength": 1}}}},
+    "mission_catalog": {"type": "object", "additionalProperties": false, "required": ["schema_version", "catalog_sha256"], "properties": {"schema_version": {"type": "integer", "minimum": 1}, "catalog_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+    "qualification": {"type": "object", "additionalProperties": false, "required": ["explicit_action", "tag_on_release", "tests_complete", "evidence_sha256", "evidence_complete"], "properties": {"explicit_action": {"type": "boolean"}, "tag_on_release": {"type": "boolean"}, "tests_complete": {"type": "boolean"}, "evidence_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "evidence_complete": {"type": "boolean"}}},
+    "signing": {"type": "object", "additionalProperties": false, "required": ["algorithm", "signer_id", "authority"], "properties": {"algorithm": {"const": "Ed25519"}, "signer_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "authority": {"enum": ["ci-qualified", "workstation-field"]}}},
+    "operational_policy": {"type": "object", "additionalProperties": false, "required": ["schema_version", "sha256"], "properties": {"schema_version": {"const": "1"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+    "build": {"type": "object", "additionalProperties": false, "required": ["builder_id", "built_at", "source_date_epoch"], "properties": {"builder_id": {"type": "string", "minLength": 1}, "built_at": {"type": "string", "format": "date-time"}, "source_date_epoch": {"type": "integer", "minimum": 0}}}
+  }
+}

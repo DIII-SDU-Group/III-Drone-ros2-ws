@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/promotion-evidence.schema.json",
+  "title": "III signed local promotion evidence",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "attestation_id", "workspace_commit", "source_content_identity", "dependency_lock_sha256", "policy_sha256", "categories", "waivers", "artifacts", "signer_id", "signature"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "attestation_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "workspace_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "source_content_identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "dependency_lock_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "policy_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "categories": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["id", "status", "summary_sha256"], "properties": {"id": {"type": "string", "pattern": "^[a-z0-9-]+$"}, "status": {"enum": ["passed", "not-performed"]}, "summary_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}},
+    "waivers": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["category", "rationale", "risk", "compensating_evidence"], "properties": {"category": {"type": "string"}, "rationale": {"type": "string", "minLength": 1}, "risk": {"type": "string", "minLength": 1}, "compensating_evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}}}}},
+    "artifacts": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["kind", "sha256"], "properties": {"kind": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}},
+    "signer_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  }
+}

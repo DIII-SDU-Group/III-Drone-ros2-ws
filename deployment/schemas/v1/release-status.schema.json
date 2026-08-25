@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/release-status.schema.json",
+  "title": "III append-only qualified release status",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "statement_id", "sequence", "release_id", "version", "status", "reason", "recorded_at", "signer_id", "signature_algorithm", "previous_statement"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "statement_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "release_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "version": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "status": {"enum": ["qualified", "withdrawn", "unsafe"]},
+    "reason": {"type": "string", "minLength": 1},
+    "superseding_version": {"type": ["string", "null"], "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "signer_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "signature_algorithm": {"const": "Ed25519"},
+    "previous_statement": {"oneOf": [{"type": "null"}, {"type": "object", "additionalProperties": false, "required": ["statement_id", "sha256"], "properties": {"statement_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}]}
+  }
+}
+

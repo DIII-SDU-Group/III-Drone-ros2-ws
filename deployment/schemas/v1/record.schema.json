@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/record.schema.json",
+  "title": "III portable record identity",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "record_type", "record_id", "created_at", "source", "target", "profile", "release_id", "content", "references", "integrity"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "record_type": {"enum": ["readiness", "commissioning", "evidence", "backup", "capture", "operation", "archive"]},
+    "record_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "source": {"type": "string", "minLength": 1},
+    "target": {"type": ["string", "null"]},
+    "profile": {"type": ["string", "null"], "enum": ["sim", "real", "opti_track", "hil", null]},
+    "release_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "content": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "sha256", "size"], "properties": {"path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "size": {"type": "integer", "minimum": 0}}}},
+    "references": {"type": "array", "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["domain", "record_id"], "properties": {"domain": {"type": "string", "minLength": 1}, "record_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}},
+    "integrity": {"type": "object", "additionalProperties": false, "required": ["algorithm", "manifest_sha256", "state"], "properties": {"algorithm": {"const": "sha256"}, "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "state": {"enum": ["verified", "unverified", "corrupt"]}}}
+  }
+}

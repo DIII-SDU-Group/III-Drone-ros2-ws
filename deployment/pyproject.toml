@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools==80.9.0", "wheel==0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iii-deployment"
+version = "0.1.0"
+description = "ROS-independent deployment contracts and tooling for III-Drone"
+requires-python = ">=3.10"
+dependencies = [
+  "cryptography==45.0.6",
+  "jsonschema==4.25.1",
+  "PyYAML==6.0.2",
+  "zstandard==0.23.0"
+]
+
+[project.optional-dependencies]
+test = ["pytest==8.4.1"]
+
+[project.scripts]
+iii-deployment-verify = "iii_deployment.verification.cli:main"
+iii-deploymentctl = "iii_deployment.receiver.client:main"
+iii-deployment-receiver = "iii_deployment.receiver.server:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+iii_deployment = ["assets/**/*.json", "assets/**/*.yaml", "assets/**/*.j2"]
+
+[tool.setuptools.data-files]
+"share/iii-deployment/schemas/v1" = ["schemas/v1/*.json"]
+"share/iii-deployment/policy" = ["operational-policy.json", "documentation-policy.json"]
+"share/iii-deployment/verification" = ["verification/clause-baseline.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

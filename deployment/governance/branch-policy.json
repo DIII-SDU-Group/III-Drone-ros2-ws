@@ -1,0 +1,16 @@
+{
+  "schema": "iii.branch-policy/v1",
+  "workspace": {
+    "develop": {"sources": ["feature"], "required_checks": ["promotion-source", "deployment-contracts", "verify-submodule-lock", "verify-iii-branch-policy", "verify-iii-submodules-on-target-branch", "verify-linked-submodule-prs-merged"]},
+    "main": {"sources": ["promote/develop-to-main/*"], "required_checks": ["promotion-source", "promotion-evidence", "deployment-contracts", "verify-submodule-lock", "verify-iii-branch-policy", "verify-iii-submodules-on-target-branch", "verify-linked-submodule-prs-merged"]},
+    "release": {"sources": ["main"], "required_checks": ["promotion-source", "promotion-evidence", "deployment-contracts", "verify-submodule-lock", "verify-iii-submodules-on-target-branch", "verify-linked-submodule-prs-merged"]}
+  },
+  "submodule": {
+    "develop": {"sources": ["feature"], "required_checks": ["promotion-source", "iii-package-check"]},
+    "main": {"sources": ["promote/develop-to-main/*"], "required_checks": ["promotion-source", "iii-package-check"]}
+  },
+  "protected_branches": ["develop", "main", "release"],
+  "mechanical_workspace_paths": ["deps/submodule-lock.txt", "src/III-*", "tools/III-*"],
+  "review": {"required_approvals": 0, "require_pull_request": true, "require_conversation_resolution": true},
+  "history": {"allow_deletion": false, "allow_force_push": false}
+}
