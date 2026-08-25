@@ -36,6 +36,30 @@ jobs:
             --head-sha "${{ github.event.pull_request.head.sha }}" \
             --json
 
+  promotion-source-target:
+    name: promotion-source-${{ github.base_ref }}
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Validate target-specific source and mechanical diff
+        run: |
+          PYTHONPATH=deployment/src python scripts/ci/verify_promotion_source.py \
+            --phase source \
+            --base "${{ github.base_ref }}" \
+            --head "${{ github.head_ref }}" \
+            --base-sha "${{ github.event.pull_request.base.sha }}" \
+            --head-sha "${{ github.event.pull_request.head.sha }}" \
+            --json
+
   promotion-evidence:
     if: github.event_name == 'pull_request' && contains(fromJSON('["main","release"]'), github.base_ref)
     runs-on: ubuntu-24.04
