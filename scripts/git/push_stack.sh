@@ -28,7 +28,7 @@ REQUIREMENTS
 
 OPTIONS
   --base <base-branch>
-      Required base branch (usually develop).
+      Required base branch: develop for feature work or main for promotion.
 
   --feature <feature-branch>
       Optional feature branch. Default: current workspace branch.
@@ -53,7 +53,7 @@ BEHAVIOR
 EXAMPLES
   scripts/git/push_stack.sh --base develop --feature version-migration
   scripts/git/push_stack.sh --base develop --feature version-migration --yes
-  scripts/git/push_stack.sh --base main --feature release/develop-to-main-2026-03 --all-iii --yes
+  scripts/git/push_stack.sh --base main --feature promote/develop-to-main/2026-08 --all-iii --yes
 USAGE
 }
 
@@ -114,6 +114,14 @@ if [[ -z "$feature_branch" ]]; then
 fi
 if [[ -z "$feature_branch" ]]; then
   echo "ERROR: workspace is detached HEAD; pass --feature explicitly and checkout a branch" >&2
+  exit 1
+fi
+if [[ "$base_branch" != "develop" && "$base_branch" != "main" ]]; then
+  echo "ERROR: stack push target must be 'develop' or 'main'" >&2
+  exit 1
+fi
+if [[ "$base_branch" == "main" && ! "$feature_branch" =~ ^promote/develop-to-main/[a-z0-9][a-z0-9._-]*$ ]]; then
+  echo "ERROR: main promotion branches must match promote/develop-to-main/<id>" >&2
   exit 1
 fi
 

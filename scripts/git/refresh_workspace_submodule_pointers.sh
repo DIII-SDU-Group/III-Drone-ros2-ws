@@ -94,6 +94,14 @@ if [[ -z "$feature_branch" ]]; then
   echo "ERROR: workspace is detached HEAD; pass --feature explicitly" >&2
   exit 1
 fi
+if [[ "$base_branch" != "develop" && "$base_branch" != "main" ]]; then
+  echo "ERROR: pointer refresh base must be 'develop' or 'main'" >&2
+  exit 1
+fi
+if [[ "$base_branch" == "main" && ! "$feature_branch" =~ ^promote/develop-to-main/[a-z0-9][a-z0-9._-]*$ ]]; then
+  echo "ERROR: main pointer refresh requires promote/develop-to-main/<id>" >&2
+  exit 1
+fi
 
 mapfile -t iii_submodules < <(
   git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \

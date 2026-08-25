@@ -2178,7 +2178,7 @@ Tests:
 
 #### P0.T6: Protect Workspace Integration And Release Branches
 
-**Status: In-Progress.**
+**Status: Completed.**
 
 Description:
 Create active GitHub rulesets for workspace `develop`, `main`, and the new
@@ -2189,21 +2189,27 @@ define narrowly justified bypass actors, if any.
 
 Acceptance:
 
-- [ ] `develop`, `main`, and `release` rulesets are active and target only their
+- [x] `develop`, `main`, and `release` rulesets are active and target only their
       intended refs.
-- [ ] Required checks block merge when pending, failing, or absent.
-- [ ] Workspace `main` requires the promotion-evidence check; workspace `release`
+- [x] Required checks block merge when pending, failing, or absent.
+- [x] Workspace `main` requires the promotion-evidence check; workspace `release`
       requires proof-based evidence reuse or recollection according to Q120.
-- [ ] Direct pushes, deletion, and force-pushes are blocked according to policy.
-- [ ] The rulesets contain no undocumented bypass.
+- [x] Direct pushes, deletion, and force-pushes are blocked according to policy.
+- [x] The rulesets contain no undocumented bypass.
 
 Tests:
 
 - Read-only GitHub ruleset audit plus controlled allowed/rejected test PRs.
 
+Implementation note (2026-08-25): workspace PRs #29 and #30 passed every
+required develop gate. Live reconciliation reports all three desired rulesets
+unchanged, the rules contain no bypass actors, and an up-to-date direct push to
+`develop` was rejected by GH013 because a PR and six required checks were
+required.
+
 #### P0.T7: Protect Editable III Submodule Branches
 
-**Status: In-Progress.**
+**Status: Completed.**
 
 Description:
 Create matching active GitHub rulesets for `develop` and `main` in each editable
@@ -2213,10 +2219,10 @@ the settled review policy. Do not create submodule `release` branches.
 
 Acceptance:
 
-- [ ] Every editable III repository has active `develop` and `main` protection.
-- [ ] Direct pushes, deletion, force-pushes, and invalid promotion sources are blocked.
-- [ ] Workspace linked-PR checks and submodule rulesets agree on target branches.
-- [ ] Third-party and forked repositories are not mutated by this task.
+- [x] Every editable III repository has active `develop` and `main` protection.
+- [x] Direct pushes, deletion, force-pushes, and invalid promotion sources are blocked.
+- [x] Workspace linked-PR checks and submodule rulesets agree on target branches.
+- [x] Third-party and forked repositories are not mutated by this task.
 
 Tests:
 
@@ -2226,9 +2232,15 @@ Implementation note (2026-08-25): the rollout uses target-specific required
 contexts (`promotion-source-develop` and `promotion-source-main`) so a successful
 check attached to one commit on a develop-targeting PR cannot be reused by a
 main-targeting PR. The original context remains as a non-required compatibility
-check during rollout.
+check during rollout. Twenty allowed submodule PRs passed and merged across the
+two rollout passes. Configuration PR #14 was then updated to current `main`,
+failed `promotion-source-main`, was reported `BLOCKED`, and was closed without
+merge. All 20 submodule rulesets reconcile unchanged and no submodule `release`
+branch exists.
 
 #### P0.T8: Update Coordinated Promotion Automation
+
+**Status: In-Progress.**
 
 Description:
 Update `scripts/git/create_stack_prs.sh`,

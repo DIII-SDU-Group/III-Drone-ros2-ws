@@ -96,9 +96,10 @@ Recommended working model:
 
 - `main`: stable, deployable
 - `develop`: active integration
-- `staging`: optional pre-release hardening
+- `release`: qualified workspace releases promoted only from `main`
 - feature branches: all development work
-- tags: immutable robot-deployable snapshots
+- `promote/develop-to-main/*`: mechanical, evidence-gated promotion branches
+- `vX.Y.Z` tags: immutable qualified snapshots reachable from `release`
 
 ## Dependency Governance
 

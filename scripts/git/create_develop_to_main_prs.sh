@@ -4,92 +4,68 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 NAME
-  create_develop_to_main_prs.sh - create/update a coordinated develop -> main release PR stack
+  create_develop_to_main_prs.sh - prepare or refresh a verified develop-to-main promotion stack
 
 SYNOPSIS
-  scripts/git/create_develop_to_main_prs.sh --release <release-branch> [--source <source-branch>] [--target <target-branch>] [--yes]
+  scripts/git/create_develop_to_main_prs.sh --promotion-id <id> [--phase prepare|refresh] [--yes]
   scripts/git/create_develop_to_main_prs.sh -h | --help
 
 DESCRIPTION
-  This helper prepares a dedicated release branch for the workspace and all III
-  submodules, then creates or updates coordinated PRs from that release branch
-  into the target branch.
+  Coordinates the only supported editable-III promotion into main. The fixed
+  source is develop, the fixed target is main, and the mechanical branch is
+  promote/develop-to-main/<id> in the workspace and all editable III repos.
 
-  The default promotion is:
-  - source branch: develop
-  - target branch: main
+  prepare:
+    sync develop, create/switch the promotion branches, and create/update the
+    linked submodule and workspace PR stack.
 
-  Workflow:
-  1) sync workspace + III submodules onto the source branch
-  2) create/switch the workspace release branch
-  3) align all III submodules onto matching release branches
-  4) create/update coordinated III submodule PRs and the workspace PR
+  refresh:
+    after every linked submodule PR has merged into main, refresh workspace
+    gitlinks to the exact origin/main heads, update the dependency lock, verify
+    the mechanical-diff contract, commit if needed, and push the promotion branch.
 
-  Use a dedicated release branch instead of opening a PR directly from develop.
-  That keeps develop free to continue tracking develop-head submodule pointers
-  after the release PR refreshes its gitlinks to origin/main.
+  Both phases are dry-run unless --yes is supplied. A dry-run prints the exact
+  commands without switching branches, fetching, pushing, committing, or editing
+  pull requests.
 
 OPTIONS
-  --release <release-branch>
-      Required. Dedicated release branch name used in workspace and III submodules.
+  --promotion-id <id>
+      Required stable operation identifier. Allowed: lowercase letters, digits,
+      dot, underscore, and hyphen; the first character must be alphanumeric.
 
-  --source <source-branch>
-      Optional. Source integration branch to promote from. Default: develop.
-
-  --target <target-branch>
-      Optional. Target branch to promote into. Default: main.
+  --phase prepare|refresh
+      Optional lifecycle phase. Default: prepare.
 
   --yes
-      Apply changes. Without --yes the script runs in dry-run mode.
+      Apply the selected phase. Without this flag the command is read-only.
 
 EXAMPLES
-  scripts/git/create_develop_to_main_prs.sh --release release/develop-to-main-2026-03
-  scripts/git/create_develop_to_main_prs.sh --release release/develop-to-main-2026-03 --yes
+  scripts/git/create_develop_to_main_prs.sh --promotion-id 2026-08-qualification
+  scripts/git/create_develop_to_main_prs.sh --promotion-id 2026-08-qualification --yes
+  scripts/git/create_develop_to_main_prs.sh --promotion-id 2026-08-qualification --phase refresh --yes
 USAGE
 }
 
-release_branch=""
-source_branch="develop"
-target_branch="main"
+promotion_id=""
+phase="prepare"
 apply=0
-
-if [[ $# -eq 0 ]]; then
-  usage
-  exit 1
-fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --release)
-      release_branch="${2:-}"
-      shift 2
-      ;;
-    --source)
-      source_branch="${2:-}"
-      shift 2
-      ;;
-    --target)
-      target_branch="${2:-}"
-      shift 2
-      ;;
-    --yes)
-      apply=1
-      shift
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      echo "ERROR: unknown argument: $1" >&2
-      usage
-      exit 1
-      ;;
+    --promotion-id) promotion_id="${2:-}"; shift 2 ;;
+    --phase) phase="${2:-}"; shift 2 ;;
+    --yes) apply=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "ERROR: unknown argument: $1" >&2; usage; exit 1 ;;
   esac
 done
 
-if [[ -z "$release_branch" ]]; then
-  echo "ERROR: --release is required" >&2
+if [[ ! "$promotion_id" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+  echo "ERROR: --promotion-id must match [a-z0-9][a-z0-9._-]*" >&2
+  exit 1
+fi
+if [[ "$phase" != "prepare" && "$phase" != "refresh" ]]; then
+  echo "ERROR: --phase must be 'prepare' or 'refresh'" >&2
   exit 1
 fi
 
@@ -100,66 +76,101 @@ if [[ -z "$root" ]]; then
 fi
 cd "$root"
 
-current_branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
-if [[ -z "$current_branch" ]]; then
-  echo "ERROR: workspace is detached HEAD; checkout '$source_branch' or '$release_branch' first" >&2
-  exit 1
-fi
+source_branch="develop"
+target_branch="main"
+promotion_branch="promote/develop-to-main/$promotion_id"
 
-if [[ "$current_branch" != "$source_branch" && "$current_branch" != "$release_branch" ]]; then
-  echo "ERROR: workspace must be on '$source_branch' or '$release_branch' before running this helper" >&2
-  echo "Current branch: $current_branch" >&2
-  exit 1
-fi
-
-if [[ "$release_branch" == "$source_branch" || "$release_branch" == "$target_branch" ]]; then
-  echo "ERROR: --release must be a dedicated branch distinct from source/target" >&2
-  exit 1
-fi
-
+echo "Promotion phase: $phase"
 echo "Source branch: $source_branch"
 echo "Target branch: $target_branch"
-echo "Release branch: $release_branch"
+echo "Mechanical branch: $promotion_branch"
 
-sync_cmd=(./scripts/git/post_pr_sync.sh --base "$source_branch")
-align_cmd=(./scripts/git/iii_branch_guard.sh align --base "$target_branch" --feature "$release_branch" --all-iii)
-stack_cmd=(./scripts/git/create_stack_prs.sh --base "$target_branch" --feature "$release_branch" --all-iii)
-if (( apply == 1 )); then
-  sync_cmd+=(--yes)
-  align_cmd+=(--yes)
-  stack_cmd+=(--yes)
+print_command() {
+  printf '  '
+  printf '%q ' "$@"
+  printf '\n'
+}
+
+if (( apply == 0 )); then
+  echo "DRY-RUN plan:"
+  if [[ "$phase" == "prepare" ]]; then
+    print_command ./scripts/git/post_pr_sync.sh --base "$source_branch" --yes
+    print_command git switch -c "$promotion_branch"
+    print_command ./scripts/git/iii_branch_guard.sh align --base "$target_branch" --feature "$promotion_branch" --all-iii --yes
+    print_command ./scripts/git/create_stack_prs.sh --base "$target_branch" --feature "$promotion_branch" --all-iii --yes
+  else
+    print_command git switch "$promotion_branch"
+    print_command ./scripts/git/refresh_workspace_submodule_pointers.sh --base "$target_branch" --feature "$promotion_branch" --all-iii --yes
+    print_command ./scripts/git/verify_submodule_lock.sh
+    print_command python scripts/ci/verify_promotion_source.py --phase source --base main --head "$promotion_branch" --base-sha origin/main --head-sha HEAD --develop-ref origin/develop --json
+    print_command git commit -m "chore(submodules): refresh promotion pointers to origin/main"
+    print_command git push origin "$promotion_branch"
+  fi
+  echo "DRY-RUN complete. Re-run with --yes to apply."
+  exit 0
 fi
 
-echo
-echo "Step 1/4: sync workspace and III submodules onto '$source_branch'"
-"${sync_cmd[@]}"
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+  echo "ERROR: tracked workspace changes must be committed before promotion automation" >&2
+  exit 2
+fi
 
-echo
-echo "Step 2/4: create or switch workspace release branch '$release_branch'"
-if (( apply == 1 )); then
-  if git rev-parse --verify --quiet "$release_branch" >/dev/null; then
-    git switch "$release_branch"
+if [[ "$phase" == "prepare" ]]; then
+  ./scripts/git/post_pr_sync.sh --base "$source_branch" --yes
+  git fetch --no-tags origin "$source_branch" "$target_branch"
+  git branch --force "$target_branch" "origin/$target_branch"
+  mapfile -t iii_submodules < <(
+    git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+      | awk '{print $2}' \
+      | grep -E '^(src/III-|tools/III-)'
+  )
+  for path in "${iii_submodules[@]}"; do
+    git -C "$path" fetch --no-tags origin "$target_branch"
+    git -C "$path" branch --force "$target_branch" "origin/$target_branch"
+  done
+  if git show-ref --verify --quiet "refs/heads/$promotion_branch"; then
+    git switch "$promotion_branch"
+    git merge --ff-only "origin/$source_branch"
   else
-    git switch -c "$release_branch"
+    git switch -c "$promotion_branch" "origin/$source_branch"
   fi
+  ./scripts/git/iii_branch_guard.sh align \
+    --base "$target_branch" --feature "$promotion_branch" --all-iii --yes
+  ./scripts/git/create_stack_prs.sh \
+    --base "$target_branch" --feature "$promotion_branch" --all-iii --yes
+  echo
+  echo "Prepare complete. Merge every linked submodule PR into main, then run:"
+  echo "  $0 --promotion-id $promotion_id --phase refresh --yes"
+  exit 0
+fi
+
+current_branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+if [[ "$current_branch" != "$promotion_branch" ]]; then
+  if ! git show-ref --verify --quiet "refs/heads/$promotion_branch"; then
+    echo "ERROR: local promotion branch does not exist: $promotion_branch" >&2
+    exit 1
+  fi
+  git switch "$promotion_branch"
+fi
+
+git fetch --no-tags origin "$source_branch" "$target_branch"
+./scripts/git/refresh_workspace_submodule_pointers.sh \
+  --base "$target_branch" --feature "$promotion_branch" --all-iii --yes
+./scripts/git/verify_submodule_lock.sh
+
+PYTHONPATH=deployment/src python scripts/ci/verify_promotion_source.py \
+  --phase source \
+  --base "$target_branch" \
+  --head "$promotion_branch" \
+  --base-sha "origin/$target_branch" \
+  --head-sha HEAD \
+  --develop-ref "origin/$source_branch" \
+  --json
+
+if ! git diff --cached --quiet; then
+  git commit -m "chore(submodules): refresh promotion pointers to origin/main"
+  git push origin "$promotion_branch"
+  echo "Promotion pointers and lock committed and pushed."
 else
-  if git rev-parse --verify --quiet "$release_branch" >/dev/null; then
-    echo "DRY-RUN: git switch $release_branch"
-  else
-    echo "DRY-RUN: git switch -c $release_branch"
-  fi
+  echo "Promotion refresh is already current; no commit or push needed."
 fi
-
-echo
-echo "Step 3/4: align all III submodules onto '$release_branch'"
-"${align_cmd[@]}"
-
-echo
-echo "Step 4/4: create or update the coordinated PR stack into '$target_branch'"
-"${stack_cmd[@]}"
-
-echo
-echo "Next after submodule PRs merge:"
-echo "  ./scripts/git/refresh_workspace_submodule_pointers.sh --base $target_branch --feature $release_branch --all-iii --yes"
-echo "  git commit -am \"chore(submodules): refresh pointers to origin/$target_branch\""
-echo "  git push origin $release_branch"

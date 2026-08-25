@@ -17,6 +17,7 @@ The lock file ensures everyone uses the same dependency commits unless a change 
 - CI III develop-gate script: `scripts/ci/verify_iii_submodule_commits_on_branch_ci.sh`
 - Stacked PR helper: `scripts/git/create_stack_prs.sh`
 - Develop-to-main release helper: `scripts/git/create_develop_to_main_prs.sh`
+- Main-to-release helper: `scripts/git/create_main_to_release_pr.sh`
 - Stacked PR post-merge pointer refresh: `scripts/git/refresh_workspace_submodule_pointers.sh`
 - Post-PR local sync helper: `scripts/git/post_pr_sync.sh`
 - CI workflow: `.github/workflows/dependency-governance.yml`
@@ -54,7 +55,7 @@ For pull requests, CI also runs `verify_iii_submodule_branch_policy_ci.sh`, whic
 - each pinned III submodule commit must be reachable from the allowed branch stack:
   `base -> ... -> feature` (for PR: `${base_ref} -> ${head_ref}`)
 
-For pull requests targeting protected integration branches (`develop`, `main`, `staging`), CI additionally runs `verify_iii_submodule_commits_on_branch_ci.sh`, which enforces:
+For pull requests targeting protected integration branches (`develop`, `main`, `release`), CI additionally runs `verify_iii_submodule_commits_on_branch_ci.sh`, which enforces:
 - each pinned III submodule commit in the workspace PR must exactly match `origin/<base>` HEAD in that submodule repo
 - merge is blocked if any pinned III commit does not match the latest target-branch head
 - a PR status comment bot updates a table in the workspace PR with per-submodule pass/fail
@@ -68,7 +69,7 @@ Use the workspace helper to create/update a coordinated PR stack:
 ```bash
 ./scripts/git/create_stack_prs.sh --base develop --feature <feature-branch>
 ./scripts/git/create_stack_prs.sh --base develop --feature <feature-branch> --yes
-./scripts/git/create_stack_prs.sh --base main --feature <release-branch> --all-iii --yes
+./scripts/git/create_stack_prs.sh --base main --feature promote/develop-to-main/<id> --all-iii --yes
 ```
 
 What it does:
@@ -96,7 +97,7 @@ published to origin without creating any PRs yet:
 ```bash
 ./scripts/git/push_stack.sh --base develop --feature <feature-branch>
 ./scripts/git/push_stack.sh --base develop --feature <feature-branch> --yes
-./scripts/git/push_stack.sh --base main --feature <release-branch> --all-iii --yes
+./scripts/git/push_stack.sh --base main --feature promote/develop-to-main/<id> --all-iii --yes
 ```
 
 What it does:
@@ -111,35 +112,52 @@ Notes:
 - unlike `create_stack_prs.sh`, it never calls `gh` and never creates or edits PRs
 - dirty worktrees are skipped because only committed branch state can be pushed
 
-### Develop to main release flow
+### Develop to main promotion flow
 
-Use the dedicated release wrapper when promoting `develop` into `main`:
+Use the verified promotion wrapper when promoting `develop` into `main`:
 
 ```bash
-./scripts/git/create_develop_to_main_prs.sh --release release/develop-to-main-2026-03
-./scripts/git/create_develop_to_main_prs.sh --release release/develop-to-main-2026-03 --yes
+./scripts/git/create_develop_to_main_prs.sh --promotion-id 2026-08
+./scripts/git/create_develop_to_main_prs.sh --promotion-id 2026-08 --yes
 ```
 
 What it does:
 - syncs the workspace and all III submodules back onto `develop`
-- creates or switches a dedicated release branch in the workspace
-- aligns all III submodules onto matching release branches
-- creates or updates coordinated III submodule PRs and the workspace PR into `main`
+- creates or switches `promote/develop-to-main/2026-08`
+- aligns all editable III submodules onto matching promotion branches
+- creates or updates linked submodule PRs and the workspace PR into `main`
+- leaves third-party repositories untouched
 
-After the submodule PRs merge into `main`, refresh the workspace release branch:
+After the submodule PRs merge into `main`, refresh the workspace promotion branch:
 
 ```bash
-./scripts/git/refresh_workspace_submodule_pointers.sh --base main --feature release/develop-to-main-2026-03 --all-iii --yes
+./scripts/git/create_develop_to_main_prs.sh --promotion-id 2026-08 --phase refresh --yes
 ```
 
-Then commit and push the refreshed gitlinks so the workspace PR can satisfy the target-branch gate.
+The refresh phase pins exact merged `main` heads, updates and verifies the lock,
+checks that the promotion branch differs from `develop` only by governed
+gitlinks/lock, and idempotently commits and pushes when needed.
+
+### Main to release flow
+
+Only the workspace has a `release` branch. Create or update the direct protected
+`main` -> `release` PR with:
+
+```bash
+./scripts/git/create_main_to_release_pr.sh
+./scripts/git/create_main_to_release_pr.sh --yes
+```
+
+The helper fixes both source and target names, cannot carry release-only
+implementation changes, and never creates submodule `release` branches.
 
 GitHub-native alternative (no local update needed):
 1. Open workspace repo Actions tab.
 2. Run workflow `Refresh Submodule Pointers`.
 3. Set:
 - `pr_branch`: your workspace PR branch (for example `version-migration`)
-- `base_branch`: usually `develop`
+- `base_branch`: `develop` for feature stacks or `main` for a verified promotion
+- a `main` refresh requires `pr_branch=promote/develop-to-main/<id>`
 - `all_iii`: optional, `true` to refresh all III submodules
 4. Workflow commits/pushes updated gitlinks + lock file back to the PR branch and comments status on the PR.
 
