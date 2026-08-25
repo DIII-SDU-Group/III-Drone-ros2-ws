@@ -86,10 +86,15 @@ You can reduce pain without collapsing repos:
 
 ## 4. Branching/Release Coupling Across Repos
 
-Given your new `staging` branch in workspace, mirror this pattern conceptually:
-- Workspace `staging` references dependency commits that are also from tested non-main branches/tags.
-- Workspace `main` references only stabilized dependency commits.
-- Robot deployments use workspace tags that freeze all dependency refs.
+The governed branch flow is explicit:
+- Editable III feature branches merge into their repository `develop` branches.
+- `promote/develop-to-main/*` branches carry verified develop-derived changes
+  into `main`; their workspace-only delta from `develop` is limited to III
+  gitlinks and `deps/submodule-lock.txt`.
+- Only the workspace has `release`, and only protected workspace `main` may
+  promote into it. Editable submodules remain on `main`.
+- Qualified robot deployments use immutable workspace `vX.Y.Z` tags reachable
+  from `release`, freezing every dependency ref.
 
 ## 5. Suggested Immediate Actions (Low Disruption)
 

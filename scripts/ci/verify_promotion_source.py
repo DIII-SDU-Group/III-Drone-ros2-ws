@@ -45,6 +45,7 @@ def main() -> int:
         impact = load_json(ROOT / "deployment/governance/change-impact-policy.json", "iii.change-impact-policy/v1")
         validate_pr_source(branch, repository_kind=args.repository_kind, base=args.base, head=args.head)
         changed = _git_lines("diff", "--name-only", f"{args.base_sha}...{args.head_sha}") if args.base_sha else []
+        mechanical_changed: list[str] = []
         if args.base == "main":
             ancestor = subprocess.run(
                 ["git", "merge-base", "--is-ancestor", args.develop_ref, args.head_sha],
@@ -52,7 +53,10 @@ def main() -> int:
             )
             if ancestor.returncode != 0:
                 raise ContractError("main promotion was not cut from the current develop candidate")
-            validate_mechanical_diff(branch, changed)
+            mechanical_changed = _git_lines(
+                "diff", "--name-only", f"{args.develop_ref}...{args.head_sha}"
+            )
+            validate_mechanical_diff(branch, mechanical_changed)
         reasons = required_evidence(impact, changed)
         if args.phase == "evidence":
             if args.base not in {"main", "release"}:
@@ -68,7 +72,7 @@ def main() -> int:
             )
             category_status = {item["id"]: item["status"] for item in attestation["categories"]}
             validate_waivers(impact, reasons, category_status, attestation["waivers"])
-        result = {"schema": "iii.promotion-source-result/v1", "outcome": "pass", "phase": args.phase, "base": args.base, "head": args.head, "changed_paths": changed, "required_evidence": reasons}
+        result = {"schema": "iii.promotion-source-result/v1", "outcome": "pass", "phase": args.phase, "base": args.base, "head": args.head, "changed_paths": changed, "mechanical_changed_paths": mechanical_changed, "required_evidence": reasons}
         print(json.dumps(result, sort_keys=True) if args.json else f"PASS: {args.head} -> {args.base}")
         return 0
     except (ContractError, OSError, json.JSONDecodeError) as exc:

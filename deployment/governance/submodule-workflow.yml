@@ -13,11 +13,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout candidate repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
       - name: Checkout trusted workspace policy
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           repository: DIII-SDU-Group/III-Drone-ros2-ws
           ref: develop
@@ -37,11 +37,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout candidate repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
       - name: Checkout trusted workspace policy
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           repository: DIII-SDU-Group/III-Drone-ros2-ws
           ref: develop
@@ -60,9 +60,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout candidate repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - name: Checkout trusted workspace policy
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           repository: DIII-SDU-Group/III-Drone-ros2-ws
           ref: develop

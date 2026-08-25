@@ -4,14 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       pr_branch:
-        description: "Workspace PR branch to update (e.g. version-migration)"
+        description: "Feature branch for develop, or promote/develop-to-main/<id> for main"
         required: true
         type: string
       base_branch:
-        description: "Base branch to pin submodules to (usually develop)"
+        description: "Protected branch whose exact III heads will be pinned"
         required: true
         default: "develop"
-        type: string
+        type: choice
+        options:
+          - develop
+          - main
       all_iii:
         description: "Refresh all III submodules instead of only affected ones"
         required: true
@@ -28,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout workspace branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ inputs.pr_branch }}
           fetch-depth: 0
@@ -41,6 +44,10 @@ jobs:
 
       - name: Refresh III submodule pointers
         run: |
+          if [[ "${{ inputs.base_branch }}" == "main" && ! "${{ inputs.pr_branch }}" =~ ^promote/develop-to-main/[a-z0-9][a-z0-9._-]*$ ]]; then
+            echo "main refresh requires promote/develop-to-main/<id>" >&2
+            exit 1
+          fi
           cmd=(./scripts/git/refresh_workspace_submodule_pointers.sh --base "${{ inputs.base_branch }}" --feature "${{ inputs.pr_branch }}" --yes)
           if [[ "${{ inputs.all_iii }}" == "true" ]]; then
             cmd+=(--all-iii)
@@ -50,7 +57,7 @@ jobs:
       - name: Commit and push updates if changed
         run: |
           if [[ -n "$(git status --porcelain)" ]]; then
-            git add -A
+            git add deps/submodule-lock.txt src/III-* tools/III-*
             git commit -m "chore(submodules): refresh pointers to origin/${{ inputs.base_branch }}"
             git push origin "HEAD:${{ inputs.pr_branch }}"
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -62,7 +69,7 @@ jobs:
 
       - name: Comment on workspace PR
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
         with:
           script: |
             const owner = context.repo.owner;
