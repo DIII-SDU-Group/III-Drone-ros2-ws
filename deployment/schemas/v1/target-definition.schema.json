@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/target-definition.schema.json",
+  "title": "III target definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "definition_id", "target", "images", "apt_snapshot", "toolchain", "sysroot", "host_baseline", "release_boundary", "compatibility"],
+  "properties": {
+    "schema": {"const": "iii.target-definition/v1"},
+    "definition_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["target_id", "board", "os", "os_version", "os_codename", "architecture", "dpkg_architecture", "endianness", "pointer_bits", "ros", "python", "libc"],
+      "properties": {
+        "target_id": {"const": "raspberry-pi-5-noble-arm64"},
+        "board": {"const": "raspberry-pi-5"},
+        "os": {"const": "ubuntu"},
+        "os_version": {"const": "24.04"},
+        "os_codename": {"const": "noble"},
+        "architecture": {"const": "aarch64"},
+        "dpkg_architecture": {"const": "arm64"},
+        "endianness": {"const": "little"},
+        "pointer_bits": {"const": 64},
+        "ros": {"type": "object", "additionalProperties": false, "required": ["distro", "prefix"], "properties": {"distro": {"const": "jazzy"}, "prefix": {"const": "/opt/ros/jazzy"}}},
+        "python": {"type": "object", "additionalProperties": false, "required": ["implementation", "major_minor", "abi", "soabi"], "properties": {"implementation": {"const": "cpython"}, "major_minor": {"const": "3.12"}, "abi": {"const": "cp312"}, "soabi": {"const": "cpython-312-aarch64-linux-gnu"}}},
+        "libc": {"type": "object", "additionalProperties": false, "required": ["name", "minimum", "maximum_exclusive"], "properties": {"name": {"const": "glibc"}, "minimum": {"const": "2.39"}, "maximum_exclusive": {"const": "2.40"}}}
+      }
+    },
+    "images": {
+      "type": "object", "additionalProperties": false,
+      "required": ["target_seed", "builder"],
+      "properties": {
+        "target_seed": {"$ref": "#/definitions/image"},
+        "builder": {"$ref": "#/definitions/image"}
+      }
+    },
+    "apt_snapshot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["uri", "timestamp", "suites", "components"],
+      "properties": {
+        "uri": {"const": "https://snapshot.ubuntu.com/ubuntu/20260810T000000Z"},
+        "timestamp": {"const": "2026-08-10T00:00:00Z"},
+        "suites": {"const": ["noble", "noble-updates", "noble-security"]},
+        "components": {"const": ["main", "universe"]}
+      }
+    },
+    "toolchain": {
+      "type": "object", "additionalProperties": false,
+      "required": ["target_triple", "c_compiler", "cxx_compiler", "compiler_version", "compiler_package_version", "libc_dev_package_version", "cmake_version", "ninja_version"],
+      "properties": {
+        "target_triple": {"const": "aarch64-linux-gnu"},
+        "c_compiler": {"const": "/usr/bin/aarch64-linux-gnu-gcc-13"},
+        "cxx_compiler": {"const": "/usr/bin/aarch64-linux-gnu-g++-13"},
+        "compiler_version": {"const": "13.3.0"},
+        "compiler_package_version": {"const": "13.3.0-6ubuntu2~24.04.1cross1"},
+        "libc_dev_package_version": {"const": "2.39-0ubuntu8cross1"},
+        "cmake_version": {"const": "3.28.3-1build7"},
+        "ninja_version": {"const": "1.11.1-2"}
+      }
+    },
+    "sysroot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "aircraft_derived", "seed_sha256", "path", "mutable_host_paths_forbidden"],
+      "properties": {
+        "source": {"const": "pinned-oci-target-seed"},
+        "aircraft_derived": {"const": false},
+        "seed_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "path": {"const": "/opt/iii/sysroot"},
+        "mutable_host_paths_forbidden": {"const": ["/home", "/var/lib/iii", "/var/log/iii", "/run/iii", "/etc/iii"]}
+      }
+    },
+    "host_baseline": {
+      "type": "object", "additionalProperties": false,
+      "required": ["contract_id", "owner", "converged_by", "owns", "package_constraints"],
+      "properties": {
+        "contract_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "owner": {"const": "ansible"},
+        "converged_by": {"const": "Q93 aircraft host baseline"},
+        "owns": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["ubuntu", "kernel-firmware", "glibc-loader", "ros-jazzy", "systemd", "udev-hardware", "platform-libraries", "system-python"]}},
+        "package_constraints": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/package_constraint"}}
+      }
+    },
+    "release_boundary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["owns", "python_wheel_abi", "may_bundle", "must_not_bundle", "normal_deployment_may_run_package_manager"],
+      "properties": {
+        "owns": {"const": ["iii-install-tree", "iii-python-wheels", "release-private-libraries", "missions", "release-environment"]},
+        "python_wheel_abi": {"const": "cp312-manylinux_2_39_aarch64"},
+        "may_bundle": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "must_not_bundle": {"const": ["glibc", "dynamic-loader", "ros-jazzy", "kernel-modules", "gpu-drivers", "system-python", "ansible-host-units"]},
+        "normal_deployment_may_run_package_manager": {"const": false}
+      }
+    },
+    "compatibility": {
+      "type": "object", "additionalProperties": false,
+      "required": ["probe_schema", "exact_fields", "range_fields", "check_before"],
+      "properties": {
+        "probe_schema": {"const": "iii.target-abi-probe/v1"},
+        "exact_fields": {"const": ["target_id", "os", "os_version", "os_codename", "architecture", "dpkg_architecture", "endianness", "pointer_bits", "ros", "python_abi", "python_soabi", "compiler_target"]},
+        "range_fields": {"const": ["libc_version", "compiler_version"]},
+        "check_before": {"const": ["transfer", "activation"]}
+      }
+    }
+  },
+  "definitions": {
+    "image": {
+      "type": "object", "additionalProperties": false,
+      "required": ["reference", "index_digest", "platform", "platform_digest"],
+      "properties": {
+        "reference": {"type": "string", "pattern": "^[a-z0-9./_-]+:[a-z0-9._-]+$"},
+        "index_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "platform": {"enum": ["linux/arm64/v8", "linux/amd64"]},
+        "platform_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "package_constraint": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "constraint", "abi_role"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9.+-]+$"},
+        "constraint": {"type": "string", "minLength": 1},
+        "abi_role": {"enum": ["platform", "ros", "hardware", "python"]}
+      }
+    }
+  }
+}

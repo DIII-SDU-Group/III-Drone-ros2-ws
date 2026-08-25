@@ -1,0 +1,21 @@
+{
+  "schema": "iii.target-abi-probe/v1",
+  "target_id": "raspberry-pi-5-noble-arm64",
+  "source_image_digest": "sha256:d849b6203853848bf20f5e5d6d77c1275bff1ff727d93ab055799cb33c2dac7a",
+  "os": "ubuntu",
+  "os_version": "24.04",
+  "os_codename": "noble",
+  "architecture": "aarch64",
+  "dpkg_architecture": "arm64",
+  "endianness": "little",
+  "pointer_bits": 64,
+  "ros": "jazzy",
+  "python_version": "3.12.3",
+  "python_abi": "cp312",
+  "python_soabi": "cpython-312-aarch64-linux-gnu",
+  "libc_name": "glibc",
+  "libc_version": "2.39",
+  "compiler_id": "gcc",
+  "compiler_version": "13.3.0",
+  "compiler_target": "aarch64-linux-gnu"
+}

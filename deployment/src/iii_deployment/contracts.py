@@ -106,7 +106,7 @@ def classify_release(
 def check_target_compatibility(manifest: Mapping[str, Any], target: Mapping[str, Any]) -> None:
     expected = manifest["target"]
     mismatches = [
-        field for field in ("target_id", "os", "os_version", "architecture", "python_abi", "host_baseline", "ros")
+        field for field in ("definition_id", "target_id", "os", "os_version", "architecture", "python_abi", "host_baseline", "ros")
         if target.get(field) != expected.get(field)
     ]
     if mismatches:

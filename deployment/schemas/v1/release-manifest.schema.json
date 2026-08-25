@@ -27,8 +27,9 @@
     },
     "target": {
       "type": "object", "additionalProperties": false,
-      "required": ["target_id", "os", "os_version", "architecture", "python_abi", "host_baseline", "ros"],
+      "required": ["definition_id", "target_id", "os", "os_version", "architecture", "python_abi", "host_baseline", "ros"],
       "properties": {
+        "definition_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "target_id": {"enum": ["raspberry-pi-5-noble-arm64", "gc-ubuntu-x86_64"]},
         "os": {"const": "ubuntu"}, "os_version": {"enum": ["22.04", "24.04"]},
         "architecture": {"enum": ["aarch64", "x86_64"]},

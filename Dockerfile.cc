@@ -1,125 +1,73 @@
-FROM --platform=linux/arm64 iii_drone_base:latest as ROS
+# syntax=docker/dockerfile:1.7
 
-USER root
-RUN rm /arm64-sysroot
+# Keep these values byte-for-byte aligned with deployment/targets/v1/
+# raspberry-pi-5-noble-arm64.json. The index digest makes the input stable;
+# Docker resolves the requested platform from that immutable index.
+ARG TARGET_IMAGE=docker.io/library/ros:jazzy-ros-base@sha256:2589a8fba5257307857890173c069852c2abf913a0be7970f172478baecb09e4
+ARG BUILDER_IMAGE=docker.io/library/ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
 
-FROM ros:humble-ros-base
+FROM --platform=linux/arm64 ${TARGET_IMAGE} AS target-sysroot
 
-# Copy the sys root
-# COPY --from=ROS /opt/ros/humble /opt/ros/humble
-# COPY --from=ROS /usr/lib/aarch64-linux-gnu /usr/lib/aarch64-linux-gnu
-COPY --from=ROS / /arm64-sysroot
-RUN rm -rf /opt/ros/humble
-RUN ln -s /arm64-sysroot/opt/ros/humble /opt/ros/humble
+FROM --platform=linux/amd64 ${BUILDER_IMAGE} AS toolchain
+ARG UBUNTU_SNAPSHOT=https://snapshot.ubuntu.com/ubuntu/20260810T000000Z
+ARG CA_CERTIFICATES_VERSION=20260601~24.04.1
+ARG GCC_VERSION=13.3.0-6ubuntu2~24.04.1cross1
+ARG LIBC_DEV_VERSION=2.39-0ubuntu8cross1
+ARG CMAKE_VERSION=3.28.3-1build7
+ARG NINJA_VERSION=1.11.1-2
+ARG MAKE_VERSION=4.3-4.1build2
+ARG GIT_VERSION=1:2.43.0-1ubuntu7.3
+ARG PYTHON_VERSION=3.12.3-0ubuntu2.1
 
-# RUN apt-get update && apt-get install -y \
-#     python3-colcon-common-extensions
+# Bootstrap CA certificates from a signed snapshot index, then require normal
+# TLS and apt signature verification for every remaining package.
+RUN printf '%s\n' \
+      "Types: deb" \
+      "URIs: ${UBUNTU_SNAPSHOT}" \
+      "Suites: noble noble-updates noble-security" \
+      "Components: main universe" \
+      "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg" \
+      > /etc/apt/sources.list.d/ubuntu.sources && \
+    apt-get -o Acquire::https::Verify-Peer=false update && \
+    apt-get -o Acquire::https::Verify-Peer=false install -y --no-install-recommends \
+      ca-certificates=${CA_CERTIFICATES_VERSION} && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+      gcc-13-aarch64-linux-gnu=${GCC_VERSION} \
+      g++-13-aarch64-linux-gnu=${GCC_VERSION} \
+      libc6-dev-arm64-cross=${LIBC_DEV_VERSION} \
+      cmake=${CMAKE_VERSION} \
+      ninja-build=${NINJA_VERSION} \
+      make=${MAKE_VERSION} \
+      git=${GIT_VERSION} \
+      python3=${PYTHON_VERSION} && \
+    rm -rf /var/lib/apt/lists/*
 
-# RUN apt-get update && apt-get upgrade -y
-
-# Create the user
-RUN groupadd --gid 1000 iii
-RUN useradd --uid 1000 --gid 1000 -m iii
-RUN apt-get update
-RUN apt-get install -y sudo
-RUN echo iii ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/iii
-RUN chmod 0440 /etc/sudoers.d/iii
-# RUN apt-get update && apt-get upgrade -y
-RUN usermod -s /bin/bash iii
-
-# Setup cross compilation
-RUN apt install -y g++-aarch64-linux-gnu gcc-aarch64-linux-gnu
-RUN cp /usr/aarch64-linux-gnu/lib/ld-linux-aarch64.so.1 /lib
-RUN cp /usr/aarch64-linux-gnu/lib/libc.so.6 /lib
-
-RUN rm /arm64-sysroot/usr/bin/python3
-RUN ln -s /usr/bin/python3 /arm64-sysroot/usr/bin/python3
-RUN ln -s /arm64-sysroot/usr/lib/aarch64-linux-gnu/libpython3.10.so /usr/lib/aarch64-linux-gnu/
-RUN rm /arm64-sysroot/usr/bin/git
-RUN ln -s /usr/bin/git /arm64-sysroot/usr/bin/git
-RUN rm -r /arm64-sysroot/home/iii
-RUN ln -s /home/iii /arm64-sysroot/home/iii
-
-# Update symbolic links
-COPY cc_ws/update_symlinks.bash /update_symlinks.bash
-RUN chmod +x /update_symlinks.bash
-RUN /update_symlinks.bash /arm64-sysroot /arm64-sysroot/usr
-RUN /update_symlinks.bash /arm64-sysroot /arm64-sysroot/lib
-RUN /update_symlinks.bash /arm64-sysroot /arm64-sysroot/bin
-RUN /update_symlinks.bash /arm64-sysroot /arm64-sysroot/etc
-RUN rm /update_symlinks.bash
-
-RUN ln -s /arm64-sysroot/usr/lib/libOpenNI.so /usr/lib/libOpenNI.so
-RUN ln -s /arm64-sysroot/usr/lib/aarch64-linux-gnu/libOpenNI2.so /usr/lib/aarch64-linux-gnu/libOpenNI2.so
-RUN ln -s /arm64-sysroot/usr/lib/aarch64-linux-gnu/libpcl_common.so /usr/lib/aarch64-linux-gnu/libpcl_common.so
-
-# Link libs to sysroot
-# COPY cc_ws/link_libs.bash /link_libs.bash
-# RUN chmod +x /link_libs.bash
-# RUN /link_libs.bash /arm64-sysroot usr/lib
-# RUN /link_libs.bash /arm64-sysroot usr/lib/aarch64-linux-gnu
-# RUN rm /link_libs.bash
-
-# Link includes to sysroot
-COPY cc_ws/link_includes.bash /link_includes.bash
-RUN chmod +x /link_includes.bash
-RUN /link_includes.bash /arm64-sysroot usr/include
-RUN rm /link_includes.bash
-
-# Create workspace folder and set ownership
-RUN mkdir -p /home/iii/ws/src
-RUN chown -R iii:iii /home/iii/ws
-
-WORKDIR /home/iii/ws
-
-# RUN echo "export TARGET_ARCH=aarch64" >> /home/iii/.bashrc
-# RUN echo "export TARGET_TRIPLE=aarch64-linux-gnu" >> /home/iii/.bashrc
-# RUN echo 'export CC=/usr/bin/$TARGET_TRIPLE-gcc' >> /home/iii/.bashrc
-# RUN echo 'export CXX=/usr/bin/$TARGET_TRIPLE-g++' >> /home/iii/.bashrc
-
-# # Install userspace tools
-# RUN apt install -y tmux tmuxinator vim
-
-# COPY requirements.txt /requirements.txt
-
-# RUN chown -R iii:iii /requirements.txt
-
-# USER iii
-
-# RUN pip3 install --upgrade pip
-# RUN pip3 install -r /requirements.txt
-
-# USER root
-
-# RUN rm -rf /requirements.txt
-
-# # Install cli
-# COPY tools/III-Drone-CLI /III-Drone-CLI
-# RUN chown -R iii:iii /III-Drone-CLI
-# USER iii
-# RUN pip3 install /III-Drone-CLI
-# USER root
-# RUN rm -rf /III-Drone-CLI
-
-# RUN activate-global-python-argcomplete3
-
-# USER iii
-
-# RUN if ! grep -q "eval \"\$(register-python-argcomplete3 iii)\"" ~/.bashrc; then \
-#         echo "eval \"\$(register-python-argcomplete3 iii)\"" >> ~/.bashrc ; \
-#     fi
-
-ENV SHELL /bin/bash
-
-# # Prepare tmux configuration
-# RUN mkdir -p /home/iii/.config/tmuxinator
-
-# Copy the entrypoint script
+# The sysroot is generated from the immutable ARM64 target seed. It is never
+# copied from an aircraft and contains no mutable aircraft state.
+COPY --from=target-sysroot / /opt/iii/sysroot
+COPY cc_ws/arm64-toolchain.cmake /opt/iii/arm64-toolchain.cmake
 COPY entrypoint_cc.sh /entrypoint.sh
-USER root
-RUN chmod +x /entrypoint.sh
+RUN chmod 0555 /entrypoint.sh && mkdir -p /home/iii/ws
+WORKDIR /home/iii/ws
+ENV III_TARGET_ID=raspberry-pi-5-noble-arm64 \
+    III_SYSROOT=/opt/iii/sysroot \
+    ROS_DISTRO=jazzy \
+    CMAKE_TOOLCHAIN_FILE=/opt/iii/arm64-toolchain.cmake
 
-USER iii
+COPY deployment/targets/probe/abi_probe.c /tmp/abi_probe.c
+RUN /usr/bin/aarch64-linux-gnu-gcc-13 -O2 -Wall -Wextra -Werror \
+      /tmp/abi_probe.c -o /tmp/iii-target-abi-probe && \
+    rm /tmp/abi_probe.c
 
-# Set the entrypoint
+FROM target-sysroot AS abi-probe
+ARG TARGET_PLATFORM_DIGEST=sha256:d849b6203853848bf20f5e5d6d77c1275bff1ff727d93ab055799cb33c2dac7a
+COPY --from=toolchain /tmp/iii-target-abi-probe /usr/local/bin/iii-target-abi-probe
+COPY deployment/targets/probe/runtime_probe.py /usr/local/bin/iii-target-runtime-probe
+ENV III_TARGET_ID=raspberry-pi-5-noble-arm64 \
+    III_TARGET_IMAGE_PLATFORM_DIGEST=${TARGET_PLATFORM_DIGEST} \
+    ROS_DISTRO=jazzy
+ENTRYPOINT ["/usr/bin/python3", "/usr/local/bin/iii-target-runtime-probe"]
+
+FROM toolchain AS cross-compiler
 ENTRYPOINT ["/entrypoint.sh"]
