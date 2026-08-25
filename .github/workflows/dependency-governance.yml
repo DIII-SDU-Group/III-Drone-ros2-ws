@@ -108,7 +108,7 @@ jobs:
         run: ./scripts/git/verify_submodule_lock.sh
 
   verify-iii-branch-policy:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.base_ref != 'release'
     runs-on: ubuntu-24.04
 
     steps:

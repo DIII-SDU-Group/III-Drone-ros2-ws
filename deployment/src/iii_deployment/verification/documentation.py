@@ -42,8 +42,7 @@ def load_policy(path: Path) -> dict[str, Any]:
 def _git_files(repo: Path) -> tuple[str, ...]:
     process = subprocess.run(
         [
-            "git", "-C", str(repo), "ls-files", "--cached", "--others",
-            "--exclude-standard", "*.md", "*.rst",
+            "git", "-C", str(repo), "ls-files", "--cached", "*.md", "*.rst",
         ],
         check=False,
         capture_output=True,

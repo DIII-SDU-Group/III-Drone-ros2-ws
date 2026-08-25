@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 
 from iii_deployment.verification.documentation import (
     audit_manifest,
@@ -48,3 +49,16 @@ def test_manifest_detects_missing_document() -> None:
     errors = audit_manifest(ROOT, policy, manifest)
     assert any("missing" in error for error in errors)
 
+
+def test_untracked_documents_never_enter_authoritative_manifest(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / "tracked.md").write_text("# Tracked\n", encoding="utf-8")
+    (tmp_path / "untracked.md").write_text("# Untracked\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.md"], cwd=tmp_path, check=True)
+    policy = {
+        "schema": "iii.documentation-policy/v1",
+        "repositories": [{"id": "fixture", "path": ".", "governed": True}],
+        "exclusions": [], "canonical_roots": [], "forbidden_current_terms": [],
+    }
+    manifest = materialize_manifest(tmp_path, policy)
+    assert [row["path"] for row in manifest["documents"]] == ["tracked.md"]

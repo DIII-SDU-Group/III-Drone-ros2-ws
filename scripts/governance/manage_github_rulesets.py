@@ -14,6 +14,12 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 OWNER = "DIII-SDU-Group"
+EDITABLE_REPOSITORIES = (
+    "III-Drone-Configuration", "III-Drone-Contracts", "III-Drone-Core",
+    "III-Drone-GC", "III-Drone-Interfaces", "III-Drone-Mission",
+    "III-Drone-Runtime", "III-Drone-Simulation", "III-Drone-Supervision",
+    "III-Drone-CLI",
+)
 
 
 class GitHubError(RuntimeError):
@@ -85,11 +91,15 @@ def main() -> int:
     args = parser.parse_args()
     try:
         paths = sorted((ROOT / "deployment/governance/rulesets").glob("workspace-*.json"))
+        submodule_paths = sorted((ROOT / "deployment/governance/rulesets").glob("submodule-*.json"))
+        rulesets = reconcile("III-Drone-ros2-ws", paths, apply=args.apply)
+        for repository in EDITABLE_REPOSITORIES:
+            rulesets.extend(reconcile(repository, submodule_paths, apply=args.apply))
         plan = {
             "schema": "iii.github-ruleset-operation/v1",
             "mode": "apply" if args.apply else "plan",
             "release_branch": ensure_release_branch(apply=args.apply),
-            "rulesets": reconcile("III-Drone-ros2-ws", paths, apply=args.apply),
+            "rulesets": rulesets,
             "next_actions": [{
                 "command": ["python", "scripts/governance/audit_github_rulesets.py", "--json"],
                 "reason": "Verify live branch and ruleset enforcement after reconciliation.",

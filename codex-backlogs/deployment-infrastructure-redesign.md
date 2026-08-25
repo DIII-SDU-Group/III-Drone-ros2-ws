@@ -2203,6 +2203,8 @@ Tests:
 
 #### P0.T7: Protect Editable III Submodule Branches
 
+**Status: In-Progress.**
+
 Description:
 Create matching active GitHub rulesets for `develop` and `main` in each editable
 `src/III-*` and `tools/III-*` repository. Require feature-to-develop and verified
