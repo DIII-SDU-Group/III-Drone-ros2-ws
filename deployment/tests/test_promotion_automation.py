@@ -26,6 +26,11 @@ def _fake_adapters(tmp_path: Path) -> tuple[dict[str, str], Path]:
     gh.write_text(
         "#!/bin/sh\n"
         "printf 'gh %s\\n' \"$*\" >> \"$ADAPTER_LOG\"\n"
+        "if [ \"$1 $2\" = 'auth status' ]; then exit 0; fi\n"
+        "if [ \"$1 $2\" = 'repo view' ]; then printf '%s\\n' DIII-SDU-Group/III-Drone-ros2-ws; exit 0; fi\n"
+        "if [ \"$1 $2\" = 'pr list' ]; then [ -f \"$ADAPTER_STATE\" ] && printf '%s\\n' https://example.invalid/pull/1; exit 0; fi\n"
+        "if [ \"$1 $2\" = 'pr create' ]; then : > \"$ADAPTER_STATE\"; printf '%s\\n' https://example.invalid/pull/1; exit 0; fi\n"
+        "if [ \"$1 $2\" = 'pr edit' ]; then exit 0; fi\n"
         "exit 98\n",
         encoding="utf-8",
     )
@@ -35,6 +40,7 @@ def _fake_adapters(tmp_path: Path) -> tuple[dict[str, str], Path]:
     env.update({
         "PATH": f"{adapter_dir}:{env['PATH']}",
         "ADAPTER_LOG": str(log),
+        "ADAPTER_STATE": str(tmp_path / "adapter.state"),
         "FAKE_ROOT": str(ROOT),
     })
     return env, log
@@ -86,6 +92,13 @@ def test_develop_to_main_refresh_plan_is_idempotent_and_audited(tmp_path: Path) 
     assert "git commit" in process.stdout and "git push" in process.stdout
     assert "gh " not in log.read_text(encoding="utf-8")
 
+    rerun = _run(
+        "create_develop_to_main_prs.sh", "--promotion-id", "qual-2026-08",
+        "--phase", "refresh", env=env,
+    )
+    assert rerun.returncode == 0
+    assert rerun.stdout == process.stdout
+
 
 def test_main_to_release_is_workspace_only_and_dry_run(tmp_path: Path) -> None:
     env, log = _fake_adapters(tmp_path)
@@ -95,6 +108,17 @@ def test_main_to_release_is_workspace_only_and_dry_run(tmp_path: Path) -> None:
     assert "Target branch: release" in process.stdout
     assert "Submodule release branches: prohibited" in process.stdout
     assert "gh " not in log.read_text(encoding="utf-8")
+
+
+def test_main_to_release_apply_upserts_instead_of_duplicating(tmp_path: Path) -> None:
+    env, log = _fake_adapters(tmp_path)
+    first = _run("create_main_to_release_pr.sh", "--yes", env=env)
+    second = _run("create_main_to_release_pr.sh", "--yes", env=env)
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    calls = log.read_text(encoding="utf-8")
+    assert calls.count("gh pr create") == 1
+    assert calls.count("gh pr edit") == 1
 
 
 def test_main_stack_rejects_non_promotion_branch_before_github(tmp_path: Path) -> None:
