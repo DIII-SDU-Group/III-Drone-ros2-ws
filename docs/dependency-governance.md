@@ -19,6 +19,7 @@ The lock file ensures everyone uses the same dependency commits unless a change 
 - Develop-to-main release helper: `scripts/git/create_develop_to_main_prs.sh`
 - Main-to-release helper: `scripts/git/create_main_to_release_pr.sh`
 - Qualified-tag publisher: `scripts/release/publish_qualified_tag.py`
+- Read-only live governance audit: `scripts/governance/audit_github_rulesets.py`
 - Stacked PR post-merge pointer refresh: `scripts/git/refresh_workspace_submodule_pointers.sh`
 - Post-PR local sync helper: `scripts/git/post_pr_sync.sh`
 - CI workflow: `.github/workflows/dependency-governance.yml`
@@ -174,9 +175,40 @@ python scripts/release/publish_qualified_tag.py \
 Apply is refused unless `HEAD` is the exact clean `origin/release` head,
 recursive submodule worktrees and the dependency lock verify, all evidence is
 complete and identity-bound, and the version is unused locally and remotely.
+Release preparation also runs the live governance audit and embeds its audit
+identity and full compact result in the publication plan; drift fails closed.
 The pushed tag triggers qualified CI; local tooling never produces a qualified
 artifact. Active GitHub tag protection blocks ordinary deletion or movement of
 all `v*` refs. A failed version is investigated and never silently reused.
+
+### Live governance audit and drift remediation
+
+The audit is strictly read-only and covers the workspace plus all ten editable
+III repositories:
+
+```bash
+python scripts/governance/audit_github_rulesets.py
+python scripts/governance/audit_github_rulesets.py --json > .iii/evidence/governance-audit.json
+```
+
+It verifies required branches, exact active rulesets, target-specific promotion
+source checks, all other required checks, qualified-tag immutability, and zero
+unexpected bypass actors. Exit `0` means exact policy match, `20` means policy
+drift, and `30` means the audit could not obtain trustworthy live state. The
+JSON form is `iii.github-governance-audit/v1`, includes a content identity, and
+is suitable for qualified-release evidence.
+
+For declared-policy drift, review the plan and reconcile explicitly:
+
+```bash
+python scripts/governance/manage_github_rulesets.py --json
+python scripts/governance/manage_github_rulesets.py --apply --json
+python scripts/governance/audit_github_rulesets.py --json
+```
+
+Do not auto-delete an unexpected live ruleset or recreate a missing protected
+branch. Review those findings, restore or retire the object through an approved
+change, then rerun reconciliation and the audit.
 
 GitHub-native alternative (no local update needed):
 1. Open workspace repo Actions tab.

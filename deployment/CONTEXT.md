@@ -124,8 +124,9 @@ _Avoid_: Removing old scripts first
   activation path, but their classification and retention authority differ.
 - Qualified tag publication defaults to a plan. Apply pushes one previously
   unused version ref only after exact release-head, recursive cleanliness, lock,
-  and evidence checks pass. Tag-triggered CI independently rechecks tag identity
-  and release reachability before it can classify a manifest as qualified.
+  evidence, and live governance-audit checks pass. The plan retains the audit
+  identity and findings. Tag-triggered CI independently rechecks tag identity and
+  release reachability before it can classify a manifest as qualified.
 - Only a receiver-accepted qualified activation updates the protected qualified
   anchor. Staging, failed/rolled-back activation, and every field-development
   result preserve the existing anchor.
