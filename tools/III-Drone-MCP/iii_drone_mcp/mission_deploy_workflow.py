@@ -52,7 +52,7 @@ class MissionDeployWorkflow:
         self.steps: list[dict[str, Any]] = []
         self.cancel_requested = False
         self._manual_input_mode_restore: dict[str, Any] | None = None
-        self._mission_specification_overridden = False
+        self._mission_catalog_selected = False
         self._last_cable_aware_fallback_reason: dict[str, str] | None = None
 
     def run(self) -> int:
@@ -67,7 +67,7 @@ class MissionDeployWorkflow:
             status = self._step("px4_status_before", lambda: self._px4_status_resilient(tools))
             telemetry = status.data if isinstance(status.data, dict) else {}
             self._configure_px4_automation_input(tools)
-            self._override_mission_specification_if_requested(tools)
+            self._select_mission_catalog_if_requested(tools)
             requires_pylon_overview = self._requires_pylon_overview()
 
             overview = self._step(
@@ -566,18 +566,18 @@ class MissionDeployWorkflow:
         )
 
     def _prepare_custom_operation_slot(self, tools: DroneAgentTools) -> None:
-        if self._mission_specification_overridden:
+        if self._mission_catalog_selected:
             self._append_step(
-                "restart_custom_operation_after_mission_specification_override",
+                "restart_custom_operation_after_mission_catalog_selection",
                 "skipped",
                 {
                     "reason": (
-                        "CustomOperation is standalone and remains registered across mission specification overrides; "
+                        "CustomOperation is standalone and remains registered across mission catalog selections; "
                         "restarting it can leave stale PX4 arming-check components"
                     )
                 },
             )
-            self._mission_specification_overridden = False
+            self._mission_catalog_selected = False
         self._step(
             "ensure_custom_operation_started_for_external_mode_replies",
             lambda: tools.system("start", entity_id="custom_operation", include_dependencies=False, timeout_sec=180.0),
@@ -663,76 +663,72 @@ class MissionDeployWorkflow:
         value = vehicle_status.get("nav_state")
         return int(value) if value is not None else None
 
-    def _override_mission_specification_if_requested(self, tools: DroneAgentTools) -> None:
-        requested_file = str(getattr(self.args, "mission_specification_file", "") or "")
-        use_default = bool(getattr(self.args, "use_default_mission_specification", False))
-        explicit_override = bool(requested_file) or use_default
+    def _select_mission_catalog_if_requested(self, tools: DroneAgentTools) -> None:
+        requested_id = str(getattr(self.args, "mission_catalog_id", "") or "")
+        use_default = bool(getattr(self.args, "use_default_mission_catalog", False))
+        explicit_override = bool(requested_id) or use_default
         if not explicit_override and self.args.skip_mission_activation:
             self._append_step(
-                "override_mission_specification",
+                "select_mission_catalog_entry",
                 "skipped",
-                {"reason": "skip_mission_activation requested and no explicit mission specification override was supplied"},
+                {"reason": "skip_mission_activation requested and no explicit mission catalog selection was supplied"},
             )
             return
         if not explicit_override:
             mission_mode = self._normalize_mission_mode_key(str(getattr(self.args, "mission_mode", "") or ""))
             if mission_mode == "reach_cable":
-                requested_file = "mission_specification_reach_charge_leave.yaml"
+                requested_id = "reach-charge-leave-experimental"
             elif mission_mode == "inspection_demo":
-                requested_file = "mission_specification.yaml"
-        if not requested_file and not use_default:
+                requested_id = "inspection-production"
+        if not requested_id and not use_default:
             self._append_step(
-                "override_mission_specification",
+                "select_mission_catalog_entry",
                 "skipped",
-                {"reason": f"no mission specification override configured for mission_mode={self.args.mission_mode!r}"},
+                {"reason": f"no mission catalog selection configured for mission_mode={self.args.mission_mode!r}"},
             )
             return
 
         self._step(
-            "ensure_mission_executor_started_for_mission_specification_override",
+            "ensure_mission_executor_started_for_mission_catalog_selection",
             lambda: tools.system("start", entity_id="mission_executor", include_dependencies=False, timeout_sec=180.0),
         )
         if not use_default:
             status = self._step(
-                "check_active_mission_specification_before_override",
+                "check_active_mission_catalog_before_selection",
                 lambda: tools.mission_status(timeout_sec=3.0),
                 required=False,
             )
-            if self._active_mission_specification_matches(status, requested_file):
+            if self._active_mission_catalog_matches(status, requested_id):
                 self._append_step(
-                    "override_mission_specification",
+                    "select_mission_catalog_entry",
                     "skipped",
                     {
                         "reason": (
-                            "requested mission specification already active; skipping service call to preserve "
+                            "requested mission catalog entry already active; skipping service call to preserve "
                             "PX4 external-mode registrations"
                         ),
-                        "requested_file": requested_file,
+                        "requested_id": requested_id,
                         "mission_status": status.data,
                     },
                 )
                 return
         self._step(
-            "override_mission_specification",
-            lambda: tools.override_mission_specification(
-                mission_specification_file=requested_file,
+            "select_mission_catalog_entry",
+            lambda: tools.select_mission_catalog_entry(
+                catalog_id=requested_id,
                 use_default=use_default,
                 timeout_sec=10.0,
             ),
         )
-        self._mission_specification_overridden = True
+        self._mission_catalog_selected = True
 
     @staticmethod
-    def _active_mission_specification_matches(status: ToolResult, requested_file: str) -> bool:
+    def _active_mission_catalog_matches(status: ToolResult, requested_id: str) -> bool:
         if not status.success or not isinstance(status.data, dict):
             return False
-        active = str(status.data.get("active_mission_specification") or "")
-        requested = str(requested_file or "")
-        if not active or not requested:
-            return False
-        if active == requested:
-            return True
-        return Path(active).name == Path(requested).name
+        active = str(status.data.get("active_catalog_id") or "")
+        requested = str(requested_id or "")
+        return bool(active and requested and active == requested)
 
     @staticmethod
     def _normalize_mission_mode_key(value: str) -> str:
@@ -2183,8 +2179,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--overview-retry-delay-sec", type=float, default=1.0)
     parser.add_argument("--min-pylons", type=int, default=2)
     parser.add_argument("--pylon-overview-timeout-sec", type=float, default=2.0)
-    parser.add_argument("--mission-specification-file", default="")
-    parser.add_argument("--use-default-mission-specification", action="store_true")
+    parser.add_argument("--mission-catalog-id", default="")
+    parser.add_argument("--use-default-mission-catalog", action="store_true")
     parser.add_argument("--demo-pos-over-corridor-id", default=DEMO_POS_OVER_CORRIDOR_ID)
     parser.add_argument("--demo-pos-pylon-1-id", default=DEMO_POS_PYLON_1_ID)
     parser.add_argument("--demo-pos-pylon-2-id", default=DEMO_POS_PYLON_2_ID)

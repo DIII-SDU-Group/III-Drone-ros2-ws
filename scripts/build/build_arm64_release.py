@@ -32,6 +32,7 @@ from iii_deployment.source import (  # noqa: E402
     verify_source_snapshot,
 )
 from iii_deployment.target import load_target_definition  # noqa: E402
+from iii_deployment.mission_catalog import install_qualified_mission_catalog  # noqa: E402
 from iii_deployment.wheels import load_wheel_lock  # noqa: E402
 
 
@@ -151,6 +152,7 @@ def main() -> int:
         cache["state_sha256"] = commit_package_cache_state(
             cache_state_path, keys, cache_context
         )
+        mission_catalog = install_qualified_mission_catalog(partial / policy["release_install"])
         normalize_install_tree(partial / policy["release_install"])
         verify_installed_release_assets(build_source, partial, policy)
         installed_packages = installed_package_names(partial, policy)
@@ -187,7 +189,7 @@ def main() -> int:
         )
         (partial / "build-record.json").write_bytes(canonical_json(record) + b"\n")
         os.replace(partial, args.output)
-        result = {"schema": "iii.arm64-build-result/v1", "outcome": "passed", "build_id": record["build_id"], "output": str(args.output), "packages": installed_packages, "requested_packages": packages, "impacted_packages": impacted_packages}
+        result = {"schema": "iii.arm64-build-result/v1", "outcome": "passed", "build_id": record["build_id"], "output": str(args.output), "packages": installed_packages, "requested_packages": packages, "impacted_packages": impacted_packages, "mission_catalog": mission_catalog}
         print(json.dumps(result, sort_keys=True) if args.json else f"PASS: {record['build_id']}")
         return 0
     except (ContractError, OSError) as exc:

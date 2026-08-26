@@ -27,6 +27,63 @@ def _workflow(tmp_path):
     return MissionDeployWorkflow(args)
 
 
+def test_deploy_workflow_selects_catalog_ids_and_rejects_legacy_path_option(tmp_path):
+    workflow = _workflow(tmp_path)
+    workflow.args.mission_mode = "reach_cable"
+    calls = []
+    tools = SimpleNamespace(
+        system=lambda *args, **kwargs: ToolResult(True, {"args": args, "kwargs": kwargs}, "started"),
+        mission_status=lambda **_kwargs: ToolResult(True, {"active_catalog_id": "inspection-production"}, "status"),
+        select_mission_catalog_entry=lambda **kwargs: (
+            calls.append(kwargs)
+            or ToolResult(True, {"active_catalog_id": kwargs["catalog_id"]}, "selected")
+        ),
+    )
+    workflow._step = lambda _name, callback, required=True: callback()
+    workflow._select_mission_catalog_if_requested(tools)
+    assert calls == [
+        {
+            "catalog_id": "reach-charge-leave-experimental",
+            "use_default": False,
+            "timeout_sec": 10.0,
+        }
+    ]
+
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(
+            [
+                "--artifact-dir", str(tmp_path),
+                "--status-path", str(tmp_path / "status.json"),
+                "--mission-specification-file", "/tmp/mission.yaml",
+            ]
+        )
+
+
+def test_deploy_workflow_default_selection_is_explicit_and_active_id_is_noop(tmp_path):
+    workflow = _workflow(tmp_path)
+    workflow.args.use_default_mission_catalog = True
+    calls = []
+    tools = SimpleNamespace(
+        system=lambda *args, **kwargs: ToolResult(True, {}, "started"),
+        select_mission_catalog_entry=lambda **kwargs: calls.append(kwargs) or ToolResult(True, {}, "default"),
+    )
+    workflow._step = lambda _name, callback, required=True: callback()
+    workflow._select_mission_catalog_if_requested(tools)
+    assert calls == [{"catalog_id": "", "use_default": True, "timeout_sec": 10.0}]
+
+    workflow = _workflow(tmp_path / "active")
+    workflow.args.mission_catalog_id = "inspection-production"
+    calls.clear()
+    tools = SimpleNamespace(
+        system=lambda *args, **kwargs: ToolResult(True, {}, "started"),
+        mission_status=lambda **_kwargs: ToolResult(True, {"active_catalog_id": "inspection-production"}, "status"),
+        select_mission_catalog_entry=lambda **kwargs: calls.append(kwargs) or ToolResult(True, {}, "selected"),
+    )
+    workflow._step = lambda _name, callback, required=True: callback()
+    workflow._select_mission_catalog_if_requested(tools)
+    assert calls == []
+
+
 def test_gazebo_fixture_altitude_is_not_overwritten_by_ros_ground_estimate(tmp_path):
     workflow = _workflow(tmp_path)
     target = {

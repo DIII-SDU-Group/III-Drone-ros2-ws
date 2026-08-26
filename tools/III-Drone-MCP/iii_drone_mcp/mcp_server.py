@@ -812,13 +812,13 @@ class DroneMcpServer:
                         "demo_pos_over_corridor_id": {"type": "string"},
                         "demo_pos_pylon_1_id": {"type": "string"},
                         "demo_pos_pylon_2_id": {"type": "string"},
-                        "mission_specification_file": {
+                        "mission_catalog_id": {
                             "type": "string",
-                            "description": "Optional mission specification YAML path or filename to load before mission activation. If omitted, mission_mode=reach_cable loads mission_specification_reach_charge_leave.yaml and mission_mode=inspection_demo loads mission_specification.yaml.",
+                            "description": "Optional installed mission catalog ID to select before activation. If omitted, reach_cable selects reach-charge-leave-experimental and inspection_demo selects inspection-production.",
                         },
-                        "use_default_mission_specification": {
+                        "use_default_mission_catalog": {
                             "type": "boolean",
-                            "description": "Restore the configured default mission specification before mission activation.",
+                            "description": "Restore the installed catalog default for the active configuration profile before mission activation.",
                         },
                         "require_pylon_overview": {
                             "type": "boolean",
@@ -880,22 +880,33 @@ class DroneMcpServer:
                 lambda args: self.tools.cancel_mission_deploy_workflow(**args),
             ),
             ToolSpec(
-                "mission.override_specification",
-                "Reload the mission executor mission specification while the lifecycle node is active and no mission is running. This clears global blackboard/runtime intents and rebuilds mission modes.",
+                "mission.select_catalog_entry",
+                "Select an installed mission catalog entry while the lifecycle node is active and no mission is running. Selection is transactional and uses catalog IDs only.",
                 _object_schema(
                     {
-                        "mission_specification_file": {
+                        "catalog_id": {
                             "type": "string",
-                            "description": "Absolute path, env-expanded path, or filename under MISSION_SPECIFICATION_DIR.",
+                            "description": "Installed mission catalog entry ID. Filesystem paths are rejected by the runtime.",
                         },
                         "use_default": {
                             "type": "boolean",
-                            "description": "Restore the configured /mission/mission_specification_file.",
+                            "description": "Restore the installed catalog default for the active profile.",
                         },
                         "timeout_sec": {"type": "number"},
                     },
                 ),
-                lambda args: self.tools.override_mission_specification(**args),
+                lambda args: self.tools.select_mission_catalog_entry(**args),
+            ),
+            ToolSpec(
+                "mission.get_catalog",
+                "Return installed mission catalog metadata without exposing filesystem paths.",
+                _object_schema(
+                    {
+                        "include_incompatible": {"type": "boolean"},
+                        "timeout_sec": {"type": "number"},
+                    },
+                ),
+                lambda args: self.tools.get_mission_catalog(**args),
             ),
             ToolSpec(
                 "mission.set_bool_service",

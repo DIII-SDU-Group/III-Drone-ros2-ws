@@ -114,9 +114,70 @@ def _metadata(root: Path) -> Path:
         "px4_sim": ["inputs/px4-sim"],
         "px4_interface": ["inputs/px4-interface"],
         "qgc_managed_settings": ["inputs/qgc"],
-        "mission_catalog": ["inputs/mission"],
     }
     return _canonical(root / "release-metadata.json", value)
+
+
+def _mission_catalog(drone: Path) -> dict:
+    directory = drone / "install/iii_drone_mission/share/iii_drone_mission/mission_catalog"
+    assets = directory / "assets/sha256"
+    assets.mkdir(parents=True)
+    asset_raw = b"executor_owned_mode: inspection_demo\nentries: []\n"
+    asset_hash = "sha256:" + hashlib.sha256(asset_raw).hexdigest()
+    (assets / asset_hash.removeprefix("sha256:")).write_bytes(asset_raw)
+    models_raw = b"<root/>\n"
+    state = {
+        "schema": "iii.mission-source-state/v1",
+        "state_hash": "",
+        "source_files": {"mission_specification/mission_specification.yaml": asset_hash},
+        "interface_contracts": {"MissionModeStatus.msg": "sha256:" + "1" * 64},
+        "registration_manifest_sha256": "sha256:" + "2" * 64,
+        "behavior_node_contract_sha256": "sha256:" + "3" * 64,
+        "models_xml_sha256": "sha256:" + hashlib.sha256(models_raw).hexdigest(),
+    }
+    state["state_hash"] = "sha256:" + content_identity({k: v for k, v in state.items() if k != "state_hash"})
+    entry = {
+        "schema": "iii.mission-catalog-entry/v1",
+        "id": "inspection-production",
+        "entry_hash": "",
+        "classification": "production",
+        "status": "active",
+        "profiles": ["hil", "opti_track", "real"],
+        "default_for": ["opti_track", "real"],
+        "experimental_warning": None,
+        "compatibility": {"source_state_sha256": state["state_hash"]},
+        "specification": {"executor_owned_mode": "inspection_demo", "entries": [], "intent_services": []},
+        "assets": [{"kind": "mission_specification", "logical_name": "mission_specification/mission_specification.yaml", "content_hash": asset_hash, "asset_id": asset_hash}],
+        "dependencies": [asset_hash],
+    }
+    entry["entry_hash"] = "sha256:" + content_identity({k: v for k, v in entry.items() if k != "entry_hash"})
+    catalog = {
+        "schema": "iii.mission-catalog/v1",
+        "catalog_hash": "",
+        "scope": "qualified",
+        "compatibility": {"source_state_sha256": state["state_hash"]},
+        "profiles": {
+            "hil": {"commissioned": False, "onboard": True, "default_entry_id": None},
+            "opti_track": {"commissioned": True, "onboard": True, "default_entry_id": "inspection-production"},
+            "real": {"commissioned": True, "onboard": True, "default_entry_id": "inspection-production"},
+        },
+        "entries": [entry],
+        "assets": entry["assets"],
+    }
+    catalog["catalog_hash"] = "sha256:" + content_identity({k: v for k, v in catalog.items() if k != "catalog_hash"})
+    catalog_raw = canonical_json(catalog) + b"\n"
+    (directory / "catalog.json").write_bytes(catalog_raw)
+    (directory / "catalog.sha256").write_text(hashlib.sha256(catalog_raw).hexdigest() + "  catalog.json\n")
+    (directory / "source-state.json").write_bytes(canonical_json(state) + b"\n")
+    (directory / "models.xml").write_bytes(models_raw)
+    project = {
+        "schema": "iii.groot2-project/v1",
+        "catalog": "catalog.json",
+        "node_model": "models.xml",
+        "catalog_hash": catalog["catalog_hash"],
+    }
+    (directory / "groot2-project.json").write_bytes(canonical_json(project) + b"\n")
+    return catalog
 
 
 def _build_records(
@@ -229,6 +290,7 @@ def pipeline_case(tmp_path: Path) -> dict:
     provenance = _write(tmp_path / "source-provenance.md", b"# provenance\n")
     metadata = _metadata(tmp_path)
     drone = _write(tmp_path / "payloads/drone/install/core", b"drone\n").parent.parent
+    expected_catalog = _mission_catalog(drone)
     gc = tmp_path / "payloads/gc"
     records = _build_records(tmp_path, snapshot, drone, gc, check_paths)
     key_path = tmp_path / "qualified.pem"
@@ -256,7 +318,7 @@ def pipeline_case(tmp_path: Path) -> dict:
         "root": tmp_path, "lock": lock, "checks": check_paths, "evidence": evidence,
         "snapshot": snapshot_path, "snapshot_value": snapshot, "provenance": provenance,
         "metadata": metadata, "drone": drone, "gc": gc, "records": records,
-        "key": key_path, "manifest": manifest,
+        "key": key_path, "manifest": manifest, "catalog": expected_catalog,
     }
 
 
@@ -292,6 +354,11 @@ def test_manifest_is_derived_from_pinned_payload_policy_and_signer(pipeline_case
     assert manifest["source"]["snapshot_content_identity"] == pipeline_case["snapshot_value"]["content_identity"]
     assert manifest["source"]["content_identity"] != manifest["source"]["snapshot_content_identity"]
     assert manifest["packages"][0]["content_sha256"] != manifest["packages"][1]["content_sha256"]
+    assert manifest["mission_catalog"]["catalog_hash"] == pipeline_case["catalog"]["catalog_hash"]
+    assert manifest["mission_catalog"]["catalog_sha256"] == hashlib.sha256(
+        canonical_json(pipeline_case["catalog"]) + b"\n"
+    ).hexdigest()
+    assert manifest["mission_catalog"]["scope"] == "qualified"
     assert manifest["release_id"] == content_identity({k: v for k, v in manifest.items() if k != "release_id"})
 
 

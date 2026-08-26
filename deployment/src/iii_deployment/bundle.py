@@ -130,6 +130,8 @@ def validate_release_metadata(
     )
     if manifest["signing"]["authority"] != expected_authority:
         raise ContractError("release signer authority does not match release class")
+    if manifest["release_class"] == "qualified" and manifest["mission_catalog"]["scope"] != "qualified":
+        raise ContractError("qualified release must bind a qualified mission catalog")
     profile_ids: set[str] = set()
     parameter_profiles = set(manifest["px4"]["manifests"])
     for profile in manifest["profiles"]:
@@ -406,6 +408,7 @@ def package_bundle_set(
                 "release_class": release["release_class"],
                 "component": component,
                 "release_manifest_sha256": release_sha,
+                "mission_catalog_hash": release["mission_catalog"]["catalog_hash"],
                 "compatibility_sha256": compatibility_sha,
                 "component_payloads": payloads,
                 "target": release["component_targets"][component],
@@ -476,6 +479,8 @@ def _validate_bundle_semantics(
         raise ContractError("bundle payload identity disagrees with its content index")
     if bundle["compatibility_sha256"] != _compatibility_identity(release):
         raise ContractError("bundle compatibility evidence disagrees with release")
+    if bundle["mission_catalog_hash"] != release["mission_catalog"]["catalog_hash"]:
+        raise ContractError("bundle mission catalog identity disagrees with release")
     paths = [entry["path"] for entry in bundle["content"]]
     if paths != sorted(set(paths), key=lambda value: value.encode("utf-8")):
         raise ContractError("bundle content paths must be unique and canonically sorted")

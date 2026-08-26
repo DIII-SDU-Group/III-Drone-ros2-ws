@@ -29,6 +29,7 @@ from .qualified_release import (
     write_canonical,
 )
 from .qualification import REQUIRED_QUALIFICATION_CHECKS
+from .mission_catalog import verify_mission_catalog
 from .signers import load_private_key, signer_id_for_public_key
 from .source import verify_source_snapshot
 from .target import load_target_definition
@@ -375,6 +376,18 @@ def assemble_release_manifest(
     source = _source_manifest(
         snapshot, source_snapshot_path, provenance_path, source_content_identity
     )
+    mission_catalog = verify_mission_catalog(
+        component_roots["drone"]
+        / _json(root / "deployment/build-policy.json")["release_install"]
+        / "iii_drone_mission/share/iii_drone_mission/mission_catalog",
+        expected_scope="qualified",
+    )
+    for profile in metadata["profiles"]:
+        descriptor = mission_catalog["profiles"].get(profile["id"])
+        if descriptor is None:
+            raise ContractError(f"release profile is absent from the qualified mission catalog: {profile['id']}")
+        if profile["status"] == "commissioned" and descriptor.get("default_entry_id") != profile["default_mission"]:
+            raise ContractError(f"release profile default differs from the qualified mission catalog: {profile['id']}")
     manifest: dict[str, Any] = {
         "schema_version": "1",
         "manifest_type": "release",
@@ -428,7 +441,10 @@ def assemble_release_manifest(
         "profiles": metadata["profiles"],
         "mission_catalog": {
             "schema_version": metadata["mission_catalog"]["schema_version"],
-            "catalog_sha256": _hash_inputs(root, inputs["mission_catalog"]),
+            "scope": mission_catalog["scope"],
+            "catalog_hash": mission_catalog["catalog_hash"],
+            "catalog_sha256": mission_catalog["catalog_sha256"],
+            "source_state_sha256": mission_catalog["source_state_sha256"],
         },
         "qualification": {
             "explicit_action": True,

@@ -162,6 +162,7 @@ def test_paired_bundles_are_deterministic_independent_and_round_trip(tmp_path: P
     )
     shared_payloads = None
     shared_compatibility = None
+    shared_catalog = None
     for component, paths in case.paths.items():
         assert paths.archive.read_bytes() == repeated[component].archive.read_bytes()
         assert paths.signature.read_bytes() == repeated[component].signature.read_bytes()
@@ -173,8 +174,11 @@ def test_paired_bundles_are_deterministic_independent_and_round_trip(tmp_path: P
         if shared_payloads is None:
             shared_payloads = verified.bundle_manifest["component_payloads"]
             shared_compatibility = verified.bundle_manifest["compatibility_sha256"]
+            shared_catalog = verified.bundle_manifest["mission_catalog_hash"]
         assert verified.bundle_manifest["component_payloads"] == shared_payloads
         assert verified.bundle_manifest["compatibility_sha256"] == shared_compatibility
+        assert verified.bundle_manifest["mission_catalog_hash"] == shared_catalog
+        assert shared_catalog == case.manifest["mission_catalog"]["catalog_hash"]
         destination = tmp_path / f"installed-{component}"
         extract_bundle(
             paths.directory,
@@ -222,13 +226,24 @@ def test_release_metadata_binds_px4_qgc_and_extensible_profiles(tmp_path: Path) 
             "bootable": False,
             "parameter_profile": "future_lab",
             "capabilities": [],
-            "default_mission": "inspection-demo",
+            "default_mission": "inspection-production",
         }
     )
     validate_release_metadata(manifest, REGISTRY)
     manifest["profiles"][-1]["bootable"] = True
     with pytest.raises(ContractError, match="fail closed"):
         validate_release_metadata(manifest, REGISTRY)
+
+
+def test_qualified_release_cannot_bind_field_catalog_but_field_release_can(tmp_path: Path) -> None:
+    manifest = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    manifest["mission_catalog"]["scope"] = "field"
+    with pytest.raises(ContractError, match="qualified mission catalog"):
+        validate_release_metadata(manifest, REGISTRY)
+    manifest["release_class"] = "field-development"
+    manifest["version"] = None
+    manifest["signing"]["authority"] = "workstation-field"
+    validate_release_metadata(manifest, REGISTRY)
 
 
 def test_px4_and_qgc_changes_change_signed_compatibility_identity(tmp_path: Path) -> None:

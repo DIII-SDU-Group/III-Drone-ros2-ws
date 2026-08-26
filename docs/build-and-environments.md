@@ -42,12 +42,14 @@ The workspace defines explicit runtime modes via shell profiles:
 Shared env and path conventions:
 - `CONFIG_BASE_DIR`
 - `NODE_MANAGEMENT_CONFIG_DIR`
-- `MISSION_SPECIFICATION_DIR`
-- `BEHAVIOR_TREES_DIR`
 - `III_SYSTEM_RUNTIME_DIR`
 - `III_SYSTEM_DAEMON_SOCKET`
 - `III_SYSTEM_DAEMON_LOG`
 - `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`
+
+Mission specifications and behavior trees are installed, content-addressed
+package assets. Runtime selection uses mission catalog IDs and does not depend on
+source-tree path environment variables.
 
 ## 3. Development Container
 

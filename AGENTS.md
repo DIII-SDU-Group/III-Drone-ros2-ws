@@ -159,8 +159,10 @@ Recursive/nested third-party submodules (for example under `PX4-Autopilot` and `
 Runtime expects environment variables and config layout from `setup/paths.bash`, especially:
 - `CONFIG_BASE_DIR`
 - `NODE_MANAGEMENT_CONFIG_DIR`
-- `MISSION_SPECIFICATION_DIR`
-- `BEHAVIOR_TREES_DIR`
+
+Mission specifications and behavior trees are installed, content-addressed
+`iii_drone_mission` catalog assets. Runtime APIs use catalog IDs only and must not
+fall back to source paths or mission-asset environment variables.
 
 Bringup often depends on installed config content under `.config/iii_drone`.
 If config-dependent behavior fails, verify setup/install scripts were run.

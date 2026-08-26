@@ -4,7 +4,7 @@
   "title": "III deterministic component bundle manifest",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "manifest_type", "format", "release_id", "release_class", "component", "release_manifest_sha256", "compatibility_sha256", "component_payloads", "target", "content", "limits"],
+  "required": ["schema_version", "manifest_type", "format", "release_id", "release_class", "component", "release_manifest_sha256", "mission_catalog_hash", "compatibility_sha256", "component_payloads", "target", "content", "limits"],
   "properties": {
     "schema_version": {"const": "1"},
     "manifest_type": {"const": "bundle"},
@@ -23,6 +23,7 @@
     "release_class": {"enum": ["qualified", "field-development"]},
     "component": {"enum": ["drone", "gc"]},
     "release_manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "mission_catalog_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
     "compatibility_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "component_payloads": {
       "type": "object", "minProperties": 1, "additionalProperties": false,

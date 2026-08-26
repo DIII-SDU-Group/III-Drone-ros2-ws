@@ -66,14 +66,13 @@
     },
     "input_paths": {
       "type": "object", "additionalProperties": false,
-      "required": ["configuration", "px4_real", "px4_sim", "px4_interface", "qgc_managed_settings", "mission_catalog"],
+      "required": ["configuration", "px4_real", "px4_sim", "px4_interface", "qgc_managed_settings"],
       "properties": {
         "configuration": {"$ref": "#/definitions/paths"},
         "px4_real": {"$ref": "#/definitions/paths"},
         "px4_sim": {"$ref": "#/definitions/paths"},
         "px4_interface": {"$ref": "#/definitions/paths"},
-        "qgc_managed_settings": {"$ref": "#/definitions/paths"},
-        "mission_catalog": {"$ref": "#/definitions/paths"}
+        "qgc_managed_settings": {"$ref": "#/definitions/paths"}
       }
     }
   },

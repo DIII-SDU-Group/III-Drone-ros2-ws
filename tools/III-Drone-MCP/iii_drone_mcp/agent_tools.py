@@ -46,10 +46,11 @@ from iii_drone_interfaces.srv import (
     GetPowerlineOverview,
     GetPylonOverview,
     GripperCommand,
+    GetMissionCatalog,
     LoadParameters,
-    OverrideMissionSpecification,
     PLMapperCommand,
     SaveParameters,
+    SelectMissionCatalogEntry,
     SetParameterFromGC,
     StorePylonOverview,
     UpdatePowerlineOverview,
@@ -219,9 +220,13 @@ class DroneAgentTools:
             GetCurrentParameterFile,
             "/configuration/configuration_server/get_current_parameter_file",
         )
-        self._override_mission_specification = self.node.create_client(
-            OverrideMissionSpecification,
-            "/mission/mission_executor/override_mission_specification",
+        self._get_mission_catalog = self.node.create_client(
+            GetMissionCatalog,
+            "/mission/mission_executor/get_mission_catalog",
+        )
+        self._select_mission_catalog_entry = self.node.create_client(
+            SelectMissionCatalogEntry,
+            "/mission/mission_executor/select_mission_catalog_entry",
         )
 
     def close(self) -> None:
@@ -2066,36 +2071,64 @@ class DroneAgentTools:
         finally:
             self.node.destroy_client(client)
 
-    def override_mission_specification(
+    def get_mission_catalog(
         self,
         *,
-        mission_specification_file: str = "",
-        use_default: bool = False,
+        include_incompatible: bool = False,
         timeout_sec: float = 5.0,
     ) -> ToolResult:
-        request = OverrideMissionSpecification.Request()
-        request.mission_specification_file = str(mission_specification_file or "")
-        request.use_default = bool(use_default)
-        response = self._call_service(self._override_mission_specification, request, timeout_sec)
+        request = GetMissionCatalog.Request()
+        request.include_incompatible = bool(include_incompatible)
+        response = self._call_service(self._get_mission_catalog, request, timeout_sec)
+        catalog = json.loads(str(response.catalog_json)) if response.success and response.catalog_json else {}
         data = {
             "success": bool(response.success),
             "message": str(response.message),
-            "mission_specification_file": request.mission_specification_file,
-            "use_default": bool(request.use_default),
-            "active_mission_specification_file": str(response.active_mission_specification_file),
+            "include_incompatible": bool(request.include_incompatible),
+            "catalog": catalog,
         }
-        return ToolResult(
-            bool(response.success),
-            data,
-            str(response.message),
-        )
+        return ToolResult(bool(response.success), data, str(response.message))
+
+    def select_mission_catalog_entry(
+        self,
+        *,
+        catalog_id: str = "",
+        use_default: bool = False,
+        timeout_sec: float = 10.0,
+    ) -> ToolResult:
+        request = SelectMissionCatalogEntry.Request()
+        request.catalog_id = str(catalog_id or "")
+        request.use_default = bool(use_default)
+        response = self._call_service(self._select_mission_catalog_entry, request, timeout_sec)
+        data = {
+            "success": bool(response.success),
+            "message": str(response.message),
+            "catalog_id": request.catalog_id,
+            "use_default": bool(request.use_default),
+            "active_catalog_id": str(response.active_catalog_id),
+            "active_entry_hash": str(response.active_entry_hash),
+            "temporary_override": bool(response.temporary_override),
+            "warning": str(response.warning),
+        }
+        return ToolResult(bool(response.success), data, str(response.message))
 
     def mission_status(self, timeout_sec: float = 2.0) -> ToolResult:
         status = self._take_message("/mission/status", MissionModeStatus, timeout_sec, required=True)
         data = {
             "mission_state": int(status.mission_state),
             "mission_state_label": str(status.mission_state_label),
-            "active_mission_specification": str(status.active_mission_specification),
+            "active_catalog_id": str(status.active_catalog_id),
+            "catalog_hash": str(status.catalog_hash),
+            "active_entry_hash": str(status.active_entry_hash),
+            "default_catalog_id": str(status.default_catalog_id),
+            "configuration_profile": str(status.configuration_profile),
+            "classification": str(status.classification),
+            "compatible_profiles": list(status.compatible_profiles),
+            "temporary_override": bool(status.temporary_override),
+            "experimental": bool(status.experimental),
+            "experimental_warning": str(status.experimental_warning),
+            "catalog_ready": bool(status.catalog_ready),
+            "catalog_error": str(status.catalog_error),
             "mission_active": bool(status.mission_active),
             "required_modes_registered": bool(status.required_modes_registered),
             "required_modes": list(status.required_modes),
@@ -2199,7 +2232,7 @@ class DroneAgentTools:
             "demo_pos_over_corridor_id",
             "demo_pos_pylon_1_id",
             "demo_pos_pylon_2_id",
-            "mission_specification_file",
+            "mission_catalog_id",
             "mission_mode",
             "px4_timeout_sec",
             "custom_mode_timeout_sec",
@@ -2220,8 +2253,8 @@ class DroneAgentTools:
             command.append("--skip-mission-activation")
         if bool(kwargs.get("require_pylon_overview", False)):
             command.append("--require-pylon-overview")
-        if bool(kwargs.get("use_default_mission_specification", False)):
-            command.append("--use-default-mission-specification")
+        if bool(kwargs.get("use_default_mission_catalog", False)):
+            command.append("--use-default-mission-catalog")
         force_update_overview = bool(kwargs.get("force_update_overview", True))
         if force_update_overview:
             command.append("--force-update-overview")

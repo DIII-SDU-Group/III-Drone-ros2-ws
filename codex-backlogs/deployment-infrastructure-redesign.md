@@ -2785,6 +2785,8 @@ Implementation notes (2026-08-26):
 
 #### P1.T5: Build And Validate Mission Catalog Artifacts
 
+**Status: Completed.**
+
 Description:
 Turn release-approved mission specifications, behavior trees, models, and their
 transitive references into a signed immutable catalog sub-artifact. Replace
@@ -2794,44 +2796,44 @@ production, profile-limited, test, and legacy entries explicitly.
 
 Acceptance:
 
-- [ ] Every catalog entry has stable logical name, content hash, schema, status,
+- [x] Every catalog entry has stable logical name, content hash, schema, status,
       profile allowlist, compatibility hashes, and complete referenced assets.
-- [ ] Missions are declared through the final Q84 CMake registration contract;
+- [x] Missions are declared through the final Q84 CMake registration contract;
       duplicate IDs, missing specifications, unknown profiles, missing
       classification, and incompatible profile defaults fail configuration/build.
-- [ ] Validation rejects missing/escaping/absolute references, duplicate IDs,
+- [x] Validation rejects missing/escaping/absolute references, duplicate IDs,
       malformed YAML/XML, unavailable behavior nodes/ports, incompatible contracts,
       and unclassified test/legacy content.
-- [ ] Behavior-node registration and the generated node/port model share one
+- [x] Behavior-node registration and the generated node/port model share one
       authoritative descriptor; validation fails if runtime registration, model
       generation, XML use, or port contracts diverge.
-- [ ] Qualified onboard allowlists contain only production missions; local-only
+- [x] Qualified onboard allowlists contain only production missions; local-only
       test and legacy missions cannot enter any drone catalog.
-- [ ] Local catalogs retain all classified development entries, while drone
+- [x] Local catalogs retain all classified development entries, while drone
       catalogs contain only onboard-profile (`real`, `opti_track`, future `hil`)
       entries and always omit sim-only/test/legacy metadata and assets. The final
       Q87 contract governs explicitly onboard-compatible experimental entries.
-- [ ] Experimental entries pass production-grade validation, are impossible to
+- [x] Experimental entries pass production-grade validation, are impossible to
       publish in qualified artifacts, remain visibly marked in CLI/runtime state,
       and follow the final Q88 field-bundle inclusion contract.
-- [ ] Paired GC/drone release manifests bind the exact catalog hash, while the
+- [x] Paired GC/drone release manifests bind the exact catalog hash, while the
       installed immutable catalog is packaged independently of source directories.
-- [ ] Package-owned custom generators/validators run from CMake, emit only
+- [x] Package-owned custom generators/validators run from CMake, emit only
       deterministic build-tree outputs, and establish the required mission-
       specification/behavior-tree dependency closure without mutating source files.
-- [ ] CMake installs the catalog and all referenced assets beneath
+- [x] CMake installs the catalog and all referenced assets beneath
       `share/iii_drone_mission`; runtime resolves them through the ament package
       index and catalog identities in both simulation and deployed profiles, with
       no `WORKSPACE_DIR`, source-checkout, or absolute-path fallback.
-- [ ] Simulation preflight detects when mission sources and the installed catalog
+- [x] Simulation preflight detects when mission sources and the installed catalog
       differ, automatically runs the targeted mission-package build/install/
       validation step, and never launches stale or invalid assets.
-- [ ] Asset-only dirty changes can create a dependency-complete field artifact
+- [x] Asset-only dirty changes can create a dependency-complete field artifact
       without recompiling unaffected code and without bypassing signing/validation.
-- [ ] Runtime mission selection accepts catalog IDs rather than filesystem paths,
+- [x] Runtime mission selection accepts catalog IDs rather than filesystem paths,
       enforces profile allowlists and the final Q83 safety/persistence contract,
       and transactionally restores the previous entry after rebuild failure.
-- [ ] `iii mission status/list/list --all/show/select` and `select --default` expose active
+- [x] `iii mission status/list/list --all/show/select` and `select --default` expose active
       identity, hash, profile compatibility, classification, resolved dependencies,
       release default, temporary override state, runtime readiness, and safe
       selection without displaying or accepting target filesystem paths; `--all`
@@ -2843,6 +2845,38 @@ Tests:
   unavailable node/port, compatibility mismatch, production/test classification,
   qualified allowlist, asset-only build, install-space-only sim/real lookup,
   source-tree absence, tamper, and deterministic rebuild tests.
+
+Implementation notes (2026-08-26):
+
+- Added the Q84 package-owned registration/generation contract with deterministic
+  local, production-only qualified, and explicit field-candidate reductions. The
+  catalog content-addresses the complete specification/tree closure and binds the
+  interface, runtime, behavior-node, source-state, generated node model, and Groot
+  project identities; malformed, unclassified, escaping, incompatible, linked,
+  missing, extra, or tampered content fails closed.
+- Replaced mission path parameters and environment expansion with installed ament
+  catalog identities. Mission runtime, interfaces, Runtime API, GC, MCP workflows,
+  and the canonical `iii mission` surface now use catalog IDs, expose readiness and
+  experimental warnings without paths, enforce profile/safety gates, and rebuild
+  selection transactionally with rollback to the previous entry on failure.
+- Added simulation source/install attestation and targeted incremental preflight.
+  An intentional behavior-tree-only drift was detected and repaired by the exact
+  mission-package build; the unaffected mission shared library retained its mtime.
+  The final installed local catalog contains seven entries and eighteen assets at
+  `sha256:735e2aab6a7b5691f3a2b172b96b258098cce9b39973d17ebabc80648fbf6d57`
+  with an empty source-drift result.
+- Qualified ARM64 payload construction promotes only the verified qualified
+  reduction, removes local/field variants, and binds the same logical catalog hash
+  into the release and paired component bundle manifests. Field reductions admit
+  only explicitly selected onboard-compatible experimental IDs with persistent
+  warning metadata and use the same signed bundle verification boundary.
+- Verification passed Mission 63/63, deployment 210/210, III CLI 66/66, MCP 28/28,
+  Runtime 282/282, Configuration 88/88, Contracts 25/25, GC 52/52, and Interfaces
+  7/7 tests in the Jazzy devcontainer, plus diff hygiene, Python error checks,
+  forbidden legacy path/service scans, and final installed-catalog zero-drift
+  verification. The ARM64 target build boundary is covered by release-pipeline and
+  qualified-catalog promotion tests; a publishable qualified release was not built
+  from the intentionally dirty multi-repository feature workspace.
 
 ### P2: Implement Transactional Onboard Release Management
 
