@@ -3755,6 +3755,24 @@ Tests:
 
 #### P3.T2: Install Real-Profile Systemd Units
 
+**Status: Completed (2026-08-26).** Installed Ansible-owned real-profile daemon,
+runtime-API, and aggregate target units; a fixed selector-aware launcher; a
+content-identified host-unit contract; and an external non-secret runtime
+environment. The launcher authenticates the selector, release, profile, converged
+host contract, its own installed bytes, and all installed unit bytes before every
+start. Release manifests now bind the required unit contract, activation rejects
+host-contract version drift before selector mutation, and receiver policy forbids
+application ownership of all host-control assets.
+
+The receiver clock gate now models boot/monotonic state through
+`DEGRADED_CLOCK`, `FLUSHING_CLOCK`, `OPERATIONAL`, and
+`CLOCK_FAULT_ACTIVE`; authenticates five settled samples and exact durable
+daemon/API flush commits; rechecks UTC alignment after flushing; and preserves an
+explicit-restart boundary after discontinuity recovery. Runtime API and daemon
+output stays in bounded process-local rings before trust and during faults, with
+no pre-gate session metadata or journald output. Only the separately retained,
+time-untrusted clock recovery audit is persistent, under host log rotation.
+
 Description:
 Create production units and stable launcher/environment files for the III daemon
 and runtime API. Use the active immutable release, real profile, persistent
@@ -3765,24 +3783,24 @@ aware launchers; releases own only the daemon-consumed runtime topology and wrap
 
 Acceptance:
 
-- [ ] Units contain no dev credentials, sim profile, or `/home/iii/ws` dependency.
-- [ ] Application bundles cannot create, replace, enable, or disable host units;
+- [x] Units contain no dev credentials, sim profile, or `/home/iii/ws` dependency.
+- [x] Application bundles cannot create, replace, enable, or disable host units;
       a unit-contract change is detected as a host-maintenance prerequisite before
       release activation.
-- [ ] On host boot, receiver and minimal control plane enter `DEGRADED_CLOCK`;
+- [x] On host boot, receiver and minimal control plane enter `DEGRADED_CLOCK`;
       the real ROS graph is not booted until clock synchronization and buffered-
       log flush commit successfully.
-- [ ] Ordinary daemon/API output remains in a bounded monotonic in-memory buffer
+- [x] Ordinary daemon/API output remains in a bounded monotonic in-memory buffer
       while degraded and cannot leak to persistent journald/file sinks; minimal
       recovery audit is separately persisted and marked time-untrusted.
-- [ ] The post-sync transition reconstructs UTC metadata, flushes logs durably,
+- [x] The post-sync transition reconstructs UTC metadata, flushes logs durably,
       records the gate transition, and then boots real-profile standby in order.
-- [ ] Clock synchronization enforces the settled sampling/RTT/offset thresholds;
+- [x] Clock synchronization enforces the settled sampling/RTT/offset thresholds;
       post-gate discontinuity enters `CLOCK_FAULT_ACTIVE` without interrupting
       active monotonic-time control, then transitions to `DEGRADED_CLOCK` only when
       maintenance-safe. New operations remain blocked throughout the fault.
-- [ ] Runtime Stop can leave the independently supervised runtime API online.
-- [ ] A broken active release fails visibly and remains recoverable through SSH.
+- [x] Runtime Stop can leave the independently supervised runtime API online.
+- [x] A broken active release fails visibly and remains recoverable through SSH.
 
 Tests:
 
@@ -3790,6 +3808,21 @@ Tests:
 - Clock tests cover invalid boot time, high RTT, threshold edges, slew-only service
   configuration, discontinuity while standby, discontinuity during active control,
   maintenance-safe transition, buffered-log uncertainty, and explicit resync/start.
+
+Verification (2026-08-26): 93 focused workspace deployment tests, 29 Runtime
+tests, and 8 Supervision tests passed; the focused clock suite reached 25 cases
+covering retained flush replay, Boolean/integer spoof rejection, post-flush drift,
+fault transitions, and authenticated service commits. All 82 Draft-07 deployment
+schemas parsed; focused Black, fatal Flake8, compilation, documentation, content-
+identity, diff, and submodule-lock checks passed. Production-profile Ansible lint
+reported zero failures/warnings across 17 files and both playbooks passed syntax
+checks. A privileged native-systemd Noble container passed boot, process restart,
+API independence, broken-release/SSH recovery, A-to-B selector switch, and
+container-restart recovery in 12.98 s. The complete target-equivalent Ansible
+first-convergence, zero-drift, injected-drift, repair, and second-zero-drift test
+passed twice (516.02 s and 494.87 s), including the final host-unit contract. No
+physical Raspberry Pi was attached, so no claim is made for a hardware power-cycle;
+that remains commissioning evidence rather than an unverified task result.
 
 #### P3.T3: Implement Shared Target Identity And Secret Provisioning
 

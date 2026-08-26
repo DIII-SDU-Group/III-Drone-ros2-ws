@@ -1,7 +1,8 @@
 ---
 iii_baseline_schema: iii.ansible-host-baseline/v1
-iii_baseline_id: 9ae8aecf91dfbab834940fa8567abdf4ece60073fdbc459d87b3a5f0ba289686
-iii_target_definition_id: 4edfdc9e91470b7117054e8ec3f7f141161c9fca80914f0fd4dfe5dadde36f84
+iii_baseline_id: 8d5cc63fe700603893bba493ae880c1da8af8b6d375964fb68ddba92c97556bd
+iii_unit_contract_id: 00a6fa628fb5fcf6ca5d7b0484b9f63b7a4353407cc0d705c968283e8c55470b
+iii_target_definition_id: 0feda56e871ca6f2948274b7f6b37abdd705c25f11db769398b361e7d6f2af47
 iii_expected_distribution: Ubuntu
 iii_expected_release: "24.04"
 iii_expected_codename: noble
@@ -59,6 +60,10 @@ iii_receiver_units:
   - {name: iii-deployment-receiver-reconcile.service, active_required: false}
   - {name: iii-deployment-receiver.service, active_required: true}
   - {name: iii-log-maintenance.timer, active_required: true}
+iii_application_units:
+  - iii-system-daemon.service
+  - iii-runtime-api.service
+  - iii.target
 iii_bootstrap_seed_paths:
   - /boot/firmware/user-data
   - /boot/firmware/meta-data

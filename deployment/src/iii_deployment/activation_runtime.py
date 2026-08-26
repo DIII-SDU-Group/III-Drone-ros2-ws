@@ -74,6 +74,28 @@ class OnboardSafetyProvider:
         snapshot.validate()
         return snapshot
 
+    def maintenance_safe_for_clock_recovery(self) -> bool:
+        """Require fresh landed/disarmed and ownership-free runtime evidence."""
+        try:
+            snapshot = self()
+        except ContractError:
+            return False
+        return bool(
+            snapshot.runtime_fresh
+            and snapshot.px4_available
+            and snapshot.px4_fresh
+            and snapshot.armed is False
+            and snapshot.in_air is False
+            and snapshot.mission_fresh
+            and snapshot.mission_active is False
+            and snapshot.mission_control_owner is False
+            and snapshot.operation_fresh
+            and snapshot.custom_operation_active is False
+            and snapshot.custom_operation_control_owner is False
+            and snapshot.direct_operation_active is False
+            and snapshot.reference_owner_active is False
+        )
+
 
 class OnboardControlPlane:
     """Use only fixed systemd units and the local daemon socket."""
@@ -202,6 +224,21 @@ class OnboardControlPlane:
             "unit_states": states,
             "autonomy_started": False,
         }
+
+    def stop_runtime_graph(self) -> None:
+        """Stop daemon-owned runtime processes while leaving the API supervised."""
+        if not self.daemon_socket.exists() or self.daemon_socket.is_symlink():
+            return
+        result = self._daemon_request(
+            {
+                "command": "stop",
+                "cleanup": False,
+                "select_nodes": [],
+                "include_dependencies": False,
+            }
+        )
+        if result.get("success") is not True:
+            raise ContractError("system daemon did not stop the runtime graph")
 
     def _daemon_request(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         request = {**payload, "daemon_timeout_sec": 90.0}

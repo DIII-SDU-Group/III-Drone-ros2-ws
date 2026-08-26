@@ -232,9 +232,9 @@ def test_clock_sync_uses_receiver_plan_nonce_and_detached_journal(receiver) -> N
     samples = [
         {
             "target_boot_id": "boot-a",
-            "target_monotonic_ns": monotonic[0],
-            "target_wall_ns": wall[0],
-            "operator_midpoint_utc_ns": 2_000_000_000,
+            "target_monotonic_ns": monotonic[0] + index,
+            "target_wall_ns": wall[0] + index,
+            "operator_midpoint_utc_ns": 2_000_000_000 + index,
             "rtt_ns": 10_000_000 + index,
             "offset_ns": -1_000_000_000,
         }
@@ -269,6 +269,24 @@ def test_clock_sync_uses_receiver_plan_nonce_and_detached_journal(receiver) -> N
     assert status["clock"]["gate"] == "OPERATIONAL"
     assert status["live_state"]["profile"] == "real"
     assert starts == [True]
+
+
+def test_clock_fault_blocks_new_receiver_mutations_but_keeps_status(
+    receiver,
+) -> None:
+    controller = SimpleNamespace(
+        status=lambda: {
+            "schema": "iii.receiver-clock-status/v1",
+            "gate": "CLOCK_FAULT_ACTIVE",
+        }
+    )
+    receiver.engine = receiver.build(clock_controller=controller)
+    status = receiver.engine.handle(
+        request("status", "operation-status-0001", receiver.operator_id, {})
+    )
+    assert status["clock"]["gate"] == "CLOCK_FAULT_ACTIVE"
+    with pytest.raises(ContractError, match="blocks every new receiver mutation"):
+        stage_plan(receiver, "operation-stage-fault")
 
 
 def test_accepted_stage_detaches_survives_client_loss_and_reattaches(receiver) -> None:

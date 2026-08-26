@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/clock-flush-commit.schema.json",
+  "title": "III process-local pre-clock flush commit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "commit_id", "service", "boot_id", "clock_state_id", "records_flushed", "dropped_records", "committed_monotonic_ns"],
+  "properties": {
+    "schema": {"const": "iii.clock-flush-commit/v1"},
+    "commit_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "service": {"enum": ["runtime-api", "system-daemon"]},
+    "boot_id": {"type": "string", "minLength": 1},
+    "clock_state_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "records_flushed": {"type": "integer", "minimum": 0},
+    "dropped_records": {"type": "integer", "minimum": 0},
+    "committed_monotonic_ns": {"type": "integer", "minimum": 0}
+  }
+}

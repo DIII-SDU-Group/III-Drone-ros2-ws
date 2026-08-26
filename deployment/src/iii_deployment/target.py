@@ -54,6 +54,7 @@ def manifest_target(definition: Mapping[str, Any]) -> dict[str, Any]:
         "architecture": target["architecture"],
         "python_abi": target["python"]["abi"],
         "host_baseline": definition["host_baseline"]["contract_id"],
+        "host_unit_contract": definition["host_baseline"]["unit_contract_id"],
         "ros": target["ros"]["distro"],
     }
 
@@ -135,4 +136,5 @@ def target_reference(definition: Mapping[str, Any]) -> dict[str, str]:
         "target_id": definition["target"]["target_id"],
         "definition_id": definition["definition_id"],
         "host_baseline": definition["host_baseline"]["contract_id"],
+        "host_unit_contract": definition["host_baseline"]["unit_contract_id"],
     }

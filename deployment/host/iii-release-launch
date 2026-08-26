@@ -1,0 +1,214 @@
+#!/usr/bin/python3
+"""Ansible-owned selector-aware launcher for fixed III application units."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import sys
+from typing import Any, Mapping
+
+SERVICES = {
+    "system-daemon": (
+        "/usr/bin/python3",
+        "-m",
+        "iii_drone_supervision.system_daemon",
+        "--socket",
+        "/run/iii/system_manager.sock",
+    ),
+    "runtime-api": (
+        "/usr/bin/python3",
+        "-m",
+        "iii_drone_runtime.api.main",
+    ),
+}
+HASH = re.compile(r"^[a-f0-9]{64}$")
+
+
+class LaunchError(RuntimeError):
+    pass
+
+
+def _canonical(value: Mapping[str, Any]) -> bytes:
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+
+
+def _document(path: Path, *, label: str) -> dict[str, Any]:
+    if path.is_symlink() or not path.is_file():
+        raise LaunchError(f"{label} is missing or linked")
+    try:
+        raw = path.read_bytes()
+        value = json.loads(raw)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise LaunchError(f"cannot read {label}: {exc}") from exc
+    if not isinstance(value, dict) or raw != _canonical(value) + b"\n":
+        raise LaunchError(f"{label} is not canonical JSON")
+    return value
+
+
+def _identity(value: Mapping[str, Any], field: str) -> str:
+    return hashlib.sha256(
+        _canonical({key: item for key, item in value.items() if key != field})
+    ).hexdigest()
+
+
+def _file_sha256(path: Path, *, label: str) -> str:
+    if path.is_symlink() or not path.is_file():
+        raise LaunchError(f"{label} is missing or linked")
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as source:
+            for block in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(block)
+    except OSError as exc:
+        raise LaunchError(f"cannot authenticate {label}: {exc}") from exc
+    return digest.hexdigest()
+
+
+def _verify_host_assets(root: Path, manifest: Mapping[str, Any]) -> None:
+    contract = _document(
+        root / "etc/iii/host-unit-contract.json", label="host unit contract"
+    )
+    expected_units = {
+        "deployment/systemd/iii-runtime-api.service": root
+        / "etc/systemd/system/iii-runtime-api.service",
+        "deployment/systemd/iii-system-daemon.service": root
+        / "etc/systemd/system/iii-system-daemon.service",
+        "deployment/systemd/iii.target": root / "etc/systemd/system/iii.target",
+    }
+    environment = contract.get("environment")
+    launcher = contract.get("launcher")
+    units = contract.get("units")
+    target = manifest.get("target")
+    if (
+        contract.get("schema") != "iii.host-unit-contract/v1"
+        or contract.get("contract_id") != _identity(contract, "contract_id")
+        or not isinstance(target, dict)
+        or contract.get("contract_id") != target.get("host_unit_contract")
+        or not isinstance(environment, dict)
+        or environment.get("path")
+        != "deployment/ansible/roles/runtime_control_plane/templates/runtime.env.j2"
+        or not HASH.fullmatch(str(environment.get("sha256", "")))
+        or not isinstance(launcher, dict)
+        or launcher.get("path") != "deployment/host/iii-release-launch"
+        or not isinstance(units, list)
+        or len(units) != len(expected_units)
+        or not all(isinstance(item, dict) for item in units)
+        or {item.get("path") for item in units if isinstance(item, dict)}
+        != set(expected_units)
+    ):
+        raise LaunchError("installed host unit contract is invalid or stale")
+    if launcher.get("sha256") != _file_sha256(
+        root / "usr/libexec/iii/iii-release-launch", label="host release launcher"
+    ):
+        raise LaunchError("installed host release launcher drifted from its contract")
+    for item in units:
+        path = item["path"]
+        if not HASH.fullmatch(str(item.get("sha256", ""))):
+            raise LaunchError("installed host unit contract has an invalid digest")
+        if item["sha256"] != _file_sha256(
+            expected_units[path], label=f"host unit {path}"
+        ):
+            raise LaunchError(f"installed host unit drifted from its contract: {path}")
+
+
+def verify(root: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
+    selector = _document(
+        root / "var/lib/iii/deployment/active-selector.json",
+        label="active selector",
+    )
+    if (
+        selector.get("schema") != "iii.activation-selector/v1"
+        or selector.get("selector_id") != _identity(selector, "selector_id")
+        or not HASH.fullmatch(str(selector.get("release_id", "")))
+        or selector.get("profile") not in {"real", "opti_track"}
+    ):
+        raise LaunchError("active selector identity or real profile is invalid")
+    release_id = selector["release_id"]
+    expected_text = f"/opt/iii/releases/{release_id}"
+    if selector.get("release_path") != expected_text:
+        raise LaunchError("active selector release path is not content-addressed")
+    release = root / "opt/iii/releases" / release_id
+    current = root / "opt/iii/current"
+    if release.is_symlink() or not release.is_dir():
+        raise LaunchError("active release directory is missing or linked")
+    if not current.is_symlink():
+        raise LaunchError("active release view is not an atomic symlink")
+    try:
+        if current.resolve(strict=True) != release.resolve(strict=True):
+            raise LaunchError("active release view differs from the selector")
+    except OSError as exc:
+        raise LaunchError(f"active release is unavailable: {exc}") from exc
+    manifest = _document(release / "release-manifest.json", label="release manifest")
+    if (
+        manifest.get("schema_version") != "1"
+        or manifest.get("manifest_type") != "release"
+        or manifest.get("release_id") != release_id
+        or manifest.get("release_id") != _identity(manifest, "release_id")
+    ):
+        raise LaunchError("active release manifest identity is invalid")
+    _verify_host_assets(root, manifest)
+    profiles = manifest.get("profiles")
+    if not isinstance(profiles, list) or not all(
+        isinstance(item, dict) for item in profiles
+    ):
+        raise LaunchError("active release profile inventory is invalid")
+    profile = next(
+        (item for item in profiles if item.get("id") == selector["profile"]),
+        None,
+    )
+    if profile is None or profile.get("bootable") is not True:
+        raise LaunchError("selected runtime profile is not bootable")
+    report = _document(
+        root / "var/lib/iii/deployment/host-baseline-report.json",
+        label="host baseline report",
+    )
+    target = manifest["target"]
+    if (
+        report.get("schema") != "iii.host-baseline-report/v1"
+        or report.get("state") != "converged"
+        or report.get("baseline_id") != target.get("host_baseline")
+        or report.get("unit_contract_id") != target.get("host_unit_contract")
+        or report.get("target_definition_id") != target.get("definition_id")
+    ):
+        raise LaunchError("release requires Ansible host maintenance before activation")
+    wrapper = release / "bin/iii-release-env"
+    if wrapper.is_symlink() or not wrapper.is_file() or not os.access(wrapper, os.X_OK):
+        raise LaunchError("release environment wrapper is missing or unsafe")
+    return wrapper, selector, manifest
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("service", choices=tuple(SERVICES))
+    parser.add_argument("--verify", action="store_true")
+    parser.add_argument("--root", type=Path, default=Path("/"), help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
+    try:
+        wrapper, selector, manifest = verify(args.root)
+    except LaunchError as exc:
+        print(f"iii-release-launch: {exc}", file=sys.stderr)
+        return 78
+    if args.verify:
+        return 0
+    environment = dict(os.environ)
+    environment.update(
+        {
+            "III_RELEASE_ID": manifest["release_id"],
+            "III_SYSTEM_PROFILE": selector["profile"],
+            "III_RUNTIME_API_PROFILE": selector["profile"],
+        }
+    )
+    command = (str(wrapper), *SERVICES[args.service])
+    os.execve(str(wrapper), command, environment)
+    raise AssertionError("execve returned")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

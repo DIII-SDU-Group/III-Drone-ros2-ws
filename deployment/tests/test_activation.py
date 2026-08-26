@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, replace
 import io
+import json
 from pathlib import Path
 
 import pytest
@@ -259,6 +260,41 @@ def _install_tuple(
         mission_catalog_hash=catalog_hash,
         profile="real",
     )
+
+
+def test_activation_refuses_host_unit_contract_drift_before_selector_mutation(
+    tmp_path,
+):
+    candidate = _install_tuple(
+        tmp_path,
+        release_id=RELEASE_ONE,
+        checkpoint_id=CHECKPOINT_ONE,
+        catalog_hash=CATALOG_ONE,
+    )
+    manifest_path = Path(candidate.release_path) / "release-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["target"] = {
+        "definition_id": "1" * 64,
+        "host_baseline": "2" * 64,
+        "host_unit_contract": "3" * 64,
+    }
+    _write_document(manifest_path, manifest)
+    report = {
+        "schema": "iii.host-baseline-report/v1",
+        "state": "converged",
+        "baseline_id": "2" * 64,
+        "unit_contract_id": "4" * 64,
+        "target_definition_id": "1" * 64,
+    }
+    report_path = tmp_path / "var/lib/iii/deployment/host-baseline-report.json"
+    _write_document(report_path, report)
+    store = ActivationTransactionStore(tmp_path, enforce_host_contract=True)
+    with pytest.raises(ContractError, match="host maintenance"):
+        store._verify_tuple(candidate)
+    assert not store.selector_path.exists()
+    report["unit_contract_id"] = "3" * 64
+    _write_document(report_path, report)
+    store._verify_tuple(candidate)
 
 
 def test_activation_switches_and_rolls_back_matching_code_configuration_and_catalog(

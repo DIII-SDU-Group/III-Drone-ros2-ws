@@ -129,6 +129,10 @@ _Avoid_: Removing old scripts first
 - Builds run only on supported operator/CI builders, never on the aircraft.
 - Host systemd owns the receiver, daemon, and runtime API. The daemon remains the
   sole owner of the canonical ROS process graph.
+- Ansible binds the fixed application units and selector-aware launcher as a
+  content-identified host-unit contract. Releases declare that identity;
+  activation refuses contract-version drift before selector mutation, and the
+  launcher refuses installed launcher/unit byte drift before every process start.
 - Releases are immutable and side by side; mutable aircraft state lives under
   persistent host paths outside release directories.
 - The CLI plans and submits operations. Once accepted, the receiver owns their

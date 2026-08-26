@@ -22,5 +22,7 @@
       tags: [firewall]
     - role: receiver
       tags: [receiver]
+    - role: runtime_control_plane
+      tags: [runtime]
     - role: host_health
       tags: [health]

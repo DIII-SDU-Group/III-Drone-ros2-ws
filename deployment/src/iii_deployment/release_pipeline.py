@@ -406,6 +406,7 @@ def assemble_release_manifest(
             "architecture": target["target"]["architecture"],
             "python_abi": target["target"]["python"]["abi"],
             "host_baseline": target["host_baseline"]["contract_id"],
+            "host_unit_contract": target["host_baseline"]["unit_contract_id"],
             "ros": target["target"]["ros"]["distro"],
         },
         "toolchain": {

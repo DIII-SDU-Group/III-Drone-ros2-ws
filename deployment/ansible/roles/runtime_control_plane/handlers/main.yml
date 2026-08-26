@@ -1,0 +1,14 @@
+---
+- name: Reload systemd for III control plane
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart III control plane when active
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - try-restart
+      - iii-system-daemon.service
+      - iii-runtime-api.service
+  changed_when: false
+  when: not ansible_check_mode

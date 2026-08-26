@@ -25,6 +25,7 @@ def test_ansible_json_templates_emit_only_canonical_json_and_one_newline() -> No
     context = {
         "ansible_check_mode": False,
         "iii_baseline_id": "a" * 64,
+        "iii_unit_contract_id": "d" * 64,
         "iii_target_definition_id": "b" * 64,
         "iii_target_class": "raspberry-pi-5-noble-arm64",
         "iii_logical_target": "iii",

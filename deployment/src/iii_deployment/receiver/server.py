@@ -47,7 +47,11 @@ from iii_deployment.receiver.config import (
     load_live_state,
 )
 from iii_deployment.receiver.engine import NONCE_EXPIRY_S, ReceiverEngine
-from iii_deployment.receiver.clock import ClockController
+from iii_deployment.receiver.clock import (
+    ClockController,
+    ClockFlushCoordinator,
+    ClockRecoveryAudit,
+)
 from iii_deployment.receiver.state import (
     AuditLog,
     OperationJournalStore,
@@ -122,11 +126,12 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
             "receiver configuration generation differs from the active immutable slot"
         )
     control_plane = OnboardControlPlane()
+    safety_provider = OnboardSafetyProvider()
     activation = ActivationCoordinator(
         release_store=store,
         transaction_store=ActivationTransactionStore(Path("/")),
         diagnostics=ActivationDiagnosticStore(STATE_ROOT / "activation"),
-        safety_provider=OnboardSafetyProvider(),
+        safety_provider=safety_provider,
         health_provider=OnboardHealthProvider(
             receiver_id=receiver_manifest["receiver_id"],
             receiver_generation=receiver_manifest["generation"],
@@ -147,6 +152,15 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
     )
     clock = ClockController(
         CLOCK_STATE_PATH,
+        flush_before_open=ClockFlushCoordinator(
+            required_services=lambda: (
+                ("system-daemon", "runtime-api")
+                if load_live_state(LIVE_STATE_PATH, profile=config.profile).get(
+                    "active_release_id"
+                )
+                else ()
+            )
+        ),
         gate_opened=lambda: (
             control_plane.boot_profile(config.profile)
             if load_live_state(LIVE_STATE_PATH, profile=config.profile).get(
@@ -160,6 +174,9 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
                 "reason": "no active release is selected",
             }
         ),
+        maintenance_safe=safety_provider.maintenance_safe_for_clock_recovery,
+        stop_runtime=control_plane.stop_runtime_graph,
+        audit=ClockRecoveryAudit(),
     )
     log_transfer = LogTransferStore(
         source_root=Path("/"),

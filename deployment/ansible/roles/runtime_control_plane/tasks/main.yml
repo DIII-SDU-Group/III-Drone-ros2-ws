@@ -1,0 +1,76 @@
+---
+- name: Create the fixed host-launcher and transient flush directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /usr/libexec/iii, owner: root, group: root, mode: "0755"}
+    - {path: /run/iii/clock-flush, owner: iii, group: iii, mode: "0750"}
+
+- name: Install the Ansible-owned selector-aware release launcher
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../host/iii-release-launch"
+    dest: /usr/libexec/iii/iii-release-launch
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart III control plane when active
+
+- name: Install the host-unit contract for inspection and activation policy
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../systemd/unit-contract.json"
+    dest: /etc/iii/host-unit-contract.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
+
+- name: Install the real-profile non-secret runtime environment
+  ansible.builtin.template:
+    src: runtime.env.j2
+    dest: /etc/iii/runtime.env
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
+  notify: Restart III control plane when active
+
+- name: Install the fixed production daemon and API units
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../systemd/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ iii_application_units }}"
+  notify:
+    - Reload systemd for III control plane
+    - Restart III control plane when active
+
+- name: Flush the unit reload before enablement
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the minimal control plane for every boot
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+  loop: "{{ iii_application_units }}"
+  when: not ansible_check_mode
+
+- name: Inspect whether an immutable release is active
+  ansible.builtin.stat:
+    path: /var/lib/iii/deployment/active-selector.json
+    follow: false
+  register: iii_active_selector
+
+- name: Start the degraded-clock control plane when a release is active
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+  loop:
+    - iii-system-daemon.service
+    - iii-runtime-api.service
+  when:
+    - not ansible_check_mode
+    - iii_active_selector.stat.exists

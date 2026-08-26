@@ -176,6 +176,13 @@ class ReceiverEngine:
             return self._result(
                 request, chunk=self.log_transfer.chunk(**request.payload)
             )
+        if (
+            self.clock_controller is not None
+            and request.action
+            not in {Action.PLAN_CLOCK_SYNC, Action.CLOCK_SYNC, Action.CANCEL}
+            and self.clock_controller.status()["gate"] == "CLOCK_FAULT_ACTIVE"
+        ):
+            raise ContractError("CLOCK_FAULT_ACTIVE blocks every new receiver mutation")
         if request.action in {
             Action.PLAN_STAGE,
             Action.PLAN_ACTIVATE,

@@ -104,7 +104,9 @@ class Socket:
         request = json.loads(raw)
         self.sent.append(request)
         result = (
-            {"success": True} if request["command"] == "start" else {"booted": True}
+            {"success": True}
+            if request["command"] in {"start", "stop"}
+            else {"booted": True}
         )
         self.response = json.dumps({"ok": True, "result": result}).encode() + b"\n"
 
@@ -156,6 +158,34 @@ def test_control_plane_uses_fixed_argv_stops_all_units_and_starts_no_autonomy(
     assert [socket.sent[0]["command"] for socket in sockets] == ["boot", "start"]
     assert sockets[1].sent[0]["activate"] is True
     assert "mission" not in json.dumps(sockets[1].sent[0]).lower()
+
+
+def test_runtime_graph_stop_leaves_independent_api_unit_online(tmp_path: Path):
+    runner = Runner()
+    daemon_socket = tmp_path / "system-manager.sock"
+    daemon_socket.touch()
+    sockets = []
+
+    def socket_factory(*args):
+        value = Socket(*args)
+        sockets.append(value)
+        return value
+
+    control = OnboardControlPlane(
+        daemon_socket=daemon_socket,
+        runner=runner,
+        socket_factory=socket_factory,
+    )
+    control.stop_runtime_graph()
+    assert runner.states["iii-runtime-api.service"] == "active"
+    assert runner.commands == []
+    assert sockets[0].sent[0] == {
+        "command": "stop",
+        "cleanup": False,
+        "select_nodes": [],
+        "include_dependencies": False,
+        "daemon_timeout_sec": 90.0,
+    }
 
 
 def _runtime_document(now: float) -> dict:

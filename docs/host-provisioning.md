@@ -4,8 +4,8 @@ This runbook continues from an authenticated, SSH-reachable bootstrap host and
 ends at a provisioned-but-not-commissioned III aircraft host. The workspace-owned
 Ansible project under `deployment/ansible/` owns the Ubuntu/ROS/hardware baseline,
 fixed receiver and recovery substrate, permanent forced-command access, firewall,
-time policy, and first-boot authority removal. Application releases do not own or
-modify those host resources.
+time policy, production daemon/API units, selector-aware launcher, and first-boot
+authority removal. Application releases do not own or modify those host resources.
 
 Provisioning is a retained three-run transaction:
 
@@ -131,6 +131,15 @@ hardware packages, runtime UID/GID, service set, ports, and filesystem layout.
 Package mutation is separate from application deployment, and unattended apt
 timers are disabled.
 
+The baseline also binds `deployment/systemd/unit-contract.json`, which hashes the
+stable real-profile environment template, fixed daemon/API/target units, and
+`/usr/libexec/iii/iii-release-launch`. Release manifests declare the exact required
+host-unit contract. Staging remains safe, but activation fails before selector
+mutation when the converged host report differs. The launcher also authenticates
+its installed bytes and all installed unit bytes before every process start. The
+remedy for either mismatch is an explicit retained Ansible host-maintenance
+transaction, never a release-bundle unit overwrite.
+
 The host uses UTC and normal chrony synchronization, with stepping disabled after
 the receiver clock gate. Correctness-critical state is bound to boot identity and
 monotonic time. The runtime API is exposed only on its declared operator-LAN TCP
@@ -149,6 +158,7 @@ Successful convergence leaves canonical evidence at:
 
 - `/var/lib/iii/deployment/host-package-policy.json`
 - `/var/lib/iii/deployment/host-baseline-report.json`
+- `/etc/iii/host-unit-contract.json`
 - `/var/lib/iii/deployment/host-provisioning-report.json`
 - `/run/iii/receiver-readiness.json` while the receiver is active
 - the local operation record containing all three authenticated Ansible recaps

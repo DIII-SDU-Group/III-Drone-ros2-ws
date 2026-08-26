@@ -28,7 +28,13 @@
     "/opt/iii/receiver/selectors/fallback",
     "/etc/iii/trust",
     "/etc/systemd/system/iii-deployment-receiver-reconcile.service",
-    "/etc/systemd/system/iii-deployment-receiver.service"
+    "/etc/systemd/system/iii-deployment-receiver.service",
+    "/etc/systemd/system/iii-system-daemon.service",
+    "/etc/systemd/system/iii-runtime-api.service",
+    "/etc/systemd/system/iii.target",
+    "/usr/libexec/iii/iii-release-launch",
+    "/etc/iii/runtime.env",
+    "/etc/iii/host-unit-contract.json"
   ],
   "self_update_receiver_mutable_paths": [
     "/opt/iii/receiver/slots",

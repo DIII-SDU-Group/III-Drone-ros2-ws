@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/clock-flush-barrier.schema.json",
+  "title": "III receiver-authenticated pre-clock flush barrier",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "clock_state_id", "commits"],
+  "properties": {
+    "schema": {"const": "iii.clock-flush-barrier/v1"},
+    "clock_state_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "commits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtime-api": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "system-daemon": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  }
+}

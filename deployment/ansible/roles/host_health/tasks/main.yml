@@ -20,6 +20,12 @@
     - /etc/iii/clock-policy.json
     - /etc/iii/firewall-policy.json
     - /etc/iii/hardware-baseline.json
+    - /etc/iii/host-unit-contract.json
+    - /etc/iii/runtime.env
+    - /usr/libexec/iii/iii-release-launch
+    - /etc/systemd/system/iii-system-daemon.service
+    - /etc/systemd/system/iii-runtime-api.service
+    - /etc/systemd/system/iii.target
   register: iii_health_paths
 
 - name: Require every receiver recovery and host-policy artifact
@@ -54,6 +60,24 @@
     argv: [/usr/bin/systemctl, is-enabled, "{{ item.name }}"]
   changed_when: false
   loop: "{{ iii_receiver_units }}"
+  when: not ansible_check_mode
+
+- name: Verify every application control-plane unit is enabled
+  ansible.builtin.command:
+    argv: [/usr/bin/systemctl, is-enabled, "{{ item }}"]
+  changed_when: false
+  loop: "{{ iii_application_units }}"
+  when: not ansible_check_mode
+
+- name: Verify the installed production unit dependency graph
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemd-analyze
+      - verify
+      - /etc/systemd/system/iii-system-daemon.service
+      - /etc/systemd/system/iii-runtime-api.service
+      - /etc/systemd/system/iii.target
+  changed_when: false
   when: not ansible_check_mode
 
 - name: Verify long-running receiver units are active

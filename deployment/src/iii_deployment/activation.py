@@ -414,8 +414,13 @@ class ActivationTransactionStore:
     a selector document with a mixed tuple.
     """
 
-    def __init__(self, target_root: Path):
+    def __init__(self, target_root: Path, *, enforce_host_contract: bool | None = None):
         self.target_root = target_root.resolve()
+        self.enforce_host_contract = (
+            self.target_root == Path("/")
+            if enforce_host_contract is None
+            else enforce_host_contract
+        )
         self.release_root = self.target_root / "opt/iii/releases"
         self.release_selector = self.target_root / "opt/iii/current"
         self.checkpoint_root = (
@@ -455,6 +460,22 @@ class ActivationTransactionStore:
         )
         if manifest.get("release_id") != value.release_id:
             raise ContractError("activation release manifest identity mismatch")
+        if self.enforce_host_contract:
+            report = _read_canonical(
+                self.state_root / "host-baseline-report.json",
+                label="converged host baseline report",
+            )
+            target = manifest.get("target", {})
+            if (
+                report.get("schema") != "iii.host-baseline-report/v1"
+                or report.get("state") != "converged"
+                or report.get("baseline_id") != target.get("host_baseline")
+                or report.get("unit_contract_id") != target.get("host_unit_contract")
+                or report.get("target_definition_id") != target.get("definition_id")
+            ):
+                raise ContractError(
+                    "release activation requires Ansible host maintenance"
+                )
         profile = next(
             (
                 item

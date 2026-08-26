@@ -16,6 +16,7 @@
     mode: "0644"
     content: |
       d /run/iii 0750 iii iii -
+      d /run/iii/clock-flush 0750 iii iii -
 
 - name: Bound III file log retention
   ansible.builtin.copy:
@@ -24,7 +25,7 @@
     group: root
     mode: "0644"
     content: |
-      /var/log/iii/*.log /var/log/iii/*/*.log {
+      /var/log/iii/*.log /var/log/iii/*/*.log /var/log/iii/deployment/*.jsonl {
           daily
           rotate 14
           size 100M
