@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/hardware-commissioning-evaluation.schema.json",
+  "title": "III hardware commissioning evaluation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "evaluation_id", "manifest_id", "accepted", "phase_inspection_ids", "functional_evidence", "automatic_learning"],
+  "properties": {
+    "schema": {"const": "iii.hardware-commissioning-evaluation/v1"},
+    "evaluation_id": {"$ref": "#/definitions/hash"},
+    "manifest_id": {"$ref": "#/definitions/hash"},
+    "accepted": {"const": true},
+    "phase_inspection_ids": {"type": "object", "minProperties": 5, "additionalProperties": {"$ref": "#/definitions/hash"}},
+    "functional_evidence": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/definitions/hash"}},
+    "automatic_learning": {"const": false}
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

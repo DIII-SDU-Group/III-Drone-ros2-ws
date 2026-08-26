@@ -23,7 +23,6 @@ from iii_deployment.activation_health import (
 from iii_deployment.contracts import ContractError, canonical_json, content_identity
 from iii_deployment.receiver.update import READINESS_SCHEMA
 
-
 RUNTIME_HEALTH_SCHEMA = "iii.runtime-activation-health/v1"
 RUNTIME_HEALTH_PATH = Path("/run/iii/runtime-activation-health.json")
 SAFETY_PATH = Path("/run/iii/activation-safety.json")
@@ -164,8 +163,7 @@ class OnboardControlPlane:
 
     def start(self, selected: ActivationTuple) -> ControlPlaneProof:
         selected.validate()
-        started = self.boot_profile(selected.profile)
-        states = started["unit_states"]
+        self.boot_profile(selected.profile)
         value: dict[str, Any] = {
             "schema": "iii.activation-control-plane-proof/v1",
             "release_id": selected.release_id,
@@ -285,6 +283,7 @@ class OnboardHealthProvider:
         receiver_id: str,
         receiver_generation: int,
         control_plane: OnboardControlPlane,
+        hardware_roles_provider: Callable[[], Mapping[str, Mapping[str, Any]]],
         runtime_path: Path = RUNTIME_HEALTH_PATH,
         readiness_path: Path = RECEIVER_READINESS_PATH,
         monotonic: Callable[[], float] = time.monotonic,
@@ -301,6 +300,7 @@ class OnboardHealthProvider:
         self.monotonic = monotonic
         self.boot_id = boot_id
         self.maximum_age_s = maximum_age_s
+        self.hardware_roles_provider = hardware_roles_provider
 
     def __call__(
         self, candidate: ActivationTuple, policy: ActivationHealthPolicy
@@ -388,7 +388,7 @@ class OnboardHealthProvider:
             "daemon": runtime["daemon"],
             "runtime_api": runtime["runtime_api"],
             "configuration": runtime["configuration"],
-            "hardware_roles": runtime["hardware_roles"],
+            "hardware_roles": dict(self.hardware_roles_provider()),
             "services": runtime["services"],
             "managed_nodes": runtime["managed_nodes"],
             "systemd_units": units,

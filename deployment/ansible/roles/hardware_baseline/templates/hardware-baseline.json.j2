@@ -3,6 +3,7 @@
   'target_class': iii_target_class,
   'target_definition_id': iii_target_definition_id,
   'packages': iii_hardware_packages,
-  'udev_fragments': iii_udev_rule_fragments | map(attribute='name') | list,
-  'device_role_manifest_owner': 'P3.T5-source-contract'
+  'udev_fragments': ['90-iii-hardware-roles.rules'],
+  'device_role_manifest': '/etc/iii/hardware-role-manifest.json',
+  'device_role_manifest_owner': 'shared-hardware-class'
 } | iii_canonical_json }}

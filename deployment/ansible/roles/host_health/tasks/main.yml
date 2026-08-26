@@ -20,6 +20,8 @@
     - /etc/iii/clock-policy.json
     - /etc/iii/firewall-policy.json
     - /etc/iii/hardware-baseline.json
+    - /etc/iii/hardware-role-manifest.json
+    - /etc/udev/rules.d/90-iii-hardware-roles.rules
     - /etc/iii/host-unit-contract.json
     - /etc/iii/host-maintenance-policy.json
     - /usr/share/iii/host-maintenance/aircraft-maintenance.yml

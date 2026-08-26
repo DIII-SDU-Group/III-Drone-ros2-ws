@@ -71,27 +71,31 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     Historical-data destination map and the evidence gate that must pass before
     the retired deployment repository can be archived.
 
-21. `release-bundle-format.md`
+21. `deployment-hardware-roles.md`
+    Shared Pi attached-device manifest, stable `/dev/iii/*` paths, authenticated
+    inspection, physical commissioning, and replacement-device policy.
+
+22. `release-bundle-format.md`
     Deterministic paired artifact layout, signing and signer rotation, inspection,
     verification, extraction limits, and operator commands.
 
-22. `qualified-release-pipeline.md`
+23. `qualified-release-pipeline.md`
     Protected tag qualification, retained build/test evidence, immutable GitHub
     publication, release-status transitions, CLI retrieval, and CI key rotation.
 
-23. `local-record-registry.md`
+24. `local-record-registry.md`
     User-owned registry layout, deterministic full/incremental archives,
     cross-computer recovery, secret exclusions, and explicit retention policy.
 
-24. `host-imaging-and-first-boot.md`
+25. `host-imaging-and-first-boot.md`
     Checksum-pinned Raspberry Pi media imaging, typed physical-device proof,
     NoCloud bootstrap boundaries, diagnostics, and Ethernet-first recovery.
 
-25. `host-provisioning.md`
+26. `host-provisioning.md`
     Retained Ansible convergence, pinned host/ROS baseline, signed receiver
     bootstrap, zero-drift proof, and first-boot authority finalization.
 
-26. `host-maintenance.md`
+27. `host-maintenance.md`
     Explicit package and trust maintenance, offline cache gates, retained
     before/after evidence, reboot reconciliation, recovery, and recommissioning.
 

@@ -11,7 +11,6 @@ from typing import Any, Mapping
 from iii_deployment.contracts import ContractError, canonical_json, content_identity
 from iii_deployment.receiver.protocol import PROFILE, TARGET_ID
 
-
 CONFIG_SCHEMA = "iii.receiver-config/v1"
 LIVE_STATE_SCHEMA = "iii.receiver-live-state/v1"
 CONFIG_PATH = Path("/etc/iii/deployment-receiver.json")
@@ -36,6 +35,7 @@ CLOCK_STATE_PATH = STATE_ROOT / "clock-state.json"
 AUDIT_PATH = Path("/var/log/iii/deployment/receiver-audit.jsonl")
 LOG_ROOT = Path("/var/log/iii")
 READINESS_PATH = Path("/run/iii/receiver-readiness.json")
+HARDWARE_ROLE_MANIFEST_PATH = Path("/etc/iii/hardware-role-manifest.json")
 
 
 def under(root: Path, absolute: Path) -> Path:

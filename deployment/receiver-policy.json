@@ -30,6 +30,8 @@
     "/etc/apt/sources.list.d/ubuntu.sources",
     "/etc/apt/sources.list.d/ros2.sources",
     "/etc/iii/host-maintenance-policy.json",
+    "/etc/iii/hardware-role-manifest.json",
+    "/etc/udev/rules.d/90-iii-hardware-roles.rules",
     "/etc/systemd/system/iii-deployment-receiver-reconcile.service",
     "/etc/systemd/system/iii-deployment-receiver.service",
     "/etc/systemd/system/iii-host-maintenance@.service",
@@ -59,6 +61,8 @@
     "/etc/systemd/system/iii-deployment-receiver.service",
     "/etc/systemd/system/iii-host-maintenance@.service",
     "/etc/iii/host-maintenance-policy.json",
+    "/etc/iii/hardware-role-manifest.json",
+    "/etc/udev/rules.d/90-iii-hardware-roles.rules",
     "/usr/share/iii/host-maintenance"
   ],
   "deadlines_s": {

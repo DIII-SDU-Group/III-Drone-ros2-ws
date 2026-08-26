@@ -56,7 +56,6 @@ iii_hardware_packages:
   - udev
   - usbutils
   - v4l-utils
-iii_udev_rule_fragments: []
 iii_runtime_supplementary_groups:
   - dialout
   - render

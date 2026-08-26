@@ -14,6 +14,12 @@ runtime ownership.
 | mmWave USB vendor/product/interface mapping and observed serial `00DEEC69` | `deployment/hardware/legacy-observations.json`, then the commissioned shared hardware-role manifest | Preserve evidence without silently choosing between the conflicting `00DEEC69` and current `00E241A0` devices. |
 | Generic Arduino charger vendor/product match | historical observations and physical ambiguity tests | The unqualified mapping is too broad for production; current serial literals are also evidence, not an automatically accepted contract. |
 | `/dev/video0` cable-camera use | stable `/dev/iii/cable-camera` role generated from the shared hardware manifest | Enumeration order is not a stable device identity. |
+
+The current workspace `III-Drone-Core/udev/99-diii-usb.rules` literals are also
+retained evidence, not the deployment authority. They remain in place until the
+shared manifest's unplug/replug, reboot, port-swap, simultaneous-enumeration, and
+role-functional physical gate is complete. No tool may infer retirement from a
+successful fixture, a single enumeration, or an observed serial.
 | Basic apt/tool installation intent | versioned Ansible aircraft and GC roles under `deployment/ansible/` | Convergence must be pinned, idempotent, auditable, and separable from application activation. |
 | Host environment/bootstrap intent | cloud-init plus Ansible and stable host launchers | Production cannot source a checkout or user shell profile. |
 | CLI availability | repository-managed operator environment using `iii-deployment` and the III CLI | Global editable installs and shell startup mutation are not reproducible. |

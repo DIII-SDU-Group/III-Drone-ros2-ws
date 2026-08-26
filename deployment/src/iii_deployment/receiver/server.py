@@ -26,12 +26,14 @@ from iii_deployment.activation_runtime import (
 from iii_deployment.contracts import ContractError, ContractRegistry
 from iii_deployment.log_lifecycle import LogInventory, LogTransferStore
 from iii_deployment.host_maintenance import HostMaintenanceController
+from iii_deployment.hardware_roles import HardwareInspector
 from iii_deployment.receiver.access import AccessManager
 from iii_deployment.receiver.config import (
     AUDIT_PATH,
     AUTHORIZED_KEYS_PATH,
     BUNDLE_TRUST_PATH,
     CONFIG_PATH,
+    HARDWARE_ROLE_MANIFEST_PATH,
     CLOCK_STATE_PATH,
     FIELD_SIGNERS_PATH,
     INCOMING_ROOT,
@@ -145,6 +147,11 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         )
     control_plane = OnboardControlPlane()
     safety_provider = OnboardSafetyProvider()
+    hardware_inspector = HardwareInspector(
+        manifest_path=HARDWARE_ROLE_MANIFEST_PATH,
+        registry=registry,
+        profile=config.profile,
+    )
     activation = ActivationCoordinator(
         release_store=store,
         transaction_store=ActivationTransactionStore(Path("/")),
@@ -154,6 +161,7 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
             receiver_id=receiver_manifest["receiver_id"],
             receiver_generation=receiver_manifest["generation"],
             control_plane=control_plane,
+            hardware_roles_provider=hardware_inspector.health_roles,
         ),
         stop_all_units=control_plane.stop_all_units,
         start_control_plane=control_plane.start,
@@ -265,6 +273,7 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         log_inventory=log_inventory,
         log_transfer=log_transfer,
         host_maintenance=host_maintenance,
+        hardware_inspector=hardware_inspector,
     )
 
 

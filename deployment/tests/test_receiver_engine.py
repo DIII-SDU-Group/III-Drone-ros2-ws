@@ -163,6 +163,7 @@ def receiver(tmp_path: Path):
         log_inventory=None,
         log_transfer=None,
         host_maintenance=None,
+        hardware_inspector=None,
     ):
         return ReceiverEngine(
             release_store=store,
@@ -181,6 +182,7 @@ def receiver(tmp_path: Path):
             log_inventory=log_inventory,
             log_transfer=log_transfer,
             host_maintenance=host_maintenance,
+            hardware_inspector=hardware_inspector,
         )
 
     return SimpleNamespace(
@@ -1222,3 +1224,41 @@ def test_failed_host_maintenance_reconciliation_blocks_normal_boot() -> None:
             },
         }
     )
+
+
+def test_authenticated_hardware_inspection_is_read_only_and_receiver_owned(receiver):
+    report = {
+        "schema": "iii.hardware-inspection/v1",
+        "inspection_id": "1" * 64,
+        "accepted": False,
+    }
+
+    class Inspector:
+        def inspect(self):
+            return report
+
+    engine = receiver.build(hardware_inspector=Inspector())
+    result = engine.handle(
+        request(
+            "hardware-inspect",
+            "hardware-inspect-test",
+            receiver.operator_id,
+            {},
+        )
+    )
+    assert result["inspection"] is report
+    assert result["action"] == "hardware-inspect"
+    assert receiver.control.load()["lease"] is None
+
+
+def test_hardware_inspection_rejects_inactive_machine(receiver):
+    engine = receiver.build(hardware_inspector=object())
+    with pytest.raises(ContractError, match="not an active authorized operator"):
+        engine.handle(
+            request(
+                "hardware-inspect",
+                "hardware-inspect-unknown",
+                "f" * 64,
+                {},
+            )
+        )

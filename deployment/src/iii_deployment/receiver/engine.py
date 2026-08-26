@@ -86,6 +86,7 @@ class ReceiverEngine:
         log_inventory: LogInventory | None = None,
         log_transfer: LogTransferStore | None = None,
         host_maintenance: Any | None = None,
+        hardware_inspector: Any | None = None,
     ) -> None:
         if control.nonce_expiry_s != NONCE_EXPIRY_S:
             raise ContractError(
@@ -115,6 +116,7 @@ class ReceiverEngine:
         self.log_inventory = log_inventory
         self.log_transfer = log_transfer
         self.host_maintenance = host_maintenance
+        self.hardware_inspector = hardware_inspector
         if (log_inventory is None) != (log_transfer is None):
             raise ContractError(
                 "receiver log inventory and transfer must be configured together"
@@ -189,6 +191,11 @@ class ReceiverEngine:
             if self.host_maintenance is None:
                 raise ContractError("receiver host maintenance is unavailable")
             return self._result(request, maintenance=self.host_maintenance.status())
+        if request.action == Action.HARDWARE_INSPECT:
+            self.access.require_active(request.client_id)
+            if self.hardware_inspector is None:
+                raise ContractError("receiver hardware inspection is unavailable")
+            return self._result(request, inspection=self.hardware_inspector.inspect())
         if request.action == Action.LOG_EXPORT:
             self.access.require_active(request.client_id)
             if self.log_inventory is None:

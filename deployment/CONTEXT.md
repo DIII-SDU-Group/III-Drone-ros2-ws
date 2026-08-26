@@ -199,6 +199,11 @@ _Avoid_: Removing old scripts first
   actions. Receipt and prune are separate nonce-bound durable mutations. A receipt
   is accepted only for the complete manifest file set; prune carries the exact
   locator, hash, and size set and is rejected if live protection state changes.
+- `hardware-inspect` is an authenticated read-only receiver action over the one
+  shared hardware-class manifest. It emits only allowlisted USB/V4L2 evidence,
+  verifies stable `/dev/iii/*` links, reports missing/ambiguous/optional roles,
+  and never learns or rewrites policy from observations. Activation health uses
+  this root-owned evidence rather than a release-produced hardware claim.
 - Normal activation requires a content-identified runtime observation proving the
   configured logical target/profile, fresh runtime and PX4 state, three continuous
   seconds landed/disarmed/failsafe-clear in a maintenance-safe navigation state,

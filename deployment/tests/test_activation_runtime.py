@@ -21,7 +21,6 @@ from iii_deployment.contracts import (
     content_identity,
 )
 
-
 RELEASE = "a" * 64
 CHECKPOINT = "b" * 64
 RECEIVER = "c" * 64
@@ -273,6 +272,9 @@ def test_health_provider_composes_independent_receiver_and_systemd_evidence(
         receiver_id=RECEIVER,
         receiver_generation=7,
         control_plane=control,
+        hardware_roles_provider=lambda: {
+            "fmu": {"state": "present", "unambiguous": True}
+        },
         runtime_path=runtime,
         readiness_path=readiness,
         monotonic=lambda: 101.0,
@@ -306,6 +308,9 @@ def test_health_provider_rejects_stale_or_other_boot_runtime_observation(
         control_plane=OnboardControlPlane(
             daemon_socket=tmp_path / "daemon.sock", runner=runner
         ),
+        hardware_roles_provider=lambda: {
+            "fmu": {"state": "present", "unambiguous": True}
+        },
         runtime_path=runtime,
         readiness_path=readiness,
         monotonic=lambda: 101.0,
@@ -321,6 +326,35 @@ def test_health_provider_rejects_stale_or_other_boot_runtime_observation(
     _write(runtime, value)
     with pytest.raises(ContractError, match="another boot"):
         provider(_candidate(tmp_path), _policy())
+
+
+def test_health_provider_ignores_release_claimed_hardware_roles(tmp_path: Path):
+    runtime = tmp_path / "runtime.json"
+    readiness = tmp_path / "readiness.json"
+    claimed = _runtime_document(100.0)
+    claimed["hardware_roles"] = {"fmu": {"state": "present", "unambiguous": True}}
+    claimed["snapshot_id"] = content_identity(
+        {key: item for key, item in claimed.items() if key != "snapshot_id"}
+    )
+    _write(runtime, claimed)
+    _write(readiness, _readiness())
+    provider = OnboardHealthProvider(
+        receiver_id=RECEIVER,
+        receiver_generation=7,
+        control_plane=OnboardControlPlane(
+            daemon_socket=tmp_path / "daemon.sock", runner=Runner()
+        ),
+        hardware_roles_provider=lambda: {
+            "fmu": {"state": "missing", "unambiguous": False}
+        },
+        runtime_path=runtime,
+        readiness_path=readiness,
+        monotonic=lambda: 101.0,
+        boot_id=lambda: "boot-a",
+    )
+    assert provider(_candidate(tmp_path), _policy()).hardware_roles == {
+        "fmu": {"state": "missing", "unambiguous": False}
+    }
 
 
 def test_safety_provider_rejects_tampering(tmp_path: Path):

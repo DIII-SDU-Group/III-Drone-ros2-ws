@@ -3957,6 +3957,8 @@ Implementation notes and verification:
 
 #### P3.T5: Implement And Commission The Shared Hardware-Role Manifest
 
+Status: In-Progress
+
 Description:
 Define the shared Raspberry Pi 5 attached-device contract for FMU, mmWave CLI/
 data interfaces, charger/gripper, and cable camera. Generate udev rules and
@@ -3967,21 +3969,21 @@ the conflicting retired/current udev literals through physical evidence.
 
 Acceptance:
 
-- [ ] One committed manifest, not per-aircraft inventory, declares required and
+- [x] One committed manifest, not per-aircraft inventory, declares required and
       optional roles and the evidence used to match each role.
-- [ ] Generated rules are deterministic and installed idempotently by Ansible.
-- [ ] `iii host inspect` reports raw device evidence, resolved roles, missing
+- [x] Generated rules are deterministic and installed idempotently by Ansible.
+- [x] `iii host inspect` reports raw device evidence, resolved roles, missing
       roles, and ambiguity without exposing unrelated sensitive host data.
-- [ ] Required missing/ambiguous roles block real-profile health acceptance;
+- [x] Required missing/ambiguous roles block real-profile health acceptance;
       optional-device absence is reported without pretending it is present.
-- [ ] Camera selection does not rely on unstable `/dev/video0` enumeration.
+- [x] Camera selection does not rely on unstable `/dev/video0` enumeration.
 - [ ] Legacy and current serial-specific rules are retired only after every role
       passes physical unplug/replug, reboot, and swapped-port commissioning.
-- [ ] Replacement devices matching an existing role contract require role-specific
+- [x] Replacement devices matching an existing role contract require role-specific
       functional evidence and recommissioning without manifest mutation; unmatched
       devices produce a reviewable capture and can become supported only through a
       feature-branch manifest/rule change, tests, convergence, and recommissioning.
-- [ ] Inspection/commissioning never auto-learns serials or rewrites matching rules
+- [x] Inspection/commissioning never auto-learns serials or rewrites matching rules
       from observed hardware.
 
 Tests:
@@ -3990,6 +3992,28 @@ Tests:
   duplicate, changed USB port, and optional devices; physical Pi commissioning
   for unplug/replug, reboot, port swap, simultaneous-device enumeration, matching
   replacement, unmatched replacement capture, and auto-learn rejection.
+
+Implementation notes and verification:
+
+- Added the content-identified shared hardware-class manifest, explicit
+  required/optional indexes, three schemas, deterministic golden udev rules,
+  sanitized sysfs/udev inspection, strict phase/functional-evidence evaluator,
+  Ansible installation/retriggering, root-owned receiver action, independent
+  activation-health integration, both CLI spellings with non-overwriting local
+  capture, trusted-local-policy binding, `/dev/iii/*` real defaults, and the
+  operator/commissioning/replacement documentation.
+- Focused verification passed 67 deployment contract/policy tests, then 35
+  hardware/receiver tests after final trust-binding changes, 33 CLI/result
+  tests, and 681 `iii_drone_configuration` tests in the Jazzy devcontainer.
+  Black, Pyflakes, compile, diff checks, Ansible production lint (zero findings
+  across 23 files), and both aircraft convergence syntax checks passed.
+- A read-only live attempt was made. `iii.local` did not resolve and the CLI
+  returned `III_SSH_IDENTITY_UNAVAILABLE`; no configured per-computer SSH key or
+  attached Pi was available. Therefore unplug/replug, reboot, port-swap,
+  simultaneous enumeration, functional role checks, and actual legacy-rule
+  retirement are not claimed. The manifest remains
+  `retained-pending-physical-evidence`, the old Core rule remains untouched, and
+  this task stays In-Progress while later software tasks continue.
 
 #### P3.T6: Manage The Raspberry Pi Boot Baseline
 

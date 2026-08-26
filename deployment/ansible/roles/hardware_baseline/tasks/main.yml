@@ -8,15 +8,22 @@
   environment:
     DEBIAN_FRONTEND: noninteractive
 
-- name: Render hardware-class udev rule fragments
+- name: Install the shared hardware-role manifest
   ansible.builtin.copy:
-    dest: "/etc/udev/rules.d/{{ item.name }}"
+    src: "{{ playbook_dir }}/../../hardware/shared-hardware-role-manifest.json"
+    dest: /etc/iii/hardware-role-manifest.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
+
+- name: Install the generated shared hardware-role udev rules
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../hardware/90-iii-hardware-roles.rules"
+    dest: /etc/udev/rules.d/90-iii-hardware-roles.rules
     owner: root
     group: root
     mode: "0644"
-    content: "{{ item.content | trim }}\n"
-  loop: "{{ iii_udev_rule_fragments }}"
-  notify: Reload udev
+  notify: Reconcile III hardware udev
 
 - name: Record the hardware-class baseline boundary
   ansible.builtin.template:
