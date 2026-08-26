@@ -6,6 +6,11 @@
     {"path": "/opt/iii/releases", "owner": "root", "group": "iii", "mode": "0750", "kind": "immutable-release-root", "persistence": "reimage-destroys"},
     {"path": "/opt/iii/current", "owner": "root", "group": "iii", "mode": "0750", "kind": "atomic-selector", "persistence": "receiver-reconciled"},
     {"path": "/opt/iii/receiver", "owner": "root", "group": "root", "mode": "0755", "kind": "receiver-ab-root", "persistence": "ansible-recovery"},
+    {"path": "/opt/iii/receiver/bootstrap", "owner": "root", "group": "root", "mode": "0555", "kind": "stable-recovery-bootstrap", "persistence": "ansible-recovery"},
+    {"path": "/opt/iii/receiver/slots", "owner": "root", "group": "root", "mode": "0755", "kind": "immutable-receiver-slots", "persistence": "bootstrap-reconciled"},
+    {"path": "/opt/iii/receiver/selectors", "owner": "root", "group": "root", "mode": "0755", "kind": "receiver-selector-root", "persistence": "bootstrap-reconciled"},
+    {"path": "/opt/iii/receiver/selectors/current", "owner": "root", "group": "root", "mode": "0755", "kind": "atomic-selector", "persistence": "bootstrap-reconciled"},
+    {"path": "/opt/iii/receiver/selectors/fallback", "owner": "root", "group": "root", "mode": "0755", "kind": "atomic-selector", "persistence": "bootstrap-reconciled"},
     {"path": "/etc/iii", "owner": "root", "group": "iii", "mode": "0750", "kind": "host-policy-and-secrets", "persistence": "reprovision"},
     {"path": "/var/lib/iii", "owner": "iii", "group": "iii", "mode": "0750", "kind": "persistent-state", "persistence": "portable-backup"},
     {"path": "/var/lib/iii/configuration", "owner": "iii", "group": "iii", "mode": "0750", "kind": "persistent-configuration-root", "persistence": "portable-backup"},
@@ -19,6 +24,6 @@
     {"path": "/run/iii", "owner": "iii", "group": "iii", "mode": "0750", "kind": "transient", "persistence": "recreated-on-boot"}
   ],
   "protected_release_subpaths": ["manifest.json", "bundle-manifest.json", "release-manifest.json", "install", "python", "lib", "missions", "environment.bash"],
-  "host_systemd_units": ["iii-deployment-receiver-reconcile.service", "iii-deployment-receiver.service", "iii-system-daemon.service", "iii-runtime-api.service"],
+  "host_systemd_units": ["iii-receiver-bootstrap-apply.service", "iii-receiver-bootstrap-reconcile.service", "iii-deployment-receiver-reconcile.service", "iii-deployment-receiver.service", "iii-system-daemon.service", "iii-runtime-api.service"],
   "minimum_storage_reserve": {"bytes": 2147483648, "percent": 10}
 }

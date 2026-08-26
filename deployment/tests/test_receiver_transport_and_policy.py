@@ -8,11 +8,18 @@ import threading
 
 import pytest
 
-from iii_deployment.contracts import ContractError, ContractRegistry, canonical_json, content_identity
+from iii_deployment.contracts import (
+    ContractError,
+    ContractRegistry,
+    canonical_json,
+    content_identity,
+)
 from iii_deployment.receiver.config import ReceiverConfig, load_live_state
 from iii_deployment.receiver.protocol import Request
-from iii_deployment.receiver.transport import UnixReceiverServer, authenticate_forced_ssh_peer
-
+from iii_deployment.receiver.transport import (
+    UnixReceiverServer,
+    authenticate_forced_ssh_peer,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 CLIENT_ID = "a" * 64
@@ -31,7 +38,9 @@ def raw_request(action: str = "status", payload: dict | None = None) -> bytes:
     )
 
 
-def test_unix_socket_transport_is_bounded_canonical_and_has_no_tcp_listener(tmp_path: Path) -> None:
+def test_unix_socket_transport_is_bounded_canonical_and_has_no_tcp_listener(
+    tmp_path: Path,
+) -> None:
     observed: list[Request] = []
     server = UnixReceiverServer(
         socket_path=tmp_path / "receiver.sock",
@@ -60,7 +69,9 @@ def test_unix_socket_transport_is_bounded_canonical_and_has_no_tcp_listener(tmp_
     value = json.loads(response)
     assert response == canonical_json(value) + b"\n"
     assert value["ok"] is True and observed[0].action.value == "status"
-    policy = json.loads((ROOT / "deployment/receiver-policy.json").read_text(encoding="utf-8"))
+    policy = json.loads(
+        (ROOT / "deployment/receiver-policy.json").read_text(encoding="utf-8")
+    )
     assert policy["transport"]["tcp_listener"] is False
     assert policy["transport"]["kind"] == "unix-domain-socket"
 
@@ -70,12 +81,18 @@ def test_local_process_cannot_impersonate_forced_ssh_credential() -> None:
         authenticate_forced_ssh_peer(os.getpid(), os.getuid(), CLIENT_ID)
 
 
-def test_hostile_paths_units_environment_and_noncanonical_requests_are_rejected() -> None:
+def test_hostile_paths_units_environment_and_noncanonical_requests_are_rejected() -> (
+    None
+):
     with pytest.raises(ContractError, match="fields do not match"):
         Request.parse(
             raw_request(
                 "status",
-                {"path": "/etc/shadow", "unit": "ssh.service", "environment": {"LD_PRELOAD": "x"}},
+                {
+                    "path": "/etc/shadow",
+                    "unit": "ssh.service",
+                    "environment": {"LD_PRELOAD": "x"},
+                },
             )
         )
     with pytest.raises(ContractError, match="canonical JSON"):
@@ -95,7 +112,9 @@ def test_hostile_paths_units_environment_and_noncanonical_requests_are_rejected(
         )
 
 
-def test_receiver_config_and_live_state_are_fixed_canonical_contracts(tmp_path: Path) -> None:
+def test_receiver_config_and_live_state_are_fixed_canonical_contracts(
+    tmp_path: Path,
+) -> None:
     config_path = tmp_path / "receiver.json"
     config_path.write_bytes(
         canonical_json(
@@ -128,7 +147,10 @@ def test_receiver_config_and_live_state_are_fixed_canonical_contracts(tmp_path: 
         {key: value for key, value in live.items() if key != "target_state_hash"}
     )
     live_path.write_bytes(canonical_json(live) + b"\n")
-    assert load_live_state(live_path, profile="real")["target_state_hash"] == live["target_state_hash"]
+    assert (
+        load_live_state(live_path, profile="real")["target_state_hash"]
+        == live["target_state_hash"]
+    )
     live["profile"] = "sim"
     live_path.write_bytes(canonical_json(live) + b"\n")
     with pytest.raises(ContractError, match="identity mismatch"):
@@ -137,13 +159,19 @@ def test_receiver_config_and_live_state_are_fixed_canonical_contracts(tmp_path: 
 
 def test_host_policy_has_no_unrestricted_sudo_and_protects_receiver_bootstrap() -> None:
     privilege = json.loads(
-        (ROOT / "deployment/host/receiver-privilege-policy.json").read_text(encoding="utf-8")
+        (ROOT / "deployment/host/receiver-privilege-policy.json").read_text(
+            encoding="utf-8"
+        )
     )
-    sudoers = (ROOT / "deployment/host/iii-deployment-final.sudoers").read_text(encoding="utf-8")
+    sudoers = (ROOT / "deployment/host/iii-deployment-final.sudoers").read_text(
+        encoding="utf-8"
+    )
     receiver_policy = json.loads(
         (ROOT / "deployment/receiver-policy.json").read_text(encoding="utf-8")
     )
-    ContractRegistry(ROOT / "deployment/schemas/v1").validate("receiver-policy", receiver_policy)
+    ContractRegistry(ROOT / "deployment/schemas/v1").validate(
+        "receiver-policy", receiver_policy
+    )
     assert privilege["final_passwordless_sudo_commands"] == []
     assert "NOPASSWD" not in sudoers and "ALL=(ALL)" not in sudoers
     assert privilege["complete_key_loss"]["in_band_bypass"] is False
@@ -155,20 +183,58 @@ def test_host_policy_has_no_unrestricted_sudo_and_protects_receiver_bootstrap() 
         "iii-system-daemon.service",
         "iii-runtime-api.service",
     }
+    assert json.loads(
+        (ROOT / "deployment/host/receiver-bootstrap-protocol.json").read_text()
+    ) == {"schema": "iii.receiver-bootstrap-protocol/v1", "protocol": "1"}
+    assert json.loads(
+        (ROOT / "deployment/host/receiver-cli-protocol.json").read_text()
+    ) == {"schema": "iii.receiver-cli-protocol/v1", "protocol": "1"}
 
 
-def test_stable_units_run_receiver_outside_release_tree_and_allow_only_declared_writes() -> None:
-    policy = json.loads((ROOT / "deployment/receiver-policy.json").read_text(encoding="utf-8"))
-    allowed = set(policy["normal_release_mutable_paths"]) | {"/var/lib/iii/incoming", "/run/iii"}
+def test_stable_units_run_receiver_outside_release_tree_and_allow_only_declared_writes() -> (
+    None
+):
+    policy = json.loads(
+        (ROOT / "deployment/receiver-policy.json").read_text(encoding="utf-8")
+    )
+    allowed = (
+        set(policy["normal_release_mutable_paths"])
+        | set(policy["self_update_receiver_mutable_paths"])
+        | {"/var/lib/iii/incoming", "/run/iii"}
+    )
     for name in (
         "iii-deployment-receiver-reconcile.service",
         "iii-deployment-receiver.service",
     ):
         unit = (ROOT / "deployment/systemd" / name).read_text(encoding="utf-8")
-        exec_line = next(line for line in unit.splitlines() if line.startswith("ExecStart="))
-        assert exec_line.startswith("ExecStart=/opt/iii/receiver/current/")
+        exec_line = next(
+            line for line in unit.splitlines() if line.startswith("ExecStart=")
+        )
+        assert exec_line.startswith("ExecStart=/opt/iii/receiver/selectors/current/")
         assert "/opt/iii/releases/" not in exec_line
         assert "RestrictAddressFamilies=AF_UNIX" in unit
-        write_line = next(line for line in unit.splitlines() if line.startswith("ReadWritePaths="))
+        write_line = next(
+            line for line in unit.splitlines() if line.startswith("ReadWritePaths=")
+        )
         assert set(write_line.removeprefix("ReadWritePaths=").split()) <= allowed
-        assert not any(path in write_line for path in policy["normal_release_forbidden_paths"])
+        assert not any(
+            path in write_line for path in policy["normal_release_forbidden_paths"]
+        )
+
+    for name in (
+        "iii-receiver-bootstrap-apply.service",
+        "iii-receiver-bootstrap-reconcile.service",
+    ):
+        bootstrap = (ROOT / "deployment/systemd" / name).read_text(encoding="utf-8")
+        assert "ExecStart=/opt/iii/receiver/bootstrap/" in bootstrap
+        bootstrap_writes = next(
+            line
+            for line in bootstrap.splitlines()
+            if line.startswith("ReadWritePaths=")
+        )
+        assert set(bootstrap_writes.removeprefix("ReadWritePaths=").split()) <= set(
+            policy["self_update_bootstrap_mutable_paths"]
+        )
+        assert not any(
+            path in bootstrap_writes for path in policy["self_update_forbidden_paths"]
+        )

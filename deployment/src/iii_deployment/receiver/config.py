@@ -24,10 +24,12 @@ RELEASE_ROOT = Path("/opt/iii/releases")
 AUTHORIZED_KEYS_PATH = Path("/home/iii/.ssh/authorized_keys")
 BUNDLE_TRUST_PATH = Path("/etc/iii/trust/bundle-signers.json")
 STATUS_TRUST_PATH = Path("/etc/iii/trust/release-status-signers.json")
+RECEIVER_UPDATE_TRUST_PATH = Path("/etc/iii/trust/receiver-update-signers.json")
 OPERATIONAL_POLICY_PATH = Path("/etc/iii/operational-policy.json")
-SCHEMA_ROOT = Path("/opt/iii/receiver/current/share/iii-deployment/schemas/v1")
+SCHEMA_ROOT = Path("/opt/iii/receiver/selectors/current/share/iii-deployment/schemas/v1")
 LIVE_STATE_PATH = STATE_ROOT / "live-state.json"
 AUDIT_PATH = Path("/var/log/iii/deployment/receiver-audit.jsonl")
+READINESS_PATH = Path("/run/iii/receiver-readiness.json")
 
 
 def under(root: Path, absolute: Path) -> Path:

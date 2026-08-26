@@ -1,0 +1,19 @@
+[Unit]
+Description=III stable receiver A/B update handoff
+After=local-fs.target
+Before=iii-deployment-receiver-reconcile.service iii-deployment-receiver.service
+Conflicts=iii-deployment-receiver.service
+ConditionPathExists=/var/lib/iii/deployment/receiver-update.json
+
+[Service]
+Type=oneshot
+ExecStart=/opt/iii/receiver/bootstrap/bin/iii-receiver-bootstrap --apply
+User=root
+Group=root
+UMask=0027
+NoNewPrivileges=yes
+PrivateNetwork=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/iii/receiver/selectors /var/lib/iii/deployment /run/iii
+RestrictAddressFamilies=AF_UNIX

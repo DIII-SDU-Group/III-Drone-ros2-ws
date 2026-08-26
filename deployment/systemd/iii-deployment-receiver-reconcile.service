@@ -1,12 +1,13 @@
 [Unit]
 Description=III deployment receiver boot reconciliation
-After=local-fs.target
+Requires=iii-receiver-bootstrap-reconcile.service
+After=local-fs.target iii-receiver-bootstrap-reconcile.service
 Before=iii-deployment-receiver.service iii-system-daemon.service iii-runtime-api.service
-ConditionPathExists=/opt/iii/receiver/current/bin/iii-deployment-receiver
+ConditionPathExists=/opt/iii/receiver/selectors/current/bin/iii-deployment-receiver
 
 [Service]
 Type=oneshot
-ExecStart=/opt/iii/receiver/current/bin/iii-deployment-receiver --config /etc/iii/deployment-receiver.json --reconcile-only
+ExecStart=/opt/iii/receiver/selectors/current/bin/iii-deployment-receiver --config /etc/iii/deployment-receiver.json --reconcile-only
 User=root
 Group=root
 UMask=0027
@@ -14,7 +15,7 @@ NoNewPrivileges=yes
 PrivateNetwork=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/opt/iii/releases /opt/iii/current /var/lib/iii/deployment /var/lib/iii/incoming /var/log/iii/deployment /home/iii/.ssh/authorized_keys /run/iii
+ReadWritePaths=/opt/iii/releases /opt/iii/current /opt/iii/receiver/slots /var/lib/iii/configuration /var/lib/iii/deployment /var/lib/iii/incoming /var/log/iii/deployment /home/iii/.ssh/authorized_keys /run/iii
 RestrictAddressFamilies=AF_UNIX
 
 [Install]

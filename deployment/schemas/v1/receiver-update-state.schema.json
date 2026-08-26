@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/receiver-update-state.schema.json",
+  "title": "Durable III receiver A/B update state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "state_id", "operation_id", "client_id", "candidate_slot", "candidate_receiver_id", "candidate_generation", "previous_slot", "stage", "remaining_deadline_s", "budget_boot_id", "budget_monotonic", "failure", "readiness", "application_activation_started"],
+  "properties": {
+    "schema": {"const": "iii.receiver-update-state/v1"},
+    "state_id": {"$ref": "#/definitions/hash"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "client_id": {"$ref": "#/definitions/hash"},
+    "candidate_slot": {"enum": ["a", "b"]},
+    "candidate_receiver_id": {"$ref": "#/definitions/hash"},
+    "candidate_generation": {"type": "integer", "minimum": 1},
+    "previous_slot": {"enum": ["a", "b", null]},
+    "stage": {"enum": ["staged", "switch-prepared", "selector-switched", "candidate-started", "committed", "revert-prepared", "reverted"]},
+    "remaining_deadline_s": {"type": "number", "minimum": 0, "maximum": 30},
+    "budget_boot_id": {"type": "string", "minLength": 1},
+    "budget_monotonic": {"type": "number", "minimum": 0},
+    "failure": {"type": ["string", "null"]},
+    "readiness": {"type": ["object", "null"]},
+    "application_activation_started": {"const": false}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

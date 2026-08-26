@@ -22,6 +22,7 @@ test = ["pytest==8.4.1"]
 iii-deployment-verify = "iii_deployment.verification.cli:main"
 iii-deploymentctl = "iii_deployment.receiver.client:main"
 iii-deployment-receiver = "iii_deployment.receiver.server:main"
+iii-receiver-bootstrap = "iii_deployment.receiver.bootstrap:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

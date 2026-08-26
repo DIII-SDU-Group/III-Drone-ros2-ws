@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/receiver-update-manifest.schema.json",
+  "title": "Signed III receiver A/B update manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "receiver_id", "generation", "version", "content", "compatibility"],
+  "properties": {
+    "schema": {"const": "iii.receiver-update-manifest/v1"},
+    "receiver_id": {"$ref": "#/definitions/hash"},
+    "generation": {"type": "integer", "minimum": 1},
+    "version": {"type": "string", "pattern": "^v(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$"},
+    "content": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["path", "type", "mode", "size", "sha256"],
+        "properties": {
+          "path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"},
+          "type": {"enum": ["file", "directory"]},
+          "mode": {"type": "integer", "enum": [420, 493]},
+          "size": {"type": "integer", "minimum": 0},
+          "sha256": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/hash"}]}
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object", "additionalProperties": false,
+      "required": ["bootstrap_protocols", "cli_protocols", "request_protocols", "release_manifest_schema_versions", "journal_schemas", "audit_schemas", "activation_transaction_schemas", "activation_selector_schemas", "configuration_checkpoint_schemas"],
+      "properties": {
+        "bootstrap_protocols": {"$ref": "#/definitions/values"},
+        "cli_protocols": {"$ref": "#/definitions/values"},
+        "request_protocols": {"$ref": "#/definitions/values"},
+        "release_manifest_schema_versions": {"$ref": "#/definitions/values"},
+        "journal_schemas": {"$ref": "#/definitions/values"},
+        "audit_schemas": {"$ref": "#/definitions/values"},
+        "activation_transaction_schemas": {"$ref": "#/definitions/values"},
+        "activation_selector_schemas": {"$ref": "#/definitions/values"},
+        "configuration_checkpoint_schemas": {"$ref": "#/definitions/values"}
+      }
+    }
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+  }
+}

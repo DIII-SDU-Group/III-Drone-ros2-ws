@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/receiver-update-signature.schema.json",
+  "title": "Detached III receiver update signature",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "receiver_id", "generation", "manifest_sha256", "archive_sha256", "signer_id", "authority", "signature"],
+  "properties": {
+    "schema": {"const": "iii.receiver-update-signature/v1"},
+    "receiver_id": {"$ref": "#/definitions/hash"},
+    "generation": {"type": "integer", "minimum": 1},
+    "manifest_sha256": {"$ref": "#/definitions/hash"},
+    "archive_sha256": {"$ref": "#/definitions/hash"},
+    "signer_id": {"$ref": "#/definitions/hash"},
+    "authority": {"const": "receiver-update"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

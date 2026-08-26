@@ -3096,6 +3096,8 @@ Implementation notes:
 
 #### P2.T3: Implement Transactional Receiver A/B Self-Update
 
+**Status: Completed.**
+
 Description:
 Implement the Q32/Q49 receiver update path on top of P2.T2 without coupling it to
 application health. Stage a signed receiver payload into the inactive receiver slot,
@@ -3107,21 +3109,21 @@ contract itself.
 
 Acceptance:
 
-- [ ] Receiver payloads are separately identified/signed, extracted into an
+- [x] Receiver payloads are separately identified/signed, extracted into an
       inactive slot, and cannot overwrite active/fallback/bootstrap content.
-- [ ] Before switch, compatibility proves read/resume of durable journals/audits,
+- [x] Before switch, compatibility proves read/resume of durable journals/audits,
       activation/rollback of every retained release manifest, configuration
       checkpoint handling, and installed bootstrap/CLI protocol ranges.
-- [ ] The stable bootstrap owns selector switch/revert and grants the new receiver
+- [x] The stable bootstrap owns selector switch/revert and grants the new receiver
       30 monotonic seconds to start, reopen its socket, pass self-tests, and report
       exact generation/compatibility readiness.
-- [ ] Startup, timeout, socket, self-test, journal, retained-release, or protocol
+- [x] Startup, timeout, socket, self-test, journal, retained-release, or protocol
       failure restores the prior slot and aborts before application activation.
-- [ ] Host/CLI/network loss cannot suppress the bootstrap deadline or reversion;
+- [x] Host/CLI/network loss cannot suppress the bootstrap deadline or reversion;
       reboot at every persisted self-update stage reconciles deterministically.
-- [ ] A successful receiver update remains active across application rollback only
+- [x] A successful receiver update remains active across application rollback only
       after proving compatibility with the restored application/configuration pair.
-- [ ] Ordinary receiver payloads cannot modify bootstrap code, systemd recovery
+- [x] Ordinary receiver payloads cannot modify bootstrap code, systemd recovery
       unit, trust roots, selector fallback, or host-maintenance policy.
 
 Tests:
@@ -3130,6 +3132,44 @@ Tests:
   failed extraction/start/socket/self-test, 30-second timeout, client/network loss,
   power loss at every selector/journal stage, application rollback under new
   receiver, and forbidden bootstrap/trust mutation.
+
+Implementation notes (2026-08-26):
+
+- Added deterministic `iii.receiver-update-manifest/v1` packages with an isolated
+  Ed25519 `receiver-update` authority/signing domain, exact content index, detached
+  manifest/archive signature, safe USTAR extraction, immutable root-owned A/B
+  slots, generation monotonicity, post-verification archive recheck, and rejection
+  of links, special files, hostile paths, stable-bootstrap/systemd/trust content,
+  active-slot writes, and fallback-slot replacement.
+- Added fixed-path installed compatibility inspection. It validates every retained
+  release manifest and operation journal, verifies the hash-chained receiver audit,
+  validates activation transactions and the active composite selector, inventories
+  configuration checkpoint schemas, and authenticates installed bootstrap/CLI plus
+  request protocol versions. Every observed format must be in the signed candidate
+  compatibility closure before inactive-slot installation can become switchable.
+- Added a stable Ansible-owned bootstrap state machine and separate apply/reconcile
+  units. Only the bootstrap can mutate the dedicated receiver selector directory;
+  the running receiver can write only inactive slots and its durable update state.
+  Fallback advances to the current working slot before the old inactive slot is
+  replaced, preserving a working receiver through repeated A/B updates.
+- The bootstrap journals before selector changes, launches the candidate outside
+  the replaceable service, independently proves a live Unix socket plus exact
+  receiver ID/generation, self-tests, journal compatibility, and bootstrap/CLI/
+  request protocols, and commits only within 30 monotonic seconds. Startup, probe,
+  timeout, reboot, or compatibility failure restores fallback; every state records
+  `application_activation_started:false` and reconciliation is idempotent across
+  all persisted switch/revert stages without a client or network dependency.
+- A committed receiver exposes a separate compatibility assertion for restored
+  application/configuration pairs and is not reverted merely because application
+  activation rolls back. Added fixed protocol descriptors, readiness/signature/
+  manifest/state schemas, packaged bootstrap entrypoint/assets, selector-isolated
+  filesystem policy, and explicit ordinary-update forbidden paths.
+- Verification passed 28 focused A/B/signing/compatibility/fault/reboot cases and
+  the full 284/284 deployment suite. Fatal Flake8, Python compile, Black, all JSON
+  and Draft-7 schema checks, diff hygiene, and a 98-file wheel payload inspection
+  passed. `systemd-analyze verify` found no dependency/sandbox graph conflict; on
+  this unprovisioned host it reported only the expected absent future `/opt/iii`
+  executables plus unrelated host-unit warnings.
 
 #### P2.T4: Implement Activation Health And Automatic Rollback
 

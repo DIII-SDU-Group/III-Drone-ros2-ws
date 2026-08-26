@@ -187,3 +187,18 @@ _Avoid_: Removing old scripts first
   a durable activation journal precedes each view change so boot reconciliation
   can finish or restore the matching tuple. Selector mutation never starts Mission
   Execution, Direct Operation, or any application autonomy.
+- Receiver updates use their own deterministic payload manifest, detached
+  `receiver-update` signing domain and trust authority. The running receiver may
+  populate only the inactive immutable A/B slot after authenticating every
+  retained release, journal, audit, activation transaction, configuration
+  checkpoint, and installed bootstrap/CLI/request protocol against the candidate.
+- Receiver `current` and `fallback` live in the dedicated selector directory.
+  Only the Ansible-owned bootstrap units can write that directory. Before an old
+  inactive slot is replaced, the bootstrap advances fallback to the current
+  working slot; update payloads cannot write selectors, bootstrap code, trust,
+  systemd units, or host-maintenance policy.
+- After a receiver selector switch, the bootstrap launches the candidate in its
+  own host unit and requires exact generation/identity, socket, self-test, journal,
+  and protocol readiness within 30 monotonic seconds. It restores fallback on any
+  failure and reconciles every persisted stage after reboot. A committed compatible
+  receiver stays selected if a later application activation rolls back.

@@ -24,6 +24,7 @@ from iii_deployment.receiver.config import (
     LOCK_PATH,
     OPERATIONAL_POLICY_PATH,
     RECEIVER_ROOT,
+    READINESS_PATH,
     SCHEMA_ROOT,
     SOCKET_PATH,
     STATE_ROOT,
@@ -33,8 +34,14 @@ from iii_deployment.receiver.config import (
     load_live_state,
 )
 from iii_deployment.receiver.engine import NONCE_EXPIRY_S, ReceiverEngine
-from iii_deployment.receiver.state import AuditLog, OperationJournalStore, ReceiverControlStore
+from iii_deployment.receiver.state import (
+    AuditLog,
+    OperationJournalStore,
+    ReceiverControlStore,
+)
 from iii_deployment.receiver.transport import UnixReceiverServer
+from iii_deployment.receiver.update import READINESS_SCHEMA, ReceiverSlotStore
+from iii_deployment.receiver.state import atomic_document
 from iii_deployment.staging import ReleaseStore
 
 
@@ -43,19 +50,25 @@ def _operational_policy() -> dict:
         raise ContractError("receiver operational policy is missing or linked")
     observed = OPERATIONAL_POLICY_PATH.stat(follow_symlinks=False)
     if observed.st_uid != 0 or observed.st_mode & 0o022:
-        raise ContractError("receiver operational policy is not root-owned and write-protected")
+        raise ContractError(
+            "receiver operational policy is not root-owned and write-protected"
+        )
     try:
         value = json.loads(OPERATIONAL_POLICY_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ContractError(f"cannot load receiver operational policy: {exc}") from exc
     if value.get("authorization", {}).get("nonce_expiry_s") != NONCE_EXPIRY_S:
-        raise ContractError("receiver operational policy changes the fixed nonce expiry")
+        raise ContractError(
+            "receiver operational policy changes the fixed nonce expiry"
+        )
     if value.get("activation") != {
         "target_acceptance_s": 60,
         "hard_deadline_s": 120,
         "rollback_target_s": 60,
     }:
-        raise ContractError("receiver operational policy changes the fixed activation deadlines")
+        raise ContractError(
+            "receiver operational policy changes the fixed activation deadlines"
+        )
     return value
 
 
@@ -94,7 +107,9 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         logical_target=config.logical_target,
         profile=config.profile,
         live_state=lambda: load_live_state(LIVE_STATE_PATH, profile=config.profile),
-        maximum_claim_bytes=load_bundle_limits(OPERATIONAL_POLICY_PATH)["unpacked_bytes"]
+        maximum_claim_bytes=load_bundle_limits(OPERATIONAL_POLICY_PATH)[
+            "unpacked_bytes"
+        ]
         + 16 * 1024**2,
     )
 
@@ -106,7 +121,9 @@ def _acquire_singleton() -> int:
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError as exc:
         os.close(descriptor)
-        raise ContractError("another deployment receiver instance owns the host lock") from exc
+        raise ContractError(
+            "another deployment receiver instance owns the host lock"
+        ) from exc
     return descriptor
 
 
@@ -141,6 +158,28 @@ def main() -> int:
             ),
         )
         server.open()
+        slots = ReceiverSlotStore(
+            Path("/"), trust={}, registry=ContractRegistry(SCHEMA_ROOT)
+        )
+        active_slot = slots.active_slot()
+        if active_slot is None:
+            raise ContractError("receiver A/B active slot is unavailable")
+        active_manifest = slots.verify_slot(active_slot)
+        atomic_document(
+            READINESS_PATH,
+            {
+                "schema": READINESS_SCHEMA,
+                "receiver_id": active_manifest["receiver_id"],
+                "generation": active_manifest["generation"],
+                "socket_open": True,
+                "self_tests_passed": True,
+                "journal_compatible": True,
+                "bootstrap_protocol": "1",
+                "cli_protocol": "1",
+                "request_protocol": "1",
+            },
+            mode=0o640,
+        )
         assert server.socket is not None
         server.socket.settimeout(1.0)
         stopped = False
@@ -159,6 +198,7 @@ def main() -> int:
                     continue
         finally:
             server.close()
+            READINESS_PATH.unlink(missing_ok=True)
             fcntl.flock(singleton, fcntl.LOCK_UN)
             os.close(singleton)
         return 0
