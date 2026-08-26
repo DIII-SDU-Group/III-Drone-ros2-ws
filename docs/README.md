@@ -79,6 +79,10 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     Protected tag qualification, retained build/test evidence, immutable GitHub
     publication, release-status transitions, CLI retrieval, and CI key rotation.
 
+23. `local-record-registry.md`
+    User-owned registry layout, deterministic full/incremental archives,
+    cross-computer recovery, secret exclusions, and explicit retention policy.
+
 Domain language and context ownership are indexed by the root
 `CONTEXT-MAP.md`.
 

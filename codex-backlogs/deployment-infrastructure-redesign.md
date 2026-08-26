@@ -3512,6 +3512,8 @@ Implementation notes:
 
 #### P2.T8: Implement The Local Operator Record Registry And Portable Archive
 
+**Status: Completed.**
+
 Description:
 Create one host-user-owned, Git-ignored `.iii/` registry for local release caches,
 operation records, captures, backups, commissioning/readiness records, release
@@ -3525,24 +3527,24 @@ the CLI does not invent cloud storage or silently copy data.
 
 Acceptance:
 
-- [ ] Registry paths never enter Git and never depend on a container filesystem or
+- [x] Registry paths never enter Git and never depend on a container filesystem or
       one absolute workspace checkout path.
-- [ ] Every record has schema version, content identity, creation source, logical
+- [x] Every record has schema version, content identity, creation source, logical
       target/profile where applicable, cross-domain references, and integrity state.
-- [ ] Concurrent CLI processes cannot corrupt indexes; writes use lock, staging,
+- [x] Concurrent CLI processes cannot corrupt indexes; writes use lock, staging,
       fsync/atomic replacement, and deterministic crash recovery.
-- [ ] Archive planning reports included domains, referenced blobs, total size,
+- [x] Archive planning reports included domains, referenced blobs, total size,
       omitted/missing content, destination capacity, and whether the result is full
       or incremental before writing.
-- [ ] Archives and imports are deterministic, path-safe, checksummed, idempotent,
+- [x] Archives and imports are deterministic, path-safe, checksummed, idempotent,
       and preserve references without overwriting conflicting content.
-- [ ] SSH/signing private keys, runtime/API credentials, Wi-Fi secrets, machine
+- [x] SSH/signing private keys, runtime/API credentials, Wi-Fi secrets, machine
       identity, and unredacted secret-bearing inputs are always excluded and make
       archive creation fail if a schema incorrectly attempts to include them.
-- [ ] No automatic pruning occurs. Explicit prune operations show protected
+- [x] No automatic pruning occurs. Explicit prune operations show protected
       references and cannot remove records required by retained releases, restore,
       commissioning, promotion, or unarchived irreplaceable evidence.
-- [ ] `iii field check` can report last verified external archive coverage and age
+- [x] `iii field check` can report last verified external archive coverage and age
       without making an external archive mandatory for ordinary operation.
 
 Tests:
@@ -3552,6 +3554,54 @@ Tests:
   destination space; path traversal/symlink/special-file attacks; corrupt and
   partial import; cross-computer import; secret-exclusion fixtures; protected prune;
   and loss/rebuild of local indexes from archive manifests.
+
+Implementation notes:
+
+- Added the host-user-owned registry root contract and canonical domains for
+  operations, paired release caches, captures, backups, commissioning/readiness,
+  release evidence, signed status indexes, verified log/diagnostic pulls, and
+  archive/import receipts. Release, deploy, logs, and field providers now resolve
+  the same root; Git worktrees accept only ignored `.iii/` state.
+- Added `iii records inventory/verify/archive/import/prune` through the universal
+  result and retained-operation flow. The implementation derives versioned record
+  descriptors with file/directory topology, content identities, creation source,
+  target/profile, references, integrity, and protections; serializes shared blobs
+  and metadata under locks with fsync/atomic replacement and hard-crash staging
+  recovery; and excludes the controlling operation from its own exact snapshot.
+- Portable archives use deterministic USTAR headers/order/padding, a canonical
+  checksummed manifest, full or base-bound incremental coverage, explicit capacity
+  planning, post-write byte verification, idempotent identical destinations, safe
+  cross-computer import, and conflict-preserving reconstruction of empty directory
+  topology. Import recreates a missing derived index without trusting it as
+  authority.
+- Secret scanning fails closed over record paths, JSON fields, CLI arguments,
+  assignment/env files, bearer credentials, machine identity, Wi-Fi stores, and
+  full-stream private-key material. Explicit prune reauthenticates current registry
+  state and external archive bytes and cannot remove retained-release, restore,
+  commissioning, promotion, referenced, unresolved, unacknowledged, or unarchived
+  irreplaceable records; shared blobs and automatic pruning remain out of scope.
+- `iii field check` now embeds last verified archive receipt coverage/age and media
+  availability as a warning-only observation. Field preparation/readiness records,
+  release audit evidence, and signed release-status indexes are retained in their
+  owning domains. Added the operator recovery guide and four packaged Draft-07
+  record/archive schemas.
+
+Task-specific verification:
+
+- All 120 III CLI tests passed in the Jazzy devcontainer, including empty/mixed and
+  duplicate registries, concurrent writers/reindexing, metadata/blob crash debris,
+  exact retained archive/prune replay, deterministic full/incremental/idempotent
+  archives, stale bases, capacity refusal, traversal/link/special/truncated/corrupt
+  attacks, cross-computer and repeated imports, secret fixtures, protected prune,
+  receipt/media reauthentication, and index loss/rebuild.
+- All 7 deployment field contract tests passed. All 69 deployment Draft-07 schemas
+  validated; focused Black, fatal Flake8, Python compilation, and diff hygiene
+  passed. Clean temporary CLI/deployment wheel builds contained both new providers
+  and all four installed record/archive schemas. The governed submodule lock passed.
+- No real external operator medium or replacement GC is attached in this
+  environment, so no claim is made for a physical-device unplug/replug or live
+  disaster-recovery drill. Per operator direction, the full regression suite runs
+  once below at the Phase 2 boundary rather than after each task.
 
 ### P3: Provision Raw Ubuntu Into A Converged Aircraft Host
 

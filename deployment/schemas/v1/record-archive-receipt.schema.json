@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/record-archive-receipt.schema.json",
+  "title": "III verified external record archive receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "receipt_id", "archive_id", "archive_sha256", "archive_size", "archive_path", "verified_at", "mode", "base_archive_id", "covered_record_ids", "covered_irreplaceable_record_ids", "covered_domains", "verification_state", "creation_source"],
+  "properties": {
+    "schema": {"const": "iii.record-archive-receipt/v1"},
+    "receipt_id": {"$ref": "#/definitions/hash"},
+    "archive_id": {"$ref": "#/definitions/hash"},
+    "archive_sha256": {"$ref": "#/definitions/hash"},
+    "archive_size": {"type": "integer", "minimum": 1},
+    "archive_path": {"type": "string", "minLength": 1},
+    "verified_at": {"type": "string", "format": "date-time"},
+    "mode": {"enum": ["full", "incremental"]},
+    "base_archive_id": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/hash"}]},
+    "covered_record_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/hash"}},
+    "covered_irreplaceable_record_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/hash"}},
+    "covered_domains": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "verification_state": {"const": "verified"},
+    "creation_source": {"const": "iii records archive"}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

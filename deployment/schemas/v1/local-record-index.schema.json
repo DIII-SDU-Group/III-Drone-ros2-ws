@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/local-record-index.schema.json",
+  "title": "III user-owned local record index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "index_id", "records", "blobs", "omitted"],
+  "properties": {
+    "schema": {"const": "iii.record-index/v1"},
+    "index_id": {"$ref": "#/definitions/hash"},
+    "records": {"type": "array", "items": {"$ref": "#/definitions/record"}},
+    "blobs": {"type": "array", "items": {"$ref": "#/definitions/stored_blob"}},
+    "omitted": {"type": "array", "items": {"$ref": "#/definitions/omitted"}}
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["locator", "content_id", "size"],
+      "properties": {
+        "locator": {"type": "string", "minLength": 1},
+        "content_id": {"$ref": "#/definitions/hash"},
+        "size": {"type": "integer", "minimum": 0}
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "record_id", "domain", "locator", "unit_kind", "directories", "files", "creation_source", "target", "references", "irreplaceable", "protection", "integrity"],
+      "properties": {
+        "schema": {"const": "iii.local-record/v1"},
+        "record_id": {"$ref": "#/definitions/hash"},
+        "domain": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+        "locator": {"type": "string", "minLength": 1},
+        "unit_kind": {"enum": ["file", "directory"]},
+        "directories": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "files": {"type": "array", "items": {"$ref": "#/definitions/file"}},
+        "creation_source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {"kind": {"type": "string", "minLength": 1}, "value": {"type": "string", "minLength": 1}}
+        },
+        "target": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "object", "additionalProperties": false, "required": ["logical_id", "profile"], "properties": {"logical_id": {"type": "string", "minLength": 1}, "profile": {"type": "string", "minLength": 1}}}
+          ]
+        },
+        "references": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/hash"}},
+        "irreplaceable": {"type": "boolean"},
+        "protection": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "integrity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "issues"],
+          "properties": {"state": {"enum": ["verified", "corrupt"]}, "issues": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}}
+        }
+      }
+    },
+    "stored_blob": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_id", "size", "integrity"],
+      "properties": {"content_id": {"$ref": "#/definitions/hash"}, "size": {"type": "integer", "minimum": 0}, "integrity": {"enum": ["verified", "corrupt"]}}
+    },
+    "omitted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["locator", "reason"],
+      "properties": {"locator": {"type": "string", "minLength": 1}, "reason": {"const": "incomplete-staging"}}
+    }
+  }
+}
