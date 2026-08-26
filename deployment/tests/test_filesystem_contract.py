@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from iii_deployment.contracts import ContractError
+from iii_deployment.contracts import ContractError, canonical_json
 from iii_deployment.filesystem import (
     FilesystemContract,
     StorageProjection,
@@ -58,10 +58,10 @@ def test_candidate_tree_rejects_symlink_and_fifo(tmp_path: Path) -> None:
 
 
 def _request(action: str, nonce: str | None, payload: dict | None = None) -> bytes:
-    return json.dumps({
+    return canonical_json({
         "protocol_version": "1", "action": action, "operation_id": "operation-123",
         "client_id": "a" * 64, "payload": payload or {}, "nonce": nonce,
-    }).encode()
+    })
 
 
 def test_receiver_protocol_exposes_only_fixed_actions() -> None:

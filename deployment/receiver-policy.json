@@ -1,0 +1,37 @@
+{
+  "schema": "iii.receiver-policy/v1",
+  "transport": {
+    "kind": "unix-domain-socket",
+    "path": "/run/iii/deployment-receiver.sock",
+    "tcp_listener": false,
+    "ssh_forced_command": "/usr/bin/iii-deploymentctl"
+  },
+  "normal_release_mutable_paths": [
+    "/opt/iii/releases",
+    "/opt/iii/current",
+    "/var/lib/iii/deployment",
+    "/var/log/iii/deployment",
+    "/home/iii/.ssh/authorized_keys"
+  ],
+  "declared_systemd_units": [
+    "iii-system-daemon.service",
+    "iii-runtime-api.service"
+  ],
+  "normal_release_forbidden_paths": [
+    "/opt/iii/receiver/bootstrap",
+    "/opt/iii/receiver/fallback",
+    "/etc/iii/trust",
+    "/etc/systemd/system/iii-deployment-receiver-reconcile.service",
+    "/etc/systemd/system/iii-deployment-receiver.service"
+  ],
+  "deadlines_s": {
+    "target_acceptance": 60,
+    "hard": 120,
+    "rollback_target": 60
+  },
+  "authorization": {
+    "nonce_expiry_s": 300,
+    "single_use": true,
+    "target_wide_lease_count": 1
+  }
+}

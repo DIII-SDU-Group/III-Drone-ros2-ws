@@ -143,3 +143,32 @@ _Avoid_: Removing old scripts first
   physical reimage, restore of portable state, fresh enrollment, and recommissioning.
 - The operating manual, CLI schemas, CI, and agent instructions share one policy
   implementation; PR text and decorative output are never trusted inputs.
+
+### Receiver transaction boundary
+
+- SSH carries files only into the unprivileged, content-addressed incoming area.
+  A forced `iii-deploymentctl` command forwards one canonical request over the
+  permission-controlled Unix socket; the receiver exposes no TCP listener and no
+  arbitrary command, path, environment, or unit-name transport.
+- Every target mutation begins with a content-addressed plan bound to receiver
+  generation, logical target/profile, active release, configuration,
+  commissioning, access state, client, and operation. The receiver issues a
+  five-minute monotonic nonce that is consumed once, atomically with acquisition
+  of the single target-wide mutation lease.
+- Before durable acceptance, application input is copied from the unprivileged
+  upload slot into an operation-scoped receiver-owned directory and rechecked
+  against the retained archive/release/status identities. Execution and boot
+  reconciliation never consume mutable input from the SSH account.
+- The operation journal is durable before the receiver returns `accepted`.
+  Disconnecting SSH or the CLI therefore cannot cancel work. Read-only status
+  remains available by operation ID; cancellation succeeds only at a journaled
+  safe checkpoint, and stale-lease recovery is receiver-owned and audit logged.
+- Receiver startup reconciles journals and the derived forced-command key file
+  before application services. It can resume an accepted mutation or fail it
+  closed, but it never starts Mission Execution or any other autonomy.
+- Operator-key rotation is receiver-owned `add -> prove from a new SSH session ->
+  revoke`. Pending keys can request only their own proof, and the final active key
+  cannot be revoked in band. Final host policy grants `iii` no passwordless sudo.
+- Normal application release operations cannot modify receiver bootstrap/fallback,
+  stable receiver systemd units, or trust roots. Those belong to separately
+  qualified host convergence or receiver A/B self-update transactions.

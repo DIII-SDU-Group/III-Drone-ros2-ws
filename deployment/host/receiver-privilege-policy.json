@@ -1,0 +1,20 @@
+{
+  "schema": "iii.receiver-privilege-policy/v1",
+  "runtime_user": "iii",
+  "final_passwordless_sudo_commands": [],
+  "bootstrap_authority": {
+    "owner": "ansible",
+    "temporary": true,
+    "revoke_after": [
+      "permanent-operator-key-proved",
+      "receiver-reconciliation-proved",
+      "receiver-socket-proved",
+      "authorized-keys-reconciled"
+    ],
+    "retain_on_interruption": true
+  },
+  "complete_key_loss": {
+    "in_band_bypass": false,
+    "recovery": "physical-salvage-or-reimage"
+  }
+}

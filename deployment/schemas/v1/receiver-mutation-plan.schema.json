@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/receiver-mutation-plan.schema.json",
+  "title": "III receiver state-bound mutation plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "plan_id", "action", "operation_id", "client_id", "receiver_generation", "parameters", "target", "expected_state"],
+  "properties": {
+    "schema": {"const": "iii.receiver-mutation-plan/v1"},
+    "plan_id": {"$ref": "#/definitions/identity"},
+    "action": {"enum": ["stage", "access-add", "access-revoke"]},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "client_id": {"$ref": "#/definitions/identity"},
+    "receiver_generation": {"type": "integer", "minimum": 1},
+    "parameters": {"type": "object"},
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["logical_id", "profile"],
+      "properties": {
+        "logical_id": {"type": "string", "pattern": "^[a-z][a-z0-9.-]{0,63}$"},
+        "profile": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$"}
+      }
+    },
+    "expected_state": {
+      "type": "object", "additionalProperties": false,
+      "required": ["active_release_id", "configuration_hash", "commissioning_hash", "profile", "target_state_hash", "access_state_id"],
+      "properties": {
+        "active_release_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "configuration_hash": {"$ref": "#/definitions/identity"},
+        "commissioning_hash": {"$ref": "#/definitions/identity"},
+        "profile": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$"},
+        "target_state_hash": {"$ref": "#/definitions/identity"},
+        "access_state_id": {"$ref": "#/definitions/identity"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"action": {"const": "stage"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/stage_parameters"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "access-add"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/access_add_parameters"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "access-revoke"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/access_revoke_parameters"}}}
+    }
+  ],
+  "definitions": {
+    "identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "stage_parameters": {
+      "type": "object", "additionalProperties": false,
+      "required": ["release_id", "archive_sha256", "upload_id", "status_index_id"],
+      "properties": {
+        "release_id": {"$ref": "#/definitions/identity"},
+        "archive_sha256": {"$ref": "#/definitions/identity"},
+        "upload_id": {"$ref": "#/definitions/identity"},
+        "status_index_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "access_add_parameters": {
+      "type": "object", "additionalProperties": false,
+      "required": ["phase", "client_id", "public_key"],
+      "properties": {
+        "phase": {"enum": ["add", "prove"]},
+        "client_id": {"$ref": "#/definitions/identity"},
+        "public_key": {"type": "string", "pattern": "^ssh-ed25519 [A-Za-z0-9+/]{43}=$"}
+      }
+    },
+    "access_revoke_parameters": {
+      "type": "object", "additionalProperties": false,
+      "required": ["client_id"],
+      "properties": {"client_id": {"$ref": "#/definitions/identity"}}
+    }
+  }
+}

@@ -35,8 +35,10 @@ iii_deployment = ["assets/**/*.json", "assets/**/*.yaml", "assets/**/*.j2"]
 
 [tool.setuptools.data-files]
 "share/iii-deployment/schemas/v1" = ["schemas/v1/*.json"]
-"share/iii-deployment/policy" = ["operational-policy.json", "documentation-policy.json"]
+"share/iii-deployment/policy" = ["operational-policy.json", "documentation-policy.json", "receiver-policy.json"]
 "share/iii-deployment/verification" = ["verification/clause-baseline.json"]
+"share/iii-deployment/systemd" = ["systemd/*.service"]
+"share/iii-deployment/host" = ["host/*.json", "host/*.sudoers"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -2986,6 +2986,8 @@ Tests:
 
 #### P2.T2: Implement The Onboard Deployment Receiver
 
+**Status: Completed.**
+
 Description:
 Create a minimal host-installed, root-owned deployment receiver that validates
 structured requests and owns the privileged filesystem, transaction journal,
@@ -2999,27 +3001,27 @@ elevation after this receiver is installed and verified.
 
 Acceptance:
 
-- [ ] `iii` has no unrestricted passwordless sudo path.
-- [ ] Only declared III release paths and systemd units can be mutated.
-- [ ] Requests and results are audit logged without secrets.
-- [ ] Key-management uses add -> prove new credential -> revoke old sequencing and
+- [x] `iii` has no unrestricted passwordless sudo path.
+- [x] Only declared III release paths and systemd units can be mutated.
+- [x] Requests and results are audit logged without secrets.
+- [x] Key-management uses add -> prove new credential -> revoke old sequencing and
       rejects in-band removal of the final usable SSH operator key. Complete key
       loss follows Q128 physical salvage/reimage; there is no receiver override.
-- [ ] Receiver binaries/configuration are not stored under `/opt/iii/releases`,
+- [x] Receiver binaries/configuration are not stored under `/opt/iii/releases`,
       and replacing or breaking an III release cannot replace or stop the receiver.
-- [ ] Accepted operations continue through their deadline after SSH/network/client
+- [x] Accepted operations continue through their deadline after SSH/network/client
       loss, and status can be reattached by operation ID after reconnection.
-- [ ] Target-wide mutations obey the final Q113–Q114 detach/cancel/concurrency
+- [x] Target-wide mutations obey the final Q113–Q114 detach/cancel/concurrency
       contract with one durable receiver-owned operation lease, read-only
       observability, safe-checkpoint cancellation, and audited stale-lock recovery.
-- [ ] Apply authorization follows the final Q115 state-bound, expiring, single-use
+- [x] Apply authorization follows the final Q115 state-bound, expiring, single-use
       nonce contract and its five-minute monotonic default; stale/replayed/cross-
       target plans cannot mutate the host.
-- [ ] Receiver restart or host reboot deterministically reconciles every durable
+- [x] Receiver restart or host reboot deterministically reconciles every durable
       transaction state without starting autonomy.
-- [ ] The 60/120/60-second target/deadline/rollback budgets are enforced onboard
+- [x] The 60/120/60-second target/deadline/rollback budgets are enforced onboard
       using monotonic deadlines where applicable and reported with measurements.
-- [ ] The receiver cannot update the stable bootstrap, systemd recovery unit,
+- [x] The receiver cannot update the stable bootstrap, systemd recovery unit,
       trust root, or final selector fallback through a normal release operation.
 
 Tests:
@@ -3029,6 +3031,31 @@ Tests:
   client/network loss, receiver restart, host reboot, deadline expiry, successful
   boot-journal reconciliation, final-key denial, stale/replay rejection, and
   bootstrap-mutation rejection.
+
+Implementation notes:
+
+- Added the root-owned receiver engine, fixed canonical request/plan contracts,
+  five-minute state-bound nonces, one durable target-wide lease, operation journals,
+  hash-chained audit records with result identities, safe cancellation, and boot
+  reconciliation that explicitly reports `autonomy_started: false`.
+- The receiver now claims the exact five-file bundle plus optional status index into
+  a size/reserve-checked, operation-scoped root-owned directory before durable
+  acceptance. It fsyncs and re-verifies the claimed archive/release/status identities;
+  later changes to the unprivileged upload tree cannot affect execution or resume.
+- Added forced-command SSH key add/prove/revoke state, pending-key self-proof only,
+  final-key denial, derived `authorized_keys` reconciliation, sshd-ancestry peer
+  authentication, a bounded Unix-domain socket transport, and no TCP surface.
+- Added stable receiver/reconciliation systemd units outside application release
+  slots, explicit receiver filesystem/host privilege policies, zero final sudo
+  grants, schemas, packaged host assets, and domain invariants. Normal operations
+  have no action or write path for bootstrap/fallback, receiver units, or trust roots.
+- Verification: 35 focused receiver/staging/security tests and all 239 deployment
+  tests passed in the Jazzy devcontainer; Python compile, E/F lint, canonical JSON,
+  diff hygiene, schema validation, and pinned-backend wheel payload inspection passed.
+  `systemd-analyze verify` parsed both units successfully; this non-provisioned host
+  could only warn that the future `/opt/iii/receiver/current` executable is absent,
+  plus unrelated host-unit warnings. Real root-owned installation/boot/SSH-loss tests
+  remain part of the P3.T1 provisioned-host and later end-to-end acceptance work.
 
 #### P2.T3: Implement Transactional Receiver A/B Self-Update
 

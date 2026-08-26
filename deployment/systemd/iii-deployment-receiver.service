@@ -1,0 +1,23 @@
+[Unit]
+Description=III deployment receiver
+Requires=iii-deployment-receiver-reconcile.service
+After=iii-deployment-receiver-reconcile.service
+Before=iii-system-daemon.service iii-runtime-api.service
+
+[Service]
+Type=simple
+ExecStart=/opt/iii/receiver/current/bin/iii-deployment-receiver --config /etc/iii/deployment-receiver.json --foreground
+Restart=on-failure
+RestartSec=2s
+User=root
+Group=root
+UMask=0027
+NoNewPrivileges=yes
+PrivateNetwork=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/iii/releases /opt/iii/current /var/lib/iii/deployment /var/lib/iii/incoming /var/log/iii/deployment /home/iii/.ssh/authorized_keys /run/iii
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

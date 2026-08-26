@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import base64
+import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -15,6 +18,11 @@ from iii_deployment.contracts import ContractError, ContractRegistry
 from iii_deployment.release_status import create_status_index, create_status_statement
 from iii_deployment.signers import add_trusted_signer, generate_signer, signer_proof
 from iii_deployment.staging import ReleaseStore
+from iii_deployment.contracts import canonical_json
+from iii_deployment.receiver.access import AccessManager, client_id_for_public_key
+from iii_deployment.receiver.engine import ReceiverEngine
+from iii_deployment.receiver.protocol import Request
+from iii_deployment.receiver.state import AuditLog, OperationJournalStore, ReceiverControlStore
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +30,12 @@ REGISTRY = ContractRegistry(ROOT / "deployment/schemas/v1")
 LIMITS = load_bundle_limits(ROOT / "deployment/operational-policy.json")
 FIXTURE = ROOT / "deployment/tests/fixtures/release_manifest.json"
 NOW = "2026-08-26T10:00:00Z"
+
+
+class ImmediateExecutor:
+    def submit(self, function, *args):
+        function(*args)
+        return SimpleNamespace()
 
 
 @dataclass(frozen=True)
@@ -219,6 +233,114 @@ def _accept(
         authorization,
         explicit_qualified_action=qualified,
     )
+
+
+def _receiver_request(
+    action: str,
+    operation_id: str,
+    client_id: str,
+    payload: dict,
+    nonce: str | None = None,
+) -> Request:
+    return Request.parse(
+        canonical_json(
+            {
+                "protocol_version": "1",
+                "action": action,
+                "operation_id": operation_id,
+                "client_id": client_id,
+                "payload": payload,
+                "nonce": nonce,
+            }
+        )
+    )
+
+
+def test_receiver_engine_stages_a_real_signed_bundle_and_status_chain(
+    tmp_path: Path,
+    cases: ReleaseCases,
+) -> None:
+    case = cases.bundle(
+        "receiver-e2e",
+        release_id="a" * 64,
+        release_class="qualified",
+        version="v1.0.0",
+    )
+    status_index = cases.append_status(case, "qualified")
+    upload_id = "b" * 64
+    upload = tmp_path / "incoming" / upload_id
+    shutil.copytree(case.paths.directory, upload / "drone")
+    (upload / "release-status-index.json").write_bytes(canonical_json(status_index) + b"\n")
+    operator_key = "ssh-ed25519 " + base64.b64encode(b"o" * 32).decode("ascii")
+    operator_id = client_id_for_public_key(operator_key)
+    access = AccessManager(
+        state_path=tmp_path / "receiver/access.json",
+        authorized_keys_path=tmp_path / "home/iii/.ssh/authorized_keys",
+    )
+    access.bootstrap([operator_key])
+    clock = SimpleNamespace(value=10.0, boot="boot-a")
+    control = ReceiverControlStore(
+        tmp_path / "receiver",
+        1,
+        300,
+        lambda: clock.value,
+        lambda: clock.boot,
+    )
+    journals = OperationJournalStore(
+        tmp_path / "receiver", lambda: clock.value, lambda: clock.boot
+    )
+    store = cases.store(tmp_path / "target")
+    engine = ReceiverEngine(
+        release_store=store,
+        control=control,
+        journals=journals,
+        audit=AuditLog(tmp_path / "audit/receiver.jsonl", lambda: clock.value, lambda: clock.boot),
+        access=access,
+        incoming_root=tmp_path / "incoming",
+        receiver_root=tmp_path / "target/opt/iii/receiver",
+        logical_target="drone",
+        profile="real",
+        live_state=lambda: {
+            "active_release_id": None,
+            "configuration_hash": "c" * 64,
+            "commissioning_hash": "d" * 64,
+            "profile": "real",
+            "target_state_hash": "e" * 64,
+        },
+        executor=ImmediateExecutor(),
+    )
+    planned = engine.handle(
+        _receiver_request(
+            "plan-stage",
+            "receiver-stage-0001",
+            operator_id,
+            {
+                "artifact": {
+                    "release_id": case.release_id,
+                    "archive_sha256": hashlib.sha256(case.paths.archive.read_bytes()).hexdigest(),
+                    "upload_id": upload_id,
+                    "status_index_id": status_index["index_id"],
+                },
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    REGISTRY.validate("receiver-mutation-plan", planned["plan"])
+    engine.handle(
+        _receiver_request(
+            "stage",
+            "receiver-stage-0001",
+            operator_id,
+            {"plan": planned["plan"]},
+            planned["nonce"],
+        )
+    )
+    journal = journals.load("receiver-stage-0001")
+    assert journal is not None and journal["state"] == "completed"
+    assert journal["result"]["release_id"] == case.release_id
+    state = store.state()
+    assert state["candidate_release_id"] == case.release_id
+    assert state["status_index_id"] == status_index["index_id"]
 
 
 def test_first_stage_is_immutable_and_duplicate_is_idempotent(

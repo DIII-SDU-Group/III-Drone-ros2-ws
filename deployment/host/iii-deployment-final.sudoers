@@ -1,0 +1,3 @@
+# Final III host policy intentionally grants no passwordless sudo commands.
+# Bootstrap elevation is Ansible-owned, temporary, and removed only after the
+# permanent key and receiver recovery path have both been proved.
