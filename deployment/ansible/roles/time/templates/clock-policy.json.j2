@@ -1,0 +1,8 @@
+{{ {
+  'schema': 'iii.host-clock-policy/v1',
+  'timezone': 'UTC',
+  'continuous_sync': 'chrony-slew-only',
+  'step_authority': 'receiver-degraded-clock-only',
+  'correctness_clock': 'boot-id-plus-monotonic',
+  'runtime_step_forbidden': true
+} | iii_canonical_json }}

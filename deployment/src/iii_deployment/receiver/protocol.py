@@ -64,7 +64,9 @@ RELEASE_ID = IDENTITY
 UPLOAD_ID = IDENTITY
 PROFILE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 TARGET_ID = re.compile(r"^[a-z][a-z0-9.-]{0,63}$")
-PUBLIC_KEY = re.compile(r"^ssh-ed25519 [A-Za-z0-9+/]{43}=$")
+# OpenSSH wire encoding: uint32(11), ``ssh-ed25519``, uint32(32), raw key.
+# Comments are deliberately excluded so a key has one stable client identity.
+PUBLIC_KEY = re.compile(r"^ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI[A-Za-z0-9+/]{43}$")
 PLAN_SCHEMA = "iii.receiver-mutation-plan/v1"
 
 

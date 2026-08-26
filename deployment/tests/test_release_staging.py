@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import shutil
+import struct
 from types import SimpleNamespace
 
 import pytest
@@ -277,7 +278,10 @@ def test_receiver_engine_stages_a_real_signed_bundle_and_status_chain(
     (upload / "release-status-index.json").write_bytes(
         canonical_json(status_index) + b"\n"
     )
-    operator_key = "ssh-ed25519 " + base64.b64encode(b"o" * 32).decode("ascii")
+    operator_blob = (
+        struct.pack(">I", 11) + b"ssh-ed25519" + struct.pack(">I", 32) + b"o" * 32
+    )
+    operator_key = "ssh-ed25519 " + base64.b64encode(operator_blob).decode("ascii")
     operator_id = client_id_for_public_key(operator_key)
     access = AccessManager(
         state_path=tmp_path / "receiver/access.json",

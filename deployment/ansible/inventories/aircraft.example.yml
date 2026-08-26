@@ -1,0 +1,12 @@
+---
+all:
+  children:
+    aircraft:
+      hosts:
+        iii.local:
+          ansible_user: iii-bootstrap
+          iii_target_class: raspberry-pi-5-noble-arm64
+          iii_logical_target: iii
+          iii_profile: real
+          # Supply iii_provisioning_inputs through an owner-only, Git-ignored
+          # --extra-vars file. No credential or host-specific secret belongs here.

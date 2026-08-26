@@ -1,0 +1,190 @@
+---
+- name: Pin Ubuntu to the governed date-addressed snapshot
+  ansible.builtin.template:
+    src: ubuntu.sources.j2
+    dest: /etc/apt/sources.list.d/ubuntu.sources
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Remove mutable default Ubuntu source files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list
+    - /etc/apt/sources.list.d/ubuntu.sources.curtin.orig
+
+- name: Prefer the governed snapshots strongly enough to normalize image packages
+  ansible.builtin.copy:
+    dest: /etc/apt/preferences.d/iii-snapshots
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Package: *
+      Pin: origin snapshot.ubuntu.com
+      Pin-Priority: 1001
+
+      Package: ros-*
+      Pin: origin snapshots.ros.org
+      Pin-Priority: 1001
+
+- name: Refresh the signed Ubuntu snapshot index for online convergence
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 0
+  when:
+    - not (iii_offline | default(false) | bool)
+    - not ansible_check_mode
+
+- name: Install key-verification prerequisites from the Ubuntu snapshot
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - gnupg
+    state: present
+    install_recommends: false
+    update_cache: false
+    allow_downgrade: true
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Inspect the pinned ROS snapshot key source on the controller
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../../keys/ros-snapshot-builder.asc"
+    checksum_algorithm: sha256
+  register: iii_ros_controller_key_stat
+  delegate_to: localhost
+  become: false
+
+- name: Refuse a different controller-side ROS snapshot key
+  ansible.builtin.assert:
+    that:
+      - iii_ros_controller_key_stat.stat.exists
+      - iii_ros_controller_key_stat.stat.isreg
+      - not iii_ros_controller_key_stat.stat.islnk
+      - iii_ros_controller_key_stat.stat.checksum == iii_ros_key_sha256
+
+- name: Inspect the ROS snapshot signing fingerprint on the controller
+  ansible.builtin.command:
+    argv:
+      - gpg
+      - --show-keys
+      - --with-colons
+      - "{{ playbook_dir }}/../../keys/ros-snapshot-builder.asc"
+  register: iii_ros_controller_fingerprint
+  changed_when: false
+  check_mode: false
+  delegate_to: localhost
+  become: false
+
+- name: Refuse a different controller-side ROS signing fingerprint
+  ansible.builtin.assert:
+    that:
+      - "('fpr:::::::::' + iii_ros_key_fingerprint + ':') in iii_ros_controller_fingerprint.stdout_lines"
+
+- name: Install the pinned ROS snapshot public key source
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../keys/ros-snapshot-builder.asc"
+    dest: /etc/iii/ros-snapshot-builder.asc
+    owner: root
+    group: root
+    mode: "0444"
+  register: iii_ros_key_source
+
+- name: Verify ROS snapshot key file identity
+  ansible.builtin.stat:
+    path: /etc/iii/ros-snapshot-builder.asc
+    checksum_algorithm: sha256
+  register: iii_ros_key_stat
+
+- name: Refuse a different ROS snapshot key
+  ansible.builtin.assert:
+    that:
+      - iii_ros_key_stat.stat.checksum == iii_ros_key_sha256
+  when: not ansible_check_mode
+
+- name: Inspect ROS snapshot key fingerprint
+  ansible.builtin.command:
+    argv:
+      - gpg
+      - --show-keys
+      - --with-colons
+      - /etc/iii/ros-snapshot-builder.asc
+  register: iii_ros_key_fingerprint_result
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Refuse a different ROS signing fingerprint
+  ansible.builtin.assert:
+    that:
+      - "('fpr:::::::::' + iii_ros_key_fingerprint + ':') in iii_ros_key_fingerprint_result.stdout_lines"
+  when: not ansible_check_mode
+
+- name: Inspect the materialized ROS snapshot keyring
+  ansible.builtin.stat:
+    path: /usr/share/keyrings/ros-snapshot-builder.gpg
+  register: iii_ros_keyring_stat
+
+- name: Materialize the ROS snapshot keyring
+  ansible.builtin.command:
+    argv:
+      - gpg
+      - --dearmor
+      - --batch
+      - --yes
+      - --output
+      - /usr/share/keyrings/ros-snapshot-builder.gpg
+      - /etc/iii/ros-snapshot-builder.asc
+  when:
+    - not ansible_check_mode
+    - iii_ros_key_source.changed or not iii_ros_keyring_stat.stat.exists
+  changed_when: true
+
+- name: Pin ROS Jazzy to the governed signed snapshot
+  ansible.builtin.template:
+    src: ros2.sources.j2
+    dest: /etc/apt/sources.list.d/ros2.sources
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Refresh the complete signed snapshot indexes for online convergence
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 0
+  when:
+    - not (iii_offline | default(false) | bool)
+    - not ansible_check_mode
+
+- name: Install the auditable host platform package set
+  ansible.builtin.apt:
+    name: "{{ iii_host_packages + iii_ros_packages }}"
+    state: present
+    install_recommends: false
+    update_cache: false
+    allow_downgrade: true
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Disable unattended package mutation services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    masked: true
+    state: stopped
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+    - unattended-upgrades.service
+  failed_when: false
+
+- name: Record immutable package-source policy separately from releases
+  ansible.builtin.template:
+    src: host-package-policy.json.j2
+    dest: /var/lib/iii/deployment/host-package-policy.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"

@@ -1,6 +1,6 @@
 {
   "schema": "iii.target-definition/v1",
-  "definition_id": "14abe3430aa4b172ee81d95717399accbfec2192da9a5ea61c8d419bc0a183df",
+  "definition_id": "4edfdc9e91470b7117054e8ec3f7f141161c9fca80914f0fd4dfe5dadde36f84",
   "target": {
     "target_id": "raspberry-pi-5-noble-arm64",
     "board": "raspberry-pi-5",
@@ -42,8 +42,8 @@
     }
   },
   "apt_snapshot": {
-    "uri": "https://snapshot.ubuntu.com/ubuntu/20260810T000000Z",
-    "timestamp": "2026-08-10T00:00:00Z",
+    "uri": "https://snapshot.ubuntu.com/ubuntu/20260801T000000Z",
+    "timestamp": "2026-08-01T00:00:00Z",
     "suites": ["noble", "noble-updates", "noble-security"],
     "components": ["main", "universe"]
   },

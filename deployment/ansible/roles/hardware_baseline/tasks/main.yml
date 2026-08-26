@@ -1,0 +1,27 @@
+---
+- name: Verify the data-driven hardware package baseline is installed
+  ansible.builtin.apt:
+    name: "{{ iii_hardware_packages }}"
+    state: present
+    install_recommends: false
+    update_cache: false
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Render hardware-class udev rule fragments
+  ansible.builtin.copy:
+    dest: "/etc/udev/rules.d/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.content | trim }}\n"
+  loop: "{{ iii_udev_rule_fragments }}"
+  notify: Reload udev
+
+- name: Record the hardware-class baseline boundary
+  ansible.builtin.template:
+    src: hardware-baseline.json.j2
+    dest: /etc/iii/hardware-baseline.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"

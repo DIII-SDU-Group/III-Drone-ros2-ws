@@ -1,0 +1,13 @@
+---
+- name: Revoke bootstrap authority on the target-equivalent Noble host
+  hosts: aircraft
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vars/raspberry-pi-5-noble-arm64.yml
+    - ../vars/target-equivalent-amd64-test.yml
+  roles:
+    - role: preflight
+      tags: [always]
+    - role: bootstrap_finalize
+      tags: [finalize]

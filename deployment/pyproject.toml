@@ -24,6 +24,9 @@ iii-deploymentctl = "iii_deployment.receiver.client:main"
 iii-deployment-ssh-gateway = "iii_deployment.receiver.ssh_gateway:main"
 iii-deployment-receiver = "iii_deployment.receiver.server:main"
 iii-receiver-bootstrap = "iii_deployment.receiver.bootstrap:main"
+iii-receiver-initial-install = "iii_deployment.receiver.install:main"
+iii-receiver-access-bootstrap = "iii_deployment.receiver.access_bootstrap:main"
+iii-host-bootstrap-finalize = "iii_deployment.receiver.host_finalize:main"
 iii-log-maintenance = "iii_deployment.log_maintenance:main"
 
 [tool.setuptools]
@@ -47,3 +50,4 @@ iii_deployment = ["assets/**/*.json", "assets/**/*.yaml", "assets/**/*.j2"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = ["target: privileged target-equivalent ARM64/systemd integration test"]

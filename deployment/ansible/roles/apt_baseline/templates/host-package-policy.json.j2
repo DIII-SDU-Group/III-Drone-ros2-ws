@@ -1,0 +1,9 @@
+{{ {
+  'schema': 'iii.host-package-policy/v1',
+  'baseline_id': iii_baseline_id,
+  'ubuntu_snapshot': iii_ubuntu_snapshot,
+  'ros_snapshot': iii_ros_snapshot,
+  'host_packages': iii_host_packages,
+  'ros_packages': iii_ros_packages,
+  'application_deployment_may_manage_packages': false
+} | iii_canonical_json }}

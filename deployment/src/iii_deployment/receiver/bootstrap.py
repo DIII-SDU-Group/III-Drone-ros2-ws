@@ -23,7 +23,9 @@ from iii_deployment.receiver.update import (
     _read_canonical,
 )
 
-BOOTSTRAP_SCHEMA_ROOT = Path("/opt/iii/receiver/bootstrap/share/schemas/v1")
+BOOTSTRAP_SCHEMA_ROOT = Path(
+    "/opt/iii/receiver/bootstrap/share/iii-deployment/schemas/v1"
+)
 CURRENT_RECEIVER = Path(
     "/opt/iii/receiver/selectors/current/bin/iii-deployment-receiver"
 )

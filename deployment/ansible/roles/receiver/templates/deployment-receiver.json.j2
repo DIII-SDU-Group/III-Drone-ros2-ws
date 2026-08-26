@@ -1,0 +1,8 @@
+{{ {
+  'schema': 'iii.receiver-config/v1',
+  'receiver_generation': iii_receiver_manifest.generation,
+  'logical_target': iii_logical_target,
+  'profile': iii_profile,
+  'runtime_uid': iii_runtime_uid,
+  'runtime_gid': iii_runtime_gid
+} | iii_canonical_json }}

@@ -758,6 +758,95 @@ class ReceiverSlotStore:
     def inactive_slot(self) -> str:
         return "b" if self.active_slot() == "a" else "a"
 
+    def install_initial(self, bundle: Path) -> dict[str, Any]:
+        """Install the first signed receiver on a clean converged host.
+
+        This narrow Ansible bootstrap path has no update authority once a
+        different receiver is selected.  Every interrupted stage is either a
+        verified slot ``a`` that can be completed or an owned partial that can
+        be discarded before selectors exist.
+        """
+
+        verified = verify_receiver_update(
+            bundle, trust=self.trust, registry=self.registry
+        )
+        compatibility = verified.manifest["compatibility"]
+        if (
+            "1" not in compatibility["bootstrap_protocols"]
+            or "1" not in compatibility["cli_protocols"]
+            or "1" not in compatibility["request_protocols"]
+        ):
+            raise ContractError(
+                "initial receiver does not support the fixed bootstrap, CLI, and request protocols"
+            )
+        self.slots_root.mkdir(parents=True, exist_ok=True, mode=0o755)
+        self.selector_root.mkdir(parents=True, exist_ok=True, mode=0o755)
+        unknown = [
+            path
+            for path in self.slots_root.iterdir()
+            if path.name not in {"a", "b"} and not path.name.startswith(".initial-")
+        ]
+        if unknown:
+            raise ContractError("receiver slots root contains an unknown entry")
+        for partial in sorted(self.slots_root.glob(".initial-*")):
+            if partial.is_symlink() or not partial.is_dir():
+                raise ContractError("initial receiver partial has an unsafe type")
+            if self.current_path.exists() or self.current_path.is_symlink():
+                raise ContractError(
+                    "initial receiver partial remains after selector creation"
+                )
+            self._make_removable(partial)
+            shutil.rmtree(partial)
+
+        destination = self.slots_root / "a"
+        if destination.exists() or destination.is_symlink():
+            if destination.is_symlink() or not destination.is_dir():
+                raise ContractError("initial receiver slot has an unsafe type")
+            observed = self.verify_slot("a")
+            if observed["receiver_id"] != verified.manifest["receiver_id"]:
+                raise ContractError("a different initial receiver is already installed")
+        else:
+            if (self.slots_root / "b").exists() or (self.slots_root / "b").is_symlink():
+                raise ContractError(
+                    "receiver slot b exists before initial installation"
+                )
+            temporary = Path(tempfile.mkdtemp(prefix=".initial-", dir=self.slots_root))
+            try:
+                _extract_verified(verified, temporary)
+                (temporary / MANIFEST_NAME).write_bytes(
+                    canonical_json(verified.manifest) + b"\n"
+                )
+                _fsync_file(temporary / MANIFEST_NAME)
+                self._freeze(temporary)
+                os.replace(temporary, destination)
+                _fsync_directory(self.slots_root)
+                self.verify_slot("a")
+            except Exception:
+                self._make_removable(temporary)
+                shutil.rmtree(temporary, ignore_errors=True)
+                raise
+
+        current = self.active_slot()
+        if current not in {None, "a"}:
+            raise ContractError("initial receiver cannot replace an active receiver")
+        if current is None:
+            _atomic_symlink(self.current_path, destination)
+        fallback = self._selector_slot(self.fallback_path, required=False)
+        if fallback not in {None, "a"}:
+            raise ContractError("initial receiver cannot replace receiver fallback")
+        if fallback is None:
+            _atomic_symlink(self.fallback_path, destination)
+        self.verify_slot("a")
+        return {
+            "schema": "iii.initial-receiver-install/v1",
+            "receiver_id": verified.manifest["receiver_id"],
+            "generation": verified.manifest["generation"],
+            "slot": "a",
+            "current": "a",
+            "fallback": "a",
+            "installed": current is None,
+        }
+
     def slot_manifest(self, slot: str) -> dict[str, Any]:
         if slot not in SLOTS:
             raise ContractError("unknown receiver slot")

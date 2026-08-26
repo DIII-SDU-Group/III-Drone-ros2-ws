@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iii-drone.local/schemas/v1/host-provisioning-check.schema.json",
+  "title": "III read-only host provisioning check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "plan", "ansible", "mutation_performed"],
+  "properties": {
+    "schema": {"const": "iii.host-provisioning-check/v1"},
+    "plan": {"type": "object"},
+    "ansible": {"type": "object"},
+    "mutation_performed": {"const": false}
+  }
+}

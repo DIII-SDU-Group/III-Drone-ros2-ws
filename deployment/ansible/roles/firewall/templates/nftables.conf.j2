@@ -1,0 +1,24 @@
+#!/usr/sbin/nft -f
+flush ruleset
+
+table inet iii_filter {
+  chain input {
+    type filter hook input priority filter; policy drop;
+    ct state invalid drop
+    ct state established,related accept
+    iifname "lo" accept
+    ip protocol icmp accept
+    ip6 nexthdr ipv6-icmp accept
+    ip saddr {{ iii_provisioning_inputs.operator_cidr }} tcp dport 22 accept comment "forced-command SSH and bootstrap Ansible"
+    ip saddr {{ iii_provisioning_inputs.operator_cidr }} tcp dport {{ iii_runtime_api_port }} accept comment "plain HTTP and WebSocket runtime API"
+    ip saddr {{ iii_provisioning_inputs.operator_cidr }} udp dport {{ iii_mdns_port }} accept comment "mDNS"
+  }
+
+  chain forward {
+    type filter hook forward priority filter; policy drop;
+  }
+
+  chain output {
+    type filter hook output priority filter; policy accept;
+  }
+}

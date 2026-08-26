@@ -140,6 +140,10 @@ authority, and emit a residual-secret inspection report. An interruption resumes
 those steps; a failed sanitization cannot produce a provisioned or commissioned
 host.
 
+Continue with the authenticated [aircraft host provisioning](host-provisioning.md)
+runbook. Do not narrow bootstrap authority by hand; the retained provisioning
+transaction does so only after permanent receiver access and recovery proofs pass.
+
 The upstream Raspberry Pi boot partition and auto-expanded ext4 root filesystem
 remain unchanged. This design intentionally adds no data partition, LVM,
 encryption, or A/B root filesystem in this sweep.

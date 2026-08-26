@@ -1,0 +1,45 @@
+---
+- name: Create the fixed III runtime group
+  ansible.builtin.group:
+    name: "{{ iii_runtime_group }}"
+    gid: "{{ iii_runtime_gid }}"
+    system: true
+    state: present
+
+- name: Create the hardware-access supplementary groups
+  ansible.builtin.group:
+    name: "{{ item }}"
+    system: true
+    state: present
+  loop: "{{ iii_runtime_supplementary_groups }}"
+
+- name: Create the unprivileged III runtime and forced-command SSH user
+  ansible.builtin.user:
+    name: "{{ iii_runtime_user }}"
+    uid: "{{ iii_runtime_uid }}"
+    group: "{{ iii_runtime_group_effective }}"
+    groups: "{{ omit if ansible_check_mode else (iii_runtime_supplementary_groups | join(',')) }}"
+    append: true
+    create_home: true
+    home: /home/iii
+    shell: /bin/bash
+    password_lock: true
+    system: true
+    state: present
+
+- name: Create the III SSH directory
+  ansible.builtin.file:
+    path: /home/iii/.ssh
+    state: directory
+    owner: "{{ iii_runtime_owner_effective }}"
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0700"
+
+- name: Install final no-sudo policy marker
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../host/iii-deployment-final.sudoers"
+    dest: /etc/sudoers.d/99-iii-deployment-final
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s

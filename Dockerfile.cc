@@ -8,7 +8,7 @@ ARG BUILDER_IMAGE=docker.io/library/ubuntu:24.04@sha256:33ceb71981b602c1a7443a53
 ARG BUILD_TOOLS_IMAGE=docker.io/library/ros:jazzy-ros-base@sha256:2589a8fba5257307857890173c069852c2abf913a0be7970f172478baecb09e4
 
 FROM --platform=linux/arm64 ${TARGET_IMAGE} AS target-seed
-ARG UBUNTU_SNAPSHOT=https://snapshot.ubuntu.com/ubuntu/20260810T000000Z
+ARG UBUNTU_SNAPSHOT=https://snapshot.ubuntu.com/ubuntu/20260801T000000Z
 ARG ROS_SNAPSHOT=http://snapshots.ros.org/jazzy/2026-06-18/ubuntu
 ARG ROS_SNAPSHOT_KEY_SHA256=6d2ff4af9d56b304213de7664551f6986174a68bae76476b7ad21469b27a28c4
 ARG GENERATE_PARAMETER_LIBRARY_VERSION=0.7.3-1noble.20260612.124157
@@ -56,7 +56,7 @@ FROM target-seed AS target-sysroot
 FROM --platform=linux/amd64 ${BUILD_TOOLS_IMAGE} AS ros-build-tools
 
 FROM --platform=linux/amd64 ${BUILDER_IMAGE} AS toolchain
-ARG UBUNTU_SNAPSHOT=https://snapshot.ubuntu.com/ubuntu/20260810T000000Z
+ARG UBUNTU_SNAPSHOT=https://snapshot.ubuntu.com/ubuntu/20260801T000000Z
 ARG CA_CERTIFICATES_VERSION=20260601~24.04.1
 ARG GCC_VERSION=13.3.0-6ubuntu2~24.04.1cross1
 ARG LIBC_DEV_VERSION=2.39-0ubuntu8cross1

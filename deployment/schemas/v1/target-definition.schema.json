@@ -40,8 +40,8 @@
       "type": "object", "additionalProperties": false,
       "required": ["uri", "timestamp", "suites", "components"],
       "properties": {
-        "uri": {"const": "https://snapshot.ubuntu.com/ubuntu/20260810T000000Z"},
-        "timestamp": {"const": "2026-08-10T00:00:00Z"},
+        "uri": {"const": "https://snapshot.ubuntu.com/ubuntu/20260801T000000Z"},
+        "timestamp": {"const": "2026-08-01T00:00:00Z"},
         "suites": {"const": ["noble", "noble-updates", "noble-security"]},
         "components": {"const": ["main", "universe"]}
       }

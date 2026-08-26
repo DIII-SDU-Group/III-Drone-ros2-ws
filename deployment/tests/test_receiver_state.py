@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from pathlib import Path
+import struct
 
 import pytest
 
@@ -28,7 +29,13 @@ class Clock:
 
 
 def key(character: int) -> str:
-    return "ssh-ed25519 " + base64.b64encode(bytes([character]) * 32).decode("ascii")
+    blob = (
+        struct.pack(">I", 11)
+        + b"ssh-ed25519"
+        + struct.pack(">I", 32)
+        + bytes([character]) * 32
+    )
+    return "ssh-ed25519 " + base64.b64encode(blob).decode("ascii")
 
 
 def plan(operation_id: str = "operation-0001", client_id: str = "a" * 64) -> dict:

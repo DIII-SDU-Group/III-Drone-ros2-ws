@@ -1,0 +1,88 @@
+---
+iii_baseline_schema: iii.ansible-host-baseline/v1
+iii_baseline_id: 9ae8aecf91dfbab834940fa8567abdf4ece60073fdbc459d87b3a5f0ba289686
+iii_target_definition_id: 4edfdc9e91470b7117054e8ec3f7f141161c9fca80914f0fd4dfe5dadde36f84
+iii_expected_distribution: Ubuntu
+iii_expected_release: "24.04"
+iii_expected_codename: noble
+iii_expected_architecture: aarch64
+iii_runtime_user: iii
+iii_runtime_group: iii
+iii_runtime_uid: 1100
+iii_runtime_gid: 1100
+iii_runtime_owner_effective: "{{ (iii_runtime_uid | string) if ansible_check_mode else iii_runtime_user }}"
+iii_runtime_group_effective: "{{ (iii_runtime_gid | string) if ansible_check_mode else iii_runtime_group }}"
+iii_runtime_api_port: 8765
+iii_mdns_port: 5353
+iii_ubuntu_snapshot: https://snapshot.ubuntu.com/ubuntu/20260801T000000Z
+iii_ros_snapshot: http://snapshots.ros.org/jazzy/2026-06-18/ubuntu
+iii_ros_key_sha256: 6d2ff4af9d56b304213de7664551f6986174a68bae76476b7ad21469b27a28c4
+iii_ros_key_fingerprint: 4B63CF8FDE49746E98FA01DDAD19BAB3CBF125EA
+iii_host_packages:
+  - ca-certificates
+  - chrony
+  - curl
+  - gnupg
+  - jq
+  - netplan.io
+  - nftables
+  - openssh-server
+  - python3
+  - python3-apt
+  - python3-pip
+  - python3-venv
+  - rsync
+  - sudo
+  - udev
+  - usbutils
+  - util-linux
+  - v4l-utils
+  - xz-utils
+iii_ros_packages:
+  - ros-jazzy-ros-base
+  - ros-jazzy-generate-parameter-library=0.7.3-1noble.20260612.124157
+  - ros-jazzy-generate-parameter-library-py=0.7.3-1noble.20260514.121849
+  - ros-jazzy-parameter-traits=0.7.3-1noble.20260612.123910
+  - ros-jazzy-rmw-cyclonedds-cpp=2.2.3-1noble.20260612.091852
+  - ros-jazzy-usb-cam=0.8.1-1noble.20260614.090116
+iii_hardware_packages:
+  - udev
+  - usbutils
+  - v4l-utils
+iii_udev_rule_fragments: []
+iii_runtime_supplementary_groups:
+  - dialout
+  - render
+  - video
+iii_receiver_units:
+  - {name: iii-receiver-bootstrap-reconcile.service, active_required: false}
+  - {name: iii-deployment-receiver-reconcile.service, active_required: false}
+  - {name: iii-deployment-receiver.service, active_required: true}
+  - {name: iii-log-maintenance.timer, active_required: true}
+iii_bootstrap_seed_paths:
+  - /boot/firmware/user-data
+  - /boot/firmware/meta-data
+  - /boot/firmware/network-config
+  - /var/lib/cloud/seed/nocloud
+  - /var/lib/cloud/seed/nocloud-net
+  - /var/lib/cloud/instances
+iii_filesystem_directories:
+  - {path: /opt/iii/releases, owner: root, group: iii, mode: "0750"}
+  - {path: /opt/iii/receiver, owner: root, group: root, mode: "0755"}
+  - {path: /opt/iii/receiver/slots, owner: root, group: root, mode: "0755"}
+  - {path: /opt/iii/receiver/selectors, owner: root, group: root, mode: "0755"}
+  - {path: /etc/iii, owner: root, group: iii, mode: "0750"}
+  - {path: /etc/iii/trust, owner: root, group: iii, mode: "0750"}
+  - {path: /etc/iii/secrets, owner: root, group: iii, mode: "0750"}
+  - {path: /var/cache/iii, owner: root, group: root, mode: "0755"}
+  - {path: /var/cache/iii/wheels, owner: root, group: root, mode: "0755"}
+  - {path: /var/lib/iii, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/configuration, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/configuration/checkpoints, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/deployment, owner: root, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/deployment/activation-transactions, owner: root, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/deployment/activation, owner: root, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/incoming, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/log/iii, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/log/iii/deployment, owner: root, group: iii, mode: "0750"}
+  - {path: /run/iii, owner: iii, group: iii, mode: "0750"}

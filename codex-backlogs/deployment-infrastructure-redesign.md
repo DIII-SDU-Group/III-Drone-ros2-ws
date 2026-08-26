@@ -3700,6 +3700,28 @@ remain mandatory commissioning evidence on applicable hardware.
 
 #### P3.T1: Implement Idempotent Ansible Host Roles
 
+**Status: Completed (2026-08-26).** Implemented a data-driven Raspberry Pi 5
+host baseline under `deployment/ansible/`, the retained `iii host provision
+check/apply` workflow, signed receiver bootstrap/A/B recovery installation,
+permanent forced-command access, pinned Ubuntu/ROS package policy, UTC/slew-only
+time ownership, operator-LAN firewalling, host health evidence, and fail-closed
+cloud-init/bootstrap finalization. Host inputs, plans, Ansible recaps, checks,
+and run reports are versioned and content-bound; canonical JSON evidence is
+rendered through byte-tested templates. Added the operator runbook at
+`docs/host-provisioning.md` and bound Ansible target/package values back to the
+canonical target definition.
+
+Verification completed with production-profile Ansible lint across 35 files,
+syntax checks for both production playbooks, 125 focused deployment tests, 50
+focused CLI/result/record tests, and a privileged Noble/systemd target-equivalent
+test (453.60 s) covering first convergence, zero-change check mode, injected
+drift detection, repair, post-repair zero drift, signed receiver readiness,
+bootstrap authority/secret removal, canonical final report verification, and
+ARM64 emulation integrity. No physical Raspberry Pi or live aircraft was
+available; real ARM64 snapshot package identities were verified against the
+governed ROS snapshot and the integration harness separately smoke-tested ARM64
+execution before and after the native-systemd run.
+
 Description:
 Create roles for OS baseline, ROS installation, III user/groups, directories,
 udev, hardware dependencies, network/time, firewall, log retention, systemd,
@@ -3708,21 +3730,21 @@ and health inspection. Do not encode the ROS runtime graph outside `system_spec.
 
 Acceptance:
 
-- [ ] Roles support check/diff mode where technically possible.
-- [ ] Second application is idempotent.
-- [ ] Hardware-class variation is data-driven rather than copied playbooks.
-- [ ] OS package changes are pinned/auditable and separated from application deployment.
-- [ ] Host time is UTC with normal Ubuntu synchronization configured, while all
+- [x] Roles support check/diff mode where technically possible.
+- [x] Second application is idempotent.
+- [x] Hardware-class variation is data-driven rather than copied playbooks.
+- [x] OS package changes are pinned/auditable and separated from application deployment.
+- [x] Host time is UTC with normal Ubuntu synchronization configured, while all
       correctness-critical journals use boot identity and monotonic sequencing.
-- [ ] Post-gate host synchronization is configured slew-only; no NTP/system service
+- [x] Post-gate host synchronization is configured slew-only; no NTP/system service
       can step wall time behind the receiver's Q59–Q60 gate and audit path.
-- [ ] Authenticated preflight measures operator/target offset and supports a
+- [x] Authenticated preflight measures operator/target offset and supports a
       narrow audited clock-set operation only while the III graph is stopped;
       active runtime is never subjected to an automatic wall-clock step.
-- [ ] First convergence installs and verifies the receiver service, local socket,
+- [x] First convergence installs and verifies the receiver service, local socket,
       control client, separate bundle/status signing trust, transaction paths, and
       independent recovery hook before narrowing bootstrap privilege.
-- [ ] Runtime API firewall/service configuration exposes only the documented
+- [x] Runtime API firewall/service configuration exposes only the documented
       plain-HTTP/WS operator-LAN port and credentials, never privileged deployment
       operations; SSH/receiver transport remains the only deployment authority.
 

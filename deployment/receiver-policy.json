@@ -7,12 +7,17 @@
     "ssh_forced_command": "/usr/bin/iii-deployment-ssh-gateway"
   },
   "normal_release_mutable_paths": [
+    "/opt/iii",
     "/opt/iii/releases",
     "/opt/iii/current",
     "/var/lib/iii/configuration",
     "/var/lib/iii/deployment",
     "/var/log/iii",
+    "/home/iii/.ssh",
     "/home/iii/.ssh/authorized_keys"
+  ],
+  "normal_release_read_only_paths": [
+    "/opt/iii/receiver"
   ],
   "declared_systemd_units": [
     "iii-system-daemon.service",

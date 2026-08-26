@@ -87,6 +87,10 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     Checksum-pinned Raspberry Pi media imaging, typed physical-device proof,
     NoCloud bootstrap boundaries, diagnostics, and Ethernet-first recovery.
 
+25. `host-provisioning.md`
+    Retained Ansible convergence, pinned host/ROS baseline, signed receiver
+    bootstrap, zero-drift proof, and first-boot authority finalization.
+
 Domain language and context ownership are indexed by the root
 `CONTEXT-MAP.md`.
 

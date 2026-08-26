@@ -1,0 +1,57 @@
+---
+- name: Configure the UTC timezone database link
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/Etc/UTC
+    dest: /etc/localtime
+    state: link
+    owner: root
+    group: root
+    force: true
+
+- name: Record UTC as the configured host timezone
+  ansible.builtin.copy:
+    dest: /etc/timezone
+    owner: root
+    group: root
+    mode: "0644"
+    content: "Etc/UTC\n"
+
+- name: Install the slew-only chrony policy
+  ansible.builtin.template:
+    src: chrony.conf.j2
+    dest: /etc/chrony/chrony.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart chrony
+
+- name: Disable every competing wall-clock synchronization service
+  ansible.builtin.systemd_service:
+    name: systemd-timesyncd.service
+    state: stopped
+    enabled: false
+    masked: true
+  failed_when: false
+
+- name: Enable the slew-only synchronization service
+  ansible.builtin.systemd_service:
+    name: chrony.service
+    state: started
+    enabled: true
+  when: not ansible_check_mode
+
+- name: Reject a step-capable post-gate chrony policy
+  ansible.builtin.command:
+    argv: [grep, -E, "^[[:space:]]*makestep", /etc/chrony/chrony.conf]
+  register: iii_chrony_makestep
+  changed_when: false
+  failed_when: iii_chrony_makestep.rc == 0
+  check_mode: false
+
+- name: Retain the boot/monotonic clock ownership policy
+  ansible.builtin.template:
+    src: clock-policy.json.j2
+    dest: /etc/iii/clock-policy.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"

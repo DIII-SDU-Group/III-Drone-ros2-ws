@@ -217,6 +217,16 @@ def test_stable_units_run_receiver_outside_release_tree_and_allow_only_declared_
             line for line in unit.splitlines() if line.startswith("ReadWritePaths=")
         )
         assert set(write_line.removeprefix("ReadWritePaths=").split()) <= allowed
+        read_only_line = next(
+            line for line in unit.splitlines() if line.startswith("ReadOnlyPaths=")
+        )
+        read_only = set(read_only_line.removeprefix("ReadOnlyPaths=").split())
+        assert read_only == set(policy["normal_release_read_only_paths"])
+        assert all(
+            any(path == root or path.startswith(root + "/") for root in read_only)
+            for path in policy["normal_release_forbidden_paths"]
+            if path.startswith("/opt/iii/receiver/")
+        )
         assert not any(
             path in write_line for path in policy["normal_release_forbidden_paths"]
         )

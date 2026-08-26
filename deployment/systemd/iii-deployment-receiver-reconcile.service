@@ -15,7 +15,8 @@ NoNewPrivileges=yes
 PrivateNetwork=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/opt/iii/releases /opt/iii/current /opt/iii/receiver/slots /var/lib/iii/configuration /var/lib/iii/deployment /var/lib/iii/incoming /var/log/iii /home/iii/.ssh/authorized_keys /run/iii
+ReadWritePaths=/opt/iii /var/lib/iii/configuration /var/lib/iii/deployment /var/lib/iii/incoming /var/log/iii /home/iii/.ssh /run/iii
+ReadOnlyPaths=/opt/iii/receiver
 RestrictAddressFamilies=AF_UNIX
 
 [Install]

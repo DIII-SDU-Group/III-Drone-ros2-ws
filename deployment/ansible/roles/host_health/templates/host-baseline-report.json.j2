@@ -1,0 +1,21 @@
+{{ {
+  'schema': 'iii.host-baseline-report/v1',
+  'state': 'converged',
+  'baseline_id': iii_baseline_id,
+  'target_definition_id': iii_target_definition_id,
+  'target_class': iii_target_class,
+  'logical_target': iii_logical_target,
+  'profile': iii_profile,
+  'timezone': 'UTC',
+  'clock_policy': 'receiver-step-gate-plus-chrony-slew-only',
+  'journal_identity': 'boot-id-plus-monotonic',
+  'receiver': {
+    'receiver_id': (iii_health_readiness.receiver_id if not ansible_check_mode else iii_receiver_manifest.receiver_id),
+    'generation': (iii_health_readiness.generation if not ansible_check_mode else iii_receiver_manifest.generation),
+    'socket': '/run/iii/deployment-receiver.sock',
+    'ssh_transport_only': true,
+    'independent_recovery': true
+  },
+  'runtime_api': {'port': iii_runtime_api_port, 'operator_cidr': iii_provisioning_inputs.operator_cidr},
+  'packages': iii_health_package_versions | default({})
+} | iii_canonical_json }}

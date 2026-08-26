@@ -1,0 +1,221 @@
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import subprocess
+
+import pytest
+
+from iii_deployment.contracts import ContractError, canonical_json, content_identity
+from iii_deployment.receiver.host_finalize import finalize_host
+
+
+BASELINE_ID = "a" * 64
+RECEIVER_ID = "b" * 64
+CLIENT_ID = "c" * 64
+
+
+def _write(path: Path, value: object | bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(value, bytes):
+        path.write_bytes(value)
+    else:
+        path.write_bytes(canonical_json(value) + b"\n")
+
+
+def _root(tmp_path: Path) -> Path:
+    health = {
+        "schema": "iii.host-baseline-report/v1",
+        "state": "converged",
+        "baseline_id": BASELINE_ID,
+        "target_definition_id": "d" * 64,
+        "logical_target": "iii",
+        "profile": "real",
+        "receiver": {"receiver_id": RECEIVER_ID, "generation": 1},
+    }
+    readiness = {
+        "schema": "iii.receiver-readiness/v1",
+        "receiver_id": RECEIVER_ID,
+        "generation": 1,
+        "socket_open": True,
+        "self_tests_passed": True,
+    }
+    access = {
+        "schema": "iii.receiver-access-state/v1",
+        "access_id": "",
+        "generation": 1,
+        "clients": {
+            CLIENT_ID: {
+                "public_key": "ssh-ed25519 placeholder",
+                "state": "active",
+                "added_by": "ansible-bootstrap",
+                "proved_by": CLIENT_ID,
+            }
+        },
+    }
+    access["access_id"] = content_identity(
+        {key: value for key, value in access.items() if key != "access_id"}
+    )
+    _write(tmp_path / "var/lib/iii/deployment/host-baseline-report.json", health)
+    _write(tmp_path / "run/iii/receiver-readiness.json", readiness)
+    _write(tmp_path / "var/lib/iii/deployment/access-state.json", access)
+    _write(
+        tmp_path / "home/iii/.ssh/authorized_keys",
+        (
+            f'restrict,command="/usr/bin/iii-deployment-ssh-gateway --client-id {CLIENT_ID}" '
+            "ssh-ed25519 placeholder\n"
+        ).encode(),
+    )
+    slots = tmp_path / "opt/iii/receiver/slots"
+    (slots / "a").mkdir(parents=True)
+    selectors = tmp_path / "opt/iii/receiver/selectors"
+    selectors.mkdir(parents=True)
+    (selectors / "current").symlink_to("../slots/a")
+    (selectors / "fallback").symlink_to("../slots/a")
+    _write(tmp_path / "etc/netplan/50-cloud-init.yaml", b"network:\n  version: 2\n")
+    _write(tmp_path / "boot/firmware/user-data", b"secret\n")
+    _write(tmp_path / "var/lib/cloud/instances/iid/user-data.txt", b"secret\n")
+    _write(
+        tmp_path / "etc/sudoers.d/90-cloud-init-users",
+        b"iii-bootstrap ALL=(ALL) NOPASSWD:ALL\n",
+    )
+    return tmp_path
+
+
+def test_finalize_preserves_network_revokes_bootstrap_and_is_resumable(
+    tmp_path: Path,
+) -> None:
+    root = _root(tmp_path)
+    present = {"value": True}
+    calls: list[tuple[str, ...]] = []
+
+    def run(argv: object) -> None:
+        command = tuple(argv)  # type: ignore[arg-type]
+        calls.append(command)
+        if command[0].endswith("userdel"):
+            present["value"] = False
+
+    result = finalize_host(
+        baseline_id=BASELINE_ID,
+        root=root,
+        run=run,
+        user_exists=lambda _name: present["value"],
+    )
+
+    assert result["state"] == "provisioned"
+    assert result["commissioned"] is False
+    assert (
+        root / "etc/netplan/90-iii-operator.yaml"
+    ).read_text() == "network:\n  version: 2\n"
+    assert not (root / "etc/netplan/50-cloud-init.yaml").exists()
+    assert not (root / "boot/firmware/user-data").exists()
+    assert not (root / "var/lib/cloud/instances").exists()
+    assert not (root / "etc/sudoers.d/90-cloud-init-users").exists()
+    assert (root / "etc/cloud/cloud-init.disabled").is_file()
+    assert any(command[0].endswith("userdel") for command in calls)
+    report = json.loads(
+        (root / "var/lib/iii/deployment/host-provisioning-report.json").read_text()
+    )
+    assert report["report_id"] == result["report_id"]
+
+    repeated = finalize_host(
+        baseline_id=BASELINE_ID,
+        root=root,
+        run=run,
+        user_exists=lambda _name: False,
+    )
+    assert repeated == result
+
+
+def test_finalize_refuses_missing_permanent_network_before_sanitization(
+    tmp_path: Path,
+) -> None:
+    root = _root(tmp_path)
+    (root / "etc/netplan/50-cloud-init.yaml").unlink()
+
+    with pytest.raises(ContractError, match="no cloud-init network"):
+        finalize_host(
+            baseline_id=BASELINE_ID,
+            root=root,
+            run=lambda _argv: None,
+            user_exists=lambda _name: True,
+        )
+
+    assert (root / "boot/firmware/user-data").is_file()
+
+
+def test_finalize_refuses_pending_access_and_preserves_bootstrap(
+    tmp_path: Path,
+) -> None:
+    root = _root(tmp_path)
+    path = root / "var/lib/iii/deployment/access-state.json"
+    access = json.loads(path.read_text())
+    access["clients"][CLIENT_ID]["state"] = "pending"
+    access["access_id"] = content_identity(
+        {key: value for key, value in access.items() if key != "access_id"}
+    )
+    _write(path, access)
+
+    with pytest.raises(ContractError, match="absent, pending, or revoked"):
+        finalize_host(
+            baseline_id=BASELINE_ID,
+            root=root,
+            run=lambda _argv: None,
+            user_exists=lambda _name: True,
+        )
+
+    assert (root / "boot/firmware/user-data").is_file()
+
+
+def test_finalize_refuses_selector_escape(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    selector = root / "opt/iii/receiver/selectors/current"
+    selector.unlink()
+    selector.symlink_to("/tmp")
+
+    with pytest.raises(ContractError, match="selector escapes"):
+        finalize_host(
+            baseline_id=BASELINE_ID,
+            root=root,
+            run=lambda _argv: None,
+            user_exists=lambda _name: True,
+        )
+
+
+def test_finalize_accepts_userdel_warning_only_after_account_is_absent(
+    tmp_path: Path,
+) -> None:
+    root = _root(tmp_path)
+    present = {"value": True}
+
+    def removed_with_warning(argv: object) -> None:
+        command = tuple(argv)  # type: ignore[arg-type]
+        if command[0].endswith("userdel"):
+            present["value"] = False
+            raise subprocess.CalledProcessError(8, command)
+
+    result = finalize_host(
+        baseline_id=BASELINE_ID,
+        root=root,
+        run=removed_with_warning,
+        user_exists=lambda _name: present["value"],
+    )
+    assert result["bootstrap_user_removed"] is True
+
+
+def test_finalize_refuses_userdel_failure_when_account_survives(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+
+    def failed_removal(argv: object) -> None:
+        command = tuple(argv)  # type: ignore[arg-type]
+        if command[0].endswith("userdel"):
+            raise subprocess.CalledProcessError(8, command)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        finalize_host(
+            baseline_id=BASELINE_ID,
+            root=root,
+            run=failed_removal,
+            user_exists=lambda _name: True,
+        )

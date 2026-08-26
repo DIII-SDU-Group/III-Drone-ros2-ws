@@ -1,0 +1,8 @@
+{{ {
+  'schema': 'iii.host-hardware-baseline/v1',
+  'target_class': iii_target_class,
+  'target_definition_id': iii_target_definition_id,
+  'packages': iii_hardware_packages,
+  'udev_fragments': iii_udev_rule_fragments | map(attribute='name') | list,
+  'device_role_manifest_owner': 'P3.T5-source-contract'
+} | iii_canonical_json }}

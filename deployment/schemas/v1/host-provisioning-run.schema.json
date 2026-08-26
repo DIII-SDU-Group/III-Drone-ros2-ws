@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iii-drone.local/schemas/v1/host-provisioning-run.schema.json",
+  "title": "III completed host provisioning run",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "operation_id", "plan_content_id", "target", "state", "runs", "report_id"],
+  "properties": {
+    "schema": {"const": "iii.host-provisioning-run/v1"},
+    "operation_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"},
+    "plan_content_id": {"$ref": "#/definitions/sha256"},
+    "target": {"type": "string", "minLength": 1},
+    "state": {"const": "provisioned"},
+    "runs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["first_convergence", "idempotence_check", "finalization"],
+      "properties": {
+        "first_convergence": {"$ref": "#/definitions/ansibleRun"},
+        "idempotence_check": {"$ref": "#/definitions/ansibleRun"},
+        "finalization": {"$ref": "#/definitions/ansibleRun"}
+      }
+    },
+    "report_id": {"$ref": "#/definitions/sha256"}
+  },
+  "definitions": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "counters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "changed", "failures", "unreachable", "skipped", "rescued", "ignored"],
+      "properties": {
+        "ok": {"type": "integer", "minimum": 0},
+        "changed": {"type": "integer", "minimum": 0},
+        "failures": {"type": "integer", "minimum": 0},
+        "unreachable": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0},
+        "rescued": {"type": "integer", "minimum": 0},
+        "ignored": {"type": "integer", "minimum": 0}
+      }
+    },
+    "ansibleRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "check_mode", "hosts", "totals"],
+      "properties": {
+        "schema": {"const": "iii.ansible-run-result/v1"},
+        "check_mode": {"type": "boolean"},
+        "hosts": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/definitions/counters"}},
+        "totals": {"$ref": "#/definitions/counters"}
+      }
+    }
+  }
+}

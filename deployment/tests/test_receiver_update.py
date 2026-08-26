@@ -239,6 +239,71 @@ def _readiness(manifest, **overrides):
     return value
 
 
+def test_initial_receiver_install_is_signed_idempotent_and_completes_selectors(
+    tmp_path: Path,
+) -> None:
+    key, trust = _trust(tmp_path)
+    bundle, manifest = _bundle(tmp_path, key, generation=1)
+    root = tmp_path / "host"
+    store = ReceiverSlotStore(root, trust=trust, registry=REGISTRY)
+    first = store.install_initial(bundle)
+    assert first == {
+        "schema": "iii.initial-receiver-install/v1",
+        "receiver_id": manifest["receiver_id"],
+        "generation": 1,
+        "slot": "a",
+        "current": "a",
+        "fallback": "a",
+        "installed": True,
+    }
+    assert store.active_slot() == "a"
+    assert store.verify_slot("a")["receiver_id"] == manifest["receiver_id"]
+    assert store.install_initial(bundle)["installed"] is False
+
+
+def test_initial_receiver_install_resumes_owned_partial_and_slot_before_selector(
+    tmp_path: Path,
+) -> None:
+    key, trust = _trust(tmp_path)
+    bundle, _manifest = _bundle(tmp_path, key, generation=1)
+    root = tmp_path / "host"
+    partial = root / "opt/iii/receiver/slots/.initial-interrupted"
+    partial.mkdir(parents=True)
+    (partial / "partial").write_text("interrupted")
+    store = ReceiverSlotStore(root, trust=trust, registry=REGISTRY)
+    assert store.install_initial(bundle)["installed"] is True
+    store.current_path.unlink()
+    store.fallback_path.unlink()
+    resumed = store.install_initial(bundle)
+    assert resumed["installed"] is True
+    assert store.active_slot() == "a"
+    assert store._selector_slot(store.fallback_path, required=True) == "a"
+
+
+def test_initial_receiver_install_cannot_replace_identity_or_fixed_protocols(
+    tmp_path: Path,
+) -> None:
+    key, trust = _trust(tmp_path)
+    bundle, _manifest = _bundle(tmp_path, key, generation=1)
+    store = ReceiverSlotStore(tmp_path / "host", trust=trust, registry=REGISTRY)
+    store.install_initial(bundle)
+    other, _ = _bundle(tmp_path, key, generation=2)
+    with pytest.raises(ContractError, match="different initial receiver"):
+        store.install_initial(other)
+
+    incompatible_root = tmp_path / "incompatible-host"
+    incompatible, _ = _bundle(
+        tmp_path,
+        key,
+        generation=3,
+        compatibility_overrides={"bootstrap_protocols": ["2"]},
+    )
+    with pytest.raises(ContractError, match="fixed bootstrap"):
+        ReceiverSlotStore(
+            incompatible_root, trust=trust, registry=REGISTRY
+        ).install_initial(incompatible)
+
+
 def _resign_archive(bundle: Path, key: Path):
     signature = json.loads((bundle / SIGNATURE_NAME).read_text())
     signature["archive_sha256"] = hashlib.sha256(
