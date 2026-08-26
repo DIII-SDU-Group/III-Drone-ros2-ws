@@ -2514,6 +2514,8 @@ Implementation notes (2026-08-26):
 
 #### P1.T1: Capture Dirty Workspace Provenance
 
+**Status: Completed.**
+
 Description:
 Implement a source snapshot module that accounts for the top-level repository,
 all governed submodules, modified tracked content, relevant untracked files,
@@ -2522,11 +2524,11 @@ classification is ambiguous rather than silently omit files.
 
 Acceptance:
 
-- [ ] Identical source content yields the same content identity.
-- [ ] Modified submodules and untracked source change the identity.
-- [ ] Secrets, build trees, logs, datasets, and unrelated artifacts are excluded.
-- [ ] A human-readable provenance report accompanies every field-development release.
-- [ ] Change-impact analysis selects GC-only, drone-only, or paired artifacts from
+- [x] Identical source content yields the same content identity.
+- [x] Modified submodules and untracked source change the identity.
+- [x] Secrets, build trees, logs, datasets, and unrelated artifacts are excluded.
+- [x] A human-readable provenance report accompanies every field-development release.
+- [x] Change-impact analysis selects GC-only, drone-only, or paired artifacts from
       the governed dependency graph and explains every cause; unsafe manual
       component omission fails closed.
 
@@ -2534,6 +2536,26 @@ Tests:
 
 - Automated fixtures for clean, tracked-dirty, submodule-dirty, untracked-source,
   ignored-secret, and generated-output workspaces.
+
+Implementation notes (2026-08-26):
+
+- Added a versioned source policy covering the workspace and all ten editable
+  III repositories, relevant build/source roots, explicit sensitive/generated/
+  dataset exclusions, and dependency-complete drone/GC impact rules.
+- Added deterministic content capture for tracked bytes, deletions, safe
+  symlinks, relevant non-ignored untracked source, governed submodule state,
+  and the dependency lock. Commit and branch metadata remain attributable but
+  do not perturb identity when the actual source bytes are identical.
+- Added schema-validated machine snapshots, deterministic human-readable
+  field-development provenance, manifest bindings for both artifacts, atomic
+  output, explicit exclusion reporting, unmerged/unsafe-path rejection, and
+  fail-closed manual component-selection validation with per-path causes.
+- Verification: eight source fixture scenarios passed, including clean,
+  tracked-dirty/deleted, submodule-dirty, untracked-source, ignored secret and
+  generated output, unsafe symlink, deterministic identity, and paired impact;
+  122/122 deployment tests passed on host and in the Jazzy devcontainer; a live
+  11-repository dirty-workspace capture produced both artifacts and correctly
+  selected paired drone+GC output; schemas, syntax, diff hygiene, and lock passed.
 
 #### P1.T2: Implement Cached Cross-Compilation
 

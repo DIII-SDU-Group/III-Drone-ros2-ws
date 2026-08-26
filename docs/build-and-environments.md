@@ -116,6 +116,29 @@ The command compiles an AArch64 binary with the pinned cross-compiler, executes
 it in the pinned ARM64 target image, validates OS/ROS/Python/libc/compiler ABI,
 and fails before any transfer or activation when the release target differs.
 
+### Dirty source capture
+
+`deployment/source-policy.json` declares the workspace and ten editable III
+repositories, relevant workspace source roots, explicit sensitive/generated/
+dataset exclusions, and the dependency-complete GC/drone impact graph. Capture
+a field-development candidate before building it:
+
+```bash
+PYTHONPATH=deployment/src python3 scripts/release/capture_source_snapshot.py \
+  --output /private/release/source-snapshot.json \
+  --report /private/release/source-provenance.md
+```
+
+The snapshot hashes current tracked file contents (including deletions),
+relevant non-ignored untracked source, every governed repository, and the
+dependency lock. Its identity is content-based rather than commit-based, so
+the same bytes produce the same identity. Ignored build/log trees, datasets,
+unrelated files, and untracked secrets are omitted explicitly; tracked secrets,
+unsafe links, unmerged indexes, missing repositories, and unclassified artifact
+impact fail closed. The Markdown report is mandatory provenance for a field-
+development release. A caller requesting components must pass all inferred
+components; omitting either side of a shared-contract change is rejected.
+
 ## 5. Entrypoints
 
 - `entrypoint_dev.sh`: source ROS + workspace install if exists.

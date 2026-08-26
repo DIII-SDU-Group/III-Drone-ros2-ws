@@ -14,12 +14,14 @@
     "components": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["drone", "gc"]}},
     "source": {
       "type": "object", "additionalProperties": false,
-      "required": ["workspace_commit", "branch", "clean", "content_identity", "tracked_patch_sha256", "untracked", "submodules"],
+      "required": ["workspace_commit", "branch", "clean", "content_identity", "snapshot_sha256", "provenance_report_sha256", "tracked_patch_sha256", "untracked", "submodules"],
       "properties": {
         "workspace_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
         "branch": {"type": "string", "minLength": 1},
         "clean": {"type": "boolean"},
         "content_identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "snapshot_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "provenance_report_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "tracked_patch_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
         "untracked": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}},
         "submodules": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "commit", "state", "content_identity"], "properties": {"path": {"type": "string", "pattern": "^(?:src|tools)/III-Drone-[A-Za-z-]+$"}, "commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"}, "state": {"enum": ["clean", "modified", "untracked"]}, "content_identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}}
