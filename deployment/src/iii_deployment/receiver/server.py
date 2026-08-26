@@ -12,6 +12,16 @@ import socket
 import time
 
 from iii_deployment.bundle import load_bundle_limits
+from iii_deployment.activation import ActivationTransactionStore
+from iii_deployment.activation_health import (
+    ActivationCoordinator,
+    ActivationDiagnosticStore,
+)
+from iii_deployment.activation_runtime import (
+    OnboardControlPlane,
+    OnboardHealthProvider,
+    OnboardSafetyProvider,
+)
 from iii_deployment.contracts import ContractError, ContractRegistry
 from iii_deployment.receiver.access import AccessManager
 from iii_deployment.receiver.config import (
@@ -96,6 +106,41 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         state_path=STATE_ROOT / "access-state.json",
         authorized_keys_path=AUTHORIZED_KEYS_PATH,
     )
+    slots = ReceiverSlotStore(
+        Path("/"), trust={}, registry=ContractRegistry(SCHEMA_ROOT)
+    )
+    active_slot = slots.active_slot()
+    if active_slot is None:
+        raise ContractError("receiver A/B active slot is unavailable")
+    receiver_manifest = slots.verify_slot(active_slot)
+    if receiver_manifest["generation"] != config.receiver_generation:
+        raise ContractError(
+            "receiver configuration generation differs from the active immutable slot"
+        )
+    control_plane = OnboardControlPlane()
+    activation = ActivationCoordinator(
+        release_store=store,
+        transaction_store=ActivationTransactionStore(Path("/")),
+        diagnostics=ActivationDiagnosticStore(STATE_ROOT / "activation"),
+        safety_provider=OnboardSafetyProvider(),
+        health_provider=OnboardHealthProvider(
+            receiver_id=receiver_manifest["receiver_id"],
+            receiver_generation=receiver_manifest["generation"],
+            control_plane=control_plane,
+        ),
+        stop_all_units=control_plane.stop_all_units,
+        start_control_plane=control_plane.start,
+        receiver_id=receiver_manifest["receiver_id"],
+        receiver_generation=receiver_manifest["generation"],
+        bootstrap_protocol_version="1",
+        logical_target=config.logical_target,
+        profile=config.profile,
+        monotonic=time.monotonic,
+        sleep=time.sleep,
+        boot_id=lambda: Path("/proc/sys/kernel/random/boot_id")
+        .read_text(encoding="ascii")
+        .strip(),
+    )
     return ReceiverEngine(
         release_store=store,
         control=control,
@@ -111,6 +156,7 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
             "unpacked_bytes"
         ]
         + 16 * 1024**2,
+        activation_coordinator=activation,
     )
 
 

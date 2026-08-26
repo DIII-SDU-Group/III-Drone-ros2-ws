@@ -15,6 +15,7 @@ import threading
 from typing import Any, Callable, Mapping
 
 from iii_deployment.bundle import ARCHIVE_NAME, COMPONENT_FILES, RELEASE_MANIFEST_NAME
+from iii_deployment.activation_health import ActivationCoordinator
 from iii_deployment.contracts import ContractError, canonical_json, content_identity
 from iii_deployment.receiver.access import AccessManager
 from iii_deployment.receiver.protocol import (
@@ -79,9 +80,12 @@ class ReceiverEngine:
         executor: Executor | None = None,
         now: Callable[[], datetime] | None = None,
         maximum_claim_bytes: int = 21 * 1024**3,
+        activation_coordinator: ActivationCoordinator | None = None,
     ) -> None:
         if control.nonce_expiry_s != NONCE_EXPIRY_S:
-            raise ContractError("receiver nonce expiry differs from the fixed five-minute policy")
+            raise ContractError(
+                "receiver nonce expiry differs from the fixed five-minute policy"
+            )
         self.release_store = release_store
         self.control = control
         self.journals = journals
@@ -101,13 +105,18 @@ class ReceiverEngine:
         if maximum_claim_bytes <= 0:
             raise ContractError("receiver accepted-input size limit must be positive")
         self.maximum_claim_bytes = maximum_claim_bytes
+        self.activation_coordinator = activation_coordinator
         self._mutex = threading.RLock()
         self._running: set[str] = set()
         releases_root = self.release_store.releases_root.resolve()
         if self.receiver_root.is_relative_to(releases_root):
-            raise ContractError("receiver binaries cannot reside inside application releases")
+            raise ContractError(
+                "receiver binaries cannot reside inside application releases"
+            )
         if self.incoming_root.is_relative_to(releases_root):
-            raise ContractError("incoming uploads cannot reside inside application releases")
+            raise ContractError(
+                "incoming uploads cannot reside inside application releases"
+            )
 
     def handle(self, request: Request) -> dict[str, Any]:
         with self._mutex:
@@ -141,9 +150,20 @@ class ReceiverEngine:
         if request.action == Action.ACCESS_LIST:
             self.access.require_active(request.client_id)
             return self._result(request, clients=self.access.list_clients())
-        if request.action in {Action.PLAN_STAGE, Action.PLAN_ACCESS}:
+        if request.action in {
+            Action.PLAN_STAGE,
+            Action.PLAN_ACTIVATE,
+            Action.PLAN_ROLLBACK,
+            Action.PLAN_ACCESS,
+        }:
             return self._plan(request)
-        if request.action in {Action.STAGE, Action.ACCESS_ADD, Action.ACCESS_REVOKE}:
+        if request.action in {
+            Action.STAGE,
+            Action.ACTIVATE,
+            Action.ROLLBACK,
+            Action.ACCESS_ADD,
+            Action.ACCESS_REVOKE,
+        }:
             return self._accept(request)
         if request.action == Action.CANCEL:
             self.access.require_active(request.client_id)
@@ -152,7 +172,9 @@ class ReceiverEngine:
             if journal is None:
                 raise ContractError("receiver cancellation target is unknown")
             if journal["client_id"] != request.client_id:
-                raise ContractError("receiver cancellation client does not own the operation")
+                raise ContractError(
+                    "receiver cancellation client does not own the operation"
+                )
             journal = self.journals.request_cancel(target)
             self.audit.append(
                 event="cancellation",
@@ -175,7 +197,9 @@ class ReceiverEngine:
             "target_state_hash",
         }
         if set(supplied) != required:
-            raise ContractError("receiver live-state provider returned unexpected fields")
+            raise ContractError(
+                "receiver live-state provider returned unexpected fields"
+            )
         if supplied["profile"] != self.profile:
             raise ContractError("receiver live profile differs from configured profile")
         supplied["access_state_id"] = self.access.load()["access_id"]
@@ -198,7 +222,9 @@ class ReceiverEngine:
         self._authorize_planner(request)
         target = request.payload["target"]
         if target != {"logical_id": self.logical_target, "profile": self.profile}:
-            raise ContractError("receiver request targets another logical host or profile")
+            raise ContractError(
+                "receiver request targets another logical host or profile"
+            )
         plan = create_mutation_plan(
             request,
             receiver_generation=self.control.receiver_generation,
@@ -209,15 +235,30 @@ class ReceiverEngine:
             client_id=request.client_id,
             plan_id=plan["plan_id"],
         )
+        fields: dict[str, Any] = {
+            "plan": plan,
+            "nonce": nonce,
+            "nonce_expires_in_s": NONCE_EXPIRY_S,
+        }
+        if request.action in {Action.PLAN_ACTIVATE, Action.PLAN_ROLLBACK}:
+            if self.activation_coordinator is None:
+                raise ContractError("receiver activation coordinator is unavailable")
+            parameters = plan["parameters"]
+            fields["preflight"] = self.activation_coordinator.preflight(
+                release_id=parameters["release_id"],
+                configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
+                operator_rollback=request.action == Action.PLAN_ROLLBACK,
+            )
         return self._result(
             request,
-            plan=plan,
-            nonce=nonce,
-            nonce_expires_in_s=NONCE_EXPIRY_S,
+            **fields,
         )
 
     def _authorize_plan_client(self, request: Request, plan: Mapping[str, Any]) -> None:
-        if plan["action"] == Action.ACCESS_ADD.value and plan["parameters"]["phase"] == "prove":
+        if (
+            plan["action"] == Action.ACCESS_ADD.value
+            and plan["parameters"]["phase"] == "prove"
+        ):
             parameters = plan["parameters"]
             self.access.require_pending_proof(
                 requester=request.client_id,
@@ -238,13 +279,30 @@ class ReceiverEngine:
             raise ContractError("receiver apply action differs from retained plan")
         if plan["receiver_generation"] != self.control.receiver_generation:
             raise ContractError("receiver plan belongs to another receiver generation")
-        if plan["target"] != {"logical_id": self.logical_target, "profile": self.profile}:
+        if plan["target"] != {
+            "logical_id": self.logical_target,
+            "profile": self.profile,
+        }:
             raise ContractError("receiver apply plan targets another host or profile")
         self._authorize_plan_client(request, plan)
         if plan["expected_state"] != self._live_state():
             raise ContractError("receiver plan is stale against current target state")
         if request.action == Action.STAGE:
             self._preflight_staging(plan)
+        if request.action in {Action.ACTIVATE, Action.ROLLBACK}:
+            if self.activation_coordinator is None:
+                raise ContractError("receiver activation coordinator is unavailable")
+            parameters = plan["parameters"]
+            preflight = self.activation_coordinator.preflight(
+                release_id=parameters["release_id"],
+                configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
+                operator_rollback=request.action == Action.ROLLBACK,
+            )
+            if not preflight["ready"]:
+                raise ContractError(
+                    "activation preflight rejected: "
+                    + "; ".join(preflight["rejection_reasons"])
+                )
         self.control.consume_and_acquire(
             nonce=request.nonce or "",
             operation_id=request.operation_id,
@@ -277,33 +335,50 @@ class ReceiverEngine:
         status = upload_root / STATUS_INDEX_NAME
         for path in (self.incoming_root, upload_root, component):
             if path.is_symlink() or not path.is_dir():
-                raise ContractError("fixed incoming bundle directory is missing or linked")
+                raise ContractError(
+                    "fixed incoming bundle directory is missing or linked"
+                )
         if component.resolve() != component:
-            raise ContractError("fixed incoming bundle resolves outside its upload slot")
+            raise ContractError(
+                "fixed incoming bundle resolves outside its upload slot"
+            )
         expected_status = parameters["status_index_id"]
         if expected_status is None:
             if status.exists() or status.is_symlink():
-                raise ContractError("unplanned release-status index accompanies incoming bundle")
+                raise ContractError(
+                    "unplanned release-status index accompanies incoming bundle"
+                )
             return component, None
         value = _canonical_object(status, label="incoming release-status index")
         if value.get("index_id") != expected_status:
-            raise ContractError("incoming release-status index differs from retained plan")
+            raise ContractError(
+                "incoming release-status index differs from retained plan"
+            )
         return component, status
 
     def _accepted_paths(self, plan: Mapping[str, Any]) -> tuple[Path, Path | None]:
         root = self.control.root / "accepted-inputs" / plan["operation_id"]
         component = root / "drone"
         status = root / STATUS_INDEX_NAME
-        if root.is_symlink() or not root.is_dir() or component.is_symlink() or not component.is_dir():
+        if (
+            root.is_symlink()
+            or not root.is_dir()
+            or component.is_symlink()
+            or not component.is_dir()
+        ):
             raise ContractError("receiver-owned accepted input is missing or linked")
         expected_status = plan["parameters"]["status_index_id"]
         if expected_status is None:
             if status.exists() or status.is_symlink():
-                raise ContractError("receiver-owned input has an unplanned status index")
+                raise ContractError(
+                    "receiver-owned input has an unplanned status index"
+                )
             return component, None
         value = _canonical_object(status, label="accepted release-status index")
         if value.get("index_id") != expected_status:
-            raise ContractError("accepted release-status index differs from retained plan")
+            raise ContractError(
+                "accepted release-status index differs from retained plan"
+            )
         return component, status
 
     @staticmethod
@@ -315,7 +390,9 @@ class ReceiverEngine:
             if not stat.S_ISREG(observed.st_mode):
                 raise ContractError("incoming bundle contains a non-regular file")
             if observed.st_size > maximum_bytes:
-                raise ContractError("incoming bundle exceeds the receiver-owned input limit")
+                raise ContractError(
+                    "incoming bundle exceeds the receiver-owned input limit"
+                )
             destination_descriptor = os.open(
                 destination,
                 os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
@@ -328,16 +405,22 @@ class ReceiverEngine:
                     break
                 copied += len(block)
                 if copied > maximum_bytes:
-                    raise ContractError("incoming bundle grew beyond the receiver-owned input limit")
+                    raise ContractError(
+                        "incoming bundle grew beyond the receiver-owned input limit"
+                    )
                 view = memoryview(block)
                 while view:
                     written = os.write(destination_descriptor, view)
                     if written <= 0:
-                        raise ContractError("receiver-owned input copy made no progress")
+                        raise ContractError(
+                            "receiver-owned input copy made no progress"
+                        )
                     view = view[written:]
             os.fsync(destination_descriptor)
         except OSError as exc:
-            raise ContractError(f"cannot claim fixed incoming bundle file: {exc}") from exc
+            raise ContractError(
+                f"cannot claim fixed incoming bundle file: {exc}"
+            ) from exc
         finally:
             os.close(source_descriptor)
             if destination_descriptor >= 0:
@@ -375,7 +458,9 @@ class ReceiverEngine:
         except OSError as exc:
             raise ContractError(f"cannot inspect fixed incoming upload: {exc}") from exc
         if total_bytes > self.maximum_claim_bytes:
-            raise ContractError("incoming upload exceeds the receiver-owned input limit")
+            raise ContractError(
+                "incoming upload exceeds the receiver-owned input limit"
+            )
         upload_root = component.parent
         expected_upload_entries = {"drone"} | (
             {STATUS_INDEX_NAME} if status_path is not None else set()
@@ -391,9 +476,13 @@ class ReceiverEngine:
         minimum_bytes = getattr(self.release_store, "minimum_reserve_bytes", 0)
         minimum_percent = getattr(self.release_store, "minimum_reserve_percent", 0.0)
         usage = shutil.disk_usage(accepted_root)
-        reserve = max(int(minimum_bytes), int(usage.total * float(minimum_percent) / 100.0))
+        reserve = max(
+            int(minimum_bytes), int(usage.total * float(minimum_percent) / 100.0)
+        )
         if usage.free - total_bytes < reserve:
-            raise ContractError("insufficient storage to claim receiver-owned input and preserve reserve")
+            raise ContractError(
+                "insufficient storage to claim receiver-owned input and preserve reserve"
+            )
         temporary = accepted_root / f".{plan['operation_id']}.partial"
         if temporary.exists() or temporary.is_symlink():
             raise ContractError("partial receiver-owned input requires reconciliation")
@@ -425,7 +514,9 @@ class ReceiverEngine:
             raise
         self._preflight_staging(plan, accepted=True)
 
-    def _preflight_staging(self, plan: Mapping[str, Any], *, accepted: bool = False) -> None:
+    def _preflight_staging(
+        self, plan: Mapping[str, Any], *, accepted: bool = False
+    ) -> None:
         component, _ = (
             self._accepted_paths(plan) if accepted else self._incoming_paths(plan)
         )
@@ -479,7 +570,9 @@ class ReceiverEngine:
                     self.control.release(operation_id)
                     return
                 if self.journals.remaining_budget(operation_id) <= 0:
-                    raise ContractError("receiver hard deadline expired before mutation")
+                    raise ContractError(
+                        "receiver hard deadline expired before mutation"
+                    )
                 if journal["state"] == "accepted":
                     journal = self.journals.transition(
                         operation_id,
@@ -492,7 +585,9 @@ class ReceiverEngine:
             with self._mutex:
                 remaining = self.journals.remaining_budget(operation_id)
                 if remaining <= 0:
-                    raise ContractError("receiver hard deadline expired during mutation")
+                    raise ContractError(
+                        "receiver hard deadline expired during mutation"
+                    )
                 result["deadlines"] = journal["deadlines"]
                 result["remaining_hard_s"] = remaining
                 elapsed_active = journal["deadlines"]["hard_deadline_s"] - remaining
@@ -546,7 +641,10 @@ class ReceiverEngine:
                         detail_code="mutation-failed",
                     )
                 control = self.control.load()
-                if control["lease"] is not None and control["lease"]["operation_id"] == operation_id:
+                if (
+                    control["lease"] is not None
+                    and control["lease"]["operation_id"] == operation_id
+                ):
                     self.control.release(operation_id)
         finally:
             with self._mutex:
@@ -561,7 +659,9 @@ class ReceiverEngine:
             status_index = (
                 None
                 if status_path is None
-                else _canonical_object(status_path, label="incoming release-status index")
+                else _canonical_object(
+                    status_path, label="incoming release-status index"
+                )
             )
             result = self.release_store.stage(
                 component,
@@ -571,6 +671,23 @@ class ReceiverEngine:
             if result.release_id != parameters["release_id"]:
                 raise ContractError("staged release differs from accepted operation")
             return {"kind": "stage", **asdict(result)}
+        if action == Action.ACTIVATE.value:
+            if self.activation_coordinator is None:
+                raise ContractError("receiver activation coordinator is unavailable")
+            return self.activation_coordinator.activate(
+                operation_id=plan["operation_id"],
+                release_id=parameters["release_id"],
+                configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
+                explicit_qualified_action=parameters["explicit_qualified_action"],
+            )
+        if action == Action.ROLLBACK.value:
+            if self.activation_coordinator is None:
+                raise ContractError("receiver activation coordinator is unavailable")
+            return self.activation_coordinator.operator_rollback(
+                operation_id=plan["operation_id"],
+                release_id=parameters["release_id"],
+                configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
+            )
         if action == Action.ACCESS_ADD.value:
             if parameters["phase"] == "add":
                 state = self.access.add_pending(
@@ -611,6 +728,11 @@ class ReceiverEngine:
 
         with self._mutex:
             self.access.reconcile_authorized_keys()
+            activation_recovery = (
+                self.activation_coordinator.reconcile()
+                if self.activation_coordinator is not None
+                else None
+            )
             control = self.control.load()
             lease = control["lease"]
             journals = {item["operation_id"]: item for item in self.journals.list()}
@@ -634,10 +756,78 @@ class ReceiverEngine:
                     or journal["action"] != lease["action"]
                     or journal["plan"]["plan_id"] != lease["plan_id"]
                 ):
-                    raise ContractError("receiver lease and operation journal binding disagree")
+                    raise ContractError(
+                        "receiver lease and operation journal binding disagree"
+                    )
             for operation_id, journal in journals.items():
                 if journal["state"] in TERMINAL_STATES:
                     continue
+                if journal["action"] in {
+                    Action.ACTIVATE.value,
+                    Action.ROLLBACK.value,
+                }:
+                    activation = (
+                        self.activation_coordinator.diagnostics.load_state(operation_id)
+                        if self.activation_coordinator is not None
+                        else None
+                    )
+                    if activation is not None and activation["stage"] in {
+                        "accepted",
+                        "rolled-back",
+                        "faulted",
+                    }:
+                        if journal["state"] == "accepted":
+                            journal = self.journals.transition(
+                                operation_id,
+                                state="running",
+                                checkpoint="reconciliation",
+                                cancellation_safe=False,
+                                event="activation-reconciliation-started",
+                            )
+                        if activation["stage"] == "accepted":
+                            result = {
+                                "kind": journal["action"],
+                                "release_id": activation["candidate"]["release_id"],
+                                "previous_release_id": activation["previous"][
+                                    "release_id"
+                                ],
+                                "accepted_state_id": activation["accepted_state_id"],
+                                "acceptance_evidence_id": activation["evidence_id"],
+                                "activation_state_id": activation["state_id"],
+                                "automatic_rollback_permitted": False,
+                                "autonomy_started": False,
+                                "reconciled_after_boot": True,
+                            }
+                            self.journals.transition(
+                                operation_id,
+                                state="completed",
+                                checkpoint="complete",
+                                cancellation_safe=False,
+                                event="activation-acceptance-reconciled",
+                                evidence_hash=content_identity(result),
+                                result=result,
+                            )
+                        else:
+                            self.journals.transition(
+                                operation_id,
+                                state="failed",
+                                checkpoint="reconciliation",
+                                cancellation_safe=False,
+                                event="activation-rollback-reconciled",
+                                failure={
+                                    "code": "activation-not-accepted",
+                                    "message": (
+                                        "activation restored the previous selector"
+                                        if activation["stage"] == "rolled-back"
+                                        else "activation entered a visible fault"
+                                    ),
+                                },
+                            )
+                        if lease is not None and lease["operation_id"] == operation_id:
+                            self.control.release(operation_id)
+                            lease = None
+                        recovered.append(operation_id)
+                        continue
                 if lease is None or lease["operation_id"] != operation_id:
                     self.journals.transition(
                         operation_id,
@@ -645,7 +835,10 @@ class ReceiverEngine:
                         checkpoint="reconciliation",
                         cancellation_safe=False,
                         event="missing-lease",
-                        failure={"code": "missing-lease", "message": "durable mutation lease is absent"},
+                        failure={
+                            "code": "missing-lease",
+                            "message": "durable mutation lease is absent",
+                        },
                     )
                     self.audit.append(
                         event="reconciliation",
@@ -659,12 +852,15 @@ class ReceiverEngine:
                     continue
                 self._submit(operation_id)
                 recovered.append(operation_id)
-            return {
+            result = {
                 "schema": RESULT_SCHEMA,
                 "recovered_operations": recovered,
                 "failed_operations": failed,
                 "autonomy_started": False,
             }
+            if activation_recovery is not None:
+                result["activation_recovery"] = activation_recovery
+            return result
 
     def _status(self, operation_id: str) -> dict[str, Any]:
         journal = self.journals.load(operation_id)

@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/runtime-activation-health.schema.json",
+  "title": "III runtime activation-health observation for the onboard receiver",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "snapshot_id", "release_id", "profile", "boot_id", "observed_monotonic", "daemon", "runtime_api", "configuration", "hardware_roles", "services", "managed_nodes", "px4", "operations"],
+  "properties": {
+    "schema": {"const": "iii.runtime-activation-health/v1"},
+    "snapshot_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "release_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "profile": {"type": "string", "pattern": "^[a-z][a-z0-9_.@-]{0,127}$"},
+    "boot_id": {"type": "string", "minLength": 1},
+    "observed_monotonic": {"type": "number", "minimum": 0},
+    "daemon": {"type": "object"},
+    "runtime_api": {"type": "object"},
+    "configuration": {"type": "object"},
+    "hardware_roles": {"type": "object"},
+    "services": {"type": "object"},
+    "managed_nodes": {"type": "object"},
+    "px4": {"type": "object"},
+    "operations": {"type": "object"}
+  }
+}

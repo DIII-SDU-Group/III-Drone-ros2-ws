@@ -8,7 +8,7 @@
   "properties": {
     "schema": {"const": "iii.receiver-mutation-plan/v1"},
     "plan_id": {"$ref": "#/definitions/identity"},
-    "action": {"enum": ["stage", "access-add", "access-revoke"]},
+    "action": {"enum": ["stage", "activate", "rollback", "access-add", "access-revoke"]},
     "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
     "client_id": {"$ref": "#/definitions/identity"},
     "receiver_generation": {"type": "integer", "minimum": 1},
@@ -40,6 +40,14 @@
       "then": {"properties": {"parameters": {"$ref": "#/definitions/stage_parameters"}}}
     },
     {
+      "if": {"properties": {"action": {"const": "activate"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/activation_parameters"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "rollback"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/rollback_parameters"}}}
+    },
+    {
       "if": {"properties": {"action": {"const": "access-add"}}},
       "then": {"properties": {"parameters": {"$ref": "#/definitions/access_add_parameters"}}}
     },
@@ -58,6 +66,23 @@
         "archive_sha256": {"$ref": "#/definitions/identity"},
         "upload_id": {"$ref": "#/definitions/identity"},
         "status_index_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "activation_parameters": {
+      "type": "object", "additionalProperties": false,
+      "required": ["release_id", "configuration_checkpoint_id", "explicit_qualified_action"],
+      "properties": {
+        "release_id": {"$ref": "#/definitions/identity"},
+        "configuration_checkpoint_id": {"$ref": "#/definitions/identity"},
+        "explicit_qualified_action": {"type": "boolean"}
+      }
+    },
+    "rollback_parameters": {
+      "type": "object", "additionalProperties": false,
+      "required": ["release_id", "configuration_checkpoint_id"],
+      "properties": {
+        "release_id": {"$ref": "#/definitions/identity"},
+        "configuration_checkpoint_id": {"$ref": "#/definitions/identity"}
       }
     },
     "access_add_parameters": {

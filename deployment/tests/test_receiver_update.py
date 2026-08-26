@@ -137,6 +137,10 @@ def _bundle(
         "audit_schemas": ["iii.receiver-audit/v1"],
         "activation_transaction_schemas": ["iii.activation-transaction/v1"],
         "activation_selector_schemas": ["iii.activation-selector/v1"],
+        "activation_health_transaction_schemas": [
+            "iii.activation-health-transaction/v1"
+        ],
+        "activation_health_evidence_schemas": ["iii.activation-health/v1"],
         "configuration_checkpoint_schemas": ["iii.configuration-checkpoint/v1"],
     }
     compatibility.update(compatibility_overrides or {})
@@ -204,6 +208,10 @@ def _inventory(**overrides):
         "audit_schemas": ("iii.receiver-audit/v1",),
         "activation_transaction_schemas": ("iii.activation-transaction/v1",),
         "activation_selector_schemas": ("iii.activation-selector/v1",),
+        "activation_health_transaction_schemas": (
+            "iii.activation-health-transaction/v1",
+        ),
+        "activation_health_evidence_schemas": ("iii.activation-health/v1",),
         "configuration_checkpoint_schemas": ("iii.configuration-checkpoint/v1",),
     }
     values.update(overrides)
@@ -376,6 +384,8 @@ def test_signed_receiver_update_stages_only_inactive_slot_and_commits_handoff(tm
         "audit_schemas",
         "activation_transaction_schemas",
         "activation_selector_schemas",
+        "activation_health_transaction_schemas",
+        "activation_health_evidence_schemas",
         "configuration_checkpoint_schemas",
     ],
 )

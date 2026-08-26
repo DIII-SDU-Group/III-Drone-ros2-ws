@@ -20,6 +20,8 @@ OPERATION_ID = re.compile(r"^[a-z0-9][a-z0-9-]{7,63}$")
 class Action(str, Enum):
     STATUS = "status"
     PLAN_STAGE = "plan-stage"
+    PLAN_ACTIVATE = "plan-activate"
+    PLAN_ROLLBACK = "plan-rollback"
     PLAN_ACCESS = "plan-access"
     STAGE = "stage"
     ACTIVATE = "activate"
@@ -38,6 +40,8 @@ READ_ONLY_ACTIONS = frozenset(
     {
         Action.STATUS,
         Action.PLAN_STAGE,
+        Action.PLAN_ACTIVATE,
+        Action.PLAN_ROLLBACK,
         Action.PLAN_ACCESS,
         Action.ACCESS_LIST,
         Action.NETWORK_PLAN,
@@ -69,8 +73,17 @@ class Request:
             value = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ContractError(f"invalid receiver request JSON: {exc}") from exc
-        if not isinstance(value, dict) or set(value) != {"protocol_version", "action", "operation_id", "client_id", "payload", "nonce"}:
-            raise ContractError("receiver request fields do not match the fixed protocol")
+        if not isinstance(value, dict) or set(value) != {
+            "protocol_version",
+            "action",
+            "operation_id",
+            "client_id",
+            "payload",
+            "nonce",
+        }:
+            raise ContractError(
+                "receiver request fields do not match the fixed protocol"
+            )
         if raw != canonical_json(value):
             raise ContractError("receiver request is not canonical JSON")
         if value["protocol_version"] != PROTOCOL_VERSION:
@@ -79,9 +92,13 @@ class Request:
             action = Action(value["action"])
         except ValueError as exc:
             raise ContractError("unsupported receiver action") from exc
-        if not isinstance(value["operation_id"], str) or not OPERATION_ID.fullmatch(value["operation_id"]):
+        if not isinstance(value["operation_id"], str) or not OPERATION_ID.fullmatch(
+            value["operation_id"]
+        ):
             raise ContractError("invalid operation ID")
-        if not isinstance(value["client_id"], str) or not IDENTITY.fullmatch(value["client_id"]):
+        if not isinstance(value["client_id"], str) or not IDENTITY.fullmatch(
+            value["client_id"]
+        ):
             raise ContractError("invalid client identity")
         if not isinstance(value["payload"], dict):
             raise ContractError("receiver payload must be an object")
@@ -89,11 +106,15 @@ class Request:
         if any(token in serialized for token in ("../", "\\u0000")):
             raise ContractError("receiver payload contains a forbidden path token")
         nonce = value["nonce"]
-        if action in MUTATING_ACTIONS and (not isinstance(nonce, str) or not IDENTITY.fullmatch(nonce)):
+        if action in MUTATING_ACTIONS and (
+            not isinstance(nonce, str) or not IDENTITY.fullmatch(nonce)
+        ):
             raise ContractError("mutating receiver request needs a bound nonce")
         if action not in MUTATING_ACTIONS and nonce is not None:
             raise ContractError("read-only receiver request cannot consume a nonce")
-        request = cls(action, value["operation_id"], value["client_id"], value["payload"], nonce)
+        request = cls(
+            action, value["operation_id"], value["client_id"], value["payload"], nonce
+        )
         validate_request_payload(request)
         return request
 
@@ -132,21 +153,33 @@ def validate_mutation_plan(
     )
     if plan["schema"] != PLAN_SCHEMA or plan["action"] not in {
         Action.STAGE.value,
+        Action.ACTIVATE.value,
+        Action.ROLLBACK.value,
         Action.ACCESS_ADD.value,
         Action.ACCESS_REVOKE.value,
     }:
         raise ContractError("unsupported receiver mutation plan")
     _identity(plan["plan_id"], label="receiver plan identity")
-    if content_identity({key: value for key, value in plan.items() if key != "plan_id"}) != plan["plan_id"]:
+    if (
+        content_identity(
+            {key: value for key, value in plan.items() if key != "plan_id"}
+        )
+        != plan["plan_id"]
+    ):
         raise ContractError("receiver mutation plan identity mismatch")
-    if not isinstance(plan["operation_id"], str) or not OPERATION_ID.fullmatch(plan["operation_id"]):
+    if not isinstance(plan["operation_id"], str) or not OPERATION_ID.fullmatch(
+        plan["operation_id"]
+    ):
         raise ContractError("receiver mutation plan has invalid operation ID")
     if operation_id is not None and plan["operation_id"] != operation_id:
         raise ContractError("receiver mutation plan operation ID mismatch")
     _identity(plan["client_id"], label="receiver plan client identity")
     if client_id is not None and plan["client_id"] != client_id:
         raise ContractError("receiver mutation plan client mismatch")
-    if not isinstance(plan["receiver_generation"], int) or plan["receiver_generation"] < 1:
+    if (
+        not isinstance(plan["receiver_generation"], int)
+        or plan["receiver_generation"] < 1
+    ):
         raise ContractError("receiver mutation plan has invalid generation")
     parameters = plan["parameters"]
     if not isinstance(parameters, dict):
@@ -161,6 +194,24 @@ def validate_mutation_plan(
             _identity(parameters[field], label=f"staging {field}")
         if parameters["status_index_id"] is not None:
             _identity(parameters["status_index_id"], label="staging status index")
+    elif plan["action"] in {Action.ACTIVATE.value, Action.ROLLBACK.value}:
+        expected = {"release_id", "configuration_checkpoint_id"}
+        if plan["action"] == Action.ACTIVATE.value:
+            expected.add("explicit_qualified_action")
+        _exact(
+            parameters,
+            expected,
+            label=f"receiver {plan['action']} parameters",
+        )
+        _identity(parameters["release_id"], label="activation release")
+        _identity(
+            parameters["configuration_checkpoint_id"],
+            label="activation configuration checkpoint",
+        )
+        if plan["action"] == Action.ACTIVATE.value and not isinstance(
+            parameters["explicit_qualified_action"], bool
+        ):
+            raise ContractError("activation qualified authority must be boolean")
     elif plan["action"] == Action.ACCESS_ADD.value:
         _exact(
             parameters,
@@ -181,9 +232,13 @@ def validate_mutation_plan(
     if not isinstance(target, dict):
         raise ContractError("receiver mutation plan target is malformed")
     _exact(target, {"logical_id", "profile"}, label="receiver target")
-    if not isinstance(target["logical_id"], str) or not TARGET_ID.fullmatch(target["logical_id"]):
+    if not isinstance(target["logical_id"], str) or not TARGET_ID.fullmatch(
+        target["logical_id"]
+    ):
         raise ContractError("receiver mutation plan has invalid logical target")
-    if not isinstance(target["profile"], str) or not PROFILE.fullmatch(target["profile"]):
+    if not isinstance(target["profile"], str) or not PROFILE.fullmatch(
+        target["profile"]
+    ):
         raise ContractError("receiver mutation plan has invalid profile")
     expected = plan["expected_state"]
     if not isinstance(expected, dict):
@@ -219,19 +274,28 @@ def create_mutation_plan(
     receiver_generation: int,
     live_state: Mapping[str, Any],
 ) -> dict[str, Any]:
-    if request.action not in {Action.PLAN_STAGE, Action.PLAN_ACCESS}:
-        raise ContractError("only fixed receiver planning actions can create mutation plans")
+    if request.action not in {
+        Action.PLAN_STAGE,
+        Action.PLAN_ACTIVATE,
+        Action.PLAN_ROLLBACK,
+        Action.PLAN_ACCESS,
+    }:
+        raise ContractError(
+            "only fixed receiver planning actions can create mutation plans"
+        )
     target = request.payload["target"]
-    action = (
-        Action.STAGE.value
-        if request.action == Action.PLAN_STAGE
-        else request.payload["action"]
-    )
-    parameters = (
-        request.payload["artifact"]
-        if request.action == Action.PLAN_STAGE
-        else request.payload["parameters"]
-    )
+    if request.action == Action.PLAN_STAGE:
+        action = Action.STAGE.value
+        parameters = request.payload["artifact"]
+    elif request.action == Action.PLAN_ACTIVATE:
+        action = Action.ACTIVATE.value
+        parameters = request.payload["activation"]
+    elif request.action == Action.PLAN_ROLLBACK:
+        action = Action.ROLLBACK.value
+        parameters = request.payload["rollback"]
+    else:
+        action = request.payload["action"]
+        parameters = request.payload["parameters"]
     value: dict[str, Any] = {
         "schema": PLAN_SCHEMA,
         "plan_id": "0" * 64,
@@ -253,7 +317,9 @@ def create_mutation_plan(
     value["plan_id"] = content_identity(
         {key: item for key, item in value.items() if key != "plan_id"}
     )
-    validate_mutation_plan(value, operation_id=request.operation_id, client_id=request.client_id)
+    validate_mutation_plan(
+        value, operation_id=request.operation_id, client_id=request.client_id
+    )
     return value
 
 
@@ -278,33 +344,108 @@ def validate_request_payload(request: Request) -> None:
         if artifact["status_index_id"] is not None:
             _identity(artifact["status_index_id"], label="artifact status index")
         _exact(target, {"logical_id", "profile"}, label="plan-stage target")
-        if not isinstance(target["logical_id"], str) or not TARGET_ID.fullmatch(target["logical_id"]):
+        if not isinstance(target["logical_id"], str) or not TARGET_ID.fullmatch(
+            target["logical_id"]
+        ):
             raise ContractError("invalid plan-stage logical target")
-        if not isinstance(target["profile"], str) or not PROFILE.fullmatch(target["profile"]):
+        if not isinstance(target["profile"], str) or not PROFILE.fullmatch(
+            target["profile"]
+        ):
             raise ContractError("invalid plan-stage profile")
+        return
+    if request.action == Action.PLAN_ACTIVATE:
+        _exact(payload, {"activation", "target"}, label="plan-activate payload")
+        activation = payload["activation"]
+        target = payload["target"]
+        if not isinstance(activation, dict) or not isinstance(target, dict):
+            raise ContractError("plan-activate activation and target must be objects")
+        _exact(
+            activation,
+            {
+                "release_id",
+                "configuration_checkpoint_id",
+                "explicit_qualified_action",
+            },
+            label="plan-activate parameters",
+        )
+        _identity(activation["release_id"], label="activation release")
+        _identity(
+            activation["configuration_checkpoint_id"],
+            label="activation configuration checkpoint",
+        )
+        if not isinstance(activation["explicit_qualified_action"], bool):
+            raise ContractError("activation qualified authority must be boolean")
+        _exact(target, {"logical_id", "profile"}, label="plan-activate target")
+        if not isinstance(target["logical_id"], str) or not TARGET_ID.fullmatch(
+            target["logical_id"]
+        ):
+            raise ContractError("invalid plan-activate logical target")
+        if not isinstance(target["profile"], str) or not PROFILE.fullmatch(
+            target["profile"]
+        ):
+            raise ContractError("invalid plan-activate profile")
+        return
+    if request.action == Action.PLAN_ROLLBACK:
+        _exact(payload, {"rollback", "target"}, label="plan-rollback payload")
+        rollback = payload["rollback"]
+        target = payload["target"]
+        if not isinstance(rollback, dict) or not isinstance(target, dict):
+            raise ContractError("plan-rollback rollback and target must be objects")
+        _exact(
+            rollback,
+            {"release_id", "configuration_checkpoint_id"},
+            label="plan-rollback parameters",
+        )
+        _identity(rollback["release_id"], label="rollback release")
+        _identity(
+            rollback["configuration_checkpoint_id"],
+            label="rollback configuration checkpoint",
+        )
+        _exact(target, {"logical_id", "profile"}, label="plan-rollback target")
+        if not isinstance(target["logical_id"], str) or not TARGET_ID.fullmatch(
+            target["logical_id"]
+        ):
+            raise ContractError("invalid plan-rollback logical target")
+        if not isinstance(target["profile"], str) or not PROFILE.fullmatch(
+            target["profile"]
+        ):
+            raise ContractError("invalid plan-rollback profile")
         return
     if request.action == Action.PLAN_ACCESS:
         _exact(payload, {"action", "parameters", "target"}, label="plan-access payload")
-        if payload["action"] not in {Action.ACCESS_ADD.value, Action.ACCESS_REVOKE.value}:
+        if payload["action"] not in {
+            Action.ACCESS_ADD.value,
+            Action.ACCESS_REVOKE.value,
+        }:
             raise ContractError("plan-access action is unsupported")
         parameters = payload["parameters"]
         target = payload["target"]
         if not isinstance(parameters, dict) or not isinstance(target, dict):
             raise ContractError("plan-access parameters and target must be objects")
         _exact(target, {"logical_id", "profile"}, label="plan-access target")
-        if not isinstance(target["logical_id"], str) or not TARGET_ID.fullmatch(target["logical_id"]):
+        if not isinstance(target["logical_id"], str) or not TARGET_ID.fullmatch(
+            target["logical_id"]
+        ):
             raise ContractError("invalid plan-access logical target")
-        if not isinstance(target["profile"], str) or not PROFILE.fullmatch(target["profile"]):
+        if not isinstance(target["profile"], str) or not PROFILE.fullmatch(
+            target["profile"]
+        ):
             raise ContractError("invalid plan-access profile")
         if payload["action"] == Action.ACCESS_ADD.value:
-            _exact(parameters, {"phase", "client_id", "public_key"}, label="plan access-add")
+            _exact(
+                parameters,
+                {"phase", "client_id", "public_key"},
+                label="plan access-add",
+            )
             if parameters["phase"] not in {"add", "prove"}:
                 raise ContractError("plan access-add phase must be add or prove")
             _identity(parameters["client_id"], label="access client identity")
-            if not isinstance(parameters["public_key"], str) or not PUBLIC_KEY.fullmatch(
-                parameters["public_key"]
-            ):
-                raise ContractError("plan access public key must be canonical ssh-ed25519")
+            if not isinstance(
+                parameters["public_key"], str
+            ) or not PUBLIC_KEY.fullmatch(parameters["public_key"]):
+                raise ContractError(
+                    "plan access public key must be canonical ssh-ed25519"
+                )
         else:
             _exact(parameters, {"client_id"}, label="plan access-revoke")
             _identity(parameters["client_id"], label="access client identity")
@@ -321,18 +462,46 @@ def validate_request_payload(request: Request) -> None:
         if payload["plan"]["action"] != Action.STAGE.value:
             raise ContractError("stage request carries a different mutation plan")
         return
+    if request.action == Action.ACTIVATE:
+        _exact(payload, {"plan"}, label="activate payload")
+        if not isinstance(payload["plan"], dict):
+            raise ContractError("activate plan must be an object")
+        validate_mutation_plan(
+            payload["plan"],
+            operation_id=request.operation_id,
+            client_id=request.client_id,
+        )
+        if payload["plan"]["action"] != Action.ACTIVATE.value:
+            raise ContractError("activate request carries a different mutation plan")
+        return
+    if request.action == Action.ROLLBACK:
+        _exact(payload, {"plan"}, label="rollback payload")
+        if not isinstance(payload["plan"], dict):
+            raise ContractError("rollback plan must be an object")
+        validate_mutation_plan(
+            payload["plan"],
+            operation_id=request.operation_id,
+            client_id=request.client_id,
+        )
+        if payload["plan"]["action"] != Action.ROLLBACK.value:
+            raise ContractError("rollback request carries a different mutation plan")
+        return
     if request.action == Action.CANCEL:
         _exact(payload, {"target_operation_id"}, label="cancel payload")
-        if not isinstance(payload["target_operation_id"], str) or not OPERATION_ID.fullmatch(
-            payload["target_operation_id"]
-        ):
+        if not isinstance(
+            payload["target_operation_id"], str
+        ) or not OPERATION_ID.fullmatch(payload["target_operation_id"]):
             raise ContractError("invalid cancellation operation ID")
         return
     if request.action == Action.ACCESS_ADD:
         _exact(payload, {"plan"}, label="access-add payload")
         if not isinstance(payload["plan"], dict):
             raise ContractError("access-add plan must be an object")
-        validate_mutation_plan(payload["plan"], operation_id=request.operation_id, client_id=request.client_id)
+        validate_mutation_plan(
+            payload["plan"],
+            operation_id=request.operation_id,
+            client_id=request.client_id,
+        )
         if payload["plan"]["action"] != Action.ACCESS_ADD.value:
             raise ContractError("access-add request carries a different mutation plan")
         return
@@ -340,9 +509,15 @@ def validate_request_payload(request: Request) -> None:
         _exact(payload, {"plan"}, label="access-revoke payload")
         if not isinstance(payload["plan"], dict):
             raise ContractError("access-revoke plan must be an object")
-        validate_mutation_plan(payload["plan"], operation_id=request.operation_id, client_id=request.client_id)
+        validate_mutation_plan(
+            payload["plan"],
+            operation_id=request.operation_id,
+            client_id=request.client_id,
+        )
         if payload["plan"]["action"] != Action.ACCESS_REVOKE.value:
-            raise ContractError("access-revoke request carries a different mutation plan")
+            raise ContractError(
+                "access-revoke request carries a different mutation plan"
+            )
         return
     # Later task owners retain fixed action names but cannot smuggle arbitrary
     # paths, commands, environment, or units through an unimplemented surface.

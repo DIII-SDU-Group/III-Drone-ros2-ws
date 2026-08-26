@@ -22,7 +22,11 @@ from iii_deployment.contracts import canonical_json
 from iii_deployment.receiver.access import AccessManager, client_id_for_public_key
 from iii_deployment.receiver.engine import ReceiverEngine
 from iii_deployment.receiver.protocol import Request
-from iii_deployment.receiver.state import AuditLog, OperationJournalStore, ReceiverControlStore
+from iii_deployment.receiver.state import (
+    AuditLog,
+    OperationJournalStore,
+    ReceiverControlStore,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -270,7 +274,9 @@ def test_receiver_engine_stages_a_real_signed_bundle_and_status_chain(
     upload_id = "b" * 64
     upload = tmp_path / "incoming" / upload_id
     shutil.copytree(case.paths.directory, upload / "drone")
-    (upload / "release-status-index.json").write_bytes(canonical_json(status_index) + b"\n")
+    (upload / "release-status-index.json").write_bytes(
+        canonical_json(status_index) + b"\n"
+    )
     operator_key = "ssh-ed25519 " + base64.b64encode(b"o" * 32).decode("ascii")
     operator_id = client_id_for_public_key(operator_key)
     access = AccessManager(
@@ -294,7 +300,9 @@ def test_receiver_engine_stages_a_real_signed_bundle_and_status_chain(
         release_store=store,
         control=control,
         journals=journals,
-        audit=AuditLog(tmp_path / "audit/receiver.jsonl", lambda: clock.value, lambda: clock.boot),
+        audit=AuditLog(
+            tmp_path / "audit/receiver.jsonl", lambda: clock.value, lambda: clock.boot
+        ),
         access=access,
         incoming_root=tmp_path / "incoming",
         receiver_root=tmp_path / "target/opt/iii/receiver",
@@ -317,7 +325,9 @@ def test_receiver_engine_stages_a_real_signed_bundle_and_status_chain(
             {
                 "artifact": {
                     "release_id": case.release_id,
-                    "archive_sha256": hashlib.sha256(case.paths.archive.read_bytes()).hexdigest(),
+                    "archive_sha256": hashlib.sha256(
+                        case.paths.archive.read_bytes()
+                    ).hexdigest(),
                     "upload_id": upload_id,
                     "status_index_id": status_index["index_id"],
                 },
@@ -438,7 +448,10 @@ def test_signature_tamper_and_corrupt_existing_slot_fail_closed(
     corrupt.mkdir(parents=True)
     (corrupt / "manifest.json").write_text("{}\n", encoding="utf-8")
     corrupt_store = cases.store(tmp_path / "corrupt-target")
-    with pytest.raises(ContractError, match="receipt identity is invalid|differs from the verified bundle identity"):
+    with pytest.raises(
+        ContractError,
+        match="receipt identity is invalid|differs from the verified bundle identity",
+    ):
         corrupt_store.stage(case.paths.directory, status_index=index, staged_at=NOW)
     assert (corrupt / "manifest.json").read_text() == "{}\n"
 
@@ -512,6 +525,69 @@ def test_only_explicit_qualified_acceptance_replaces_anchor(
     )
     assert state["qualified_anchor_release_id"] == second.release_id
     assert state["rollback_release_id"] == first.release_id
+
+
+def test_operator_rollback_authorization_is_state_bound_and_swaps_release_roles(
+    tmp_path: Path,
+    cases: ReleaseCases,
+) -> None:
+    store = cases.store(tmp_path / "target")
+    first = cases.bundle(
+        "rollback-first",
+        release_id="a" * 64,
+        release_class="field-development",
+        version=None,
+    )
+    second = cases.bundle(
+        "rollback-second",
+        release_id="b" * 64,
+        release_class="field-development",
+        version=None,
+    )
+    store.stage(first.paths.directory, status_index=None, staged_at=NOW)
+    _accept(store, first, None, qualified=False)
+    store.stage(second.paths.directory, status_index=None, staged_at=NOW)
+    _accept(store, second, None, qualified=False)
+
+    authorization = store.authorize_rollback(first.release_id, status_index=None)
+    assert authorization.release_id == first.release_id
+    state = store.record_rollback_acceptance(authorization)
+    assert state["active_release_id"] == first.release_id
+    assert state["rollback_release_id"] == second.release_id
+    assert state["candidate_release_id"] is None
+    assert state["field_history"] == [first.release_id, second.release_id]
+    with pytest.raises(ContractError, match="stale"):
+        store.record_rollback_acceptance(authorization)
+
+
+@pytest.mark.parametrize("status", ["withdrawn", "unsafe"])
+def test_operator_rollback_rechecks_qualified_status_before_selection(
+    tmp_path: Path,
+    cases: ReleaseCases,
+    status: str,
+) -> None:
+    store = cases.store(tmp_path / "target")
+    previous, index = _stage_qualified(
+        cases, store, "rollback-qualified", "c", "v2.1.0"
+    )
+    _accept(store, previous, index, qualified=True)
+    active = cases.bundle(
+        "rollback-active",
+        release_id="d" * 64,
+        release_class="field-development",
+        version=None,
+    )
+    store.stage(active.paths.directory, status_index=index, staged_at=NOW)
+    _accept(store, active, index, qualified=False)
+    blocked_index = cases.append_status(previous, status)
+    with pytest.raises(ContractError, match=status):
+        store.authorize_rollback(
+            previous.release_id,
+            status_index=blocked_index,
+        )
+    state = store.state()
+    assert state["active_release_id"] == active.release_id
+    assert state["rollback_release_id"] == previous.release_id
 
 
 def test_candidate_replacement_retains_only_one_unaccepted_slot(
@@ -589,7 +665,9 @@ def test_unsafe_staged_release_requires_last_resort_recovery_authorization(
     cases: ReleaseCases,
 ) -> None:
     store = cases.store(tmp_path / "target")
-    case, _qualified_index = _stage_qualified(cases, store, "last-resort", "9", "v5.0.0")
+    case, _qualified_index = _stage_qualified(
+        cases, store, "last-resort", "9", "v5.0.0"
+    )
     unsafe_index = cases.append_status(case, "unsafe")
     store.refresh_status(unsafe_index)
     with pytest.raises(ContractError, match="last-resort recovery"):

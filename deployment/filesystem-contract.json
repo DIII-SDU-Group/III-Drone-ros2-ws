@@ -18,6 +18,7 @@
     {"path": "/var/lib/iii/configuration/current", "owner": "root", "group": "iii", "mode": "0750", "kind": "atomic-selector", "persistence": "receiver-reconciled"},
     {"path": "/var/lib/iii/deployment", "owner": "root", "group": "iii", "mode": "0750", "kind": "receiver-owned-state", "persistence": "receiver-reconciled"},
     {"path": "/var/lib/iii/deployment/activation-transactions", "owner": "root", "group": "iii", "mode": "0750", "kind": "receiver-journal", "persistence": "receiver-reconciled"},
+    {"path": "/var/lib/iii/deployment/activation", "owner": "root", "group": "iii", "mode": "0750", "kind": "activation-health-evidence", "persistence": "portable-backup"},
     {"path": "/var/lib/iii/incoming", "owner": "iii", "group": "iii", "mode": "0750", "kind": "unprivileged-upload", "persistence": "bounded-partial"},
     {"path": "/var/log/iii", "owner": "iii", "group": "iii", "mode": "0750", "kind": "bounded-logs", "persistence": "retention-policy"},
     {"path": "/var/log/iii/deployment", "owner": "root", "group": "iii", "mode": "0750", "kind": "receiver-audit", "persistence": "retention-policy"},

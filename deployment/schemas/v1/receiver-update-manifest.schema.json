@@ -26,7 +26,7 @@
     },
     "compatibility": {
       "type": "object", "additionalProperties": false,
-      "required": ["bootstrap_protocols", "cli_protocols", "request_protocols", "release_manifest_schema_versions", "journal_schemas", "audit_schemas", "activation_transaction_schemas", "activation_selector_schemas", "configuration_checkpoint_schemas"],
+      "required": ["bootstrap_protocols", "cli_protocols", "request_protocols", "release_manifest_schema_versions", "journal_schemas", "audit_schemas", "activation_transaction_schemas", "activation_selector_schemas", "activation_health_transaction_schemas", "activation_health_evidence_schemas", "configuration_checkpoint_schemas"],
       "properties": {
         "bootstrap_protocols": {"$ref": "#/definitions/values"},
         "cli_protocols": {"$ref": "#/definitions/values"},
@@ -36,6 +36,8 @@
         "audit_schemas": {"$ref": "#/definitions/values"},
         "activation_transaction_schemas": {"$ref": "#/definitions/values"},
         "activation_selector_schemas": {"$ref": "#/definitions/values"},
+        "activation_health_transaction_schemas": {"$ref": "#/definitions/values"},
+        "activation_health_evidence_schemas": {"$ref": "#/definitions/values"},
         "configuration_checkpoint_schemas": {"$ref": "#/definitions/values"}
       }
     }

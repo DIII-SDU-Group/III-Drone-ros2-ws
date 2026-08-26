@@ -18,6 +18,8 @@ import tarfile
 import tempfile
 from typing import Any, Callable, Mapping
 
+from cryptography.hazmat.primitives import serialization
+
 from iii_deployment.contracts import (
     ContractError,
     ContractRegistry,
@@ -144,6 +146,8 @@ class ReceiverCompatibilityInventory:
     audit_schemas: tuple[str, ...]
     activation_transaction_schemas: tuple[str, ...]
     activation_selector_schemas: tuple[str, ...]
+    activation_health_transaction_schemas: tuple[str, ...]
+    activation_health_evidence_schemas: tuple[str, ...]
     configuration_checkpoint_schemas: tuple[str, ...]
 
     def normalized(self) -> "ReceiverCompatibilityInventory":
@@ -154,6 +158,8 @@ class ReceiverCompatibilityInventory:
             "audit_schemas",
             "activation_transaction_schemas",
             "activation_selector_schemas",
+            "activation_health_transaction_schemas",
+            "activation_health_evidence_schemas",
             "configuration_checkpoint_schemas",
         ):
             values[field] = tuple(sorted(set(values[field])))
@@ -295,7 +301,10 @@ def package_receiver_update(
                     "algorithm": "Ed25519",
                     "authority": "receiver-update",
                     "public_key": base64.b64encode(
-                        key.public_key().public_bytes_raw()
+                        key.public_key().public_bytes(
+                            encoding=serialization.Encoding.Raw,
+                            format=serialization.PublicFormat.Raw,
+                        )
                     ).decode("ascii"),
                     "state": "active",
                 }
@@ -410,6 +419,8 @@ def _assert_compatible(
         "audit_schemas": inventory.audit_schemas,
         "activation_transaction_schemas": inventory.activation_transaction_schemas,
         "activation_selector_schemas": inventory.activation_selector_schemas,
+        "activation_health_transaction_schemas": inventory.activation_health_transaction_schemas,
+        "activation_health_evidence_schemas": inventory.activation_health_evidence_schemas,
         "configuration_checkpoint_schemas": inventory.configuration_checkpoint_schemas,
     }
     for field, installed_values in collection_fields.items():
@@ -527,6 +538,7 @@ class ReceiverSlotStore:
             self.operation_root / "activation-transactions"
         )
         self.activation_selector_path = self.operation_root / "active-selector.json"
+        self.activation_health_root = self.operation_root / "activation"
         self.configuration_checkpoint_root = (
             self.root / "var/lib/iii/configuration/checkpoints"
         )
@@ -570,6 +582,27 @@ class ReceiverSlotStore:
             if not path.is_file() or path.suffix != ".json":
                 raise ContractError(f"{label} contains an unknown entry")
             values.append(_read_canonical(path, label=label))
+        return values
+
+    @staticmethod
+    def _nested_canonical_documents(root: Path, *, label: str) -> list[dict[str, Any]]:
+        if not root.exists() and not root.is_symlink():
+            return []
+        if root.is_symlink() or not root.is_dir():
+            raise ContractError(f"{label} root is linked or invalid")
+        values: list[dict[str, Any]] = []
+        for current, directories, files in os.walk(root, followlinks=False):
+            directories.sort()
+            files.sort()
+            base = Path(current)
+            for name in directories:
+                if (base / name).is_symlink():
+                    raise ContractError(f"{label} contains a symbolic link")
+            for name in files:
+                path = base / name
+                if path.is_symlink() or path.suffix != ".json":
+                    raise ContractError(f"{label} contains an unsafe entry")
+                values.append(_read_canonical(path, label=label))
         return values
 
     def inspect_compatibility_inventory(self) -> ReceiverCompatibilityInventory:
@@ -617,6 +650,18 @@ class ReceiverSlotStore:
             )
             self.registry.validate("activation-selector", selector)
             selectors.append(selector)
+        activation_health_transactions = self._canonical_documents(
+            self.activation_health_root / "transactions",
+            label="activation health transaction",
+        )
+        for value in activation_health_transactions:
+            self.registry.validate("activation-health-transaction", value)
+        activation_health_evidence = self._nested_canonical_documents(
+            self.activation_health_root / "evidence",
+            label="activation health evidence",
+        )
+        for value in activation_health_evidence:
+            self.registry.validate("activation-health", value)
         checkpoints = self._canonical_documents(
             self.configuration_checkpoint_root,
             label="configuration checkpoint",
@@ -641,6 +686,12 @@ class ReceiverSlotStore:
             ),
             activation_selector_schemas=tuple(
                 str(value["schema"]) for value in selectors
+            ),
+            activation_health_transaction_schemas=tuple(
+                str(value["schema"]) for value in activation_health_transactions
+            ),
+            activation_health_evidence_schemas=tuple(
+                str(value["schema"]) for value in activation_health_evidence
             ),
             configuration_checkpoint_schemas=tuple(
                 str(value.get("schema", "")) for value in checkpoints

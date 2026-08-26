@@ -66,7 +66,21 @@ def _request(action: str, nonce: str | None, payload: dict | None = None) -> byt
 
 def test_receiver_protocol_exposes_only_fixed_actions() -> None:
     assert Request.parse(_request("status", None)).action.value == "status"
-    assert Request.parse(_request("activate", "b" * 64)).action.value == "activate"
+    planned = Request.parse(
+        _request(
+            "plan-activate",
+            None,
+            {
+                "activation": {
+                    "release_id": "b" * 64,
+                    "configuration_checkpoint_id": "c" * 64,
+                    "explicit_qualified_action": False,
+                },
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    assert planned.action.value == "plan-activate"
     with pytest.raises(ContractError, match="unsupported receiver action"):
         Request.parse(_request("run-shell", "b" * 64, {"command": "id"}))
 

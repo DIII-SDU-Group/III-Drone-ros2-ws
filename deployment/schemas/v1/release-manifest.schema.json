@@ -63,7 +63,7 @@
     "configuration": {"type": "object", "additionalProperties": false, "required": ["schema_version", "manifest_sha256", "compatible_from", "capture_contract"], "properties": {"schema_version": {"type": "integer", "minimum": 1}, "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "compatible_from": {"type": "array", "items": {"type": "integer", "minimum": 1}, "uniqueItems": true}, "capture_contract": {"const": "iii.capture/v1"}}},
     "px4": {"type": "object", "additionalProperties": false, "required": ["manifests", "firmware_range", "interface_sha256"], "properties": {"manifests": {"type": "object", "required": ["real", "sim"], "minProperties": 2, "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "propertyNames": {"pattern": "^[a-z][a-z0-9_-]*$"}}, "firmware_range": {"type": "string", "minLength": 1}, "interface_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
     "qgc": {"type": "object", "additionalProperties": false, "required": ["managed_settings_sha256", "compatible_versions"], "properties": {"managed_settings_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "compatible_versions": {"type": "array", "minItems": 1, "items": {"type": "string"}}}},
-    "profiles": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["id", "status", "bootable", "parameter_profile", "capabilities", "default_mission"], "properties": {"id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"}, "status": {"enum": ["commissioned", "not_commissioned"]}, "bootable": {"type": "boolean"}, "parameter_profile": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"}, "capabilities": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$"}, "uniqueItems": true}, "default_mission": {"type": "string", "minLength": 1}}}},
+    "profiles": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["id", "status", "bootable", "parameter_profile", "capabilities", "default_mission", "health"], "properties": {"id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"}, "status": {"enum": ["commissioned", "not_commissioned"]}, "bootable": {"type": "boolean"}, "parameter_profile": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"}, "capabilities": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$"}, "uniqueItems": true}, "default_mission": {"type": "string", "minLength": 1}, "health": {"$ref": "#/definitions/health"}}}},
     "mission_catalog": {"type": "object", "additionalProperties": false, "required": ["schema_version", "scope", "catalog_hash", "catalog_sha256", "source_state_sha256"], "properties": {"schema_version": {"type": "integer", "minimum": 1}, "scope": {"enum": ["qualified", "field"]}, "catalog_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "catalog_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "source_state_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}}},
     "qualification": {"type": "object", "additionalProperties": false, "required": ["explicit_action", "tag_on_release", "tests_complete", "evidence_sha256", "evidence_complete"], "properties": {"explicit_action": {"type": "boolean"}, "tag_on_release": {"type": "boolean"}, "tests_complete": {"type": "boolean"}, "evidence_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "evidence_complete": {"type": "boolean"}}},
     "signing": {"type": "object", "additionalProperties": false, "required": ["algorithm", "signer_id", "authority"], "properties": {"algorithm": {"const": "Ed25519"}, "signer_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "authority": {"enum": ["ci-qualified", "workstation-field"]}}},
@@ -71,6 +71,22 @@
     "build": {"type": "object", "additionalProperties": false, "required": ["builder_id", "built_at", "source_date_epoch"], "properties": {"builder_id": {"type": "string", "minLength": 1}, "built_at": {"type": "string", "format": "date-time"}, "source_date_epoch": {"type": "integer", "minimum": 0}}}
   },
   "definitions": {
+    "health": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "required_hardware_roles", "optional_hardware_roles", "required_services", "optional_services", "required_managed_nodes", "optional_managed_nodes", "required_systemd_units"],
+      "properties": {
+        "schema": {"const": "iii.activation-health-policy/v1"},
+        "required_hardware_roles": {"$ref": "#/definitions/entity_list"},
+        "optional_hardware_roles": {"$ref": "#/definitions/entity_list"},
+        "required_services": {"$ref": "#/definitions/entity_list"},
+        "optional_services": {"$ref": "#/definitions/entity_list"},
+        "required_managed_nodes": {"$ref": "#/definitions/lifecycle_map"},
+        "optional_managed_nodes": {"$ref": "#/definitions/lifecycle_map"},
+        "required_systemd_units": {"$ref": "#/definitions/entity_list"}
+      }
+    },
+    "entity_list": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.@-]{0,127}$"}},
+    "lifecycle_map": {"type": "object", "additionalProperties": {"enum": ["unconfigured", "inactive", "active"]}, "propertyNames": {"pattern": "^[a-z][a-z0-9_.@-]{0,127}$"}},
     "component_target": {
       "type": "object", "additionalProperties": false,
       "required": ["target_id", "os", "os_version", "architecture"],

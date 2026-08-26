@@ -8,12 +8,19 @@ from types import SimpleNamespace
 
 import pytest
 
-from iii_deployment.contracts import ContractError, canonical_json
+from iii_deployment.contracts import ContractError, ContractRegistry, canonical_json
 from iii_deployment.receiver.access import AccessManager, client_id_for_public_key
 from iii_deployment.receiver.engine import ReceiverEngine
 from iii_deployment.receiver.protocol import Action, Request
-from iii_deployment.receiver.state import AuditLog, OperationJournalStore, ReceiverControlStore
+from iii_deployment.receiver.state import (
+    AuditLog,
+    OperationJournalStore,
+    ReceiverControlStore,
+)
 from iii_deployment.staging import StageResult
+
+
+REGISTRY = ContractRegistry(Path(__file__).resolve().parents[1] / "schemas/v1")
 
 
 class Clock:
@@ -53,14 +60,18 @@ class FakeReleaseStore:
     stage_calls: list[tuple]
 
     def state(self) -> dict:
-        return {"recovery": {"recovery_only": False, "flight_capable": True, "reason": None}}
+        return {
+            "recovery": {"recovery_only": False, "flight_capable": True, "reason": None}
+        }
 
     def stage(self, component: Path, *, status_index, staged_at: str) -> StageResult:
         self.stage_calls.append((component, status_index, staged_at))
         release_id = __import__("json").loads(
             (component / "release-manifest.json").read_text(encoding="utf-8")
         )["release_id"]
-        return StageResult(release_id, "field-development", True, release_id, 1000, "9" * 64)
+        return StageResult(
+            release_id, "field-development", True, release_id, 1000, "9" * 64
+        )
 
 
 def key(character: int) -> str:
@@ -114,7 +125,7 @@ def receiver(tmp_path: Path):
     journals = OperationJournalStore(tmp_path / "state", clock.monotonic, clock.boot_id)
     audit = AuditLog(tmp_path / "log/audit.jsonl", clock.monotonic, clock.boot_id)
 
-    def build(selected_executor=executor):
+    def build(selected_executor=executor, activation_coordinator=None):
         return ReceiverEngine(
             release_store=store,
             control=control,
@@ -127,6 +138,7 @@ def receiver(tmp_path: Path):
             profile="real",
             live_state=lambda: live,
             executor=selected_executor,
+            activation_coordinator=activation_coordinator,
         )
 
     return SimpleNamespace(
@@ -197,7 +209,9 @@ def test_accepted_stage_detaches_survives_client_loss_and_reattaches(receiver) -
     assert claimed.is_dir()
     assert (claimed / "bundle.tar.zst").stat().st_mode & 0o222 == 0
     original = receiver.root / "incoming" / ("e" * 64) / "drone"
-    (original / "bundle.tar.zst").write_bytes(b"attacker changed upload after acceptance")
+    (original / "bundle.tar.zst").write_bytes(
+        b"attacker changed upload after acceptance"
+    )
     (original / "release-manifest.json").write_bytes(
         canonical_json({"release_id": "f" * 64}) + b"\n"
     )
@@ -219,6 +233,239 @@ def test_accepted_stage_detaches_survives_client_loss_and_reattaches(receiver) -
     assert status["lease"] is None
     assert len(receiver.store.stage_calls) == 1
     assert receiver.store.stage_calls[0][0] == claimed
+
+
+class FakeActivationDiagnostics:
+    def __init__(self) -> None:
+        self.states = {}
+
+    def load_state(self, operation_id):
+        return self.states.get(operation_id)
+
+
+class FakeActivationCoordinator:
+    def __init__(self) -> None:
+        self.calls = []
+        self.diagnostics = FakeActivationDiagnostics()
+
+    def preflight(
+        self,
+        *,
+        release_id,
+        configuration_checkpoint_id,
+        operator_rollback=False,
+    ):
+        self.calls.append(
+            (
+                "preflight",
+                release_id,
+                configuration_checkpoint_id,
+                operator_rollback,
+            )
+        )
+        return {
+            "schema": "iii.activation-preflight/v1",
+            "ready": True,
+            "rejection_reasons": [],
+        }
+
+    def activate(
+        self,
+        *,
+        operation_id,
+        release_id,
+        configuration_checkpoint_id,
+        explicit_qualified_action,
+    ):
+        self.calls.append(
+            (
+                "activate",
+                operation_id,
+                release_id,
+                configuration_checkpoint_id,
+                explicit_qualified_action,
+            )
+        )
+        return {
+            "kind": "activation",
+            "release_id": release_id,
+            "automatic_rollback_permitted": False,
+            "autonomy_started": False,
+        }
+
+    def operator_rollback(
+        self,
+        *,
+        operation_id,
+        release_id,
+        configuration_checkpoint_id,
+    ):
+        self.calls.append(
+            (
+                "rollback",
+                operation_id,
+                release_id,
+                configuration_checkpoint_id,
+            )
+        )
+        return {
+            "kind": "rollback",
+            "release_id": release_id,
+            "automatic_rollback_permitted": False,
+            "autonomy_started": False,
+        }
+
+    @staticmethod
+    def reconcile():
+        return {
+            "schema": "iii.activation-reconciliation/v1",
+            "restored_operations": [],
+            "accepted_operations": [],
+            "faulted_operations": [],
+            "autonomy_started": False,
+        }
+
+
+def test_activation_is_planned_rechecked_durably_detached_and_runs_without_client(
+    receiver,
+) -> None:
+    coordinator = FakeActivationCoordinator()
+    receiver.engine = receiver.build(receiver.executor, coordinator)
+    operation_id = "operation-activate-0001"
+    release_id = "4" * 64
+    checkpoint_id = "5" * 64
+    planned = receiver.engine.handle(
+        request(
+            "plan-activate",
+            operation_id,
+            receiver.operator_id,
+            {
+                "activation": {
+                    "release_id": release_id,
+                    "configuration_checkpoint_id": checkpoint_id,
+                    "explicit_qualified_action": False,
+                },
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    assert planned["preflight"]["ready"] is True
+    REGISTRY.validate("receiver-mutation-plan", planned["plan"])
+    accepted = receiver.engine.handle(
+        request(
+            "activate",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"]},
+            planned["nonce"],
+        )
+    )
+    assert accepted["detached"] is True
+    assert receiver.journals.load(operation_id)["state"] == "accepted"
+    del accepted
+    receiver.executor.run_next()
+    completed = receiver.journals.load(operation_id)
+    assert completed["state"] == "completed"
+    assert completed["result"]["autonomy_started"] is False
+    assert coordinator.calls == [
+        ("preflight", release_id, checkpoint_id, False),
+        ("preflight", release_id, checkpoint_id, False),
+        ("activate", operation_id, release_id, checkpoint_id, False),
+    ]
+
+
+def test_operator_rollback_is_planned_safety_rechecked_and_detached(receiver) -> None:
+    coordinator = FakeActivationCoordinator()
+    receiver.engine = receiver.build(receiver.executor, coordinator)
+    operation_id = "operation-rollback-0001"
+    release_id = "6" * 64
+    checkpoint_id = "7" * 64
+    planned = receiver.engine.handle(
+        request(
+            "plan-rollback",
+            operation_id,
+            receiver.operator_id,
+            {
+                "rollback": {
+                    "release_id": release_id,
+                    "configuration_checkpoint_id": checkpoint_id,
+                },
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    assert planned["plan"]["action"] == "rollback"
+    assert planned["preflight"]["ready"] is True
+    REGISTRY.validate("receiver-mutation-plan", planned["plan"])
+    accepted = receiver.engine.handle(
+        request(
+            "rollback",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"]},
+            planned["nonce"],
+        )
+    )
+    assert accepted["detached"] is True
+    assert receiver.journals.load(operation_id)["state"] == "accepted"
+    receiver.executor.run_next()
+    completed = receiver.journals.load(operation_id)
+    assert completed["state"] == "completed"
+    assert completed["result"]["kind"] == "rollback"
+    assert completed["result"]["automatic_rollback_permitted"] is False
+    assert coordinator.calls == [
+        ("preflight", release_id, checkpoint_id, True),
+        ("preflight", release_id, checkpoint_id, True),
+        ("rollback", operation_id, release_id, checkpoint_id),
+    ]
+
+
+def test_reboot_reconciles_durably_accepted_operator_rollback_journal(receiver) -> None:
+    coordinator = FakeActivationCoordinator()
+    receiver.engine = receiver.build(receiver.executor, coordinator)
+    operation_id = "operation-rollback-0002"
+    release_id = "8" * 64
+    checkpoint_id = "9" * 64
+    planned = receiver.engine.handle(
+        request(
+            "plan-rollback",
+            operation_id,
+            receiver.operator_id,
+            {
+                "rollback": {
+                    "release_id": release_id,
+                    "configuration_checkpoint_id": checkpoint_id,
+                },
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    receiver.engine.handle(
+        request(
+            "rollback",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"]},
+            planned["nonce"],
+        )
+    )
+    coordinator.diagnostics.states[operation_id] = {
+        "stage": "accepted",
+        "candidate": {"release_id": release_id},
+        "previous": {"release_id": "a" * 64},
+        "accepted_state_id": "b" * 64,
+        "evidence_id": "c" * 64,
+        "state_id": "d" * 64,
+    }
+    reconciled = receiver.engine.reconcile()
+    assert reconciled["recovered_operations"] == [operation_id]
+    journal = receiver.journals.load(operation_id)
+    assert journal["state"] == "completed"
+    assert journal["result"]["kind"] == "rollback"
+    assert journal["result"]["automatic_rollback_permitted"] is False
+    assert receiver.control.load()["lease"] is None
+    receiver.executor.run_next()
+    assert receiver.journals.load(operation_id)["state"] == "completed"
 
 
 def test_stale_cross_plan_replay_and_concurrent_mutation_are_rejected(receiver) -> None:
@@ -325,10 +572,14 @@ def test_deadline_expiry_fails_closed_before_privileged_mutation(receiver) -> No
     assert receiver.control.load()["lease"] is None
 
 
-def test_unplanned_or_oversized_upload_is_rejected_before_durable_acceptance(receiver) -> None:
+def test_unplanned_or_oversized_upload_is_rejected_before_durable_acceptance(
+    receiver,
+) -> None:
     planned = stage_plan(receiver)
     component = receiver.root / "incoming" / ("e" * 64) / "drone"
-    (component / "arbitrary-unit.service").write_text("host injection", encoding="utf-8")
+    (component / "arbitrary-unit.service").write_text(
+        "host injection", encoding="utf-8"
+    )
     with pytest.raises(ContractError, match="exact fixed file set"):
         apply_stage(receiver, planned)
     assert receiver.control.load()["lease"] is None
@@ -342,7 +593,9 @@ def test_unplanned_or_oversized_upload_is_rejected_before_durable_acceptance(rec
     assert receiver.control.load()["lease"] is None
 
 
-def test_key_rotation_through_planned_receiver_actions_and_final_key_loss_denial(receiver) -> None:
+def test_key_rotation_through_planned_receiver_actions_and_final_key_loss_denial(
+    receiver,
+) -> None:
     receiver.engine.executor = ImmediateExecutor()
     new_key = key(2)
     new_id = client_id_for_public_key(new_key)
@@ -406,7 +659,9 @@ def test_key_rotation_through_planned_receiver_actions_and_final_key_loss_denial
             revoked["nonce"],
         )
     )
-    assert {item["client_id"]: item["state"] for item in receiver.access.list_clients()} == {
+    assert {
+        item["client_id"]: item["state"] for item in receiver.access.list_clients()
+    } == {
         receiver.operator_id: "revoked",
         new_id: "active",
     }
@@ -423,7 +678,9 @@ def test_key_rotation_through_planned_receiver_actions_and_final_key_loss_denial
         )
     )
     assert receiver.journals.load("access-revoke-0002")["state"] == "failed"
-    listed = {item["client_id"]: item["state"] for item in receiver.access.list_clients()}
+    listed = {
+        item["client_id"]: item["state"] for item in receiver.access.list_clients()
+    }
     assert listed[new_id] == "active"
     raw_audit = (receiver.root / "log/audit.jsonl").read_text(encoding="utf-8")
     assert new_key not in raw_audit and "public_key" not in raw_audit

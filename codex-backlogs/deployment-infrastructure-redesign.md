@@ -3173,6 +3173,8 @@ Implementation notes (2026-08-26):
 
 #### P2.T4: Implement Activation Health And Automatic Rollback
 
+**Status: Completed (2026-08-26).**
+
 Description:
 Atomically select the candidate, restart required systemd/runtime processes,
 verify daemon/runtime/configuration/ROS/hardware readiness, mark acceptance, and
@@ -3182,20 +3184,20 @@ polling continuing.
 
 Acceptance:
 
-- [ ] Success is reported only after defined health gates pass.
-- [ ] Failed health restores a known previous release without activating autonomy.
-- [ ] Recovery resumes correctly after power loss at every transaction stage.
-- [ ] Diagnostic evidence is retained for failed activation and rollback.
-- [ ] Disconnecting or terminating the CLI immediately after activation request
+- [x] Success is reported only after defined health gates pass.
+- [x] Failed health restores a known previous release without activating autonomy.
+- [x] Recovery resumes correctly after power loss at every transaction stage.
+- [x] Diagnostic evidence is retained for failed activation and rollback.
+- [x] Disconnecting or terminating the CLI immediately after activation request
       acceptance cannot suppress health timeout or rollback.
-- [ ] Acceptance requires a 10-second stable window within the 120-second
+- [x] Acceptance requires a 10-second stable window within the 120-second
       deadline and persists an evidence snapshot before selector commit.
-- [ ] Health proves release identity agreement across daemon/runtime API,
+- [x] Health proves release identity agreement across daemon/runtime API,
       configuration reconciliation, required hardware, required services,
       required managed-node states, and compatible fresh landed/disarmed PX4.
-- [ ] Active mission/custom/direct operation or Reference Owner blocks acceptance;
+- [x] Active mission/custom/direct operation or Reference Owner blocks acceptance;
       only canonical-profile entities explicitly marked optional may be absent.
-- [ ] Automatic release rollback authority ends when acceptance is durably
+- [x] Automatic release rollback authority ends when acceptance is durably
       committed according to the final Q97 contract; later failures use bounded
       process restart, visible fault state, retained diagnostics, and explicitly
       safety-gated operator rollback.
@@ -3203,6 +3205,51 @@ Acceptance:
 Tests:
 
 - Fault injection at each persisted transaction stage and each health gate.
+
+Implementation notes (2026-08-26):
+
+- Added a receiver-owned activation coordinator that binds a signed release-health
+  policy, staged release authorization, immutable configuration checkpoint,
+  current safety observation, composite selector, control-plane proof, health
+  evidence, and release-state acceptance into one durable transaction. Candidate
+  health must remain continuously valid for ten seconds and is never accepted
+  after the 120-second monotonic deadline.
+- Health now fails closed on receiver/bootstrap identity, daemon and runtime
+  release/profile identity, runtime API compatibility, canonical configuration
+  reconciliation, declared hardware and service readiness, exact managed-node and
+  systemd states, PX4 interface/firmware/parameter compatibility, fresh landed and
+  disarmed state, and all mission/custom/direct/reference ownership. Optional
+  absence is accepted only when the signed profile explicitly declares it.
+- Added fixed-path onboard adapters. The root receiver can start only the two
+  fixed control-plane units and the canonical daemon profile over its Unix socket;
+  it independently composes systemd and immutable receiver-readiness proof with
+  identity-bound runtime observations. Runtime publishes canonical atomic health
+  and safety observations, verifies the selected configuration checkpoint and
+  hardware-role evidence, and removes observations on failure or shutdown.
+- Activation and explicit rollback use fixed `plan-activate`/`activate` and
+  `plan-rollback`/`rollback` protocol leaves with retained expected state, a bound
+  nonce, apply-time safety recheck, durable detached execution, and reconnectable
+  operation journals. Client or network loss after acceptance cannot affect the
+  onboard deadline, rollback, or reboot reconciliation.
+- Every pre-acceptance state, including evidence-persisted but not yet accepted,
+  restores the previous code/configuration tuple and starts only its control plane
+  after reboot. Once release-state acceptance is durable, automatic rollback is
+  disabled permanently; later control-plane failures get at most two bounded
+  restart attempts and a visible fault. Operator rollback rechecks current safety,
+  retained-role identity, qualified status, the complete health gate, and then
+  swaps active/rollback roles only after new acceptance evidence is durable.
+- Receiver A/B compatibility now inventories and schema-validates retained
+  activation-health transactions and evidence so an update cannot orphan the new
+  durable formats. Added the new transaction, evidence, control-plane, runtime
+  observation, release-health policy, and receiver-plan schema surfaces to the
+  packaged deployment wheel.
+- Verification passed the full 323/323 deployment suite, including fault injection
+  at every pre-acceptance state and health domain, detached activation and rollback,
+  accepted-journal reboot reconciliation, signed-status rollback denial, bounded
+  post-acceptance recovery, and receiver-update compatibility. The Jazzy
+  devcontainer built `iii_drone_runtime` and passed all 288 package tests. Fatal
+  Flake8, Python compilation, modified-file Black, all 45 Draft-07 schemas, wheel
+  payload inspection, diff hygiene, and the updated submodule lock all passed.
 
 #### P2.T5: Replace The SSH Deployment Adapter
 

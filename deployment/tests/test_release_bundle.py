@@ -112,7 +112,9 @@ def _write_zstd(path: Path, uncompressed: bytes) -> None:
 
 def _read_zstd(path: Path) -> bytes:
     with path.open("rb") as raw:
-        with zstandard.ZstdDecompressor().stream_reader(raw, read_across_frames=True) as stream:
+        with zstandard.ZstdDecompressor().stream_reader(
+            raw, read_across_frames=True
+        ) as stream:
             return stream.read()
 
 
@@ -129,7 +131,9 @@ def _rewrite_archive(
             members.append((member, b"" if stream is None else stream.read()))
     mutate(members)
     encoded = io.BytesIO()
-    with tarfile.open(fileobj=encoded, mode="w", format=tarfile.USTAR_FORMAT) as archive:
+    with tarfile.open(
+        fileobj=encoded, mode="w", format=tarfile.USTAR_FORMAT
+    ) as archive:
         for member, data in members:
             archive.addfile(member, io.BytesIO(data) if member.isfile() else None)
     _write_zstd(paths.archive, encoded.getvalue())
@@ -149,7 +153,9 @@ def _resign_archive(paths: BundlePaths, key: Path) -> None:
     )
 
 
-def test_paired_bundles_are_deterministic_independent_and_round_trip(tmp_path: Path) -> None:
+def test_paired_bundles_are_deterministic_independent_and_round_trip(
+    tmp_path: Path,
+) -> None:
     case = _case(tmp_path)
     second = tmp_path / "second-release-set"
     repeated = package_bundle_set(
@@ -165,7 +171,9 @@ def test_paired_bundles_are_deterministic_independent_and_round_trip(tmp_path: P
     shared_catalog = None
     for component, paths in case.paths.items():
         assert paths.archive.read_bytes() == repeated[component].archive.read_bytes()
-        assert paths.signature.read_bytes() == repeated[component].signature.read_bytes()
+        assert (
+            paths.signature.read_bytes() == repeated[component].signature.read_bytes()
+        )
         verified = verify_bundle(
             paths.directory, case.store, registry=REGISTRY, host_limits=LIMITS
         )
@@ -187,10 +195,17 @@ def test_paired_bundles_are_deterministic_independent_and_round_trip(tmp_path: P
             registry=REGISTRY,
             host_limits=LIMITS,
         )
-        assert (destination / "payload" / "share" / "asset.txt").read_text() == component + "\n"
+        assert (
+            destination / "payload" / "share" / "asset.txt"
+        ).read_text() == component + "\n"
         assert (destination / "payload" / "share" / "empty").is_dir()
-        assert (destination / "payload" / "bin" / "iii-run").stat().st_mode & 0o777 == 0o755
-        assert not any((destination / "payload" / name).exists() for name in ("src", "build", ".git"))
+        assert (
+            destination / "payload" / "bin" / "iii-run"
+        ).stat().st_mode & 0o777 == 0o755
+        assert not any(
+            (destination / "payload" / name).exists()
+            for name in ("src", "build", ".git")
+        )
 
 
 def test_qualified_and_field_releases_share_the_same_format(tmp_path: Path) -> None:
@@ -227,6 +242,19 @@ def test_release_metadata_binds_px4_qgc_and_extensible_profiles(tmp_path: Path) 
             "parameter_profile": "future_lab",
             "capabilities": [],
             "default_mission": "inspection-production",
+            "health": {
+                "schema": "iii.activation-health-policy/v1",
+                "required_hardware_roles": [],
+                "optional_hardware_roles": [],
+                "required_services": [],
+                "optional_services": [],
+                "required_managed_nodes": {},
+                "optional_managed_nodes": {},
+                "required_systemd_units": [
+                    "iii-runtime-api.service",
+                    "iii-system-daemon.service",
+                ],
+            },
         }
     )
     validate_release_metadata(manifest, REGISTRY)
@@ -235,7 +263,9 @@ def test_release_metadata_binds_px4_qgc_and_extensible_profiles(tmp_path: Path) 
         validate_release_metadata(manifest, REGISTRY)
 
 
-def test_qualified_release_cannot_bind_field_catalog_but_field_release_can(tmp_path: Path) -> None:
+def test_qualified_release_cannot_bind_field_catalog_but_field_release_can(
+    tmp_path: Path,
+) -> None:
     manifest = json.loads(FIXTURE.read_text(encoding="utf-8"))
     manifest["mission_catalog"]["scope"] = "field"
     with pytest.raises(ContractError, match="qualified mission catalog"):
@@ -246,7 +276,9 @@ def test_qualified_release_cannot_bind_field_catalog_but_field_release_can(tmp_p
     validate_release_metadata(manifest, REGISTRY)
 
 
-def test_px4_and_qgc_changes_change_signed_compatibility_identity(tmp_path: Path) -> None:
+def test_px4_and_qgc_changes_change_signed_compatibility_identity(
+    tmp_path: Path,
+) -> None:
     case = _case(tmp_path)
     original = inspect_bundle(
         case.paths["drone"].directory,
@@ -295,7 +327,9 @@ def test_unsigned_unknown_invalid_and_corrupt_bundles_are_rejected(
         trust = {"signers": []}
     elif condition == "invalid":
         signature = json.loads(paths.signature.read_text(encoding="utf-8"))
-        signature["signature"] = ("A" if signature["signature"][0] != "A" else "B") + signature["signature"][1:]
+        signature["signature"] = (
+            "A" if signature["signature"][0] != "A" else "B"
+        ) + signature["signature"][1:]
         paths.signature.write_bytes(canonical_json(signature) + b"\n")
     else:
         data = bytearray(paths.archive.read_bytes())
@@ -305,7 +339,9 @@ def test_unsigned_unknown_invalid_and_corrupt_bundles_are_rejected(
         verify_bundle(paths.directory, trust, registry=REGISTRY, host_limits=LIMITS)
 
 
-def test_signed_archive_content_disagreement_is_rejected_and_staging_removed(tmp_path: Path) -> None:
+def test_signed_archive_content_disagreement_is_rejected_and_staging_removed(
+    tmp_path: Path,
+) -> None:
     case = _case(tmp_path)
     paths = case.paths["drone"]
 
@@ -331,14 +367,29 @@ def test_signed_archive_content_disagreement_is_rejected_and_staging_removed(tmp
 
 @pytest.mark.parametrize(
     "attack",
-    ["traversal", "absolute", "backslash", "symlink", "special", "extra", "duplicate", "unsorted"],
+    [
+        "traversal",
+        "absolute",
+        "backslash",
+        "symlink",
+        "special",
+        "extra",
+        "duplicate",
+        "unsorted",
+    ],
 )
-def test_signed_unsafe_archive_entries_are_rejected(tmp_path: Path, attack: str) -> None:
+def test_signed_unsafe_archive_entries_are_rejected(
+    tmp_path: Path, attack: str
+) -> None:
     case = _case(tmp_path)
     paths = case.paths["drone"]
 
     def mutate(members):
-        selected = next(index for index, (member, _) in enumerate(members) if member.name.startswith("payload/"))
+        selected = next(
+            index
+            for index, (member, _) in enumerate(members)
+            if member.name.startswith("payload/")
+        )
         member, data = members[selected]
         if attack == "traversal":
             member.name = "payload/../escape"
@@ -369,13 +420,19 @@ def test_signed_unsafe_archive_entries_are_rejected(tmp_path: Path, attack: str)
 
     _rewrite_archive(paths, case.key, mutate)
     with pytest.raises(ContractError):
-        verify_bundle(paths.directory, case.store, registry=REGISTRY, host_limits=LIMITS)
+        verify_bundle(
+            paths.directory, case.store, registry=REGISTRY, host_limits=LIMITS
+        )
 
 
-def test_signer_rotation_requires_proof_and_preserves_final_authority(tmp_path: Path) -> None:
+def test_signer_rotation_requires_proof_and_preserves_final_authority(
+    tmp_path: Path,
+) -> None:
     first_key = tmp_path / "first.pem"
     first_public = tmp_path / "first.json"
-    first = generate_signer(first_key, first_public, authority="ci-qualified", registry=REGISTRY)
+    first = generate_signer(
+        first_key, first_public, authority="ci-qualified", registry=REGISTRY
+    )
     store = tmp_path / "trusted.json"
     invalid_proof = signer_proof(first_key)
     invalid_proof["proof"] = "A" * 86 + "=="
@@ -386,13 +443,17 @@ def test_signer_rotation_requires_proof_and_preserves_final_authority(tmp_path: 
         revoke_trusted_signer(store, first["signer_id"], REGISTRY)
     second_key = tmp_path / "second.pem"
     second_public = tmp_path / "second.json"
-    second = generate_signer(second_key, second_public, authority="ci-qualified", registry=REGISTRY)
+    second = generate_signer(
+        second_key, second_public, authority="ci-qualified", registry=REGISTRY
+    )
     add_trusted_signer(store, second_public, signer_proof(second_key), REGISTRY)
     rotated = revoke_trusted_signer(store, first["signer_id"], REGISTRY)
     states = {item["signer_id"]: item["state"] for item in rotated["signers"]}
     assert states == {first["signer_id"]: "revoked", second["signer_id"]: "active"}
     assert load_trusted_signers(store, REGISTRY) == rotated
-    assert first_key.read_text(encoding="ascii").startswith("-----BEGIN PRIVATE KEY-----")
+    assert first_key.read_text(encoding="ascii").startswith(
+        "-----BEGIN PRIVATE KEY-----"
+    )
     assert "PRIVATE" not in first_public.read_text(encoding="utf-8")
 
 
@@ -400,7 +461,9 @@ def test_bundle_signed_by_revoked_key_is_rejected(tmp_path: Path) -> None:
     case = _case(tmp_path)
     second_key = tmp_path / "second.pem"
     second_public = tmp_path / "second.json"
-    generate_signer(second_key, second_public, authority="ci-qualified", registry=REGISTRY)
+    generate_signer(
+        second_key, second_public, authority="ci-qualified", registry=REGISTRY
+    )
     add_trusted_signer(case.store, second_public, signer_proof(second_key), REGISTRY)
     revoke_trusted_signer(case.store, case.manifest["signing"]["signer_id"], REGISTRY)
     with pytest.raises(ContractError, match="revoked"):
@@ -412,7 +475,9 @@ def test_bundle_signed_by_revoked_key_is_rejected(tmp_path: Path) -> None:
         )
 
 
-def test_private_key_storage_and_trust_store_symlinks_fail_closed(tmp_path: Path) -> None:
+def test_private_key_storage_and_trust_store_symlinks_fail_closed(
+    tmp_path: Path,
+) -> None:
     repository = tmp_path / "repository"
     repository.mkdir()
     with pytest.raises(ContractError, match="outside the repository"):
@@ -501,11 +566,15 @@ def test_noncanonical_zstd_frame_is_rejected_even_when_resigned(tmp_path: Path) 
     )
     _resign_archive(paths, case.key)
     with pytest.raises(ContractError, match="frame parameters"):
-        inspect_bundle(paths.directory, case.store, registry=REGISTRY, host_limits=LIMITS)
+        inspect_bundle(
+            paths.directory, case.store, registry=REGISTRY, host_limits=LIMITS
+        )
 
 
 @pytest.mark.parametrize("unsafe", ["src", "build", ".git"])
-def test_source_and_build_trees_are_not_packageable(tmp_path: Path, unsafe: str) -> None:
+def test_source_and_build_trees_are_not_packageable(
+    tmp_path: Path, unsafe: str
+) -> None:
     case = _case(tmp_path / "baseline")
     (case.roots["drone"] / unsafe).mkdir()
     with pytest.raises(ContractError, match="source/build"):
@@ -593,7 +662,9 @@ def test_packager_and_verifier_operator_entrypoints(tmp_path: Path) -> None:
     assert (destination / "payload" / "share" / "asset.txt").read_text() == "drone\n"
 
 
-def test_signer_operator_entrypoint_never_emits_private_material(tmp_path: Path) -> None:
+def test_signer_operator_entrypoint_never_emits_private_material(
+    tmp_path: Path,
+) -> None:
     script = ROOT / "scripts" / "release" / "manage_release_signers.py"
     key = tmp_path / "private.pem"
     public = tmp_path / "public.json"
@@ -631,6 +702,11 @@ def test_signer_operator_entrypoint_never_emits_private_material(tmp_path: Path)
         str(proof_path),
     )
     listed = run("list", "--store", str(store))
-    output = generated.stdout + proof.stdout + listed.stdout + public.read_text(encoding="utf-8")
+    output = (
+        generated.stdout
+        + proof.stdout
+        + listed.stdout
+        + public.read_text(encoding="utf-8")
+    )
     assert "BEGIN PRIVATE KEY" not in output
     assert json.loads(listed.stdout)["signers"][0]["state"] == "active"
