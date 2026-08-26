@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/onboard-release-state.schema.json",
+  "title": "III onboard immutable release inventory and retention state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "state_id", "generation", "active_release_id", "rollback_release_id", "candidate_release_id", "qualified_anchor_release_id", "field_history", "status_index_id", "status_sequence", "recovery", "releases"],
+  "properties": {
+    "schema": {"const": "iii.onboard-release-state/v1"},
+    "state_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "generation": {"type": "integer", "minimum": 0},
+    "active_release_id": {"$ref": "#/definitions/nullable_release_id"},
+    "rollback_release_id": {"$ref": "#/definitions/nullable_release_id"},
+    "candidate_release_id": {"$ref": "#/definitions/nullable_release_id"},
+    "qualified_anchor_release_id": {"$ref": "#/definitions/nullable_release_id"},
+    "field_history": {"type": "array", "maxItems": 2, "uniqueItems": true, "items": {"$ref": "#/definitions/release_id"}},
+    "status_index_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "status_sequence": {"type": "integer", "minimum": 0},
+    "recovery": {
+      "type": "object", "additionalProperties": false,
+      "required": ["recovery_only", "flight_capable", "reason"],
+      "properties": {
+        "recovery_only": {"type": "boolean"},
+        "flight_capable": {"type": "boolean"},
+        "reason": {"type": ["string", "null"]}
+      }
+    },
+    "releases": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-f0-9]{64}$"},
+      "additionalProperties": {"$ref": "#/definitions/release"}
+    }
+  },
+  "definitions": {
+    "release_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nullable_release_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "release": {
+      "type": "object", "additionalProperties": false,
+      "required": ["release_id", "release_class", "version", "component", "archive_sha256", "bundle_manifest_sha256", "release_manifest_sha256", "staged_at", "accepted_sequence", "status", "status_statement_id"],
+      "properties": {
+        "release_id": {"$ref": "#/definitions/release_id"},
+        "release_class": {"enum": ["qualified", "field-development"]},
+        "version": {"type": ["string", "null"], "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "component": {"const": "drone"},
+        "archive_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "bundle_manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "release_manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "staged_at": {"type": "string", "format": "date-time"},
+        "accepted_sequence": {"type": ["integer", "null"], "minimum": 1},
+        "status": {"enum": ["field-development", "qualified", "withdrawn", "unsafe"]},
+        "status_statement_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  }
+}

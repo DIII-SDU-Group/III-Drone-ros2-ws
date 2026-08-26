@@ -12,8 +12,7 @@
     {"path": "/var/log/iii", "owner": "iii", "group": "iii", "mode": "0750", "kind": "bounded-logs", "persistence": "retention-policy"},
     {"path": "/run/iii", "owner": "iii", "group": "iii", "mode": "0750", "kind": "transient", "persistence": "recreated-on-boot"}
   ],
-  "protected_release_subpaths": ["manifest.json", "install", "python", "lib", "missions", "environment.bash"],
+  "protected_release_subpaths": ["manifest.json", "bundle-manifest.json", "release-manifest.json", "install", "python", "lib", "missions", "environment.bash"],
   "host_systemd_units": ["iii-deployment-receiver.service", "iii-system-daemon.service", "iii-runtime-api.service"],
   "minimum_storage_reserve": {"bytes": 2147483648, "percent": 10}
 }
-

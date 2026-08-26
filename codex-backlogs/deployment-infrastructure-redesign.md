@@ -2899,6 +2899,8 @@ Delivery order:
 
 #### P2.T0: Implement Release Staging And Retention
 
+**Status: Completed.**
+
 Description:
 Install verified bundles into release-ID directories, enforce storage reserves,
 track current/previous/candidate state, and garbage-collect only releases that
@@ -2906,18 +2908,18 @@ are neither active nor required for rollback or evidence retention.
 
 Acceptance:
 
-- [ ] Re-staging the same release is idempotent.
-- [ ] An active or rollback release cannot be garbage-collected.
-- [ ] Field-development retention preserves the active and immediately previous
+- [x] Re-staging the same release is idempotent.
+- [x] An active or rollback release cannot be garbage-collected.
+- [x] Field-development retention preserves the active and immediately previous
       field release plus the protected qualified anchor.
-- [ ] Only an explicitly qualified release can replace the protected anchor.
-- [ ] Insufficient storage fails before modifying runtime state.
-- [ ] The unprivileged SSH account cannot directly modify active release paths.
-- [ ] Only bundles with a trusted signature and valid checksums can enter the
+- [x] Only an explicitly qualified release can replace the protected anchor.
+- [x] Insufficient storage fails before modifying runtime state.
+- [x] The unprivileged SSH account cannot directly modify active release paths.
+- [x] Only bundles with a trusted signature and valid checksums can enter the
       privileged staged-release area.
-- [ ] Q127 release status is checked before staging and again immediately before
+- [x] Q127 release status is checked before staging and again immediately before
       activation; `withdrawn` and `unsafe` candidates fail closed.
-- [ ] A newly learned unsafe status never deletes an installed release or causes
+- [x] A newly learned unsafe status never deletes an installed release or causes
       an autonomous selector switch; the target exposes its recovery-only state
       and blocks flight-capable operation as specified by Q127.
 
@@ -2926,6 +2928,36 @@ Tests:
 - Temporary-root tests for first install, duplicate install, low disk, retention,
   interrupted extraction, corrupt staging, withdrawn candidate, unsafe active/
   anchor release, stale status index, and last-resort recovery-only behavior.
+
+Implementation notes (2026-08-26):
+
+- Added the schema-validated `iii.onboard-release-state/v1` inventory and a
+  receiver-owned `ReleaseStore` for immutable drone slots beneath
+  `/opt/iii/releases/<release-id>`. Detached verification completes before space
+  projection or extraction; extraction re-verifies the exact signed identity,
+  flattens only the signed payload, freezes it root-owned/group-readable with no
+  write bits, and revalidates every installed path, type, size, mode, and hash.
+- Staging is selector-independent and idempotent. Atomic, fsync-backed state tracks
+  active, rollback, candidate, protected qualified anchor, the newest two accepted
+  field releases, exact signed bundle identities, and the monotonic cached Q127
+  status index. Replacing an unaccepted candidate removes only the old known slot;
+  garbage collection refuses every protected role and unknown/corrupt content.
+- Storage preflight accounts for compressed input, declared peak extraction,
+  receiver/checkpoint/diagnostic overhead, and preserves the greater of the 2-GiB
+  or 10% root-filesystem reserve before privileged materialization.
+- Qualified staging and state-bound acceptance authorization check signed status
+  independently. Withdrawn and unsafe releases are rejected for new staging or
+  normal activation. Newly learned unsafe active/anchor state is persisted without
+  deletion or selector switching, blocks flight capability, rejects stale index
+  downgrade, and permits an already-installed unsafe candidate only as explicit
+  last-resort recovery when no accepted deployable alternative remains.
+- Verification passed the full 220/220 deployment suite in the Jazzy devcontainer,
+  including 10 release-staging state/retention/security cases and six filesystem/
+  hostile-input cases. The tests exercise duplicate staging, real permission denial
+  as `nobody`, low disk, signature and installed-tree tamper, interrupted extraction,
+  candidate replacement, protected retention, explicit anchor authority,
+  withdrawn/unsafe status, stale indexes, and recovery-only behavior; schema,
+  Python error, JSON, and diff-hygiene checks also passed.
 
 #### P2.T1: Implement Safety-Gated Activation
 

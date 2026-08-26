@@ -53,6 +53,31 @@ through size and SHA-256 checks. Only a complete verified staging directory is
 renamed to the requested destination. Failure removes staging and never replaces
 an existing destination.
 
+## Onboard staging and retention
+
+The root-owned deployment receiver is the only component that promotes a verified
+drone archive into `/opt/iii/releases/<release-id>/`. It re-verifies the bundle at
+extraction time, requires the second identity to match the detached inspection,
+flattens the signed `payload/` prefix into the immutable release root, retains the
+canonical release and bundle manifests, writes a content-addressed staging receipt,
+and verifies the complete installed tree before recording it as the candidate.
+Release directories are root-owned, group-readable by `iii`, and have no write bit.
+Staging never changes `/opt/iii/current`.
+
+Before extraction, storage accounting preserves the greater of the 2-GiB or 10%
+root-filesystem reserve. The durable release state protects the active release,
+rollback release, one candidate, the newest two accepted field-development
+releases, and the protected qualified anchor. Garbage collection knows only exact
+recorded release IDs and cannot collect any protected role. Only an explicitly
+qualified acceptance may advance the anchor.
+
+Qualified staging and activation each recheck the monotonic signed release-status
+index. `withdrawn` and `unsafe` candidates cannot be newly staged or normally
+activated. Learning that an installed active release or qualified anchor is unsafe
+does not delete it or switch selectors; it persists a flight-blocking recovery-only
+state. An already-installed unsafe candidate is eligible only for explicit
+last-resort control-plane recovery when no accepted deployable release remains.
+
 ## Signer lifecycle
 
 Never put private signer material in this workspace, a release, a record archive,

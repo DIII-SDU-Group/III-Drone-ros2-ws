@@ -33,6 +33,9 @@ def test_release_and_persistent_roots_are_disjoint() -> None:
     assert paths["/opt/iii/releases"] == "immutable-release-root"
     assert paths["/var/lib/iii"] == "persistent-state"
     assert not Path("/var/lib/iii").is_relative_to(Path("/opt/iii/releases"))
+    assert {"manifest.json", "bundle-manifest.json", "release-manifest.json"}.issubset(
+        contract.protected_release_subpaths
+    )
 
 
 def test_storage_projection_enforces_greater_of_absolute_or_percent_reserve() -> None:
@@ -73,4 +76,3 @@ def test_receiver_protocol_rejects_path_traversal_and_missing_nonce() -> None:
         Request.parse(_request("activate", "b" * 64, {"path": "../../etc/shadow"}))
     with pytest.raises(ContractError, match="bound nonce"):
         Request.parse(_request("rollback", None))
-
