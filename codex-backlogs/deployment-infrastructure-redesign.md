@@ -2696,7 +2696,7 @@ Implementation notes (2026-08-26):
 
 #### P1.T4: Implement The Qualified Release CI/CD Pipeline
 
-**Status: In-Progress.**
+**Status: Completed (2026-08-26).**
 
 Description:
 Implement the settled qualified-artifact producer policy as a protected,
@@ -2709,40 +2709,40 @@ must never require network reachability to the aircraft.
 
 Acceptance:
 
-- [ ] Qualification starts only from an immutable version tag whose commit is
+- [x] Qualification starts only from an immutable version tag whose commit is
       on workspace `release` and whose dependency state passes all policy gates.
-- [ ] The required `develop -> main` promotion-evidence check verifies Q118's
+- [x] The required `develop -> main` promotion-evidence check verifies Q118's
       signed local attestation against source-content identity and change-derived
       simulation/physical categories without running Gazebo or contacting an
       aircraft in GitHub-hosted CI; `main -> release` revalidates or recollects it
       according to the final Q120 reuse contract.
-- [ ] Build inputs, test results, manifests, checksums, signer identity, logs,
+- [x] Build inputs, test results, manifests, checksums, signer identity, logs,
       and artifact identity are retained as one auditable release record.
-- [ ] Qualified payload reproducibility follows Q117's single clean pinned-build
+- [x] Qualified payload reproducibility follows Q117's single clean pinned-build
       contract; optional rebuild comparison is diagnostic rather than a release gate.
-- [ ] Rerunning a version is idempotent and cannot silently replace a published
+- [x] Rerunning a version is idempotent and cannot silently replace a published
       artifact with different bytes.
-- [ ] Publication and signing jobs receive only the minimum required secrets
+- [x] Publication and signing jobs receive only the minimum required secrets
       and cannot run for untrusted pull-request code.
-- [ ] The dedicated Ed25519 CI key is isolated in a protected Actions
+- [x] The dedicated Ed25519 CI key is isolated in a protected Actions
       environment, its public identity is included in evidence, and documented
       rotation/revocation does not require sharing private key material.
-- [ ] The III CLI can list, fetch, verify, cache, and deploy a qualified artifact
+- [x] The III CLI can list, fetch, verify, cache, and deploy a qualified artifact
       while actual aircraft transfer remains a local operator action.
-- [ ] Publication maintains an append-only signed release-status index and can
+- [x] Publication maintains an append-only signed release-status index and can
       publish Q127 withdrawal/unsafe statements without mutating tags or assets.
-- [ ] `iii release status set` uses trusted `release`-branch workflow code,
+- [x] `iii release status set` uses trusted `release`-branch workflow code,
       monotonic transition rules, protected environment authority, serialized
       sequence allocation, immutable non-SemVer `iii-status-<sequence>` publication,
       and cannot execute or sign user-supplied code/data outside the status schema.
-- [ ] `iii release list/show/fetch` verifies and reports cached release status;
+- [x] `iii release list/show/fetch` verifies and reports cached release status;
       withdrawn releases cannot be newly fetched as deployable and unsafe status
       is never hidden by an offline or stale cache.
-- [ ] A version tag is only an immutable qualification attempt trigger, not proof
+- [x] A version tag is only an immutable qualification attempt trigger, not proof
       of a qualified release. Failed qualification retains the protected tag and
       failure evidence, publishes no deployable release/artifact, marks that SemVer
       version unusable, and requires a new version for the next attempt.
-- [ ] Deployment-focused human/structured release notes follow the final Q123
+- [x] Deployment-focused human/structured release notes follow the final Q123
       machine-derived contract and are identical in GitHub publication and
       `iii release show`, with prose unable to mask manifest facts.
 
@@ -2752,6 +2752,36 @@ Tests:
   source claim, failed ARM64 build/test, signing failure, duplicate version,
   tampered download, signed withdrawal/unsafe publication, stale/invalid status
   index, and successful offline deployment from a populated cache.
+
+Implementation notes (2026-08-26):
+
+- Added protected, tag-only qualification and serialized release-status workflows
+  with pinned Actions, least-privilege job permissions, protected signer
+  environments, authenticated promotion reuse, exact eight-check evidence, durable
+  failed-attempt records, immutable draft-to-public publication, and trusted
+  release-branch failure/status recorders.
+- Added schema-validated qualification checks, GC build records, release records,
+  signed publications, machine-derived notes, globally chained signed status
+  statements/indexes, monotonic cache refresh, failed-version consumption, and
+  exact-byte GitHub publication with resumable missing-asset completion.
+- Added the ROS-free x86_64 GC builder with digest-pinned bases, hash-locked proxy
+  dependencies, audit-clean frontend lock, one BuildKit solve feeding both the
+  smoke-tested daemon image and retained OCI archive, platform/blob validation,
+  and exact cleanup. A real two-image run passed and produced validated frontend
+  and proxy OCI archives; a repeat build was retained only as diagnostic evidence,
+  not used as a qualification gate.
+- Added `iii release list/show/fetch/cache/verify/deploy/status set` through the
+  canonical result/operation boundary. Remote and offline retrieval verifies the
+  signed publication, audit record, paired bundles, and complete status chain;
+  learned unsafe state cannot be downgraded by an older signed index.
+- Verification passed 205/205 deployment tests and 57/57 CLI tests on the host,
+  204/204 deployment and 57/57 CLI tests in the Jazzy devcontainer before the
+  final additional build-record regression, 52/52 GC Python tests, 125/125 GC
+  frontend tests, zero high-severity npm audit findings, frontend production
+  build, Python compilation, actionlint, diff hygiene, and submodule-lock checks.
+  Per maintainer direction, task-sized CLI #13 and GC #22 were withdrawn without
+  branch deletion; their tested commits remain on the shared feature branches for
+  inclusion in fewer, larger repository-level PRs.
 
 #### P1.T5: Build And Validate Mission Catalog Artifacts
 
