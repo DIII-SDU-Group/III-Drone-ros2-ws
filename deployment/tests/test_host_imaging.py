@@ -1,0 +1,510 @@
+from __future__ import annotations
+
+import hashlib
+from io import StringIO
+import json
+import lzma
+import os
+from pathlib import Path
+import subprocess
+
+import jsonschema
+import pytest
+import yaml
+
+from iii_deployment.contracts import ContractRegistry
+from iii_deployment.host_imaging import (
+    _write_raw_image,
+    BootstrapInputError,
+    DeviceChangedError,
+    ImageVerificationError,
+    ImagingError,
+    TargetProofError,
+    UnsafeDeviceError,
+    apply_image_plan,
+    build_image_plan,
+    inspect_devices,
+    inspect_image,
+    load_bootstrap_input,
+    load_contract,
+    render_nocloud_seed,
+    select_device,
+)
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SCHEMAS = ROOT / "deployment" / "schemas" / "v1"
+REGISTRY = ContractRegistry(SCHEMAS)
+SOURCE = ROOT / "deployment" / "provisioning" / "ubuntu-raspi-image.json"
+PROFILE = ROOT / "deployment" / "provisioning" / "cloud-init-profile.json"
+
+
+def _bootstrap(path: Path, *, wifi: bool = True) -> Path:
+    value = {
+        "schema": "iii.cloud-init-bootstrap-input/v1",
+        "hostname": "iii",
+        "ssh_public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFixtureKey operator@test",
+        "bootstrap_credential": "a_secure_one_time_bootstrap_token_1234",
+        "network": {
+            "ethernet_dhcp4": True,
+            "wifi": (
+                [{"ssid": "field-net", "password": "not-a-real-secret", "hidden": True}]
+                if wifi
+                else []
+            ),
+        },
+    }
+    path.write_text(json.dumps(value), encoding="utf-8")
+    path.chmod(0o600)
+    return path
+
+
+def _image_fixture(
+    root: Path, raw: bytes = b"III raw image fixture" * 64
+) -> tuple[Path, Path]:
+    image = root / "ubuntu-24.04.4-preinstalled-server-arm64+raspi.img.xz"
+    image.write_bytes(lzma.compress(raw))
+    source = json.loads(SOURCE.read_text(encoding="utf-8"))
+    source["sha256"] = hashlib.sha256(image.read_bytes()).hexdigest()
+    source["minimum_target_bytes"] = 8589934592
+    source_path = root / "source.json"
+    source_path.write_text(json.dumps(source), encoding="utf-8")
+    return image, source_path
+
+
+def _lsblk(
+    *, target_size: int = 16 * 1024**3, target_updates: dict | None = None
+) -> dict:
+    target = {
+        "name": "sdz",
+        "kname": "sdz",
+        "path": "/dev/sdz",
+        "type": "disk",
+        "size": target_size,
+        "model": "TEST READER",
+        "serial": "SERIAL-1234",
+        "tran": "usb",
+        "rm": True,
+        "ro": False,
+        "mountpoints": [None],
+        "stable_path": "/dev/disk/by-id/usb-TEST_SERIAL-1234",
+        "children": [
+            {
+                "name": "sdz1",
+                "kname": "sdz1",
+                "path": "/dev/sdz1",
+                "type": "part",
+                "size": target_size - 1,
+                "pkname": "sdz",
+                "mountpoints": [None],
+            }
+        ],
+    }
+    target.update(target_updates or {})
+    return {
+        "blockdevices": [
+            {
+                "name": "nvme0n1",
+                "kname": "nvme0n1",
+                "path": "/dev/nvme0n1",
+                "type": "disk",
+                "size": 100 * 1024**3,
+                "model": "SYSTEM",
+                "serial": "SYSTEM-1",
+                "tran": "nvme",
+                "rm": False,
+                "ro": False,
+                "mountpoints": [None],
+                "children": [
+                    {
+                        "name": "nvme0n1p2",
+                        "kname": "nvme0n1p2",
+                        "path": "/dev/nvme0n1p2",
+                        "type": "part",
+                        "size": 99 * 1024**3,
+                        "pkname": "nvme0n1",
+                        "mountpoints": ["/"],
+                    }
+                ],
+            },
+            target,
+        ]
+    }
+
+
+def test_tracked_source_and_cloud_init_profiles_validate_and_preserve_upstream_layout() -> (
+    None
+):
+    source = load_contract(
+        SOURCE, schema_name="host-image-source", registry=REGISTRY, label="source"
+    )
+    profile = load_contract(
+        PROFILE, schema_name="cloud-init-profile", registry=REGISTRY, label="profile"
+    )
+    assert (
+        source["sha256"]
+        == "790652faeb4f61ce7bb12f5cb61734595c61d3cd882915b8b5f9918106c80d37"
+    )
+    assert source["partition_contract"] == {
+        "strategy": "upstream-image",
+        "boot_partition": "upstream-supported-raspberry-pi",
+        "root_filesystem": "upstream-auto-expanded-ext4",
+        "custom_partitions": False,
+        "lvm": False,
+        "encryption": False,
+        "ab_root": False,
+        "persistent_paths_share_root": ["/opt/iii", "/var/lib/iii", "/var/log/iii"],
+    }
+    assert profile["application_installation"] is False
+    assert profile["wifi_interface"] == "wlan0"
+    assert profile["sanitization_contract"]["failure_blocks_commissioning"] is True
+
+
+def test_owner_only_bootstrap_input_renders_recovery_ethernet_and_diagnosable_seed(
+    tmp_path: Path,
+) -> None:
+    bootstrap_path = _bootstrap(tmp_path / "bootstrap.json")
+    bootstrap = load_bootstrap_input(bootstrap_path, REGISTRY)
+    profile = load_contract(
+        PROFILE, schema_name="cloud-init-profile", registry=REGISTRY, label="profile"
+    )
+    seed = render_nocloud_seed(profile=profile, bootstrap=bootstrap)
+    user_data = seed["files"]["user-data"].decode()
+    network = seed["files"]["network-config"].decode()
+    all_seed = b"".join(seed["files"].values())
+    assert b"a_secure_one_time_bootstrap_token_1234" not in all_seed
+    assert b"BEGIN PRIVATE KEY" not in all_seed
+    assert "ssh_pwauth" in user_data and "bootstrap-cloud-init.log" in user_data
+    assert "ethernet-recovery" in network and '"dhcp4": true' in network
+    assert "field-net" in network and "not-a-real-secret" in network
+    assert "wlan0" in network
+    assert seed["contains_network_secret"] is True
+    parsed_user_data = yaml.safe_load(user_data.removeprefix("#cloud-config\n"))
+    assert parsed_user_data["ssh_pwauth"] is False
+    assert parsed_user_data["disable_root"] is True
+    assert parsed_user_data["package_update"] is False
+
+
+def test_bootstrap_input_permissions_and_private_material_fail_closed(
+    tmp_path: Path,
+) -> None:
+    path = _bootstrap(tmp_path / "bootstrap.json")
+    path.chmod(0o644)
+    with pytest.raises(BootstrapInputError, match="owner-only"):
+        load_bootstrap_input(path, REGISTRY)
+    path.chmod(0o600)
+    value = json.loads(path.read_text())
+    value["ssh_public_key"] = "-----BEGIN OPENSSH PRIVATE KEY-----"
+    path.write_text(json.dumps(value))
+    with pytest.raises(BootstrapInputError):
+        load_bootstrap_input(path, REGISTRY)
+
+
+def test_bootstrap_input_inside_git_must_be_ignored_and_credential_has_entropy(
+    tmp_path: Path,
+) -> None:
+    subprocess.run(["git", "init", "--quiet"], cwd=tmp_path, check=True)
+    tracked = _bootstrap(tmp_path / "tracked.json")
+    subprocess.run(["git", "add", "tracked.json"], cwd=tmp_path, check=True)
+    with pytest.raises(ImagingError, match="ignore rule"):
+        load_bootstrap_input(tracked, REGISTRY)
+    ignored = _bootstrap(tmp_path / "ignored.json")
+    (tmp_path / ".gitignore").write_text("ignored.json\n")
+    assert load_bootstrap_input(ignored, REGISTRY)["hostname"] == "iii"
+    value = json.loads(ignored.read_text())
+    value["bootstrap_credential"] = "a" * 32
+    ignored.write_text(json.dumps(value))
+    with pytest.raises(BootstrapInputError, match="distinct characters"):
+        load_bootstrap_input(ignored, REGISTRY)
+
+
+def test_pinned_image_is_fully_decompressed_and_hash_verified_before_use(
+    tmp_path: Path,
+) -> None:
+    image, source_path = _image_fixture(tmp_path)
+    source = load_contract(
+        source_path, schema_name="host-image-source", registry=REGISTRY, label="source"
+    )
+    evidence = inspect_image(image, source)
+    assert evidence["verified"] is True
+    assert evidence["raw_bytes"] > 0
+    image.write_bytes(image.read_bytes() + b"tamper")
+    with pytest.raises(ImageVerificationError, match="SHA-256"):
+        inspect_image(image, source)
+
+
+def test_raw_writer_streams_and_reads_back_the_complete_decompressed_image(
+    tmp_path: Path,
+) -> None:
+    raw = os.urandom(2 * 1024 * 1024 + 17)
+    image, source_path = _image_fixture(tmp_path, raw=raw)
+    source = load_contract(
+        source_path,
+        schema_name="host-image-source",
+        registry=REGISTRY,
+        label="source",
+    )
+    expected = inspect_image(image, source)
+    target = tmp_path / "block-device-fixture"
+    target.touch()
+    evidence = _write_raw_image(image, target, expected, allow_regular_file=True)
+    assert target.read_bytes() == raw
+    assert evidence == {
+        "bytes": len(raw),
+        "stream_sha256": hashlib.sha256(raw).hexdigest(),
+        "readback_sha256": hashlib.sha256(raw).hexdigest(),
+        "verified": True,
+    }
+
+
+@pytest.mark.parametrize(
+    ("updates", "reason"),
+    [
+        ({"rm": False}, "not-removable"),
+        ({"ro": True}, "read-only"),
+        ({"size": 1024}, "smaller-than"),
+        ({"mountpoints": ["/media/operator/card"]}, "mounted-or-in-use"),
+    ],
+)
+def test_device_inspection_rejects_unsafe_media_classes(
+    updates: dict, reason: str
+) -> None:
+    devices = inspect_devices(
+        minimum_bytes=8 * 1024**3,
+        lsblk=_lsblk(target_updates=updates),
+        running_sources=["/dev/nvme0n1p2"],
+        by_id_root=Path("/missing"),
+    )
+    target = next(row for row in devices if row["kernel_path"] == "/dev/sdz")
+    assert target["eligible"] is False
+    assert any(reason in item for item in target["rejection_reasons"])
+    system = next(row for row in devices if row["kernel_path"] == "/dev/nvme0n1")
+    assert system["backs_running_system"] is True
+    assert "backs-running-system" in system["rejection_reasons"]
+
+
+def test_device_selection_requires_exact_stable_path_and_reports_identity() -> None:
+    devices = inspect_devices(
+        minimum_bytes=8 * 1024**3,
+        lsblk=_lsblk(),
+        running_sources=["/dev/nvme0n1p2"],
+        by_id_root=Path("/missing"),
+    )
+    selected = select_device(devices, "/dev/disk/by-id/usb-TEST_SERIAL-1234")
+    assert selected["eligible"] is True
+    assert selected["model"] == "TEST READER"
+    with pytest.raises(UnsafeDeviceError, match="/dev/disk/by-id"):
+        select_device(devices, "/dev/sdz")
+
+
+def test_string_flags_and_nested_mapper_ancestry_fail_closed() -> None:
+    topology = _lsblk(target_updates={"rm": "0", "ro": "0"})
+    topology["blockdevices"][1]["children"][0]["children"] = [
+        {
+            "name": "dm-9",
+            "kname": "dm-9",
+            "path": "/dev/dm-9",
+            "type": "crypt",
+            "size": 9 * 1024**3,
+            "pkname": "sdz1",
+            "mountpoints": [None],
+        }
+    ]
+    devices = inspect_devices(
+        minimum_bytes=8 * 1024**3,
+        lsblk=topology,
+        running_sources=["/dev/dm-9"],
+        by_id_root=Path("/missing"),
+    )
+    target = next(row for row in devices if row["kernel_path"] == "/dev/sdz")
+    assert target["removable"] is False
+    assert target["backs_running_system"] is True
+    assert "unresolved-device-mapper-or-holder" in target["rejection_reasons"]
+
+
+def _build_plan(
+    tmp_path: Path, *, accept_data_loss: bool = True
+) -> tuple[dict, Path, Path]:
+    image, source = _image_fixture(tmp_path)
+    bootstrap = _bootstrap(tmp_path / "bootstrap.json")
+    (tmp_path / "evidence").mkdir(exist_ok=True)
+    (tmp_path / "evidence").chmod(0o700)
+    plan = build_image_plan(
+        operation_id="iii-host-image-test",
+        image_path=image,
+        source_path=source,
+        profile_path=PROFILE,
+        bootstrap_input_path=bootstrap,
+        device_path="/dev/disk/by-id/usb-TEST_SERIAL-1234",
+        schema_root=SCHEMAS,
+        evidence_directory=tmp_path / "evidence",
+        backup_record=None,
+        accept_data_loss=accept_data_loss,
+        lsblk=_lsblk(),
+        running_sources=["/dev/nvme0n1p2"],
+        by_id_root=Path("/missing"),
+    )
+    return plan, image, bootstrap
+
+
+def test_plan_requires_separate_backup_or_data_loss_authority_and_never_retains_secrets(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ImagingError, match="backup record or explicit"):
+        _build_plan(tmp_path, accept_data_loss=False)
+    plan, _, _ = _build_plan(tmp_path)
+    serialized = json.dumps(plan, sort_keys=True)
+    assert "not-a-real-secret" not in serialized
+    assert "a_secure_one_time_bootstrap_token" not in serialized
+    assert plan["destructive_authority"]["required_typed_proof"].startswith(
+        "ERASE AND ACCEPT DATA LOSS /dev/disk/by-id/"
+    )
+    assert plan["partition_contract"]["custom_partitions"] is False
+
+
+def test_plan_accepts_only_verified_host_backup_or_salvage_evidence(
+    tmp_path: Path,
+) -> None:
+    image, source = _image_fixture(tmp_path)
+    bootstrap = _bootstrap(tmp_path / "bootstrap.json")
+    evidence_directory = tmp_path / "evidence"
+    evidence_directory.mkdir()
+    evidence_directory.chmod(0o700)
+    backup = tmp_path / "backup.json"
+    backup.write_text(
+        json.dumps(
+            {
+                "schema": "iii.host-backup-receipt/v1",
+                "verified": True,
+                "record_id": "b" * 64,
+            }
+        )
+    )
+    plan = build_image_plan(
+        operation_id="iii-host-image-backup",
+        image_path=image,
+        source_path=source,
+        profile_path=PROFILE,
+        bootstrap_input_path=bootstrap,
+        device_path="/dev/disk/by-id/usb-TEST_SERIAL-1234",
+        schema_root=SCHEMAS,
+        evidence_directory=evidence_directory,
+        backup_record=backup,
+        accept_data_loss=False,
+        lsblk=_lsblk(),
+        running_sources=["/dev/nvme0n1p2"],
+        by_id_root=Path("/missing"),
+    )
+    assert plan["destructive_authority"]["accepted_data_loss"] is False
+    assert (
+        plan["destructive_authority"]["backup_record"]["sha256"]
+        == hashlib.sha256(backup.read_bytes()).hexdigest()
+    )
+    backup.write_text(
+        json.dumps({"schema": "iii.record-archive-receipt/v1", "verified": True})
+    )
+    with pytest.raises(ImagingError, match="not a verified host backup"):
+        build_image_plan(
+            operation_id="iii-host-image-bad-backup",
+            image_path=image,
+            source_path=source,
+            profile_path=PROFILE,
+            bootstrap_input_path=bootstrap,
+            device_path="/dev/disk/by-id/usb-TEST_SERIAL-1234",
+            schema_root=SCHEMAS,
+            evidence_directory=evidence_directory,
+            backup_record=backup,
+            accept_data_loss=False,
+            lsblk=_lsblk(),
+            running_sources=["/dev/nvme0n1p2"],
+            by_id_root=Path("/missing"),
+        )
+
+
+def test_apply_reauthenticates_device_and_refuses_wrong_typed_proof_before_write(
+    tmp_path: Path,
+) -> None:
+    plan, _, _ = _build_plan(tmp_path)
+    inspector = lambda **_kwargs: inspect_devices(
+        minimum_bytes=8 * 1024**3,
+        lsblk=_lsblk(),
+        running_sources=["/dev/nvme0n1p2"],
+        by_id_root=Path("/missing"),
+    )
+    with pytest.raises(TargetProofError):
+        apply_image_plan(
+            plan,
+            schema_root=SCHEMAS,
+            proof_reader=lambda _prompt: "wrong",
+            device_inspector=inspector,
+        )
+    changed = _lsblk(target_updates={"serial": "REPLACED"})
+    changed_inspector = lambda **_kwargs: inspect_devices(
+        minimum_bytes=8 * 1024**3,
+        lsblk=changed,
+        running_sources=["/dev/nvme0n1p2"],
+        by_id_root=Path("/missing"),
+    )
+    with pytest.raises(DeviceChangedError, match="identity changed"):
+        apply_image_plan(
+            plan,
+            schema_root=SCHEMAS,
+            proof_reader=lambda _prompt: plan["destructive_authority"][
+                "required_typed_proof"
+            ],
+            device_inspector=changed_inspector,
+        )
+
+
+def test_successful_apply_requires_exact_write_seed_flush_and_emits_valid_record(
+    tmp_path: Path,
+) -> None:
+    plan, _, _ = _build_plan(tmp_path)
+    inspector = lambda **_kwargs: inspect_devices(
+        minimum_bytes=8 * 1024**3,
+        lsblk=_lsblk(),
+        running_sources=["/dev/nvme0n1p2"],
+        by_id_root=Path("/missing"),
+    )
+
+    def writer(_image: Path, _target: Path, expected: dict) -> dict:
+        return {
+            "bytes": expected["raw_bytes"],
+            "stream_sha256": expected["raw_sha256"],
+            "readback_sha256": expected["raw_sha256"],
+            "verified": True,
+        }
+
+    record = apply_image_plan(
+        plan,
+        schema_root=SCHEMAS,
+        proof_reader=lambda _prompt: plan["destructive_authority"][
+            "required_typed_proof"
+        ],
+        device_inspector=inspector,
+        image_writer=writer,
+        seed_installer=lambda _target, seed: seed["file_evidence"],
+        ejector=lambda _target: {
+            "fsync": True,
+            "block_buffers": True,
+            "eject_requested": True,
+            "method": "fixture-eject",
+        },
+    )
+    schema = json.loads((SCHEMAS / "host-image-record.schema.json").read_text())
+    jsonschema.Draft7Validator(schema).validate(
+        {key: value for key, value in record.items() if key != "evidence_path"}
+    )
+    assert Path(record["evidence_path"]).is_file()
+    assert record["write"]["verified"] is True
+    assert record["seed"]["verified"] is True
+    assert record["destructive_authority"]["accepted_data_loss"] is True
+
+
+def test_mutating_apply_refuses_changed_bootstrap_input(tmp_path: Path) -> None:
+    plan, _, bootstrap = _build_plan(tmp_path)
+    value = json.loads(bootstrap.read_text())
+    value["hostname"] = "iii-replaced"
+    bootstrap.write_text(json.dumps(value))
+    with pytest.raises(DeviceChangedError, match="bootstrap input changed"):
+        apply_image_plan(plan, schema_root=SCHEMAS)

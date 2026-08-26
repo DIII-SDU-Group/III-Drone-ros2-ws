@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/cloud-init-profile.schema.json",
+  "title": "III first-boot cloud-init profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "profile_id", "image_source_id", "datasource", "bootstrap_user", "password_authentication", "root_login", "ethernet_recovery", "wifi_interface", "application_installation", "diagnostics", "sanitization_contract"],
+  "properties": {
+    "schema": {"const": "iii.cloud-init-profile/v1"},
+    "profile_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{7,127}$"},
+    "image_source_id": {"type": "string", "minLength": 8},
+    "datasource": {"const": "NoCloud"},
+    "bootstrap_user": {"const": "iii-bootstrap"},
+    "password_authentication": {"const": false},
+    "root_login": {"const": false},
+    "ethernet_recovery": {"type": "object", "additionalProperties": false, "required": ["required", "match_name", "dhcp4"], "properties": {"required": {"const": true}, "match_name": {"const": "e*"}, "dhcp4": {"const": true}}},
+    "wifi_interface": {"const": "wlan0"},
+    "application_installation": {"const": false},
+    "diagnostics": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^/"}, "required": ["cloud_init_log", "cloud_init_output_log", "iii_bootstrap_log", "iii_bootstrap_status"]},
+    "sanitization_contract": {"type": "object", "additionalProperties": false, "required": ["required_before_provisioned", "copy_network_to_root_only_host_configuration", "remove_seed_and_instance_secrets", "disable_unintended_cloud_init_reruns", "revoke_bootstrap_authority", "residual_secret_inspection", "failure_blocks_commissioning"], "properties": {"required_before_provisioned": {"const": true}, "copy_network_to_root_only_host_configuration": {"const": true}, "remove_seed_and_instance_secrets": {"const": true}, "disable_unintended_cloud_init_reruns": {"const": true}, "revoke_bootstrap_authority": {"const": true}, "residual_secret_inspection": {"const": true}, "failure_blocks_commissioning": {"const": true}}}
+  }
+}

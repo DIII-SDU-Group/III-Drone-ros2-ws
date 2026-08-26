@@ -1,0 +1,30 @@
+{
+  "schema": "iii.host-image-source/v1",
+  "source_id": "ubuntu-24.04.4-preinstalled-server-arm64-raspi",
+  "publisher": "Canonical",
+  "product": "Ubuntu Server",
+  "release": "24.04.4",
+  "series": "noble",
+  "architecture": "arm64",
+  "platform": "raspberry-pi",
+  "filename": "ubuntu-24.04.4-preinstalled-server-arm64+raspi.img.xz",
+  "url": "https://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04.4-preinstalled-server-arm64+raspi.img.xz",
+  "checksum_manifest_url": "https://cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS",
+  "sha256": "790652faeb4f61ce7bb12f5cb61734595c61d3cd882915b8b5f9918106c80d37",
+  "compression": "xz",
+  "minimum_target_bytes": 8589934592,
+  "partition_contract": {
+    "strategy": "upstream-image",
+    "boot_partition": "upstream-supported-raspberry-pi",
+    "root_filesystem": "upstream-auto-expanded-ext4",
+    "custom_partitions": false,
+    "lvm": false,
+    "encryption": false,
+    "ab_root": false,
+    "persistent_paths_share_root": [
+      "/opt/iii",
+      "/var/lib/iii",
+      "/var/log/iii"
+    ]
+  }
+}

@@ -42,6 +42,7 @@ iii_deployment = ["assets/**/*.json", "assets/**/*.yaml", "assets/**/*.j2"]
 "share/iii-deployment/verification" = ["verification/clause-baseline.json"]
 "share/iii-deployment/systemd" = ["systemd/*.service", "systemd/*.timer"]
 "share/iii-deployment/host" = ["host/*.json", "host/*.sudoers"]
+"share/iii-deployment/provisioning" = ["provisioning/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

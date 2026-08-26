@@ -83,6 +83,10 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     User-owned registry layout, deterministic full/incremental archives,
     cross-computer recovery, secret exclusions, and explicit retention policy.
 
+24. `host-imaging-and-first-boot.md`
+    Checksum-pinned Raspberry Pi media imaging, typed physical-device proof,
+    NoCloud bootstrap boundaries, diagnostics, and Ethernet-first recovery.
+
 Domain language and context ownership are indexed by the root
 `CONTEXT-MAP.md`.
 

@@ -3644,6 +3644,16 @@ Delivery order:
 
 #### P3.T0: Create SD Imaging And First-Boot Cloud-Init Profiles
 
+**Status: Completed (2026-08-26).** Added the checksum-pinned Canonical Ubuntu
+24.04.4 Raspberry Pi image/profile contracts, owner-only Git-ignored NoCloud
+input rendering, fail-closed removable-media inspection, retained typed-proof
+write/readback/eject transactions, private-mount-namespace seed installation,
+content-addressed evidence, CLI commands, schemas, packaging, and the first-boot
+runbook. Changed files are under `deployment/provisioning/`,
+`deployment/src/iii_deployment/{host_imaging,seed_mount}.py`, deployment schemas
+and tests, `tools/III-Drone-CLI/iii/host.py`, CLI tests, and
+`docs/host-imaging-and-first-boot.md`.
+
 Description:
 Pin and verify the official Ubuntu Server 24.04 ARM64 Raspberry Pi image, then
 define the generated cloud-init bootstrap layer for storage, boot, host identity,
@@ -3653,23 +3663,40 @@ do not fork or rebuild the Ubuntu disk image initially.
 
 Acceptance:
 
-- [ ] Profiles are validated before writing media.
-- [ ] Partition growth/layout and destructive reimage preflight follow the final
+- [x] Profiles are validated before writing media.
+- [x] Partition growth/layout and destructive reimage preflight follow the final
       Q103 contract and never imply that `/var/lib/iii` survives physical reimage.
-- [ ] The upstream image checksum and release identity are verified before use.
-- [ ] Destructive media selection, confirmation, system-disk/in-use rejection,
+- [x] The upstream image checksum and release identity are verified before use.
+- [x] Destructive media selection, confirmation, system-disk/in-use rejection,
       write flushing, readback verification, and evidence follow the final Q102
       contract; automation cannot bypass the interactive target proof.
-- [ ] No production password or aircraft secret is embedded in committed files.
-- [ ] Cloud-init inputs, on-media seed data, bootstrap authority, post-convergence
+- [x] No production password or aircraft secret is embedded in committed files.
+- [x] Cloud-init inputs, on-media seed data, bootstrap authority, post-convergence
       sanitization, and residual-secret inspection follow the final Q101 contract.
-- [ ] Failed first boot leaves diagnosable local evidence.
-- [ ] Provisioning resumes safely after host/CLI/network interruption and follows
+- [x] Failed first boot leaves diagnosable local evidence.
+- [x] Provisioning resumes safely after host/CLI/network interruption and follows
       Q107's Ethernet-recovery/reimage boundary without a bypass credential.
 
 Tests:
 
 - Automated image/VM boot where Raspberry Pi hardware permits, plus physical-media acceptance.
+
+Verification (2026-08-26): 69 focused deployment/CLI/contract/documentation
+tests passed; 74 schemas parsed and the provisioning contracts validated;
+rendered cloud-init network-v2 data passed host Netplan generation; the pinned
+SHA appeared exactly once in Canonical's live `SHA256SUMS`; live read-only
+inspection rejected both internal NVMe disks; Black, fatal Flake8, diff checks,
+and deployment/CLI wheel-content checks passed. The raw writer test streamed,
+flushed, and hashed a 2 MiB+17 byte decompressed fixture and exact readback, while
+fault-injection covered changed media/input, target-proof denial, backup/data-loss
+authority, record validation, secret redaction, interruption-safe replay, and
+private seed transfer. The first two host test invocations did not collect tests
+because the executable/venv lacked pytest; `python -m pytest` used the installed
+host module. Netplan validation initially exposed an unsupported wildcard Wi-Fi
+match; the profile was corrected to Raspberry Pi `wlan0` and the rerun passed.
+No removable media, Raspberry Pi, or compatible VM image was attached, so no
+physical write/eject, first boot, or hardware recovery result is claimed; those
+remain mandatory commissioning evidence on applicable hardware.
 
 #### P3.T1: Implement Idempotent Ansible Host Roles
 
