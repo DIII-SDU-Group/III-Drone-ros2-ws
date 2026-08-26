@@ -1,0 +1,15 @@
+[Unit]
+Description=III bounded runtime log retention
+After=local-fs.target
+ConditionPathIsDirectory=/var/log/iii/sessions
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/opt/iii/receiver/selectors/current/bin/iii-log-maintenance --apply
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/log/iii

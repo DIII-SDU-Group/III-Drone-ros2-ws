@@ -24,6 +24,7 @@ iii-deploymentctl = "iii_deployment.receiver.client:main"
 iii-deployment-ssh-gateway = "iii_deployment.receiver.ssh_gateway:main"
 iii-deployment-receiver = "iii_deployment.receiver.server:main"
 iii-receiver-bootstrap = "iii_deployment.receiver.bootstrap:main"
+iii-log-maintenance = "iii_deployment.log_maintenance:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -39,7 +40,7 @@ iii_deployment = ["assets/**/*.json", "assets/**/*.yaml", "assets/**/*.j2"]
 "share/iii-deployment/schemas/v1" = ["schemas/v1/*.json"]
 "share/iii-deployment/policy" = ["operational-policy.json", "documentation-policy.json", "receiver-policy.json", "runtime-targets.json", "middleware-policy.json"]
 "share/iii-deployment/verification" = ["verification/clause-baseline.json"]
-"share/iii-deployment/systemd" = ["systemd/*.service"]
+"share/iii-deployment/systemd" = ["systemd/*.service", "systemd/*.timer"]
 "share/iii-deployment/host" = ["host/*.json", "host/*.sudoers"]
 
 [tool.pytest.ini_options]

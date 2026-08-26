@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from iii_deployment.contracts import ContractError, ContractRegistry, canonical_json
+from iii_deployment.log_lifecycle import LogInventory, LogTransferStore
 from iii_deployment.receiver.access import AccessManager, client_id_for_public_key
 from iii_deployment.receiver.engine import ReceiverEngine
 from iii_deployment.receiver.clock import ClockController
@@ -19,7 +20,6 @@ from iii_deployment.receiver.state import (
     ReceiverControlStore,
 )
 from iii_deployment.staging import StageResult
-
 
 REGISTRY = ContractRegistry(Path(__file__).resolve().parents[1] / "schemas/v1")
 
@@ -130,6 +130,8 @@ def receiver(tmp_path: Path):
         selected_executor=executor,
         activation_coordinator=None,
         clock_controller=None,
+        log_inventory=None,
+        log_transfer=None,
     ):
         return ReceiverEngine(
             release_store=store,
@@ -145,6 +147,8 @@ def receiver(tmp_path: Path):
             executor=selected_executor,
             activation_coordinator=activation_coordinator,
             clock_controller=clock_controller,
+            log_inventory=log_inventory,
+            log_transfer=log_transfer,
         )
 
     return SimpleNamespace(
@@ -745,3 +749,108 @@ def test_key_rotation_through_planned_receiver_actions_and_final_key_loss_denial
     assert listed[new_id] == "active"
     raw_audit = (receiver.root / "log/audit.jsonl").read_text(encoding="utf-8")
     assert new_key not in raw_audit and "public_key" not in raw_audit
+
+
+def test_receiver_log_pull_receipt_and_exact_prune_flow(receiver) -> None:
+    log_root = receiver.root / "var/log/iii"
+    log_root.mkdir(parents=True)
+    content = log_root / "host.jsonl"
+    content.write_bytes(b'{"event":"boot"}\n')
+    transfer = LogTransferStore(
+        source_root=receiver.root,
+        state_root=receiver.root / "state/log-transfer",
+    )
+    inventory = LogInventory(
+        source_root=receiver.root,
+        logs_root=log_root,
+        deployment_state_root=receiver.root / "state",
+        activation_root=receiver.root / "state/activation",
+        audit_path=receiver.root / "log/audit.jsonl",
+        transfer=transfer,
+        active_operation_ids=lambda: (),
+        retained_release_ids=lambda: (),
+        audit_operation_ids=lambda: (),
+    )
+    engine = receiver.build(
+        selected_executor=ImmediateExecutor(),
+        log_inventory=inventory,
+        log_transfer=transfer,
+    )
+    exported = engine.handle(
+        request(
+            "log-export", "logs-export-0001", receiver.operator_id, {"domain": "logs"}
+        )
+    )
+    manifest = exported["manifest"]
+    assert [item["locator"] for item in manifest["files"]] == ["var/log/iii/host.jsonl"]
+    item = manifest["files"][0]
+    chunk = engine.handle(
+        request(
+            "log-chunk",
+            "logs-chunk-0001",
+            receiver.operator_id,
+            {
+                "manifest_id": manifest["manifest_id"],
+                "content_id": item["content_id"],
+                "offset": 0,
+                "length": 512,
+            },
+        )
+    )["chunk"]
+    assert base64.b64decode(chunk["data"]) == content.read_bytes()
+    verified = [
+        {
+            "locator": item["locator"],
+            "content_id": item["content_id"],
+            "size": item["size"],
+        }
+    ]
+    receipt_plan = engine.handle(
+        request(
+            "plan-log-receipt",
+            "logs-receipt-0001",
+            receiver.operator_id,
+            {
+                "manifest_id": manifest["manifest_id"],
+                "verified_files": verified,
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    REGISTRY.validate("receiver-mutation-plan", receipt_plan["plan"])
+    engine.handle(
+        request(
+            "log-receipt",
+            "logs-receipt-0001",
+            receiver.operator_id,
+            {"plan": receipt_plan["plan"]},
+            receipt_plan["nonce"],
+        )
+    )
+    receipt = receiver.journals.load("logs-receipt-0001")["result"]["receipt"]
+    prune_plan = engine.handle(
+        request(
+            "plan-log-prune",
+            "logs-prune-0001",
+            receiver.operator_id,
+            {
+                "receipt_id": receipt["receipt_id"],
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    REGISTRY.validate("receiver-mutation-plan", prune_plan["plan"])
+    assert prune_plan["plan"]["parameters"]["prune_plan"]["remove"] == [item]
+    engine.handle(
+        request(
+            "log-prune",
+            "logs-prune-0001",
+            receiver.operator_id,
+            {"plan": prune_plan["plan"]},
+            prune_plan["nonce"],
+        )
+    )
+    assert receiver.journals.load("logs-prune-0001")["result"]["removed"] == [
+        "var/log/iii/host.jsonl"
+    ]
+    assert not content.exists()

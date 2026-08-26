@@ -23,6 +23,7 @@ from iii_deployment.activation_runtime import (
     OnboardSafetyProvider,
 )
 from iii_deployment.contracts import ContractError, ContractRegistry
+from iii_deployment.log_lifecycle import LogInventory, LogTransferStore
 from iii_deployment.receiver.access import AccessManager
 from iii_deployment.receiver.config import (
     AUDIT_PATH,
@@ -32,6 +33,7 @@ from iii_deployment.receiver.config import (
     CLOCK_STATE_PATH,
     INCOMING_ROOT,
     LIVE_STATE_PATH,
+    LOG_ROOT,
     LOCK_PATH,
     OPERATIONAL_POLICY_PATH,
     RECEIVER_ROOT,
@@ -159,6 +161,44 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
             }
         ),
     )
+    log_transfer = LogTransferStore(
+        source_root=Path("/"),
+        state_root=STATE_ROOT / "log-transfer",
+        minimum_reserve_bytes=policy["storage"]["minimum_reserve_bytes"],
+        minimum_reserve_percent=policy["storage"]["minimum_reserve_percent"],
+    )
+
+    def retained_release_ids() -> set[str]:
+        state = store.state()
+        retained = {
+            state.get("active_release_id"),
+            state.get("rollback_release_id"),
+            state.get("candidate_release_id"),
+            state.get("qualified_anchor_release_id"),
+            *state.get("field_history", []),
+        }
+        return {item for item in retained if isinstance(item, str)}
+
+    log_inventory = LogInventory(
+        source_root=Path("/"),
+        logs_root=LOG_ROOT,
+        deployment_state_root=STATE_ROOT,
+        activation_root=STATE_ROOT / "activation",
+        audit_path=AUDIT_PATH,
+        transfer=log_transfer,
+        active_operation_ids=lambda: (
+            item["operation_id"]
+            for item in journals.list()
+            if item["state"] not in {"completed", "cancelled", "failed"}
+        ),
+        retained_release_ids=retained_release_ids,
+        audit_operation_ids=lambda: [
+            item["operation_id"]
+            for item in audit.entries()
+            if item["operation_id"] is not None
+        ],
+        deployment_audits=policy["logging"]["deployment_audits"],
+    )
     return ReceiverEngine(
         release_store=store,
         control=control,
@@ -176,6 +216,8 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         + 16 * 1024**2,
         activation_coordinator=activation,
         clock_controller=clock,
+        log_inventory=log_inventory,
+        log_transfer=log_transfer,
     )
 
 

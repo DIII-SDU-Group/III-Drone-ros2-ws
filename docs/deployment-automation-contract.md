@@ -90,3 +90,22 @@ out from the protected base.
 
 Never edit an operation-state file, reuse an operation ID with another plan,
 force a stale plan, or treat a workflow summary/PR marker as trusted evidence.
+
+## Log and diagnostic lifecycle
+
+`iii logs pull` and `iii deploy diagnostics pull` are planned operations even
+though their first phase is read-only: the retained plan binds the exact receiver
+manifest and local destination before transfer. Downloads use bounded
+content-addressed chunks, retain resumable partials, and create immutable local
+source/pull manifests only after every locator matches its declared size and
+SHA-256. Only then does the CLI submit a nonce-bound onboard receipt.
+
+Pull never deletes aircraft content. `iii logs prune --pulled <receipt-id>` asks
+the receiver for the exact receipt-backed removal set during planning, obtains a
+fresh plan at apply, compares the removal/protection sets byte-for-byte, and then
+submits the durable mutation. The receiver validates every source first and moves
+the exact set through a durable quarantine transaction, so power loss resumes
+without widening or losing the retained plan. Current sessions, active
+transactions, the newest 50 deployment operation records, retained-release
+evidence, configuration and shadow checkpoints, tuning journals, and
+rosbag/dataset content remain protected.

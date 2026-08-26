@@ -10,7 +10,6 @@ from typing import Any, Callable, Mapping, Sequence
 from iii_deployment.contracts import ContractError, content_identity
 from iii_deployment.receiver.state import atomic_document, read_boot_id
 
-
 CLOCK_STATE_SCHEMA = "iii.receiver-clock-state/v1"
 MAX_RTT_NS = 500_000_000
 MAX_COMMIT_OFFSET_NS = 250_000_000
@@ -32,6 +31,8 @@ class ClockController:
             "boot_id": self.boot_id(),
             "gate": "DEGRADED_CLOCK",
             "synchronized_monotonic_ns": None,
+            "synchronized_utc_ns": None,
+            "uncertainty_ns": None,
             "verified_offset_ns": None,
             "operation_id": None,
         }
@@ -147,10 +148,11 @@ class ClockController:
             lambda value: time.clock_settime_ns(time.CLOCK_REALTIME, value)
         )
         setter(desired_wall)
-        verified_offset = self.wall_ns() - (
-            selected["operator_midpoint_utc_ns"]
-            + (self.monotonic_ns() - selected["target_monotonic_ns"])
+        synchronized_monotonic_ns = self.monotonic_ns()
+        synchronized_utc_ns = selected["operator_midpoint_utc_ns"] + (
+            synchronized_monotonic_ns - selected["target_monotonic_ns"]
         )
+        verified_offset = self.wall_ns() - synchronized_utc_ns
         if abs(verified_offset) > MAX_COMMIT_OFFSET_NS:
             raise ContractError("clock remained more than 250 ms from operator UTC")
         committed: dict[str, Any] = {
@@ -158,7 +160,9 @@ class ClockController:
             "state_id": "0" * 64,
             "boot_id": self.boot_id(),
             "gate": "OPERATIONAL",
-            "synchronized_monotonic_ns": self.monotonic_ns(),
+            "synchronized_monotonic_ns": synchronized_monotonic_ns,
+            "synchronized_utc_ns": synchronized_utc_ns,
+            "uncertainty_ns": selected["rtt_ns"] // 2 + abs(verified_offset),
             "verified_offset_ns": verified_offset,
             "operation_id": operation_id,
         }

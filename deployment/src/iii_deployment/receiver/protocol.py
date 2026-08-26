@@ -11,7 +11,6 @@ from typing import Any, Mapping
 from iii_deployment.contracts import ContractError, canonical_json
 from iii_deployment.contracts import content_identity
 
-
 PROTOCOL_VERSION = "1"
 IDENTITY = re.compile(r"^[a-f0-9]{64}$")
 OPERATION_ID = re.compile(r"^[a-z0-9][a-z0-9-]{7,63}$")
@@ -24,11 +23,17 @@ class Action(str, Enum):
     PLAN_ROLLBACK = "plan-rollback"
     PLAN_ACCESS = "plan-access"
     PLAN_CLOCK_SYNC = "plan-clock-sync"
+    LOG_EXPORT = "log-export"
+    LOG_CHUNK = "log-chunk"
+    PLAN_LOG_RECEIPT = "plan-log-receipt"
+    PLAN_LOG_PRUNE = "plan-log-prune"
     STAGE = "stage"
     ACTIVATE = "activate"
     ROLLBACK = "rollback"
     CANCEL = "cancel"
     CLOCK_SYNC = "clock-sync"
+    LOG_RECEIPT = "log-receipt"
+    LOG_PRUNE = "log-prune"
     ACCESS_LIST = "access-list"
     ACCESS_ADD = "access-add"
     ACCESS_REVOKE = "access-revoke"
@@ -45,6 +50,10 @@ READ_ONLY_ACTIONS = frozenset(
         Action.PLAN_ROLLBACK,
         Action.PLAN_ACCESS,
         Action.PLAN_CLOCK_SYNC,
+        Action.LOG_EXPORT,
+        Action.LOG_CHUNK,
+        Action.PLAN_LOG_RECEIPT,
+        Action.PLAN_LOG_PRUNE,
         Action.ACCESS_LIST,
         Action.NETWORK_PLAN,
         Action.CANCEL,
@@ -164,6 +173,101 @@ def _clock_samples(value: Any) -> None:
         raise ContractError("clock synchronization samples span target boots")
 
 
+def _locator(value: Any) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value.startswith("/")
+        or "\\" in value
+        or any(part in {"", ".", ".."} for part in value.split("/"))
+    ):
+        raise ContractError("invalid log content locator")
+    return value
+
+
+def _target(value: Any, *, label: str) -> None:
+    if not isinstance(value, dict):
+        raise ContractError(f"{label} must be an object")
+    _exact(value, {"logical_id", "profile"}, label=label)
+    if not isinstance(value["logical_id"], str) or not TARGET_ID.fullmatch(
+        value["logical_id"]
+    ):
+        raise ContractError(f"invalid {label} logical target")
+    if not isinstance(value["profile"], str) or not PROFILE.fullmatch(value["profile"]):
+        raise ContractError(f"invalid {label} profile")
+
+
+def _verified_files(value: Any) -> None:
+    if not isinstance(value, list):
+        raise ContractError("verified log files must be an array")
+    observed: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            raise ContractError("verified log file must be an object")
+        _exact(item, {"locator", "content_id", "size"}, label="verified log file")
+        locator = _locator(item["locator"])
+        _identity(item["content_id"], label="verified log content")
+        if locator in observed:
+            raise ContractError("verified log locator is duplicated")
+        observed.add(locator)
+        if (
+            not isinstance(item["size"], int)
+            or isinstance(item["size"], bool)
+            or item["size"] < 0
+        ):
+            raise ContractError("verified log content size is invalid")
+
+
+def _log_file(value: Any) -> None:
+    if not isinstance(value, dict):
+        raise ContractError("log prune file must be an object")
+    _exact(
+        value,
+        {"locator", "content_id", "size", "protected"},
+        label="log prune file",
+    )
+    _locator(value["locator"])
+    _identity(value["content_id"], label="log prune content")
+    if (
+        not isinstance(value["size"], int)
+        or isinstance(value["size"], bool)
+        or value["size"] < 0
+        or not isinstance(value["protected"], bool)
+    ):
+        raise ContractError("log prune file metadata is invalid")
+
+
+def _log_prune_plan(value: Any) -> None:
+    if not isinstance(value, dict):
+        raise ContractError("log prune plan must be an object")
+    _exact(
+        value,
+        {"schema", "plan_id", "receipt_id", "manifest_id", "remove", "protected"},
+        label="log prune plan",
+    )
+    if value["schema"] != "iii.log-prune-plan/v1":
+        raise ContractError("unsupported log prune plan")
+    _identity(value["plan_id"], label="log prune plan")
+    _identity(value["receipt_id"], label="log pull receipt")
+    _identity(value["manifest_id"], label="log export manifest")
+    if value["plan_id"] != content_identity(
+        {key: item for key, item in value.items() if key != "plan_id"}
+    ):
+        raise ContractError("log prune plan identity mismatch")
+    if not isinstance(value["remove"], list) or not isinstance(
+        value["protected"], list
+    ):
+        raise ContractError("log prune plan file inventory is invalid")
+    locators: set[str] = set()
+    for item in [*value["remove"], *value["protected"]]:
+        _log_file(item)
+        if item["locator"] in locators:
+            raise ContractError("log prune locator is duplicated")
+        locators.add(item["locator"])
+    if any(item["protected"] for item in value["remove"]):
+        raise ContractError("log prune removal includes protected content")
+
+
 def validate_mutation_plan(
     plan: Mapping[str, Any],
     *,
@@ -192,6 +296,8 @@ def validate_mutation_plan(
         Action.ACCESS_ADD.value,
         Action.ACCESS_REVOKE.value,
         Action.CLOCK_SYNC.value,
+        Action.LOG_RECEIPT.value,
+        Action.LOG_PRUNE.value,
     }:
         raise ContractError("unsupported receiver mutation plan")
     _identity(plan["plan_id"], label="receiver plan identity")
@@ -250,6 +356,18 @@ def validate_mutation_plan(
     elif plan["action"] == Action.CLOCK_SYNC.value:
         _exact(parameters, {"samples"}, label="receiver clock-sync parameters")
         _clock_samples(parameters["samples"])
+    elif plan["action"] == Action.LOG_RECEIPT.value:
+        _exact(
+            parameters,
+            {"manifest_id", "receipt_id", "verified_files"},
+            label="log receipt parameters",
+        )
+        _identity(parameters["manifest_id"], label="log export manifest")
+        _identity(parameters["receipt_id"], label="log pull receipt")
+        _verified_files(parameters["verified_files"])
+    elif plan["action"] == Action.LOG_PRUNE.value:
+        _exact(parameters, {"prune_plan"}, label="log prune parameters")
+        _log_prune_plan(parameters["prune_plan"])
     elif plan["action"] == Action.ACCESS_ADD.value:
         _exact(
             parameters,
@@ -311,6 +429,7 @@ def create_mutation_plan(
     *,
     receiver_generation: int,
     live_state: Mapping[str, Any],
+    parameter_override: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if request.action not in {
         Action.PLAN_STAGE,
@@ -318,12 +437,24 @@ def create_mutation_plan(
         Action.PLAN_ROLLBACK,
         Action.PLAN_ACCESS,
         Action.PLAN_CLOCK_SYNC,
+        Action.PLAN_LOG_RECEIPT,
+        Action.PLAN_LOG_PRUNE,
     }:
         raise ContractError(
             "only fixed receiver planning actions can create mutation plans"
         )
     target = request.payload["target"]
-    if request.action == Action.PLAN_STAGE:
+    if parameter_override is not None:
+        parameters = parameter_override
+        if request.action == Action.PLAN_LOG_RECEIPT:
+            action = Action.LOG_RECEIPT.value
+        elif request.action == Action.PLAN_LOG_PRUNE:
+            action = Action.LOG_PRUNE.value
+        else:
+            raise ContractError(
+                "receiver parameter override is not allowed for this plan"
+            )
+    elif request.action == Action.PLAN_STAGE:
         action = Action.STAGE.value
         parameters = request.payload["artifact"]
     elif request.action == Action.PLAN_ACTIVATE:
@@ -369,6 +500,44 @@ def validate_request_payload(request: Request) -> None:
     payload = request.payload
     if request.action in {Action.STATUS, Action.ACCESS_LIST}:
         _exact(payload, set(), label=f"{request.action.value} payload")
+        return
+    if request.action == Action.LOG_EXPORT:
+        _exact(payload, {"domain"}, label="log-export payload")
+        if payload["domain"] not in {"logs", "diagnostics"}:
+            raise ContractError("log export domain is invalid")
+        return
+    if request.action == Action.LOG_CHUNK:
+        _exact(
+            payload,
+            {"manifest_id", "content_id", "offset", "length"},
+            label="log-chunk payload",
+        )
+        _identity(payload["manifest_id"], label="log export manifest")
+        _identity(payload["content_id"], label="log content")
+        for field in ("offset", "length"):
+            if not isinstance(payload[field], int) or isinstance(payload[field], bool):
+                raise ContractError(f"log chunk {field} is invalid")
+        if payload["offset"] < 0 or not 1 <= payload["length"] <= 512 * 1024:
+            raise ContractError("log chunk bounds are invalid")
+        return
+    if request.action == Action.PLAN_LOG_RECEIPT:
+        _exact(
+            payload,
+            {"manifest_id", "verified_files", "target"},
+            label="plan-log-receipt payload",
+        )
+        _identity(payload["manifest_id"], label="log export manifest")
+        _verified_files(payload["verified_files"])
+        _target(payload["target"], label="plan-log-receipt target")
+        return
+    if request.action == Action.PLAN_LOG_PRUNE:
+        _exact(
+            payload,
+            {"receipt_id", "target"},
+            label="plan-log-prune payload",
+        )
+        _identity(payload["receipt_id"], label="log pull receipt")
+        _target(payload["target"], label="plan-log-prune target")
         return
     if request.action == Action.PLAN_STAGE:
         _exact(payload, {"artifact", "target"}, label="plan-stage payload")
@@ -555,6 +724,20 @@ def validate_request_payload(request: Request) -> None:
         )
         if payload["plan"]["action"] != Action.CLOCK_SYNC.value:
             raise ContractError("clock-sync request carries a different mutation plan")
+        return
+    if request.action in {Action.LOG_RECEIPT, Action.LOG_PRUNE}:
+        _exact(payload, {"plan"}, label=f"{request.action.value} payload")
+        if not isinstance(payload["plan"], dict):
+            raise ContractError(f"{request.action.value} plan must be an object")
+        validate_mutation_plan(
+            payload["plan"],
+            operation_id=request.operation_id,
+            client_id=request.client_id,
+        )
+        if payload["plan"]["action"] != request.action.value:
+            raise ContractError(
+                f"{request.action.value} request carries a different mutation plan"
+            )
         return
     if request.action == Action.CANCEL:
         _exact(payload, {"target_operation_id"}, label="cancel payload")

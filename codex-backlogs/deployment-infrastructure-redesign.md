@@ -3437,6 +3437,8 @@ Implementation notes:
 
 #### P2.T7: Implement Session-Aware Log And Diagnostic Lifecycle
 
+**Status: Completed (2026-08-26).**
+
 Description:
 Segment runtime/host logs by boot and runtime session, bound idle logging, retain
 deployment/configuration evidence according to its stronger persistence rules,
@@ -3446,24 +3448,24 @@ with the deployment storage reserve.
 
 Acceptance:
 
-- [ ] The current session and four newest completed sessions survive age-based
+- [x] The current session and four newest completed sessions survive age-based
       cleanup despite intermittent aircraft power cycles.
-- [ ] Runtime/host logs obey the 14-day and lesser-of-1-GiB-or-5% cap without
+- [x] Runtime/host logs obey the 14-day and lesser-of-1-GiB-or-5% cap without
       deleting protected deployment/configuration evidence.
-- [ ] Healthy idle operation emits no unbounded repetitive info logs; debug/
+- [x] Healthy idle operation emits no unbounded repetitive info logs; debug/
       verbose mode is explicit, session-scoped, capped at 256 MiB, and still obeys
       the global storage limit.
-- [ ] Before clock trust, ordinary III logs are bounded in memory and carry boot/
+- [x] Before clock trust, ordinary III logs are bounded in memory and carry boot/
       monotonic ordering; after synchronization they flush once with reconstructed
       UTC and explicit uncertainty metadata, without duplicates or false precision.
-- [ ] The degraded-clock ring enforces 10,000-record/16-MiB limits, drops oldest
+- [x] The degraded-clock ring enforces 10,000-record/16-MiB limits, drops oldest
       first, and persists the exact dropped-record count after clock trust.
-- [ ] The latest 50 deployment records and records referenced by retained
+- [x] The latest 50 deployment records and records referenced by retained
       releases remain available; failed activation diagnostics honor their
       pull/acknowledgement-or-30-day protection.
-- [ ] `iii logs pull` and `iii deploy diagnostics pull` produce immutable local
+- [x] `iii logs pull` and `iii deploy diagnostics pull` produce immutable local
       manifests/checksums and record onboard receipts only after local verification.
-- [ ] Pruning accepts only exact receipt-backed content identities and cannot
+- [x] Pruning accepts only exact receipt-backed content identities and cannot
       remove the current session, active transaction, protected release evidence,
       tuning journals, configuration/shadow checkpoints, or rosbag datasets.
 
@@ -3472,6 +3474,41 @@ Tests:
 - Multi-boot/session retention, invalid clock, idle log-rate, debug cap, size/
   age pressure, interrupted/corrupt pull, verified receipt, duplicate pull,
   receipt-bound prune, protected-data denial, and deployment-reserve interaction.
+
+Implementation notes:
+
+- Added canonical boot/session metadata, monotonic sequencing, process/boot
+  recovery, transition-only availability logging, explicit session debug mode,
+  and root-timer retention. Plans preserve the current plus four newest completed
+  sessions, apply both the 14-day and lesser-of-1-GiB-or-five-percent limits, and
+  report protected overage rather than deleting protected evidence or violating
+  the deployment reserve.
+- Added the bounded 10,000-record/16-MiB pre-clock ring and receiver-authenticated
+  clock mapping. The first canonical hash-bound clock state flushes once with UTC
+  lower/upper bounds and exact loss count; shutdown also completes a newly trusted
+  flush, while malformed, stale-boot, faulted, or tampered clock state never gains
+  false UTC precision.
+- Added receiver-owned immutable export snapshots, bounded chunks, client-bound
+  verified receipts, and exact protection-aware prune plans. Current sessions,
+  active/recent operations, the newest 50 deployment audit operation IDs,
+  retained-release evidence, configuration/tuning/rosbag/dataset domains, and the
+  receiver audit remain protected. Unacknowledged failed diagnostics have no
+  receipt-backed deletion path, which is stronger than the settled 30-day
+  protection floor.
+- Added resumable `iii logs pull` and `iii deploy diagnostics pull` with safe local
+  locators, short-write handling, immutable source/local manifests, content hash
+  verification, stale target/destination rejection, multi-file interruption
+  recovery, and duplicate identity checks. `iii logs prune --pulled` rechecks the
+  fresh receiver plan and uses a durable quarantine transaction that resumes
+  safely after power loss before reclaiming bytes.
+- Task-specific verification passed 82 deployment/receiver tests, 46 CLI tests,
+  and 23 Runtime tests in the Jazzy devcontainer (13 existing deprecation
+  warnings). Modified-file Black, fatal Flake8, Python compilation, 65 Draft-07
+  schemas, diff hygiene, isolated systemd unit verification, CLI/deployment wheel
+  payload inspection, and the targeted `iii_drone_runtime` colcon build passed.
+  No enrolled aircraft is available here, so no live receiver pull/prune or real
+  power-cycle evidence is claimed. Per operator direction, the full regression
+  suite remains deferred until P2.T8 closes Phase 2.
 
 #### P2.T8: Implement The Local Operator Record Registry And Portable Archive
 

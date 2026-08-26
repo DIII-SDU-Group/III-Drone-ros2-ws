@@ -112,6 +112,12 @@ A deterministic checksummed export of selected non-secret local records and
 referenced blobs for operator-managed offline disaster recovery.
 _Avoid_: Repository backup
 
+**Verified Log Pull**:
+An immutable local copy of one receiver-created log or deployment-diagnostic
+manifest whose every file has been size/hash verified before the receiver may
+record the exact client receipt. Pulling never deletes aircraft content.
+_Avoid_: SCP logs, download-and-delete
+
 **Cutover**:
 The evidence-gated retirement of all legacy deployment paths after one exact
 candidate set passes the Q131 acceptance matrix. Cutover archives legacy history;
@@ -143,6 +149,15 @@ _Avoid_: Removing old scripts first
   physical reimage, restore of portable state, fresh enrollment, and recommissioning.
 - The operating manual, CLI schemas, CI, and agent instructions share one policy
   implementation; PR text and decorative output are never trusted inputs.
+- Runtime events are grouped by boot-bound runtime session. Before receiver clock
+  trust they remain in a 10,000-record/16-MiB monotonic ring; synchronization
+  flushes that ring once with an uncertainty interval. The current and four newest
+  completed sessions are protected, while remaining ordinary logs obey both the
+  14-day limit and the lesser of 1 GiB or five percent of the filesystem.
+- Deployment audits, active transactions, retained-release evidence,
+  configuration/shadow checkpoints, tuning journals, and rosbag/dataset content
+  are not ordinary disposable logs. Receipt-backed pruning recomputes these
+  protections at apply time.
 
 ### Receiver transaction boundary
 
@@ -176,6 +191,10 @@ _Avoid_: Removing old scripts first
 - Normal application release operations cannot modify receiver bootstrap/fallback,
   stable receiver systemd units, or trust roots. Those belong to separately
   qualified host convergence or receiver A/B self-update transactions.
+- `log-export` and bounded `log-chunk` are authenticated read-only receiver
+  actions. Receipt and prune are separate nonce-bound durable mutations. A receipt
+  is accepted only for the complete manifest file set; prune carries the exact
+  locator, hash, and size set and is rejected if live protection state changes.
 - Normal activation requires a content-identified runtime observation proving the
   configured logical target/profile, fresh runtime and PX4 state, three continuous
   seconds landed/disarmed/failsafe-clear in a maintenance-safe navigation state,

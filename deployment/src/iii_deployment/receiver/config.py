@@ -32,6 +32,7 @@ SCHEMA_ROOT = Path(
 LIVE_STATE_PATH = STATE_ROOT / "live-state.json"
 CLOCK_STATE_PATH = STATE_ROOT / "clock-state.json"
 AUDIT_PATH = Path("/var/log/iii/deployment/receiver-audit.jsonl")
+LOG_ROOT = Path("/var/log/iii")
 READINESS_PATH = Path("/run/iii/receiver-readiness.json")
 
 

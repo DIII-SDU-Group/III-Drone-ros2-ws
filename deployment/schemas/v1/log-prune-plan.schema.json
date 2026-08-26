@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/log-prune-plan.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "plan_id", "receipt_id", "manifest_id", "remove", "protected"],
+  "properties": {
+    "schema": {"const": "iii.log-prune-plan/v1"},
+    "plan_id": {"$ref": "#/definitions/identity"},
+    "receipt_id": {"$ref": "#/definitions/identity"},
+    "manifest_id": {"$ref": "#/definitions/identity"},
+    "remove": {"type": "array", "items": {"$ref": "#/definitions/file"}},
+    "protected": {"type": "array", "items": {"$ref": "#/definitions/file"}}
+  },
+  "definitions": {
+    "identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "file": {"type": "object", "additionalProperties": false, "required": ["locator", "content_id", "size", "protected"], "properties": {"locator": {"type": "string", "minLength": 1}, "content_id": {"$ref": "#/definitions/identity"}, "size": {"type": "integer", "minimum": 0}, "protected": {"type": "boolean"}}}
+  }
+}

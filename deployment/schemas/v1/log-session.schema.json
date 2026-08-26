@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/log-session.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "session_identity", "session_id", "sequence", "boot_id", "state", "started_monotonic_ns", "started_utc", "completed_utc", "completion_reason", "debug_enabled", "last_transitions"],
+  "properties": {
+    "schema": {"const": "iii.log-session/v1"},
+    "session_identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "session_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "boot_id": {"type": "string", "minLength": 1},
+    "state": {"enum": ["current", "completed"]},
+    "started_monotonic_ns": {"type": "integer", "minimum": 0},
+    "started_utc": {"type": ["string", "null"], "format": "date-time"},
+    "completed_utc": {"type": ["string", "null"], "format": "date-time"},
+    "completion_reason": {"type": ["string", "null"]},
+    "debug_enabled": {"type": "boolean"},
+    "last_transitions": {"type": "object", "additionalProperties": {"type": ["string", "null"]}}
+  }
+}

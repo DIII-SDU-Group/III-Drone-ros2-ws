@@ -8,7 +8,7 @@
   "properties": {
     "schema": {"const": "iii.receiver-mutation-plan/v1"},
     "plan_id": {"$ref": "#/definitions/identity"},
-    "action": {"enum": ["stage", "activate", "rollback", "access-add", "access-revoke"]},
+    "action": {"enum": ["stage", "activate", "rollback", "clock-sync", "access-add", "access-revoke", "log-receipt", "log-prune"]},
     "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
     "client_id": {"$ref": "#/definitions/identity"},
     "receiver_generation": {"type": "integer", "minimum": 1},

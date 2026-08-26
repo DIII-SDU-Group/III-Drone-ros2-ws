@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/log-export-manifest.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "manifest_id", "domain", "created_at", "files", "total_bytes"],
+  "properties": {
+    "schema": {"const": "iii.log-export-manifest/v1"},
+    "manifest_id": {"$ref": "#/definitions/identity"},
+    "domain": {"enum": ["logs", "diagnostics"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "files": {"type": "array", "items": {"$ref": "#/definitions/file"}},
+    "total_bytes": {"type": "integer", "minimum": 0}
+  },
+  "definitions": {
+    "identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "file": {"type": "object", "additionalProperties": false, "required": ["locator", "content_id", "size", "protected"], "properties": {
+      "locator": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))[^\\\\]+$"},
+      "content_id": {"$ref": "#/definitions/identity"},
+      "size": {"type": "integer", "minimum": 0},
+      "protected": {"type": "boolean"}
+    }}
+  }
+}

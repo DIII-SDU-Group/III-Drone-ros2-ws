@@ -17,6 +17,7 @@ from typing import Any, Callable, Mapping
 from iii_deployment.bundle import ARCHIVE_NAME, COMPONENT_FILES, RELEASE_MANIFEST_NAME
 from iii_deployment.activation_health import ActivationCoordinator
 from iii_deployment.contracts import ContractError, canonical_json, content_identity
+from iii_deployment.log_lifecycle import LogInventory, LogTransferStore
 from iii_deployment.receiver.access import AccessManager
 from iii_deployment.receiver.clock import ClockController
 from iii_deployment.receiver.protocol import (
@@ -32,7 +33,6 @@ from iii_deployment.receiver.state import (
     TERMINAL_STATES,
 )
 from iii_deployment.staging import STATUS_INDEX_NAME, ReleaseStore
-
 
 RESULT_SCHEMA = "iii.receiver-result/v1"
 NONCE_EXPIRY_S = 300
@@ -83,6 +83,8 @@ class ReceiverEngine:
         maximum_claim_bytes: int = 21 * 1024**3,
         activation_coordinator: ActivationCoordinator | None = None,
         clock_controller: ClockController | None = None,
+        log_inventory: LogInventory | None = None,
+        log_transfer: LogTransferStore | None = None,
     ) -> None:
         if control.nonce_expiry_s != NONCE_EXPIRY_S:
             raise ContractError(
@@ -109,6 +111,12 @@ class ReceiverEngine:
         self.maximum_claim_bytes = maximum_claim_bytes
         self.activation_coordinator = activation_coordinator
         self.clock_controller = clock_controller
+        self.log_inventory = log_inventory
+        self.log_transfer = log_transfer
+        if (log_inventory is None) != (log_transfer is None):
+            raise ContractError(
+                "receiver log inventory and transfer must be configured together"
+            )
         self._mutex = threading.RLock()
         self._running: set[str] = set()
         releases_root = self.release_store.releases_root.resolve()
@@ -153,12 +161,29 @@ class ReceiverEngine:
         if request.action == Action.ACCESS_LIST:
             self.access.require_active(request.client_id)
             return self._result(request, clients=self.access.list_clients())
+        if request.action == Action.LOG_EXPORT:
+            self.access.require_active(request.client_id)
+            if self.log_inventory is None:
+                raise ContractError("receiver log inventory is unavailable")
+            return self._result(
+                request,
+                manifest=self.log_inventory.create_manifest(request.payload["domain"]),
+            )
+        if request.action == Action.LOG_CHUNK:
+            self.access.require_active(request.client_id)
+            if self.log_transfer is None:
+                raise ContractError("receiver log transfer is unavailable")
+            return self._result(
+                request, chunk=self.log_transfer.chunk(**request.payload)
+            )
         if request.action in {
             Action.PLAN_STAGE,
             Action.PLAN_ACTIVATE,
             Action.PLAN_ROLLBACK,
             Action.PLAN_ACCESS,
             Action.PLAN_CLOCK_SYNC,
+            Action.PLAN_LOG_RECEIPT,
+            Action.PLAN_LOG_PRUNE,
         }:
             return self._plan(request)
         if request.action in {
@@ -168,6 +193,8 @@ class ReceiverEngine:
             Action.ACCESS_ADD,
             Action.ACCESS_REVOKE,
             Action.CLOCK_SYNC,
+            Action.LOG_RECEIPT,
+            Action.LOG_PRUNE,
         }:
             return self._accept(request)
         if request.action == Action.CANCEL:
@@ -230,10 +257,32 @@ class ReceiverEngine:
             raise ContractError(
                 "receiver request targets another logical host or profile"
             )
+        parameter_override = None
+        if request.action in {Action.PLAN_LOG_RECEIPT, Action.PLAN_LOG_PRUNE}:
+            if self.log_inventory is None or self.log_transfer is None:
+                raise ContractError("receiver log lifecycle is unavailable")
+            if request.action == Action.PLAN_LOG_RECEIPT:
+                receipt = self.log_transfer.receipt_plan(
+                    manifest_id=request.payload["manifest_id"],
+                    client_id=request.client_id,
+                    verified_files=request.payload["verified_files"],
+                )
+                parameter_override = {
+                    "manifest_id": receipt["manifest_id"],
+                    "receipt_id": receipt["receipt_id"],
+                    "verified_files": receipt["files"],
+                }
+            else:
+                parameter_override = {
+                    "prune_plan": self.log_inventory.prune_plan(
+                        request.payload["receipt_id"]
+                    )
+                }
         plan = create_mutation_plan(
             request,
             receiver_generation=self.control.receiver_generation,
             live_state=self._live_state(),
+            parameter_override=parameter_override,
         )
         nonce, _ = self.control.issue_nonce(
             operation_id=request.operation_id,
@@ -320,6 +369,10 @@ class ReceiverEngine:
                 )
         if request.action == Action.CLOCK_SYNC and self.clock_controller is None:
             raise ContractError("receiver clock controller is unavailable")
+        if request.action in {Action.LOG_RECEIPT, Action.LOG_PRUNE} and (
+            self.log_inventory is None or self.log_transfer is None
+        ):
+            raise ContractError("receiver log lifecycle is unavailable")
         self.control.consume_and_acquire(
             nonce=request.nonce or "",
             operation_id=request.operation_id,
@@ -743,6 +796,26 @@ class ReceiverEngine:
                 "generation": state["generation"],
                 "client_id": parameters["client_id"],
                 "state": "revoked",
+            }
+        if action == Action.LOG_RECEIPT.value:
+            if self.log_transfer is None:
+                raise ContractError("receiver log transfer is unavailable")
+            receipt = self.log_transfer.receipt(
+                manifest_id=parameters["manifest_id"],
+                client_id=plan["client_id"],
+                verified_files=parameters["verified_files"],
+            )
+            if receipt["receipt_id"] != parameters["receipt_id"]:
+                raise ContractError("recorded log receipt differs from accepted plan")
+            return {"kind": "log-receipt", "receipt": receipt}
+        if action == Action.LOG_PRUNE.value:
+            if self.log_inventory is None:
+                raise ContractError("receiver log inventory is unavailable")
+            removed = self.log_inventory.apply_prune(parameters["prune_plan"])
+            return {
+                "kind": "log-prune",
+                "receipt_id": parameters["prune_plan"]["receipt_id"],
+                "removed": removed,
             }
         raise ContractError("accepted receiver plan action is not implemented")
 
