@@ -16,6 +16,8 @@ iii_runtime_group_effective: "{{ (iii_runtime_gid | string) if ansible_check_mod
 iii_runtime_api_port: 8765
 iii_mdns_port: 5353
 iii_shared_target_profile_id: a14f199fd5a75f0b60f17f35eb52a69405ef1de89a0b6983224edf52b959cf33
+iii_boot_profile_id: 3a2147e380558975eb301c2af6a425919fac6be6b2312570cbb70f03032b5f31
+iii_boot_files_required: true
 iii_runtime_api_id: iii-aircraft-runtime
 iii_runtime_system_id: iii-aircraft
 iii_runtime_display_name: III Aircraft Runtime

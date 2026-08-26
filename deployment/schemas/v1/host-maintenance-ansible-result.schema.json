@@ -4,11 +4,12 @@
   "title": "III Ansible host-maintenance result",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "kind", "policy_id", "packages", "reboot_required"],
+  "required": ["schema", "kind", "policy_id", "boot_profile_id", "packages", "reboot_required"],
   "properties": {
     "schema": {"const": "iii.host-maintenance-ansible-result/v1"},
-    "kind": {"enum": ["packages", "bundle-trust", "release-status-trust"]},
+    "kind": {"enum": ["packages", "boot-settings", "bundle-trust", "release-status-trust"]},
     "policy_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "boot_profile_id": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "^[a-f0-9]{64}$"}]},
     "packages": {
       "type": "object",
       "propertyNames": {"pattern": "^[a-z0-9][a-z0-9.+-]*(?::[a-z0-9]+)?$"},

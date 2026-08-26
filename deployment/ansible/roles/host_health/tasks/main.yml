@@ -20,6 +20,8 @@
     - /etc/iii/clock-policy.json
     - /etc/iii/firewall-policy.json
     - /etc/iii/hardware-baseline.json
+    - /etc/iii/boot-profile.json
+    - /etc/iii/boot-baseline.json
     - /etc/iii/hardware-role-manifest.json
     - /etc/udev/rules.d/90-iii-hardware-roles.rules
     - /etc/iii/host-unit-contract.json

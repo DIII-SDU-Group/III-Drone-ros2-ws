@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/boot-inspection.schema.json",
+  "title": "III effective Raspberry Pi boot inspection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "inspection_id", "profile_id", "target_class", "boot_id", "accepted", "kernel", "firmware", "command_line", "drift"],
+  "properties": {
+    "schema": {"const": "iii.boot-inspection/v1"},
+    "inspection_id": {"$ref": "#/definitions/hash"},
+    "profile_id": {"$ref": "#/definitions/hash"},
+    "target_class": {"const": "raspberry-pi-5-noble-arm64"},
+    "boot_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "accepted": {"type": "boolean"},
+    "kernel": {
+      "type": "object", "additionalProperties": false,
+      "required": ["release", "version", "architecture"],
+      "properties": {"release": {"type": "string", "minLength": 1}, "version": {"type": "string", "minLength": 1}, "architecture": {"type": "string", "minLength": 1}}
+    },
+    "firmware": {
+      "type": "object", "additionalProperties": false,
+      "required": ["model", "revision_hex", "config_sha256", "config_mode", "directives"],
+      "properties": {
+        "model": {"type": ["string", "null"], "maxLength": 256},
+        "revision_hex": {"type": ["string", "null"], "pattern": "^[a-f0-9]+$"},
+        "config_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "config_mode": {"type": ["string", "null"], "pattern": "^0[0-7]{3}$"},
+        "directives": {"type": "array", "items": {"$ref": "#/definitions/directive"}}
+      }
+    },
+    "command_line": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sha256", "tokens"],
+      "properties": {
+        "sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "tokens": {"type": "array", "items": {"$ref": "#/definitions/token"}}
+      }
+    },
+    "drift": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "directive": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "line", "section", "key", "value", "active"],
+      "properties": {
+        "source": {"type": "string", "pattern": "^/boot/firmware/[A-Za-z0-9._/-]+$"},
+        "line": {"type": "integer", "minimum": 1},
+        "section": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "key": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$"},
+        "value": {"type": "string", "maxLength": 512},
+        "active": {"type": "boolean"}
+      }
+    },
+    "token": {
+      "type": "object", "additionalProperties": false,
+      "required": ["key", "value", "redacted"],
+      "properties": {
+        "key": {"type": "string", "minLength": 1, "maxLength": 128},
+        "value": {"type": ["string", "null"], "maxLength": 512},
+        "redacted": {"type": "boolean"}
+      }
+    }
+  }
+}

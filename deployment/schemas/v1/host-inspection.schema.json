@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/host-inspection.schema.json",
+  "title": "III authenticated aircraft host inspection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "inspection_id", "logical_target", "profile", "boot_id", "accepted", "hardware", "boot"],
+  "properties": {
+    "schema": {"const": "iii.host-inspection/v1"},
+    "inspection_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "logical_target": {"const": "drone"},
+    "profile": {"enum": ["real", "opti_track"]},
+    "boot_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "accepted": {"type": "boolean"},
+    "hardware": {"type": "object"},
+    "boot": {"type": "object"}
+  }
+}

@@ -4,11 +4,11 @@
   "title": "III host-maintenance request",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "request_id", "kind", "policy", "offline", "backup", "trust_store", "release_status_index", "retire_signer_ids", "replacement_proofs"],
+  "required": ["schema", "request_id", "kind", "policy", "offline", "backup", "boot_profile", "trust_store", "release_status_index", "retire_signer_ids", "replacement_proofs"],
   "properties": {
     "schema": {"const": "iii.host-maintenance-request/v1"},
     "request_id": {"$ref": "#/definitions/hash"},
-    "kind": {"enum": ["packages", "bundle-trust", "release-status-trust"]},
+    "kind": {"enum": ["packages", "boot-settings", "bundle-trust", "release-status-trust"]},
     "policy": {"type": "object"},
     "offline": {"type": "boolean"},
     "backup": {
@@ -28,6 +28,7 @@
         }
       ]
     },
+    "boot_profile": {"anyOf": [{"type": "null"}, {"type": "object"}]},
     "trust_store": {"anyOf": [{"type": "null"}, {"type": "object"}]},
     "release_status_index": {"anyOf": [{"type": "null"}, {"type": "object"}]},
     "retire_signer_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/hash"}},

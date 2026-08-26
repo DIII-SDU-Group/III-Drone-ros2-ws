@@ -4017,6 +4017,8 @@ Implementation notes and verification:
 
 #### P3.T6: Manage The Raspberry Pi Boot Baseline
 
+Status: In-Progress
+
 Description:
 Define the source-controlled Raspberry Pi 5 boot profile and host inventory for
 firmware, kernel, command line, device-tree overlays, and Ubuntu boot settings.
@@ -4026,13 +4028,13 @@ application releases must not mutate the boot partition.
 
 Acceptance:
 
-- [ ] Provisioning produces a deterministic documented boot profile with no
+- [x] Provisioning produces a deterministic documented boot profile with no
       unsupported overclocking or unexplained options.
-- [ ] `iii host inspect` reports effective firmware/kernel/boot configuration
+- [x] `iii host inspect` reports effective firmware/kernel/boot configuration
       and drift from the declared profile.
-- [ ] Application bundle activation has no permission or operation capable of
+- [x] Application bundle activation has no permission or operation capable of
       modifying boot files.
-- [ ] Host maintenance backs up changed boot files and records package/settings
+- [x] Host maintenance backs up changed boot files and records package/settings
       deltas before requesting an explicit reboot.
 - [ ] Physical SD repair/reprovisioning steps are documented and tested because
       A/B boot/root recovery is intentionally deferred.
@@ -4042,6 +4044,34 @@ Tests:
 - Profile rendering/drift tests, application-mutation denial, no-change
   idempotence, boot-setting change with backup, reboot validation, and physical
   SD repair/reprovision rehearsal.
+
+Implementation notes and verification:
+
+- Added a canonical content-identified Raspberry Pi 5/Noble boot profile,
+  strict effective-config/kernel/command-line inspection with bounded include
+  parsing and secret redaction, composite same-boot hardware/boot host
+  inspection, Ansible profile installation without stock boot rewrites, wheel
+  packaging, and trusted-local-policy validation in `iii host inspect`.
+- Normal application and receiver-update policy now forbids `/boot` and the
+  installed boot policy. Retained `boot-settings` host maintenance records exact
+  setting/overlay drift and file hashes/modes, requires a state-bound backup,
+  preserves internal copies of the installed profile plus both boot files,
+  restores them on failure, requires a separately explicit reboot, validates
+  the post-boot profile/protected anchor, and marks commissioning stale.
+- Focused verification passed 93 deployment boot/maintenance/receiver/policy/
+  schema tests, 40 CLI/result tests, 12 boot/documentation contract tests,
+  production Ansible lint with zero findings across 22 files, syntax checks for
+  both convergence playbooks and the privileged maintenance playbook, Python
+  Black/Pyflakes/compile/diff checks, and a built-wheel content check for all six
+  new boot/host-inspection members.
+- The physical SD procedure is documented with read-only filesystem diagnosis,
+  stable-device and typed destructive-write gates, deterministic reimage,
+  resumable reprovisioning, restore, power-cycle, and recommissioning criteria;
+  its command/safety contract is tested. No spare physical SD card or connected
+  Pi is available; `iii.local` did not resolve and the live authenticated CLI
+  attempt returned `III_SSH_IDENTITY_UNAVAILABLE`. Therefore an actual
+  repair/reprovision rehearsal and resulting physical evidence are not claimed.
+  This task remains In-Progress while later software tasks continue.
 
 #### P3.T7: Provision Transactional Operator Networking
 

@@ -4,7 +4,7 @@
   "title": "III fixed host-maintenance policy",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "policy_id", "target_class", "platform", "host_contract", "snapshots", "governed_packages", "trust", "reboot", "application_deployment_may_manage_packages"],
+  "required": ["schema", "policy_id", "target_class", "platform", "host_contract", "snapshots", "governed_packages", "trust", "reboot", "boot", "application_deployment_may_manage_packages"],
   "properties": {
     "schema": {"const": "iii.host-maintenance-policy/v1"},
     "policy_id": {"$ref": "#/definitions/hash"},
@@ -66,6 +66,16 @@
         "required_marker": {"const": "/var/run/reboot-required"},
         "package_prefixes": {"const": ["linux-", "raspberrypi-firmware"]},
         "automatic": {"const": false}
+      }
+    },
+    "boot": {
+      "const": {
+        "installed_profile_path": "/etc/iii/boot-profile.json",
+        "config_path": "/boot/firmware/config.txt",
+        "cmdline_path": "/boot/firmware/cmdline.txt",
+        "backup_paths": ["/etc/iii/boot-profile.json", "/boot/firmware/cmdline.txt", "/boot/firmware/config.txt"],
+        "changes_require_reboot": true,
+        "application_release_may_mutate": false
       }
     },
     "application_deployment_may_manage_packages": {"const": false}

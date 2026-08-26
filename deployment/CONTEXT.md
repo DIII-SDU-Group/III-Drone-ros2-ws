@@ -90,6 +90,19 @@ current hardware/PX4/activation/rollback/GC/recovery evidence. A provisioned hos
 or a field-development release alone cannot establish this state.
 _Avoid_: Installed
 
+**Boot Profile**:
+The content-identified, stock-preserving Raspberry Pi 5 policy for effective
+firmware settings, overlays, kernel command line, model, and architecture.
+Provisioning installs it without rewriting stock boot inputs; only retained host
+maintenance may repair or change its managed settings.
+_Avoid_: Custom config.txt, boot tweak
+
+**Host Inspection**:
+One authenticated read-only receiver observation that composes independent
+hardware-role and boot-profile evidence from the same boot and verifies both
+against trusted local policy.
+_Avoid_: SSH inventory script, application health claim
+
 **Readiness Record**:
 A sealed, non-mutating observation of local GC and connected-target state using
 stable PASS/WARN/FAIL findings. It becomes stale on relevant state changes and is
@@ -204,6 +217,12 @@ _Avoid_: Removing old scripts first
   verifies stable `/dev/iii/*` links, reports missing/ambiguous/optional roles,
   and never learns or rewrites policy from observations. Activation health uses
   this root-owned evidence rather than a release-produced hardware claim.
+- `host-inspect` composes that hardware report with effective Raspberry Pi boot
+  evidence from the same boot. Normal releases and receiver self-update cannot
+  write `/boot` or the installed boot policy. A boot repair/change is a separate
+  backup-bound host-maintenance transaction that records setting/file deltas,
+  requires an explicit reboot, validates the new boot, and invalidates the
+  affected commissioning evidence.
 - Normal activation requires a content-identified runtime observation proving the
   configured logical target/profile, fresh runtime and PX4 state, three continuous
   seconds landed/disarmed/failsafe-clear in a maintenance-safe navigation state,

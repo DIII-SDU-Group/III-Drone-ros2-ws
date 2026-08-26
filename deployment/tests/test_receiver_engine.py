@@ -164,6 +164,7 @@ def receiver(tmp_path: Path):
         log_transfer=None,
         host_maintenance=None,
         hardware_inspector=None,
+        host_inspector=None,
     ):
         return ReceiverEngine(
             release_store=store,
@@ -183,6 +184,7 @@ def receiver(tmp_path: Path):
             log_transfer=log_transfer,
             host_maintenance=host_maintenance,
             hardware_inspector=hardware_inspector,
+            host_inspector=host_inspector,
         )
 
     return SimpleNamespace(
@@ -220,6 +222,7 @@ class FakeHostMaintenance:
             "executor_sha256": "4" * 64,
             "expected_package_changes": [],
             "trust_change": None,
+            "boot_change": None,
             "mutations": [],
             "required_checks": ["fixed receiver lease"],
             "declared_permissions": [],
@@ -1262,3 +1265,28 @@ def test_hardware_inspection_rejects_inactive_machine(receiver):
                 {},
             )
         )
+
+
+def test_authenticated_composite_host_inspection_is_read_only(receiver):
+    report = {
+        "schema": "iii.host-inspection/v1",
+        "inspection_id": "2" * 64,
+        "accepted": False,
+    }
+
+    class Inspector:
+        def inspect(self):
+            return report
+
+    engine = receiver.build(host_inspector=Inspector())
+    result = engine.handle(
+        request(
+            "host-inspect",
+            "composite-host-inspect",
+            receiver.operator_id,
+            {},
+        )
+    )
+    assert result["inspection"] is report
+    assert result["action"] == "host-inspect"
+    assert receiver.control.load()["lease"] is None

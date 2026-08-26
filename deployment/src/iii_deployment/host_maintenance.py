@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import tempfile
 from typing import Any, Callable, Mapping, Sequence
@@ -16,6 +17,11 @@ from iii_deployment.contracts import (
     ContractRegistry,
     canonical_json,
     content_identity,
+)
+from iii_deployment.boot_baseline import (
+    BootInspector,
+    load_boot_profile,
+    validate_boot_profile,
 )
 from iii_deployment.receiver.state import atomic_bytes, atomic_document
 from iii_deployment.release_status import verify_status_index
@@ -137,12 +143,30 @@ def validate_request(
     status_index = value.get("release_status_index")
     retired = value.get("retire_signer_ids")
     proofs = value.get("replacement_proofs")
-    if kind == "packages":
+    boot_profile = value.get("boot_profile")
+    if kind in {"packages", "boot-settings"}:
         if trust_store is not None or status_index is not None or retired or proofs:
             raise HostMaintenanceError(
-                "package and trust-root changes require separate plans"
+                "package/boot and trust-root changes require separate plans"
             )
+        if kind == "packages" and boot_profile is not None:
+            raise HostMaintenanceError(
+                "package and boot-setting changes require separate plans"
+            )
+        if kind == "boot-settings":
+            if value.get("offline") is not False or not isinstance(boot_profile, dict):
+                raise HostMaintenanceError(
+                    "boot-setting maintenance requires one explicit boot profile"
+                )
+            try:
+                boot_profile = validate_boot_profile(boot_profile, registry)
+            except ContractError as exc:
+                raise HostMaintenanceError(f"boot profile is invalid: {exc}") from exc
     else:
+        if boot_profile is not None:
+            raise HostMaintenanceError(
+                "trust-root rotation cannot carry a boot profile"
+            )
         if value.get("offline") is not False or not isinstance(trust_store, dict):
             raise HostMaintenanceError(
                 "trust-root rotation cannot carry package/offline mutations"
@@ -159,7 +183,7 @@ def validate_request(
             raise HostMaintenanceError(
                 "bundle trust rotation cannot carry a release-status index"
             )
-    return {**dict(value), "policy": policy}
+    return {**dict(value), "policy": policy, "boot_profile": boot_profile}
 
 
 def _backup_reference(path: Path | None) -> dict[str, Any] | None:
@@ -194,6 +218,7 @@ def build_request(
     registry: ContractRegistry,
     offline: bool = False,
     backup_record: Path | None = None,
+    boot_profile_path: Path | None = None,
     trust_store_path: Path | None = None,
     release_status_index_path: Path | None = None,
     retire_signer_ids: Sequence[str] = (),
@@ -223,6 +248,11 @@ def build_request(
         )
         for path in replacement_proof_paths
     ]
+    boot_profile = None
+    if boot_profile_path is not None:
+        boot_profile = load_boot_profile(
+            boot_profile_path.expanduser().absolute(), registry
+        )
     value: dict[str, Any] = {
         "schema": REQUEST_SCHEMA,
         "request_id": "0" * 64,
@@ -230,6 +260,7 @@ def build_request(
         "policy": policy,
         "offline": bool(offline),
         "backup": _backup_reference(backup_record),
+        "boot_profile": boot_profile,
         "trust_store": trust_store,
         "release_status_index": release_status_index,
         "retire_signer_ids": sorted(set(retire_signer_ids)),
@@ -368,6 +399,15 @@ class HostMaintenanceController:
             label="onboard release-status index",
             canonical=True,
         )
+        boot_profile_path = _under(
+            self.root, Path(self._policy()["boot"]["installed_profile_path"])
+        )
+        boot_profile = load_boot_profile(boot_profile_path, self.registry)
+        boot = BootInspector(
+            profile_path=boot_profile_path,
+            registry=self.registry,
+            root=self.root,
+        ).inspect()
         value: dict[str, Any] = {
             "schema": "iii.host-maintenance-snapshot/v1",
             "snapshot_id": "0" * 64,
@@ -397,6 +437,8 @@ class HostMaintenanceController:
             },
             "trust_store_ids": trust,
             "release_status_index_id": status_index.get("index_id"),
+            "boot_profile_id": boot_profile["profile_id"],
+            "boot": boot,
             "reboot_required": _under(
                 self.root, Path("/var/run/reboot-required")
             ).exists(),
@@ -575,7 +617,7 @@ class HostMaintenanceController:
         self, request: Mapping[str, Any], before: Mapping[str, Any]
     ) -> tuple[dict[str, Any] | None, bool]:
         kind = request["kind"]
-        if kind == "packages":
+        if kind not in TRUST_KINDS:
             return None, False
         policy_key, authority = TRUST_KINDS[kind]
         path = _under(self.root, Path(request["policy"]["trust"][policy_key]["path"]))
@@ -727,6 +769,97 @@ class HostMaintenanceController:
             proposed_id != current_id,
         )
 
+    def _boot_change(
+        self, request: Mapping[str, Any], before: Mapping[str, Any]
+    ) -> tuple[dict[str, Any] | None, bool]:
+        if request["kind"] != "boot-settings":
+            return None, False
+        installed_path = _under(
+            self.root, Path(request["policy"]["boot"]["installed_profile_path"])
+        )
+        installed = load_boot_profile(installed_path, self.registry)
+        desired = request["boot_profile"]
+        if before.get("boot_profile_id") != installed["profile_id"]:
+            raise HostMaintenanceChanged(
+                "installed boot profile changed during maintenance planning"
+            )
+        inspection = before.get("boot")
+        if not isinstance(inspection, Mapping):
+            raise HostMaintenanceError("boot-setting maintenance lacks boot inspection")
+        firmware = inspection.get("firmware")
+        directives = (
+            firmware.get("directives", []) if isinstance(firmware, Mapping) else []
+        )
+        drift = list(inspection.get("drift", []))
+        unowned_drift = [
+            item
+            for item in drift
+            if not item.startswith("managed firmware setting ")
+            and not item.startswith("required device-tree overlays are absent:")
+        ]
+        if unowned_drift:
+            raise HostMaintenanceError(
+                "boot drift outside the III-managed settings/overlay block requires "
+                "physical SD repair or deterministic reprovisioning"
+            )
+        observed_sources = set()
+        for item in directives:
+            source = item.get("source") if isinstance(item, Mapping) else None
+            path = Path(source) if isinstance(source, str) else Path()
+            if (
+                not path.is_absolute()
+                or path.parts[:3] != ("/", "boot", "firmware")
+                or any(part in {"", ".", ".."} for part in path.parts[1:])
+            ):
+                raise HostMaintenanceError(
+                    "boot inspection contains an unsafe firmware source"
+                )
+            observed_sources.add(source)
+        config_sources = sorted(
+            observed_sources | {request["policy"]["boot"]["config_path"]}
+        )
+        backup_paths = list(request["policy"]["boot"]["backup_paths"])
+        backups = []
+        for item in backup_paths:
+            path = _under(self.root, Path(item))
+            backups.append(
+                {
+                    "path": item,
+                    "sha256": _sha256(path),
+                    "mode": f"{stat.S_IMODE(path.stat(follow_symlinks=False).st_mode):04o}",
+                }
+            )
+        old_settings = installed["firmware"]["managed_settings"]
+        new_settings = desired["firmware"]["managed_settings"]
+        setting_deltas = [
+            {
+                "setting": key,
+                "before": old_settings.get(key),
+                "after": new_settings.get(key),
+            }
+            for key in sorted(set(old_settings) | set(new_settings))
+            if old_settings.get(key) != new_settings.get(key)
+        ]
+        old_overlays = installed["firmware"]["managed_overlays"]
+        new_overlays = desired["firmware"]["managed_overlays"]
+        changed = (
+            installed["profile_id"] != desired["profile_id"]
+            or inspection.get("accepted") is not True
+        )
+        return (
+            {
+                "before_profile_id": installed["profile_id"],
+                "after_profile_id": desired["profile_id"],
+                "setting_deltas": setting_deltas,
+                "overlays_before": list(old_overlays),
+                "overlays_after": list(new_overlays),
+                "drift_before": drift,
+                "config_sources": config_sources,
+                "backup_files": backups,
+            },
+            changed,
+        )
+
     def plan(
         self,
         *,
@@ -744,6 +877,7 @@ class HostMaintenanceController:
             "host_contract",
             "trust",
             "reboot",
+            "boot",
             "application_deployment_may_manage_packages",
         )
         if value["kind"] == "packages":
@@ -755,7 +889,7 @@ class HostMaintenanceController:
                 )
         elif desired != installed:
             raise HostMaintenanceError(
-                "trust rotation cannot smuggle a package maintenance policy change"
+                "non-package maintenance cannot smuggle a maintenance-policy change"
             )
         before = dict(self.snapshot_provider())
         self._platform_matches(before, installed)
@@ -763,6 +897,7 @@ class HostMaintenanceController:
             raise HostMaintenanceError("host maintenance lacks a usable operator")
         expected_packages: list[str] = []
         trust_change, trust_changed = self._trust_change(value, before)
+        boot_change, boot_changed = self._boot_change(value, before)
         policy_changed = desired != installed
         if value["kind"] == "packages":
             expected_packages = sorted(
@@ -772,7 +907,12 @@ class HostMaintenanceController:
                 raise HostMaintenanceError(
                     "package planner returned an invalid package"
                 )
-        no_change = not expected_packages and not trust_changed and not policy_changed
+        no_change = (
+            not expected_packages
+            and not trust_changed
+            and not boot_changed
+            and not policy_changed
+        )
         if not no_change:
             backup = value.get("backup")
             if not isinstance(backup, dict) or backup.get(
@@ -794,6 +934,7 @@ class HostMaintenanceController:
             "executor_sha256": self._executor_sha256(),
             "expected_package_changes": expected_packages,
             "trust_change": trust_change,
+            "boot_change": boot_change,
             "mutations": (
                 []
                 if no_change
@@ -803,10 +944,18 @@ class HostMaintenanceController:
                         "retain before/after package and platform evidence",
                     ]
                     if value["kind"] == "packages"
-                    else [
-                        f"replace only {value['kind']} public trust",
-                        "retain prior trust and commissioning-invalidating evidence",
-                    ]
+                    else (
+                        [
+                            "back up governed boot files before mutation",
+                            "converge only the retained boot profile block",
+                            "retain before/after boot settings and hashes",
+                        ]
+                        if value["kind"] == "boot-settings"
+                        else [
+                            f"replace only {value['kind']} public trust",
+                            "retain prior trust and commissioning-invalidating evidence",
+                        ]
+                    )
                 )
             ),
             "required_checks": [
@@ -821,12 +970,15 @@ class HostMaintenanceController:
                 else (
                     ["root package and repository convergence"]
                     if value["kind"] == "packages"
-                    else [f"replace {value['kind']} public trust store"]
+                    else (
+                        ["write governed boot profile and boot files"]
+                        if value["kind"] == "boot-settings"
+                        else [f"replace {value['kind']} public trust store"]
+                    )
                 )
             ),
-            "reboot_expected": any(
-                name.startswith(reboot_prefixes) for name in expected_packages
-            ),
+            "reboot_expected": boot_changed
+            or any(name.startswith(reboot_prefixes) for name in expected_packages),
             "no_change": no_change,
         }
         if trust_change is not None:
@@ -869,6 +1021,7 @@ class HostMaintenanceController:
             "after": None,
             "changed_packages": [],
             "trust_change": None,
+            "boot_change": plan["boot_change"],
             "reboot": {
                 "required": False,
                 "scheduled": False,
@@ -980,6 +1133,7 @@ class HostMaintenanceController:
             "iii_maintenance_trust_store": request["trust_store"] or {},
             "iii_maintenance_release_status_index": request.get("release_status_index")
             or {},
+            "iii_maintenance_boot_profile": request.get("boot_profile") or {},
             "iii_maintenance_result_path": str(result_path),
         }
         atomic_bytes(extra_vars, canonical_json(payload) + b"\n", mode=0o600)
@@ -1021,6 +1175,14 @@ class HostMaintenanceController:
         if (
             recap["kind"] != kind
             or recap["policy_id"] != request["policy"]["policy_id"]
+            or (
+                recap["boot_profile_id"]
+                != (
+                    request["boot_profile"]["profile_id"]
+                    if kind == "boot-settings"
+                    else None
+                )
+            )
         ):
             raise HostMaintenanceRecoveryRequired(
                 "host-maintenance Ansible result does not match the retained plan"
@@ -1147,6 +1309,7 @@ class HostMaintenanceController:
         self._save_transaction(transaction)
         stopped = False
         trust_backups: list[tuple[Path, bytes]] = []
+        boot_backups: list[tuple[Path, bytes, int]] = []
         try:
             if plan["no_change"]:
                 proof = dict(self.recovery_validator())
@@ -1181,6 +1344,20 @@ class HostMaintenanceController:
                         trust_backups[1][1],
                         mode=0o600,
                     )
+            if plan["request"]["kind"] == "boot-settings":
+                backup_root = self.state_root / plan["maintenance_id"] / "boot-before"
+                backup_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+                for index, item in enumerate(plan["boot_change"]["backup_files"]):
+                    source = _under(self.root, Path(item["path"]))
+                    raw = source.read_bytes()
+                    if hashlib.sha256(raw).hexdigest() != item["sha256"]:
+                        raise HostMaintenanceChanged(
+                            "boot file changed after maintenance planning"
+                        )
+                    boot_backups.append((source, raw, int(item["mode"], 8)))
+                    atomic_bytes(
+                        backup_root / f"{index:02d}-{source.name}", raw, mode=0o600
+                    )
             self._run_ansible(plan)
             if self._policy() != plan["request"]["policy"]:
                 raise HostMaintenanceRecoveryRequired(
@@ -1207,7 +1384,7 @@ class HostMaintenanceController:
                 )
             if plan["request"]["kind"] != "packages" and changed:
                 raise HostMaintenanceRecoveryRequired(
-                    "trust rotation unexpectedly changed host packages"
+                    "non-package maintenance unexpectedly changed host packages"
                 )
             transaction["after"] = after
             transaction["changed_packages"] = changed
@@ -1231,6 +1408,18 @@ class HostMaintenanceController:
                         "Ansible did not apply the exact replacement release-status index"
                     )
                 commissioning_reasons.append(plan["request"]["kind"])
+            if plan["request"]["kind"] == "boot-settings":
+                boot_change = plan["boot_change"]
+                if (
+                    after.get("boot_profile_id") != boot_change["after_profile_id"]
+                    or not isinstance(after.get("boot"), Mapping)
+                    or after["boot"].get("accepted") is not True
+                ):
+                    raise HostMaintenanceRecoveryRequired(
+                        "Ansible boot convergence differs from the retained profile"
+                    )
+                transaction["boot_change"] = boot_change
+                commissioning_reasons.append("boot-settings")
             reboot_required = bool(
                 after.get("reboot_required") or plan["reboot_expected"]
             )
@@ -1249,6 +1438,8 @@ class HostMaintenanceController:
             stopped = False
             return self._save_transaction(transaction)
         except Exception as exc:
+            for backup_path, backup_raw, backup_mode in reversed(boot_backups):
+                atomic_bytes(backup_path, backup_raw, mode=backup_mode)
             for backup_path, backup_raw in reversed(trust_backups):
                 atomic_bytes(backup_path, backup_raw, mode=0o640)
             transaction["phase"] = "failed"
@@ -1343,6 +1534,15 @@ class HostMaintenanceController:
                 transaction["reboot"]["after_boot_id"] = current_boot
                 transaction = self._save_transaction(transaction)
                 try:
+                    boot_change = transaction.get("boot_change")
+                    if boot_change is not None and (
+                        after.get("boot_profile_id") != boot_change["after_profile_id"]
+                        or not isinstance(after.get("boot"), Mapping)
+                        or after["boot"].get("accepted") is not True
+                    ):
+                        raise HostMaintenanceRecoveryRequired(
+                            "post-boot configuration differs from the retained boot profile"
+                        )
                     transaction["protected_release_validation"] = dict(
                         self.recovery_validator()
                     )

@@ -47,6 +47,12 @@ def _identified(value: dict, field: str) -> dict:
     return value
 
 
+def _boot_profile_with_setting(case: "MaintenanceCase") -> dict:
+    profile = copy.deepcopy(case.boot_profile)
+    profile["firmware"]["managed_settings"] = {"dtparam": "audio=off"}
+    return _identified(profile, "profile_id")
+
+
 def _signer(tmp_path: Path, name: str, authority: str) -> tuple[Path, dict]:
     private = tmp_path / f"{name}.pem"
     public = tmp_path / f"{name}.json"
@@ -65,6 +71,24 @@ class MaintenanceCase:
             ).read_text()
         )
         _write(self.root / "etc/iii/host-maintenance-policy.json", self.policy)
+        self.boot_profile_path = self.root / "etc/iii/boot-profile.json"
+        self.boot_profile = json.loads(
+            (ROOT / "deployment/boot/raspberry-pi-5-noble-arm64.json").read_text()
+        )
+        _write(self.boot_profile_path, self.boot_profile)
+        self.boot_config_path = self.root / "boot/firmware/config.txt"
+        self.boot_cmdline_path = self.root / "boot/firmware/cmdline.txt"
+        self.boot_config_path.parent.mkdir(parents=True)
+        self.boot_config_path.write_text(
+            "# Ubuntu stock Raspberry Pi configuration\n[all]\n",
+            encoding="utf-8",
+        )
+        self.boot_cmdline_path.write_text(
+            "console=serial0,115200 rootwait\n", encoding="utf-8"
+        )
+        self.boot_accepted = True
+        self.boot_drift: list[str] = []
+        self.boot_directives: list[dict] = []
         playbook = self.root / "usr/share/iii/host-maintenance/aircraft-maintenance.yml"
         playbook.parent.mkdir(parents=True)
         playbook.write_text("---\n- hosts: localhost\n", encoding="utf-8")
@@ -159,6 +183,14 @@ class MaintenanceCase:
                 "release-status-trust": content_identity(status),
             },
             "release_status_index_id": index["index_id"],
+            "boot_profile_id": self.boot_profile["profile_id"],
+            "boot": {
+                "profile_id": self.boot_profile["profile_id"],
+                "boot_id": self.boot_id,
+                "accepted": self.boot_accepted,
+                "drift": list(self.boot_drift),
+                "firmware": {"directives": copy.deepcopy(self.boot_directives)},
+            },
             "reboot_required": self.reboot_required,
         }
         return _identified(value, "snapshot_id")
@@ -182,6 +214,11 @@ class MaintenanceCase:
                 "schema": "iii.host-maintenance-ansible-result/v1",
                 "kind": payload["iii_maintenance_kind"],
                 "policy_id": payload["iii_maintenance_policy"]["policy_id"],
+                "boot_profile_id": (
+                    payload["iii_maintenance_boot_profile"]["profile_id"]
+                    if payload["iii_maintenance_kind"] == "boot-settings"
+                    else None
+                ),
                 "packages": {
                     name: [{"version": version} for version in versions]
                     for name, versions in self.packages.items()
@@ -220,6 +257,7 @@ class MaintenanceCase:
         offline: bool = False,
         backup: bool = False,
         trust_store: dict | None = None,
+        boot_profile: dict | None = None,
         status_index: dict | None = None,
         retired: tuple[str, ...] = (),
         proofs: tuple[dict, ...] = (),
@@ -241,6 +279,7 @@ class MaintenanceCase:
                 if backup
                 else None
             ),
+            "boot_profile": copy.deepcopy(boot_profile),
             "trust_store": trust_store,
             "release_status_index": status_index,
             "retire_signer_ids": list(retired),
@@ -272,6 +311,235 @@ def test_idempotent_no_change_validates_recovery_without_mutation(
     assert case.ansible_calls == case.stops == case.resumes == 0
 
 
+def test_boot_profile_no_change_is_idempotent_without_backup_or_ansible(
+    tmp_path: Path,
+) -> None:
+    case = MaintenanceCase(tmp_path)
+    controller = case.controller()
+    plan = case.plan(
+        controller,
+        case.request(kind="boot-settings", boot_profile=case.boot_profile),
+    )
+
+    assert plan["no_change"] is True
+    assert plan["boot_change"]["setting_deltas"] == []
+    assert controller.apply(plan)["phase"] == "completed"
+    assert case.ansible_calls == case.stops == case.reboots == 0
+
+
+def test_boot_setting_change_is_backed_up_and_requires_explicit_reboot(
+    tmp_path: Path,
+) -> None:
+    case = MaintenanceCase(tmp_path)
+    desired = _boot_profile_with_setting(case)
+    controller = case.controller()
+
+    def ansible(argv, _environment):
+        case.ansible_calls += 1
+        extra_vars = Path(argv[argv.index("--extra-vars") + 1].removeprefix("@"))
+        payload = json.loads(extra_vars.read_text())
+        case.boot_profile = copy.deepcopy(payload["iii_maintenance_boot_profile"])
+        _write(case.boot_profile_path, case.boot_profile)
+        case.boot_config_path.write_text(
+            "# Ubuntu stock Raspberry Pi configuration\n"
+            "[all]\n"
+            "# BEGIN III MANAGED BOOT PROFILE\n"
+            "dtparam=audio=off\n"
+            "# END III MANAGED BOOT PROFILE\n",
+            encoding="utf-8",
+        )
+        case.reboot_required = True
+        case.retain_ansible_result(argv)
+        return SimpleNamespace(returncode=0, stdout="ok")
+
+    controller.ansible_runner = ansible
+    plan = case.plan(
+        controller,
+        case.request(
+            kind="boot-settings",
+            boot_profile=desired,
+            backup=True,
+        ),
+    )
+    result = controller.apply(plan)
+
+    assert result["phase"] == "reboot-required"
+    assert result["boot_change"]["setting_deltas"] == [
+        {"setting": "dtparam", "before": None, "after": "audio=off"}
+    ]
+    assert result["commissioning"] == {
+        "state": "recommission_required",
+        "reasons": ["boot-settings"],
+    }
+    assert case.reboots == 0
+    backup_root = (
+        case.root
+        / "var/lib/iii/deployment/host-maintenance"
+        / result["maintenance_id"]
+        / "boot-before"
+    )
+    assert (
+        json.loads((backup_root / "00-boot-profile.json").read_text())["profile_id"]
+        == plan["boot_change"]["before_profile_id"]
+    )
+    assert (backup_root / "01-cmdline.txt").read_text() == (
+        "console=serial0,115200 rootwait\n"
+    )
+    assert (backup_root / "02-config.txt").read_text() == (
+        "# Ubuntu stock Raspberry Pi configuration\n[all]\n"
+    )
+
+    reboot_plan = controller.plan_reboot(
+        operation_id="boot-reboot-test",
+        client_id=CLIENT,
+        maintenance_id=result["maintenance_id"],
+    )
+    controller.schedule_reboot(reboot_plan["maintenance_id"])
+    assert case.reboots == 1
+    case.boot_id = "boot-after"
+    assert controller.reconcile()["state"] == "completed"
+
+
+def test_failed_boot_maintenance_restores_exact_files_and_modes(
+    tmp_path: Path,
+) -> None:
+    case = MaintenanceCase(tmp_path)
+    desired = _boot_profile_with_setting(case)
+    case.boot_config_path.chmod(0o644)
+    case.boot_cmdline_path.chmod(0o600)
+    profile_before = case.boot_profile_path.read_bytes()
+    config_before = case.boot_config_path.read_bytes()
+    cmdline_before = case.boot_cmdline_path.read_bytes()
+    controller = case.controller()
+
+    def ansible(_argv, _environment):
+        case.boot_profile = copy.deepcopy(desired)
+        _write(case.boot_profile_path, case.boot_profile)
+        case.boot_config_path.write_text("corrupt\n", encoding="utf-8")
+        case.boot_config_path.chmod(0o666)
+        case.boot_cmdline_path.write_text("init=/bin/sh\n", encoding="utf-8")
+        case.boot_cmdline_path.chmod(0o666)
+        raise HostMaintenanceRecoveryRequired("simulated boot mutation failure")
+
+    controller.ansible_runner = ansible
+    plan = case.plan(
+        controller,
+        case.request(
+            kind="boot-settings",
+            boot_profile=desired,
+            backup=True,
+        ),
+    )
+
+    with pytest.raises(HostMaintenanceRecoveryRequired, match="simulated"):
+        controller.apply(plan)
+
+    assert case.boot_profile_path.read_bytes() == profile_before
+    assert case.boot_config_path.read_bytes() == config_before
+    assert case.boot_cmdline_path.read_bytes() == cmdline_before
+    assert case.boot_config_path.stat().st_mode & 0o777 == 0o644
+    assert case.boot_cmdline_path.stat().st_mode & 0o777 == 0o600
+    assert controller.status()["transaction"]["phase"] == "failed"
+
+
+def test_boot_maintenance_records_includes_but_only_owns_the_main_config(
+    tmp_path: Path,
+) -> None:
+    case = MaintenanceCase(tmp_path)
+    include = case.root / "boot/firmware/usercfg.txt"
+    include.write_text("dtparam=audio=on\n", encoding="utf-8")
+    case.boot_directives = [
+        {
+            "source": "/boot/firmware/usercfg.txt",
+            "line": 1,
+            "section": "all",
+            "key": "dtparam",
+            "value": "audio=on",
+            "active": True,
+        }
+    ]
+    case.boot_accepted = False
+    case.boot_drift = ["managed firmware setting dtparam differs"]
+    desired = _boot_profile_with_setting(case)
+
+    plan = case.plan(
+        case.controller(),
+        case.request(
+            kind="boot-settings",
+            boot_profile=desired,
+            backup=True,
+        ),
+    )
+
+    assert plan["boot_change"]["config_sources"] == [
+        "/boot/firmware/config.txt",
+        "/boot/firmware/usercfg.txt",
+    ]
+    assert all(
+        item["path"] != "/boot/firmware/usercfg.txt"
+        for item in plan["boot_change"]["backup_files"]
+    )
+    playbook = (
+        ROOT / "deployment/host-maintenance/aircraft-maintenance.yml"
+    ).read_text()
+    assert "blockinfile:" in playbook
+    assert "lineinfile:" not in playbook
+
+
+def test_boot_maintenance_rejects_unowned_drift_before_mutation(
+    tmp_path: Path,
+) -> None:
+    case = MaintenanceCase(tmp_path)
+    case.boot_accepted = False
+    case.boot_drift = ["forbidden firmware setting force_turbo is active"]
+
+    with pytest.raises(HostMaintenanceError, match="physical SD repair"):
+        case.plan(
+            case.controller(),
+            case.request(
+                kind="boot-settings",
+                boot_profile=case.boot_profile,
+                backup=True,
+            ),
+        )
+
+    assert case.stops == case.ansible_calls == 0
+
+
+def test_postboot_boot_profile_drift_fails_closed(tmp_path: Path) -> None:
+    case = MaintenanceCase(tmp_path)
+    desired = _boot_profile_with_setting(case)
+    controller = case.controller()
+
+    def ansible(argv, _environment):
+        extra_vars = Path(argv[argv.index("--extra-vars") + 1].removeprefix("@"))
+        payload = json.loads(extra_vars.read_text())
+        case.boot_profile = copy.deepcopy(payload["iii_maintenance_boot_profile"])
+        _write(case.boot_profile_path, case.boot_profile)
+        case.reboot_required = True
+        case.retain_ansible_result(argv)
+        return SimpleNamespace(returncode=0, stdout="ok")
+
+    controller.ansible_runner = ansible
+    result = controller.apply(
+        case.plan(
+            controller,
+            case.request(
+                kind="boot-settings",
+                boot_profile=desired,
+                backup=True,
+            ),
+        )
+    )
+    controller.schedule_reboot(result["maintenance_id"])
+    case.boot_id = "boot-after"
+    case.boot_accepted = False
+    case.boot_drift = ["managed firmware setting dtparam differs"]
+
+    assert controller.reconcile()["state"] == "failed"
+    assert "boot profile" in controller.status()["transaction"]["failure"]["message"]
+
+
 def test_policy_matches_provisioned_packages_and_normal_release_forbids_host_mutation() -> (
     None
 ):
@@ -290,7 +558,10 @@ def test_policy_matches_provisioned_packages_and_normal_release_forbids_host_mut
         "/etc/apt/sources.list.d/ubuntu.sources",
         "/etc/apt/sources.list.d/ros2.sources",
         "/etc/iii/host-maintenance-policy.json",
+        "/etc/iii/boot-profile.json",
+        "/etc/iii/boot-baseline.json",
         "/etc/iii/trust",
+        "/boot",
         "/etc/systemd/system/iii-host-maintenance@.service",
         "/usr/share/iii/host-maintenance",
     } <= forbidden

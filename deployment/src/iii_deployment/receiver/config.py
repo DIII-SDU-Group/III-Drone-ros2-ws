@@ -36,6 +36,7 @@ AUDIT_PATH = Path("/var/log/iii/deployment/receiver-audit.jsonl")
 LOG_ROOT = Path("/var/log/iii")
 READINESS_PATH = Path("/run/iii/receiver-readiness.json")
 HARDWARE_ROLE_MANIFEST_PATH = Path("/etc/iii/hardware-role-manifest.json")
+BOOT_PROFILE_PATH = Path("/etc/iii/boot-profile.json")
 
 
 def under(root: Path, absolute: Path) -> Path:

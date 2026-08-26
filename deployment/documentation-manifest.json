@@ -1430,6 +1430,21 @@
       "source_of_truth": "docs/deployment-automation-contract.md"
     },
     {
+      "audience": "engineering",
+      "canonical": false,
+      "classification": "contextual-design",
+      "context": "workspace-integration",
+      "exclusion_reason": null,
+      "generated": false,
+      "lifecycle": "maintained",
+      "owner": "workspace",
+      "path": "docs/deployment-hardware-roles.md",
+      "qualified_release_inclusion": true,
+      "repository": "workspace",
+      "repository_path": ".",
+      "source_of_truth": "docs/deployment-hardware-roles.md"
+    },
+    {
       "audience": "operator",
       "canonical": true,
       "classification": "runbook",
@@ -1773,6 +1788,21 @@
       "repository": "workspace",
       "repository_path": ".",
       "source_of_truth": "docs/qualified-release-pipeline.md"
+    },
+    {
+      "audience": "engineering",
+      "canonical": false,
+      "classification": "contextual-design",
+      "context": "workspace-integration",
+      "exclusion_reason": null,
+      "generated": false,
+      "lifecycle": "maintained",
+      "owner": "workspace",
+      "path": "docs/raspberry-pi-boot-baseline.md",
+      "qualified_release_inclusion": true,
+      "repository": "workspace",
+      "repository_path": ".",
+      "source_of_truth": "docs/raspberry-pi-boot-baseline.md"
     },
     {
       "audience": "engineering",

@@ -47,6 +47,7 @@ iii_deployment = ["assets/**/*.json", "assets/**/*.yaml", "assets/**/*.j2"]
 "share/iii-deployment/host" = ["host/*.json", "host/*.sudoers"]
 "share/iii-deployment/provisioning" = ["provisioning/*.json"]
 "share/iii-deployment/hardware" = ["hardware/*.json", "hardware/*.rules"]
+"share/iii-deployment/boot" = ["boot/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

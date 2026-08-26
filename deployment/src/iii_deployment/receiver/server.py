@@ -27,6 +27,8 @@ from iii_deployment.contracts import ContractError, ContractRegistry
 from iii_deployment.log_lifecycle import LogInventory, LogTransferStore
 from iii_deployment.host_maintenance import HostMaintenanceController
 from iii_deployment.hardware_roles import HardwareInspector
+from iii_deployment.boot_baseline import BootInspector
+from iii_deployment.host_inspection import HostInspector
 from iii_deployment.receiver.access import AccessManager
 from iii_deployment.receiver.config import (
     AUDIT_PATH,
@@ -34,6 +36,7 @@ from iii_deployment.receiver.config import (
     BUNDLE_TRUST_PATH,
     CONFIG_PATH,
     HARDWARE_ROLE_MANIFEST_PATH,
+    BOOT_PROFILE_PATH,
     CLOCK_STATE_PATH,
     FIELD_SIGNERS_PATH,
     INCOMING_ROOT,
@@ -151,6 +154,17 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         manifest_path=HARDWARE_ROLE_MANIFEST_PATH,
         registry=registry,
         profile=config.profile,
+    )
+    boot_inspector = BootInspector(
+        profile_path=BOOT_PROFILE_PATH,
+        registry=registry,
+    )
+    host_inspector = HostInspector(
+        logical_target=config.logical_target,
+        profile=config.profile,
+        hardware_inspector=hardware_inspector,
+        boot_inspector=boot_inspector,
+        registry=registry,
     )
     activation = ActivationCoordinator(
         release_store=store,
@@ -274,6 +288,7 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         log_transfer=log_transfer,
         host_maintenance=host_maintenance,
         hardware_inspector=hardware_inspector,
+        host_inspector=host_inspector,
     )
 
 

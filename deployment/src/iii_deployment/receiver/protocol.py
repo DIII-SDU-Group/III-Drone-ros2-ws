@@ -43,6 +43,7 @@ class Action(str, Enum):
     HOST_REBOOT = "host-reboot"
     HOST_MAINTENANCE_STATUS = "host-maintenance-status"
     HARDWARE_INSPECT = "hardware-inspect"
+    HOST_INSPECT = "host-inspect"
     NETWORK_PLAN = "network-plan"
     NETWORK_APPLY = "network-apply"
     BACKUP_SEAL = "backup-seal"
@@ -65,6 +66,7 @@ READ_ONLY_ACTIONS = frozenset(
         Action.ACCESS_LIST,
         Action.HOST_MAINTENANCE_STATUS,
         Action.HARDWARE_INSPECT,
+        Action.HOST_INSPECT,
         Action.NETWORK_PLAN,
         Action.CANCEL,
     }
@@ -475,6 +477,7 @@ def validate_mutation_plan(
             "executor_sha256",
             "expected_package_changes",
             "trust_change",
+            "boot_change",
             "mutations",
             "required_checks",
             "declared_permissions",
@@ -622,6 +625,7 @@ def validate_request_payload(request: Request) -> None:
         Action.ACCESS_LIST,
         Action.HOST_MAINTENANCE_STATUS,
         Action.HARDWARE_INSPECT,
+        Action.HOST_INSPECT,
     }:
         _exact(payload, set(), label=f"{request.action.value} payload")
         return

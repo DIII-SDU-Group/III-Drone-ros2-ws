@@ -4,6 +4,7 @@
 # harness; production convergence always loads the ARM64 value from the target
 # class file and rejects any mismatch.
 iii_expected_architecture: x86_64
+iii_boot_files_required: false
 iii_ros_packages:
   - ros-jazzy-ros-base
   - ros-jazzy-generate-parameter-library=0.7.3-1noble.20260615.164514

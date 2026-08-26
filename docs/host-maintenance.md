@@ -1,7 +1,7 @@
 # Controlled Aircraft Host Maintenance
 
 This runbook covers the only supported in-place workflow for Ubuntu snapshot,
-kernel, ROS Jazzy, system-package, bundle-trust, and release-status-trust
+kernel, ROS Jazzy, system-package, Raspberry Pi boot-setting, bundle-trust, and release-status-trust
 maintenance on the shared `real`/`opti_track` aircraft host. Ordinary qualified
 and field deployments cannot run a package manager, rewrite apt sources, replace
 host trust, or modify the fixed maintenance playbook.
@@ -184,6 +184,13 @@ Rotate operator-machine SSH, Runtime API, and workstation field-signing
 credentials with `iii access enroll ...`, `iii access revoke`, and
 `iii access signer revoke`. Those operations have independent retained plans and
 cannot be smuggled into host package or release-trust maintenance.
+
+Raspberry Pi firmware and kernel command-line inspection, stock-default
+ownership, setting repair/change, and physical SD recovery are specified in the
+[Raspberry Pi 5 boot baseline](raspberry-pi-boot-baseline.md). Boot maintenance
+uses `--kind boot-settings --boot-profile <reviewed-profile>` under the same
+retained backup, explicit reboot, protected-anchor validation, and
+recommissioning boundaries described above.
 
 ## Retained Evidence
 

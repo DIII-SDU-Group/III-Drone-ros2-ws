@@ -27,6 +27,7 @@
         - apt-daily-upgrade.timer
         - unattended-upgrades.service
       failed_when: false
+      when: iii_maintenance_kind == 'packages'
 
     - name: Install the requested governed Ubuntu snapshot
       ansible.builtin.copy:
@@ -163,6 +164,28 @@
         content: "{{ iii_maintenance_release_status_index | to_json(sort_keys=True, separators=[',', ':']) }}\n"
       when: iii_maintenance_kind == 'release-status-trust'
 
+    - name: Converge only the III-owned Raspberry Pi boot block
+      ansible.builtin.blockinfile:
+        path: /boot/firmware/config.txt
+        marker: "# {mark} III MANAGED BOOT PROFILE"
+        block: |
+          {% for item in iii_maintenance_boot_profile.firmware.managed_settings | dict2items | sort(attribute='key') %}
+          {{ item.key }}={{ item.value }}
+          {% endfor %}
+          {% for overlay in iii_maintenance_boot_profile.firmware.managed_overlays | sort %}
+          dtoverlay={{ overlay }}
+          {% endfor %}
+      when: iii_maintenance_kind == 'boot-settings'
+
+    - name: Commit the exact retained Raspberry Pi boot profile
+      ansible.builtin.copy:
+        dest: /etc/iii/boot-profile.json
+        owner: root
+        group: iii
+        mode: "0640"
+        content: "{{ iii_maintenance_boot_profile | to_json(sort_keys=True, separators=[',', ':']) }}\n"
+      when: iii_maintenance_kind == 'boot-settings'
+
     - name: Gather post-maintenance package identities
       ansible.builtin.package_facts:
         manager: apt
@@ -183,6 +206,7 @@
             'schema': 'iii.host-maintenance-ansible-result/v1',
             'kind': iii_maintenance_kind,
             'policy_id': iii_maintenance_policy.policy_id,
+            'boot_profile_id': (iii_maintenance_boot_profile.profile_id if iii_maintenance_kind == 'boot-settings' else none),
             'packages': ansible_facts.packages,
-            'reboot_required': iii_maintenance_reboot_marker.stat.exists | bool
+            'reboot_required': (iii_maintenance_reboot_marker.stat.exists | bool) or iii_maintenance_kind == 'boot-settings'
           } | to_json(sort_keys=True, separators=[',', ':']) }}

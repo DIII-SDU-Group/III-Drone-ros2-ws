@@ -99,6 +99,11 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     Explicit package and trust maintenance, offline cache gates, retained
     before/after evidence, reboot reconciliation, recovery, and recommissioning.
 
+28. `raspberry-pi-boot-baseline.md`
+    Stock-preserving Raspberry Pi 5 boot policy, authenticated drift inspection,
+    retained setting maintenance, explicit reboot validation, and physical SD
+    repair/reprovision rehearsal.
+
 Domain language and context ownership are indexed by the root
 `CONTEXT-MAP.md`.
 

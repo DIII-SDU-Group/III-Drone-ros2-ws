@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/boot-profile.schema.json",
+  "title": "III Raspberry Pi 5 boot profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "profile_id", "target_class", "paths", "firmware", "kernel", "ownership"],
+  "properties": {
+    "schema": {"const": "iii.boot-profile/v1"},
+    "profile_id": {"$ref": "#/definitions/hash"},
+    "target_class": {"const": "raspberry-pi-5-noble-arm64"},
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["config", "cmdline", "cmdline_source", "model", "revision"],
+      "properties": {
+        "config": {"const": "/boot/firmware/config.txt"},
+        "cmdline": {"const": "/proc/cmdline"},
+        "cmdline_source": {"const": "/boot/firmware/cmdline.txt"},
+        "model": {"const": "/proc/device-tree/model"},
+        "revision": {"const": "/proc/device-tree/system/linux,revision"}
+      }
+    },
+    "firmware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["active_sections", "required_model_substring", "preserve_stock_defaults", "managed_settings", "managed_overlays", "forbidden_settings"],
+      "properties": {
+        "active_sections": {"const": ["global", "all", "pi5"]},
+        "required_model_substring": {"const": "Raspberry Pi 5"},
+        "preserve_stock_defaults": {"const": true},
+        "managed_settings": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9][A-Za-z0-9.,_+:/@=-]*$"}, "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"}},
+        "managed_overlays": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}},
+        "forbidden_settings": {"const": ["arm_freq", "core_freq", "force_turbo", "gpu_freq", "over_voltage"]}
+      }
+    },
+    "kernel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["architecture", "required_command_line_tokens", "forbidden_command_line_tokens", "sensitive_value_keys"],
+      "properties": {
+        "architecture": {"const": "aarch64"},
+        "required_command_line_tokens": {"const": ["rootwait"]},
+        "forbidden_command_line_tokens": {"const": ["init=/bin/sh"]},
+        "sensitive_value_keys": {"const": ["cryptkey", "rd.luks.key", "systemd.set_credential"]}
+      }
+    },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provisioner", "application_release_may_mutate_boot", "setting_changes", "recovery"],
+      "properties": {
+        "provisioner": {"const": "ansible"},
+        "application_release_may_mutate_boot": {"const": false},
+        "setting_changes": {"const": "retained-host-maintenance-backup-and-explicit-reboot"},
+        "recovery": {"const": "physical-sd-repair-or-reimage-reprovision"}
+      }
+    }
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

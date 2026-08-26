@@ -110,7 +110,7 @@
     "host_maintenance_parameters": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema", "maintenance_id", "operation_id", "client_id", "request", "before", "installed_policy_id", "playbook_sha256", "executor_sha256", "expected_package_changes", "trust_change", "mutations", "required_checks", "declared_permissions", "reboot_expected", "no_change"],
+      "required": ["schema", "maintenance_id", "operation_id", "client_id", "request", "before", "installed_policy_id", "playbook_sha256", "executor_sha256", "expected_package_changes", "trust_change", "boot_change", "mutations", "required_checks", "declared_permissions", "reboot_expected", "no_change"],
       "properties": {
         "schema": {"const": "iii.host-maintenance-plan/v1"},
         "maintenance_id": {"$ref": "#/definitions/identity"},
@@ -123,6 +123,7 @@
         "executor_sha256": {"$ref": "#/definitions/identity"},
         "expected_package_changes": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
         "trust_change": {"type": ["object", "null"]},
+        "boot_change": {"type": ["object", "null"]},
         "mutations": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
         "required_checks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
         "declared_permissions": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},

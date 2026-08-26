@@ -1,0 +1,38 @@
+---
+- name: Install the stock-preserving Raspberry Pi boot profile
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../boot/raspberry-pi-5-noble-arm64.json"
+    dest: /etc/iii/boot-profile.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
+
+- name: Inspect the upstream Raspberry Pi boot inputs without changing them
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - /boot/firmware/config.txt
+    - /boot/firmware/cmdline.txt
+    - /proc/cmdline
+  register: iii_boot_inputs
+
+- name: Require upstream boot inputs on the production target
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg
+      - not item.stat.islnk
+    fail_msg: "Required stock boot input is missing or linked: {{ item.item }}"
+  loop: "{{ iii_boot_inputs.results }}"
+  when:
+    - not ansible_check_mode
+    - iii_boot_files_required | bool
+
+- name: Record the Ansible-owned boot-policy boundary
+  ansible.builtin.template:
+    src: boot-baseline.json.j2
+    dest: /etc/iii/boot-baseline.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
