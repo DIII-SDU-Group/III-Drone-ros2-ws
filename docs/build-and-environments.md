@@ -5,7 +5,7 @@ The workspace uses the devcontainer as the development OS image. Onboard runtime
 Container images remain useful for:
 - development (`Dockerfile.dev` + devcontainer)
 - dependency/bootstrap reference (`Dockerfile`)
-- cross-compilation experiments (`Dockerfile.cc`)
+- production ARM64 cross-compilation (`Dockerfile.cc`)
 
 ## 1. Build System
 
@@ -138,6 +138,71 @@ unsafe links, unmerged indexes, missing repositories, and unclassified artifact
 impact fail closed. The Markdown report is mandatory provenance for a field-
 development release. A caller requesting components must pass all inferred
 components; omitting either side of a shared-contract change is rejected.
+
+### Cached ARM64 release build
+
+The production ARM64 builder is an offboard-only workflow. It permits only a
+local Docker transport, uses an aircraft-independent immutable sysroot, and
+never runs SSH, package-management, or build commands on the drone. A normal
+build first materializes the committed, hash-locked cp312/ARM64 wheelhouse
+without dependency resolution:
+
+```bash
+wheelhouse="$(mktemp -d /tmp/iii-arm64-wheelhouse.XXXXXX)"
+PYTHONPATH=deployment/src python3 scripts/build/materialize_arm64_wheelhouse.py \
+  --wheelhouse "$wheelhouse" \
+  --lock deployment/python-wheel-lock.json
+```
+
+Updating the wheel lock is a separate, reviewable maintenance operation. It
+uses the digest-pinned resolver image and exact versions in
+`deployment/python/requirements.in`:
+
+```bash
+candidate="$(mktemp -d /tmp/iii-arm64-wheel-candidate.XXXXXX)"
+PYTHONPATH=deployment/src python3 scripts/build/resolve_arm64_wheels.py \
+  --requirements deployment/python/requirements.in \
+  --wheelhouse "$candidate/wheels" \
+  --lock "$candidate/python-wheel-lock.json"
+```
+
+Review both the candidate lock and its wheel hashes before replacing the
+committed lock. The normal build does not resolve versions and rejects missing,
+additional, incompatible, or hash-mismatched wheels.
+
+Capture the exact live source state immediately before building, then use
+persistent private cache and output directories outside the checkout:
+
+```bash
+evidence="$(mktemp -d /tmp/iii-arm64-source.XXXXXX)"
+cache="/private/iii-build-cache/arm64"
+output="/private/iii-releases/candidate"
+
+PYTHONPATH=deployment/src python3 scripts/release/capture_source_snapshot.py \
+  --output "$evidence/source-snapshot.json" \
+  --report "$evidence/source-provenance.md" \
+  --component drone --component gc
+
+PYTHONPATH=deployment/src python3 scripts/build/build_arm64_release.py \
+  --snapshot "$evidence/source-snapshot.json" \
+  --component drone --component gc \
+  --cache "$cache" \
+  --output "$output" \
+  --wheelhouse "$wheelhouse" \
+  --wheel-lock deployment/python-wheel-lock.json
+```
+
+The builder recaptures live source and rejects a stale snapshot. Package keys
+select impacted III packages and downstream dependants; ccache survives safe
+package-build invalidation. The output is a non-symlinked isolated colcon tree
+under `install/<package>`, a plain `python/cp312/site-packages` tree, installed
+runtime assets, and `bin/iii-release-env`. It contains no source, build, log, or
+escaping symlink tree. Python imports and every ELF dependency are checked in
+the pinned ARM64 target image with `--network none`; builder/sysroot paths,
+unresolved libraries, invalid RUNPATHs, and undeclared host libraries fail the
+build. Only a release that passes every check receives `build-record.json` and
+is atomically renamed to the requested output path. A failed partial directory
+is diagnostic evidence and is never packageable as a complete release.
 
 ## 5. Entrypoints
 

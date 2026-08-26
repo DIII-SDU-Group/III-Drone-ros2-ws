@@ -36,6 +36,11 @@ def load_target_definition(path: Path, registry: ContractRegistry) -> dict[str, 
         raise ContractError("aircraft-derived sysroots are forbidden")
     if value["sysroot"]["seed_sha256"] != value["images"]["target_seed"]["platform_digest"].removeprefix("sha256:"):
         raise ContractError("sysroot seed does not match the pinned target platform image")
+    if content_identity(_without(value["sysroot"], "content_id")) != value["sysroot"]["content_id"]:
+        raise ContractError("target sysroot content identity mismatch")
+    package_names = [package["name"] for package in value["sysroot"]["packages"]]
+    if package_names != sorted(set(package_names)):
+        raise ContractError("target sysroot packages must be unique and sorted")
     return value
 
 
@@ -57,7 +62,7 @@ def manifest_toolchain(definition: Mapping[str, Any]) -> dict[str, str]:
     return {
         "builder_digest": definition["images"]["builder"]["platform_digest"],
         "compiler": f"aarch64-linux-gnu-g++ {definition['toolchain']['compiler_version']}",
-        "sysroot_sha256": definition["sysroot"]["seed_sha256"],
+        "sysroot_sha256": definition["sysroot"]["content_id"],
     }
 
 

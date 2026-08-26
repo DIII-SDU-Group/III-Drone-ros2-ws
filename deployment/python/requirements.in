@@ -1,0 +1,10 @@
+# Exact application-owned requirements. Transitive wheels and their hashes are
+# captured by python-wheel-lock.json using the pinned resolver image.
+fastapi==0.116.1
+httpx==0.28.1
+pydantic==2.11.7
+pyserial==3.5
+PyYAML==6.0.2
+uvicorn==0.35.0
+websockets==15.0.1
+zeroconf==0.147.0

@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/build-record.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "build_id", "source_identity", "target_definition_id", "policy_sha256", "components", "requested_packages", "impacted_packages", "packages", "cache_keys", "cache", "install_sha256", "assets", "python", "elf", "complete"],
+  "properties": {
+    "schema": {"const": "iii.build-record/v1"}, "build_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "source_identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "target_definition_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "policy_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "components": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["drone", "gc"]}},
+    "requested_packages": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+    "impacted_packages": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "packages": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+    "cache_keys": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+    "cache": {
+      "type": "object", "additionalProperties": false,
+      "required": ["context", "reset", "hits", "misses", "state_sha256", "compiler"],
+      "properties": {
+        "context": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "reset": {"type": "boolean"},
+        "hits": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "misses": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "state_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "compiler": {
+          "type": "object", "additionalProperties": false,
+          "required": ["direct_hits", "preprocessed_hits", "misses", "files", "size_kibibytes"],
+          "properties": {
+            "direct_hits": {"type": "integer", "minimum": 0},
+            "preprocessed_hits": {"type": "integer", "minimum": 0},
+            "misses": {"type": "integer", "minimum": 0},
+            "files": {"type": "integer", "minimum": 0},
+            "size_kibibytes": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "install_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "assets": {"type": "object", "additionalProperties": false, "required": ["sha256", "files"], "properties": {"sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "files": {"type": "integer", "minimum": 1}}},
+    "python": {"type": "object", "additionalProperties": false, "required": ["abi", "lock_sha256", "imports_verified"], "properties": {"abi": {"const": "cp312"}, "lock_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "imports_verified": {"type": "boolean"}}},
+    "elf": {"type": "object", "additionalProperties": false, "required": ["scanned", "closure_verified"], "properties": {"scanned": {"type": "integer", "minimum": 0}, "closure_verified": {"type": "boolean"}}},
+    "complete": {"const": true}
+  }
+}
