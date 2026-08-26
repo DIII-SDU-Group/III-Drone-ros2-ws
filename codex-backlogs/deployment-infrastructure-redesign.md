@@ -2882,11 +2882,11 @@ Implementation notes (2026-08-26):
 
 Phase acceptance:
 
-- [ ] A staged release never mutates the active release.
-- [ ] Activation, health acceptance, and rollback survive command interruption and power loss.
-- [ ] An onboard host component completes or rolls back accepted transactions
+- [x] A staged release never mutates the active release.
+- [x] Activation, health acceptance, and rollback survive command interruption and power loss.
+- [x] An onboard host component completes or rolls back accepted transactions
       without requiring the CLI, SSH connection, network, or operator computer.
-- [ ] Runtime safety gates prevent deployment during aircraft operation.
+- [x] Runtime safety gates prevent deployment during aircraft operation.
 
 Delivery order:
 
@@ -2896,6 +2896,25 @@ Delivery order:
 3. Add P2.T5 transport and P2.T6 CLI orchestration only through those primitives.
 4. P2.T7 logging and P2.T8 local records integrate before end-to-end evidence or
    destructive host workflows are considered complete.
+
+Phase 2 verification (2026-08-26):
+
+- Isolated full Python suites passed for the CLI (120), Mission (22),
+  Configuration (56), Contracts (25), Interfaces (7), GC (55), deployment
+  integration (365), and Runtime (298). The initial combined invocation exposed
+  only test-process module-name/environment collisions; each owning suite was
+  rerun in isolation so no product failure was hidden.
+- The ROS Jazzy phase gate built and tested all six affected III packages with
+  `--base-paths src`: 681 tests, zero errors, failures, or skips. The first shell
+  attempt stopped before build execution because `set -u` is incompatible with
+  the ROS setup script; the corrected invocation completed successfully.
+- The documentation manifest was regenerated for the new operator guide, and
+  the Runtime simulation-profile test now explicitly isolates the unrelated
+  receiver-clock gate. Both corrected full suites passed.
+- Transaction interruption and power-loss behavior is covered by deterministic
+  journal/fault-injection tests. No live aircraft power-cycle or physical-media
+  replacement drill was available in this environment, so no hardware exercise
+  is claimed.
 
 #### P2.T0: Implement Release Staging And Retention
 
