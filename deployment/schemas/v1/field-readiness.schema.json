@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/field-readiness.schema.json",
+  "title": "III sealed connected-system field readiness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "record_id", "recorded_at", "target", "identity", "policy_hash", "overall", "findings", "observations", "evidence_class", "authorization", "signature"],
+  "properties": {
+    "schema": {"const": "iii.field-readiness/v1"},
+    "record_id": {"$ref": "#/definitions/hash"},
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "target": {"type": "object", "additionalProperties": false, "required": ["endpoint", "logical_id", "profile"], "properties": {"endpoint": {"type": "string", "minLength": 1}, "logical_id": {"type": "string", "minLength": 1}, "profile": {"type": "string", "minLength": 1}}},
+    "identity": {"type": "object", "additionalProperties": false, "required": ["boot_id", "drone_release_id", "gc_release_id", "profile", "configuration_hash", "commissioning_hash", "px4_required_state_hash", "mission_id", "qgc_pair_id"], "properties": {"boot_id": {"type": "string", "minLength": 1}, "drone_release_id": {"type": "string", "minLength": 1}, "gc_release_id": {"type": "string", "minLength": 1}, "profile": {"type": "string", "minLength": 1}, "configuration_hash": {"type": "string", "minLength": 1}, "commissioning_hash": {"type": "string", "minLength": 1}, "px4_required_state_hash": {"type": "string", "minLength": 1}, "mission_id": {"type": "string", "minLength": 1}, "qgc_pair_id": {"type": "string", "minLength": 1}}},
+    "policy_hash": {"$ref": "#/definitions/hash"},
+    "overall": {"enum": ["PASS", "WARN", "FAIL"]},
+    "findings": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "severity", "message", "observation", "next_command", "acknowledgeable"], "properties": {"id": {"type": "string", "pattern": "^FIELD\\.[A-Z0-9_.]+$"}, "severity": {"enum": ["WARN", "FAIL"]}, "message": {"type": "string", "minLength": 1}, "observation": {"type": "string", "minLength": 1}, "next_command": {"type": "array", "minItems": 2, "items": {"type": "string"}}, "acknowledgeable": {"type": "boolean"}}}},
+    "observations": {"type": "object"},
+    "evidence_class": {"enum": ["diagnostic", "release-commissioning-evidence"]},
+    "authorization": {"const": false},
+    "signature": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/signature"}]}
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "signature": {"type": "object", "additionalProperties": false, "required": ["algorithm", "signer_id", "value"], "properties": {"algorithm": {"const": "Ed25519"}, "signer_id": {"$ref": "#/definitions/hash"}, "value": {"type": "string", "minLength": 1}}}
+  }
+}

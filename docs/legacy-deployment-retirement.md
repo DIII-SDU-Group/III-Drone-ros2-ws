@@ -19,6 +19,7 @@ runtime ownership.
 | CLI availability | repository-managed operator environment using `iii-deployment` and the III CLI | Global editable installs and shell startup mutation are not reproducible. |
 | Per-node Compose topology | no migration; `III-Drone-Supervision/system_spec.py` remains authoritative | Recreating process ownership would conflict with the canonical daemon-owned graph. |
 | Mutable clone/checkout/reset/pull | no migration; signed immutable source-provenance bundles | Branch mutation and destructive cleanup cannot represent dirty field work safely. |
+| CLI `deploy install`, `container`, `synchronize`, raw SSH, `pull_src`, and `pull_rosbags` | no migration; typed `inspect`, `stage`, `activate`, `field`, `rollback`, `status`, and configuration-capture operations | Destructive synchronization and arbitrary remote commands bypass signed identities, receiver planning, and durable operation evidence. |
 | `latest` image and privileged container runtime onboard | no migration | The Pi runs native immutable releases and never compiles or uses Docker in production. |
 
 ## Archive gate
@@ -33,4 +34,3 @@ and the history recovery location. History must never be deleted or rewritten.
 Current implementation and operator documentation begins at
 [`../deployment/CONTEXT.md`](../deployment/CONTEXT.md) and the
 [`documentation index`](README.md).
-

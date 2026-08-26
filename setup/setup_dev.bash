@@ -16,6 +16,8 @@ source $SCRIPT_DIR/paths.bash
 
 export SIMULATION="true"
 export III_SYSTEM_PROFILE="sim"
+export III_ENVIRONMENT_PROFILE="dev"
+export III_DEFAULT_TARGET="sim"
 
 # Gazebo Transport discovers peers over UDP multicast by default. For the local
 # simulation stack all Gazebo transport peers run on the same host, so bind to

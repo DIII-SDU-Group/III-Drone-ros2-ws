@@ -1,0 +1,10 @@
+{
+  "schema": "iii.runtime-target-catalog/v1",
+  "defaults": {"dev": "sim", "field": "real"},
+  "targets": [
+    {"selector": "sim", "endpoint": "local", "logical_id": "drone", "execution_host": "operator", "runtime_profile": "sim", "parameter_profile": "sim", "simulator_provider": "gazebo-local", "profile_alias": null, "bootable": true, "capabilities": ["simulation"], "middleware_policy": "iii.middleware-interface-policy/v1"},
+    {"selector": "real", "endpoint": "iii.local", "logical_id": "drone", "execution_host": "aircraft", "runtime_profile": "real", "parameter_profile": "real", "simulator_provider": "none", "profile_alias": null, "bootable": true, "capabilities": ["flight"], "middleware_policy": "iii.middleware-interface-policy/v1"},
+    {"selector": "opti_track", "endpoint": "iii.local", "logical_id": "drone", "execution_host": "aircraft", "runtime_profile": "opti_track", "parameter_profile": "real", "simulator_provider": "none", "profile_alias": "real", "bootable": true, "capabilities": ["flight", "mocap"], "middleware_policy": "iii.middleware-interface-policy/v1"},
+    {"selector": "hil", "endpoint": "iii.local", "logical_id": "drone", "execution_host": "aircraft", "runtime_profile": "hil", "parameter_profile": "sim", "simulator_provider": "gazebo-workstation", "profile_alias": null, "bootable": false, "capabilities": [], "middleware_policy": "iii.middleware-interface-policy/v1"}
+  ]
+}

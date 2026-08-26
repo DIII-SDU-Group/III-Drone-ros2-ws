@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/field-cache-completeness.schema.json",
+  "title": "III offline field cache completeness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "complete", "releases", "warnings", "cache_id"],
+  "properties": {
+    "schema": {"const": "iii.field-cache-completeness/v1"},
+    "complete": {"type": "boolean"},
+    "releases": {"type": "array", "items": {"type": "object", "required": ["version", "release_id", "verified", "status", "status_statement_id", "status_index_id", "status_index_generated_at", "status_age_days", "components", "cache_root"]}},
+    "warnings": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "severity", "versions", "message"], "properties": {"id": {"const": "FIELD.RELEASE_STATUS.STALE"}, "severity": {"const": "WARN"}, "versions": {"type": "array", "items": {"type": "string"}}, "message": {"type": "string", "minLength": 1}}}},
+    "cache_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

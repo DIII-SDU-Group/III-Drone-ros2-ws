@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/middleware-interface-policy.schema.json",
+  "title": "III detected middleware interface and future peer policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "loopback_interface", "excluded_interface_prefixes", "aircraft_interface_selection", "future_simulator_peer"],
+  "properties": {
+    "schema": {"const": "iii.middleware-interface-policy/v1"},
+    "loopback_interface": {"const": "lo"},
+    "excluded_interface_prefixes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "aircraft_interface_selection": {"const": "default-route-then-stable-up-interface"},
+    "future_simulator_peer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "allowed_profiles", "address"],
+      "properties": {
+        "enabled": {"const": false},
+        "allowed_profiles": {"type": "array", "uniqueItems": true, "items": {"enum": ["hil"]}},
+        "address": {"type": "null"}
+      }
+    }
+  }
+}

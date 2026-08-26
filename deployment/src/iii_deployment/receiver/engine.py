@@ -18,6 +18,7 @@ from iii_deployment.bundle import ARCHIVE_NAME, COMPONENT_FILES, RELEASE_MANIFES
 from iii_deployment.activation_health import ActivationCoordinator
 from iii_deployment.contracts import ContractError, canonical_json, content_identity
 from iii_deployment.receiver.access import AccessManager
+from iii_deployment.receiver.clock import ClockController
 from iii_deployment.receiver.protocol import (
     Action,
     Request,
@@ -81,6 +82,7 @@ class ReceiverEngine:
         now: Callable[[], datetime] | None = None,
         maximum_claim_bytes: int = 21 * 1024**3,
         activation_coordinator: ActivationCoordinator | None = None,
+        clock_controller: ClockController | None = None,
     ) -> None:
         if control.nonce_expiry_s != NONCE_EXPIRY_S:
             raise ContractError(
@@ -106,6 +108,7 @@ class ReceiverEngine:
             raise ContractError("receiver accepted-input size limit must be positive")
         self.maximum_claim_bytes = maximum_claim_bytes
         self.activation_coordinator = activation_coordinator
+        self.clock_controller = clock_controller
         self._mutex = threading.RLock()
         self._running: set[str] = set()
         releases_root = self.release_store.releases_root.resolve()
@@ -155,6 +158,7 @@ class ReceiverEngine:
             Action.PLAN_ACTIVATE,
             Action.PLAN_ROLLBACK,
             Action.PLAN_ACCESS,
+            Action.PLAN_CLOCK_SYNC,
         }:
             return self._plan(request)
         if request.action in {
@@ -163,6 +167,7 @@ class ReceiverEngine:
             Action.ROLLBACK,
             Action.ACCESS_ADD,
             Action.ACCESS_REVOKE,
+            Action.CLOCK_SYNC,
         }:
             return self._accept(request)
         if request.action == Action.CANCEL:
@@ -249,6 +254,16 @@ class ReceiverEngine:
                 configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
                 operator_rollback=request.action == Action.PLAN_ROLLBACK,
             )
+        if request.action == Action.PLAN_CLOCK_SYNC:
+            if self.clock_controller is None:
+                raise ContractError("receiver clock controller is unavailable")
+            self.clock_controller.validate_samples(plan["parameters"]["samples"])
+            fields["preflight"] = {
+                "schema": "iii.clock-sync-preflight/v1",
+                "ready": True,
+                "samples": len(plan["parameters"]["samples"]),
+                "clock": self.clock_controller.status(),
+            }
         return self._result(
             request,
             **fields,
@@ -303,6 +318,8 @@ class ReceiverEngine:
                     "activation preflight rejected: "
                     + "; ".join(preflight["rejection_reasons"])
                 )
+        if request.action == Action.CLOCK_SYNC and self.clock_controller is None:
+            raise ContractError("receiver clock controller is unavailable")
         self.control.consume_and_acquire(
             nonce=request.nonce or "",
             operation_id=request.operation_id,
@@ -688,6 +705,12 @@ class ReceiverEngine:
                 release_id=parameters["release_id"],
                 configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
             )
+        if action == Action.CLOCK_SYNC.value:
+            if self.clock_controller is None:
+                raise ContractError("receiver clock controller is unavailable")
+            return self.clock_controller.synchronize(
+                operation_id=plan["operation_id"], samples=parameters["samples"]
+            )
         if action == Action.ACCESS_ADD.value:
             if parameters["phase"] == "add":
                 state = self.access.add_pending(
@@ -875,6 +898,13 @@ class ReceiverEngine:
             "operation": journal,
             "lease": control["lease"],
             "recovery": self.release_store.state()["recovery"],
+            "boot_id": self.control.boot_id(),
+            "live_state": self._live_state(),
+            "clock": (
+                self.clock_controller.status()
+                if self.clock_controller is not None
+                else {"schema": "iii.receiver-clock-status/v1", "gate": "UNAVAILABLE"}
+            ),
             "autonomy_started": False,
         }
 

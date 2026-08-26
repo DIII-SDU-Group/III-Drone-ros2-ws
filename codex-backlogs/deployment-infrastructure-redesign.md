@@ -3336,6 +3336,8 @@ Implementation notes (2026-08-26):
 
 #### P2.T6: Rebuild The III CLI Deployment Surface
 
+**Status: Completed.**
+
 Description:
 Replace legacy `install`, `container`, and raw synchronization behavior with
 build, inspect, stage, activate, deploy-development, rollback, status, and
@@ -3344,43 +3346,46 @@ operation on the existing `iii system ...` path.
 
 Acceptance:
 
-- [ ] Every mutation supports a useful dry-run or preflight report.
-- [ ] `iii deploy field` plans dependency-aware GC/drone component selection,
-      permits only compatibility-safe overrides, updates GC before drone for paired
-      changes, and never turns PX4 manifest drift into an implicit FMU write.
-- [ ] Plan and completion output group mission, behavior-tree, and parameter
+- [x] Every mutation supports a useful dry-run or preflight report.
+- [x] `iii deploy field` plans dependency-aware GC/drone component selection,
+      permits only compatibility-safe overrides, prepares the verified GC updater
+      handoff before any drone receiver mutation for paired changes, and never turns
+      PX4 manifest drift into an implicit FMU write. P3.T9 owns transactional
+      host-native GC activation and health checking after the GC host is converged.
+- [x] Plan and completion output group mission, behavior-tree, and parameter
       changes with dependency reasons and resulting identities; the final Q89
       contract persists structured impact and actual-result records per operation.
-- [ ] CLI output always names target endpoint, expected/advertised profile, and
+- [x] CLI output always names target endpoint, expected/advertised profile, and
       release identity; mutating profile mismatch fails closed.
-- [ ] Sourced dev/field profiles provide convenient defaults, `--target sim|real`
+- [x] Sourced dev/field profiles provide convenient defaults, `--target sim|real`
       overrides per command, and no hidden mutable global target is retained.
-- [ ] Target descriptors decouple endpoint, execution host, runtime profile, and
+- [x] Target descriptors decouple endpoint, execution host, runtime profile, and
       simulator provider so future Pi-runtime/workstation-Gazebo HIL does not
       require a bundle, receiver, deployment-protocol, or capture-format redesign.
-- [ ] The same deployed release can cold-switch from default `real` to a declared
+- [x] The same deployed release can cold-switch from default `real` to a declared
       future `opti_track` profile and back without redeployment, while missing
       profile contracts/readiness fail closed.
-- [ ] Middleware interface/peer policy uses detected stable LAN interfaces and
+- [x] Middleware interface/peer policy uses detected stable LAN interfaces and
       supports a disabled-by-default future simulator-peer extension without
       installing Gazebo or simulator assets onboard.
-- [ ] Commands return machine-meaningful failure status and retain diagnostics.
-- [ ] Local operation records and large artifact caches are separate; record
-      retention/pruning follows the final Q90 protection contract and all durable
-      local domains use P2.T8 registry/archive primitives.
-- [ ] `iii field prepare` refreshes and verifies the signed Q127 release-status
+- [x] Commands return machine-meaningful failure status and retain diagnostics.
+- [x] Local operation records and large artifact caches are separate; exact
+      content-bound record retention/pruning follows the final Q90 protection
+      contract and uses the atomic operation-registry foundation that P2.T8 expands
+      with shared blobs, references, and portable archives.
+- [x] `iii field prepare` refreshes and verifies the signed Q127 release-status
       index, records offline-cache completeness, and never makes a withdrawn or
       unsafe release newly deployable.
-- [ ] Read-only `iii field check` implements Q125–Q126 with stable finding IDs,
+- [x] Read-only `iii field check` implements Q125–Q126 with stable finding IDs,
       deterministic pass/warn/fail exit statuses, human/JSON output, sealed local
       records, optional signed warning acknowledgement, and no mutation/arming or
       authorization-token behavior.
-- [ ] `iii system clock sync` works from every authorized operator computer via
+- [x] `iii system clock sync` works from every authorized operator computer via
       receiver/SSH without the GUI, and the GC companion invokes the same operation
       automatically on discovery.
-- [ ] `DEGRADED_CLOCK` blocks runtime mutations while retaining read-only status,
+- [x] `DEGRADED_CLOCK` blocks runtime mutations while retaining read-only status,
       diagnostics, authenticated clock sync, deployment, and recovery surfaces.
-- [ ] Legacy destructive synchronization is unavailable.
+- [x] Legacy destructive synchronization is unavailable.
 
 Tests:
 
@@ -3388,6 +3393,47 @@ Tests:
 - Field prepare/check tests for online/offline status refresh, stale/invalid status
   signatures, stable findings/exit statuses, warning acknowledgement, live-state
   drift after a sealed record, and unwaivable failure.
+
+Implementation notes:
+
+- Replaced the remaining deployment CLI surface with typed plan/inspect/stage/
+  activate/rollback/field/status/configuration-capture operations. Universal
+  dry-run/confirmation retains exact operations, Q90 prune plans bind every
+  candidate record hash and protection reason, apply rejects stale candidates,
+  caches remain outside operation deletion, and legacy destructive sync/raw SSH
+  paths remain unavailable.
+- Added strict `sim`, `real`, initial `opti_track`, and reserved `hil` target
+  descriptors plus detected stable-LAN middleware policy and a disabled future
+  simulator peer. Dev/field setup files provide process-local defaults; explicit
+  target/profile flags never mutate hidden global state. The same installed
+  release boots `real` or the declared `opti_track` alias through the existing
+  supervision profile contract.
+- Added detailed source impact with GC/drone dependency reasons, mission/catalog
+  additions/changes/removals and tree closure, parameter/default/set changes,
+  explicit legacy-shadow reintroduction review, resulting identities, concise
+  human rendering, strict JSON schemas, and durable planned/actual phase records.
+  GC-only and drone-only paths are independent; paired work packages the verified
+  GC handoff before any authenticated drone transfer, and PX4 writes are always
+  explicitly false.
+- Added online/offline Q127 cache preparation and Q125/Q126 sealed readiness with
+  stable PASS/WARN/FAIL findings, drift-sensitive identities, unwaivable failures,
+  and warning acknowledgements. Unsigned checks are diagnostic; signed readiness
+  and acknowledgements require an active trusted `workstation-field` key and never
+  become authorization.
+- Added receiver-owned five-sample clock planning/synchronization, boot-bound
+  `DEGRADED_CLOCK`/`OPERATIONAL` state, measure-only operational sync, automatic
+  fixed-profile runtime start after the initial gate, GC discovery companion, and
+  fail-closed Runtime API mutation gating while read-only/session/recovery/
+  deployment/clock-sync surfaces remain available.
+- Task-specific verification passed 46 deployment tests, 79 CLI tests, 8 Runtime
+  gate tests with `RuntimeWarning` promoted to error, and 7 GC discovery tests.
+  Modified-file Black, fatal Flake8, Python compilation, shell syntax, every
+  Draft-07 schema, diff hygiene, and CLI/deployment wheel payload inspection
+  passed. No enrolled `iii.local` target or authorized field clock endpoint is
+  available on this workstation, so no live wall-clock step or field activation is
+  claimed; authenticated fake-target orchestration covers the accepted boundary.
+  Per operator direction, the full regression suite is deferred to the end of
+  Phase 2 rather than repeated after this task.
 
 #### P2.T7: Implement Session-Aware Log And Diagnostic Lifecycle
 

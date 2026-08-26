@@ -29,6 +29,7 @@ from iii_deployment.receiver.config import (
     AUTHORIZED_KEYS_PATH,
     BUNDLE_TRUST_PATH,
     CONFIG_PATH,
+    CLOCK_STATE_PATH,
     INCOMING_ROOT,
     LIVE_STATE_PATH,
     LOCK_PATH,
@@ -44,6 +45,7 @@ from iii_deployment.receiver.config import (
     load_live_state,
 )
 from iii_deployment.receiver.engine import NONCE_EXPIRY_S, ReceiverEngine
+from iii_deployment.receiver.clock import ClockController
 from iii_deployment.receiver.state import (
     AuditLog,
     OperationJournalStore,
@@ -141,6 +143,22 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         .read_text(encoding="ascii")
         .strip(),
     )
+    clock = ClockController(
+        CLOCK_STATE_PATH,
+        gate_opened=lambda: (
+            control_plane.boot_profile(config.profile)
+            if load_live_state(LIVE_STATE_PATH, profile=config.profile).get(
+                "active_release_id"
+            )
+            else {
+                "schema": "iii.clock-gate-runtime-start/v1",
+                "profile": config.profile,
+                "unit_states": {},
+                "autonomy_started": False,
+                "reason": "no active release is selected",
+            }
+        ),
+    )
     return ReceiverEngine(
         release_store=store,
         control=control,
@@ -157,6 +175,7 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         ]
         + 16 * 1024**2,
         activation_coordinator=activation,
+        clock_controller=clock,
     )
 
 

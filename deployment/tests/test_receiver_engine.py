@@ -11,6 +11,7 @@ import pytest
 from iii_deployment.contracts import ContractError, ContractRegistry, canonical_json
 from iii_deployment.receiver.access import AccessManager, client_id_for_public_key
 from iii_deployment.receiver.engine import ReceiverEngine
+from iii_deployment.receiver.clock import ClockController
 from iii_deployment.receiver.protocol import Action, Request
 from iii_deployment.receiver.state import (
     AuditLog,
@@ -125,7 +126,11 @@ def receiver(tmp_path: Path):
     journals = OperationJournalStore(tmp_path / "state", clock.monotonic, clock.boot_id)
     audit = AuditLog(tmp_path / "log/audit.jsonl", clock.monotonic, clock.boot_id)
 
-    def build(selected_executor=executor, activation_coordinator=None):
+    def build(
+        selected_executor=executor,
+        activation_coordinator=None,
+        clock_controller=None,
+    ):
         return ReceiverEngine(
             release_store=store,
             control=control,
@@ -139,6 +144,7 @@ def receiver(tmp_path: Path):
             live_state=lambda: live,
             executor=selected_executor,
             activation_coordinator=activation_coordinator,
+            clock_controller=clock_controller,
         )
 
     return SimpleNamespace(
@@ -197,6 +203,61 @@ def apply_stage(receiver, planned: dict, operation_id: str = "operation-stage-00
             planned["nonce"],
         )
     )
+
+
+def test_clock_sync_uses_receiver_plan_nonce_and_detached_journal(receiver) -> None:
+    wall = [1_000_000_000]
+    monotonic = [10_000_000_000]
+    starts = []
+    controller = ClockController(
+        receiver.root / "state/clock-state.json",
+        boot_id=lambda: "boot-a",
+        monotonic_ns=lambda: monotonic[0],
+        wall_ns=lambda: wall[0],
+        set_wall_ns=lambda value: wall.__setitem__(0, value),
+        gate_opened=lambda: starts.append(True) or {"started": True},
+    )
+    engine = receiver.build(clock_controller=controller)
+    samples = [
+        {
+            "target_boot_id": "boot-a",
+            "target_monotonic_ns": monotonic[0],
+            "target_wall_ns": wall[0],
+            "operator_midpoint_utc_ns": 2_000_000_000,
+            "rtt_ns": 10_000_000 + index,
+            "offset_ns": -1_000_000_000,
+        }
+        for index in range(5)
+    ]
+    operation_id = "operation-clock-0001"
+    planned = engine.handle(
+        request(
+            "plan-clock-sync",
+            operation_id,
+            receiver.operator_id,
+            {
+                "samples": samples,
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    accepted = engine.handle(
+        request(
+            "clock-sync",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"]},
+            planned["nonce"],
+        )
+    )
+    assert accepted["operation"]["state"] == "accepted"
+    receiver.executor.run_next()
+    status = engine.handle(request("status", operation_id, receiver.operator_id, {}))
+    assert status["operation"]["state"] == "completed"
+    assert status["operation"]["result"]["gate"] == "OPERATIONAL"
+    assert status["clock"]["gate"] == "OPERATIONAL"
+    assert status["live_state"]["profile"] == "real"
+    assert starts == [True]
 
 
 def test_accepted_stage_detaches_survives_client_loss_and_reattaches(receiver) -> None:

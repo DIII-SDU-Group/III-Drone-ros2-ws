@@ -23,6 +23,7 @@ class Action(str, Enum):
     PLAN_ACTIVATE = "plan-activate"
     PLAN_ROLLBACK = "plan-rollback"
     PLAN_ACCESS = "plan-access"
+    PLAN_CLOCK_SYNC = "plan-clock-sync"
     STAGE = "stage"
     ACTIVATE = "activate"
     ROLLBACK = "rollback"
@@ -43,6 +44,7 @@ READ_ONLY_ACTIONS = frozenset(
         Action.PLAN_ACTIVATE,
         Action.PLAN_ROLLBACK,
         Action.PLAN_ACCESS,
+        Action.PLAN_CLOCK_SYNC,
         Action.ACCESS_LIST,
         Action.NETWORK_PLAN,
         Action.CANCEL,
@@ -130,6 +132,38 @@ def _identity(value: Any, *, label: str) -> str:
     return value
 
 
+def _clock_samples(value: Any) -> None:
+    fields = {
+        "target_boot_id",
+        "target_monotonic_ns",
+        "target_wall_ns",
+        "operator_midpoint_utc_ns",
+        "rtt_ns",
+        "offset_ns",
+    }
+    if not isinstance(value, list) or len(value) < 5:
+        raise ContractError("clock synchronization requires at least five samples")
+    boot_ids = set()
+    for sample in value:
+        if not isinstance(sample, dict) or set(sample) != fields:
+            raise ContractError("clock synchronization sample fields are invalid")
+        boot_id = sample["target_boot_id"]
+        if not isinstance(boot_id, str) or not boot_id:
+            raise ContractError("clock synchronization sample boot ID is invalid")
+        boot_ids.add(boot_id)
+        for field in fields - {"target_boot_id"}:
+            if not isinstance(sample[field], int) or isinstance(sample[field], bool):
+                raise ContractError(f"clock synchronization sample {field} is invalid")
+        if sample["rtt_ns"] < 0 or sample["rtt_ns"] > 500_000_000:
+            raise ContractError("clock synchronization sample RTT exceeds 500 ms")
+        if sample["offset_ns"] != (
+            sample["target_wall_ns"] - sample["operator_midpoint_utc_ns"]
+        ):
+            raise ContractError("clock synchronization sample offset is inconsistent")
+    if len(boot_ids) != 1:
+        raise ContractError("clock synchronization samples span target boots")
+
+
 def validate_mutation_plan(
     plan: Mapping[str, Any],
     *,
@@ -157,6 +191,7 @@ def validate_mutation_plan(
         Action.ROLLBACK.value,
         Action.ACCESS_ADD.value,
         Action.ACCESS_REVOKE.value,
+        Action.CLOCK_SYNC.value,
     }:
         raise ContractError("unsupported receiver mutation plan")
     _identity(plan["plan_id"], label="receiver plan identity")
@@ -212,6 +247,9 @@ def validate_mutation_plan(
             parameters["explicit_qualified_action"], bool
         ):
             raise ContractError("activation qualified authority must be boolean")
+    elif plan["action"] == Action.CLOCK_SYNC.value:
+        _exact(parameters, {"samples"}, label="receiver clock-sync parameters")
+        _clock_samples(parameters["samples"])
     elif plan["action"] == Action.ACCESS_ADD.value:
         _exact(
             parameters,
@@ -279,6 +317,7 @@ def create_mutation_plan(
         Action.PLAN_ACTIVATE,
         Action.PLAN_ROLLBACK,
         Action.PLAN_ACCESS,
+        Action.PLAN_CLOCK_SYNC,
     }:
         raise ContractError(
             "only fixed receiver planning actions can create mutation plans"
@@ -293,6 +332,9 @@ def create_mutation_plan(
     elif request.action == Action.PLAN_ROLLBACK:
         action = Action.ROLLBACK.value
         parameters = request.payload["rollback"]
+    elif request.action == Action.PLAN_CLOCK_SYNC:
+        action = Action.CLOCK_SYNC.value
+        parameters = {"samples": request.payload["samples"]}
     else:
         action = request.payload["action"]
         parameters = request.payload["parameters"]
@@ -411,6 +453,22 @@ def validate_request_payload(request: Request) -> None:
         ):
             raise ContractError("invalid plan-rollback profile")
         return
+    if request.action == Action.PLAN_CLOCK_SYNC:
+        _exact(payload, {"samples", "target"}, label="plan-clock-sync payload")
+        _clock_samples(payload["samples"])
+        target = payload["target"]
+        if not isinstance(target, dict):
+            raise ContractError("plan-clock-sync target must be an object")
+        _exact(target, {"logical_id", "profile"}, label="plan-clock-sync target")
+        if not isinstance(target["logical_id"], str) or not TARGET_ID.fullmatch(
+            target["logical_id"]
+        ):
+            raise ContractError("invalid plan-clock-sync logical target")
+        if not isinstance(target["profile"], str) or not PROFILE.fullmatch(
+            target["profile"]
+        ):
+            raise ContractError("invalid plan-clock-sync profile")
+        return
     if request.action == Action.PLAN_ACCESS:
         _exact(payload, {"action", "parameters", "target"}, label="plan-access payload")
         if payload["action"] not in {
@@ -485,6 +543,18 @@ def validate_request_payload(request: Request) -> None:
         )
         if payload["plan"]["action"] != Action.ROLLBACK.value:
             raise ContractError("rollback request carries a different mutation plan")
+        return
+    if request.action == Action.CLOCK_SYNC:
+        _exact(payload, {"plan"}, label="clock-sync payload")
+        if not isinstance(payload["plan"], dict):
+            raise ContractError("clock-sync plan must be an object")
+        validate_mutation_plan(
+            payload["plan"],
+            operation_id=request.operation_id,
+            client_id=request.client_id,
+        )
+        if payload["plan"]["action"] != Action.CLOCK_SYNC.value:
+            raise ContractError("clock-sync request carries a different mutation plan")
         return
     if request.action == Action.CANCEL:
         _exact(payload, {"target_operation_id"}, label="cancel payload")

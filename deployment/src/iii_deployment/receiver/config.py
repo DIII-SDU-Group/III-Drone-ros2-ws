@@ -26,8 +26,11 @@ BUNDLE_TRUST_PATH = Path("/etc/iii/trust/bundle-signers.json")
 STATUS_TRUST_PATH = Path("/etc/iii/trust/release-status-signers.json")
 RECEIVER_UPDATE_TRUST_PATH = Path("/etc/iii/trust/receiver-update-signers.json")
 OPERATIONAL_POLICY_PATH = Path("/etc/iii/operational-policy.json")
-SCHEMA_ROOT = Path("/opt/iii/receiver/selectors/current/share/iii-deployment/schemas/v1")
+SCHEMA_ROOT = Path(
+    "/opt/iii/receiver/selectors/current/share/iii-deployment/schemas/v1"
+)
 LIVE_STATE_PATH = STATE_ROOT / "live-state.json"
+CLOCK_STATE_PATH = STATE_ROOT / "clock-state.json"
 AUDIT_PATH = Path("/var/log/iii/deployment/receiver-audit.jsonl")
 READINESS_PATH = Path("/run/iii/receiver-readiness.json")
 
@@ -62,31 +65,46 @@ class ReceiverConfig:
     @classmethod
     def load(cls, path: Path, *, production: bool = True) -> "ReceiverConfig":
         if production and path != CONFIG_PATH:
-            raise ContractError("receiver configuration path differs from fixed host policy")
+            raise ContractError(
+                "receiver configuration path differs from fixed host policy"
+            )
         if production:
             try:
                 stat_result = path.stat(follow_symlinks=False)
             except OSError as exc:
-                raise ContractError(f"cannot inspect receiver configuration: {exc}") from exc
+                raise ContractError(
+                    f"cannot inspect receiver configuration: {exc}"
+                ) from exc
             if stat_result.st_uid != 0 or stat_result.st_mode & 0o022:
-                raise ContractError("receiver configuration is not root-owned and write-protected")
+                raise ContractError(
+                    "receiver configuration is not root-owned and write-protected"
+                )
         value = _read_canonical(path, label="receiver configuration")
-        if set(value) != {
-            "schema",
-            "receiver_generation",
-            "logical_target",
-            "profile",
-            "runtime_uid",
-            "runtime_gid",
-        } or value["schema"] != CONFIG_SCHEMA:
+        if (
+            set(value)
+            != {
+                "schema",
+                "receiver_generation",
+                "logical_target",
+                "profile",
+                "runtime_uid",
+                "runtime_gid",
+            }
+            or value["schema"] != CONFIG_SCHEMA
+        ):
             raise ContractError("receiver configuration fields are invalid")
-        if not isinstance(value["receiver_generation"], int) or value["receiver_generation"] < 1:
+        if (
+            not isinstance(value["receiver_generation"], int)
+            or value["receiver_generation"] < 1
+        ):
             raise ContractError("receiver generation is invalid")
         if not isinstance(value["logical_target"], str) or not TARGET_ID.fullmatch(
             value["logical_target"]
         ):
             raise ContractError("receiver logical target is invalid")
-        if not isinstance(value["profile"], str) or not PROFILE.fullmatch(value["profile"]):
+        if not isinstance(value["profile"], str) or not PROFILE.fullmatch(
+            value["profile"]
+        ):
             raise ContractError("receiver profile is invalid")
         for field in ("runtime_uid", "runtime_gid"):
             if not isinstance(value[field], int) or value[field] <= 0:

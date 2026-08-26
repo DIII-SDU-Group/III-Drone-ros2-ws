@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/deployment-actual.schema.json",
+  "title": "III deployment actual result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "operation_id", "release_id", "target", "phases", "px4_write_performed"],
+  "properties": {
+    "schema": {"const": "iii.deployment-actual/v1"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "release_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "target": {"type": ["object", "null"]},
+    "impact_id": {"$ref": "#/definitions/hash"},
+    "actual_id": {"$ref": "#/definitions/hash"},
+    "terminal_state": {"enum": ["rejected"]},
+    "error": {"type": "object", "additionalProperties": false, "required": ["code", "message"], "properties": {"code": {"type": "string", "minLength": 1}, "message": {"type": "string"}}},
+    "phases": {"type": "array", "items": {"$ref": "#/definitions/phase"}},
+    "px4_write_performed": {"const": false}
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "phase": {
+      "type": "object",
+      "required": ["name", "state"],
+      "properties": {
+        "name": {"enum": ["gc", "drone-stage", "drone-activate", "activate", "rollback"]},
+        "state": {"enum": ["planned", "packaged", "transferred", "accepted", "activated", "skipped", "rejected", "rolled-back"]},
+        "reason": {"type": "string"},
+        "result": {"type": "object"}
+      }
+    }
+  },
+  "oneOf": [
+    {"required": ["actual_id"], "not": {"required": ["terminal_state", "error"]}},
+    {"required": ["terminal_state", "error"], "not": {"required": ["actual_id"]}}
+  ]
+}

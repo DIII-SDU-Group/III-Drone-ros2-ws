@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/field-deployment-plan.schema.json",
+  "title": "III field deployment operation plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "operation_id", "release_id", "target", "impact", "bundle_set", "configuration_checkpoint_id", "mutations", "px4_write"],
+  "properties": {
+    "schema": {"const": "iii.field-deployment-plan/v1"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "release_id": {"$ref": "#/definitions/hash"},
+    "target": {"type": "object", "required": ["selector", "endpoint", "logical_id", "execution_host", "runtime_profile"]},
+    "impact": {"type": "object", "required": ["schema", "impact_id", "components"]},
+    "bundle_set": {"type": "string", "minLength": 1},
+    "configuration_checkpoint_id": {"$ref": "#/definitions/hash"},
+    "mutations": {"type": "array", "uniqueItems": true, "items": {"enum": ["prepare-gc-handoff", "transfer-drone", "stage-drone", "activate-drone"]}},
+    "px4_write": {"const": false}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

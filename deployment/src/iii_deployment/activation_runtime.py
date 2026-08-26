@@ -142,33 +142,8 @@ class OnboardControlPlane:
 
     def start(self, selected: ActivationTuple) -> ControlPlaneProof:
         selected.validate()
-        self._systemctl("start", *self.units)
-        deadline = self.monotonic() + 30.0
-        while self.monotonic() < deadline:
-            if self.daemon_socket.exists() and not self.daemon_socket.is_symlink():
-                break
-            self.sleep(0.1)
-        else:
-            raise ContractError(
-                "system daemon socket did not appear after fixed unit start"
-            )
-        self._daemon_request({"command": "boot", "profile": selected.profile})
-        started = self._daemon_request(
-            {
-                "command": "start",
-                "activate": True,
-                "select_nodes": [],
-                "include_dependencies": False,
-            }
-        )
-        if started.get("success") is not True:
-            raise ContractError("system daemon did not start the canonical profile")
-        states = {unit: self.unit_state(unit) for unit in self.units}
-        failed = sorted(unit for unit, state in states.items() if state != "active")
-        if failed:
-            raise ContractError(
-                "activation control-plane units are not active: " + ", ".join(failed)
-            )
+        started = self.boot_profile(selected.profile)
+        states = started["unit_states"]
         value: dict[str, Any] = {
             "schema": "iii.activation-control-plane-proof/v1",
             "release_id": selected.release_id,
@@ -189,6 +164,44 @@ class OnboardControlPlane:
         )
         proof.validate(expected=selected)
         return proof
+
+    def boot_profile(self, profile: str) -> dict[str, Any]:
+        """Boot a fixed installed profile after the receiver clock gate opens."""
+        if profile not in {"real", "opti_track"}:
+            raise ContractError("clock-gate boot profile is not an onboard profile")
+        self._systemctl("start", *self.units)
+        deadline = self.monotonic() + 30.0
+        while self.monotonic() < deadline:
+            if self.daemon_socket.exists() and not self.daemon_socket.is_symlink():
+                break
+            self.sleep(0.1)
+        else:
+            raise ContractError(
+                "system daemon socket did not appear after fixed unit start"
+            )
+        self._daemon_request({"command": "boot", "profile": profile})
+        started = self._daemon_request(
+            {
+                "command": "start",
+                "activate": True,
+                "select_nodes": [],
+                "include_dependencies": False,
+            }
+        )
+        if started.get("success") is not True:
+            raise ContractError("system daemon did not start the canonical profile")
+        states = {unit: self.unit_state(unit) for unit in self.units}
+        failed = sorted(unit for unit, state in states.items() if state != "active")
+        if failed:
+            raise ContractError(
+                "activation control-plane units are not active: " + ", ".join(failed)
+            )
+        return {
+            "schema": "iii.clock-gate-runtime-start/v1",
+            "profile": profile,
+            "unit_states": states,
+            "autonomy_started": False,
+        }
 
     def _daemon_request(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         request = {**payload, "daemon_timeout_sec": 90.0}
