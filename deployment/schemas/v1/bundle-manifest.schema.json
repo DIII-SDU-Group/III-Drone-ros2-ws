@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/bundle-manifest.schema.json",
+  "title": "III deterministic component bundle manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "manifest_type", "format", "release_id", "release_class", "component", "release_manifest_sha256", "compatibility_sha256", "component_payloads", "target", "content", "limits"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "manifest_type": {"const": "bundle"},
+    "format": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "version", "tar", "zstd_level", "zstd_checksum"],
+      "properties": {
+        "name": {"const": "iii.tar.zst"},
+        "version": {"const": 1},
+        "tar": {"const": "ustar"},
+        "zstd_level": {"const": 19},
+        "zstd_checksum": {"const": true}
+      }
+    },
+    "release_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "release_class": {"enum": ["qualified", "field-development"]},
+    "component": {"enum": ["drone", "gc"]},
+    "release_manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "compatibility_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "component_payloads": {
+      "type": "object", "minProperties": 1, "additionalProperties": false,
+      "properties": {
+        "drone": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "gc": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["target_id", "os", "os_version", "architecture"],
+      "properties": {
+        "target_id": {"type": "string", "minLength": 1},
+        "os": {"const": "ubuntu"},
+        "os_version": {"enum": ["22.04", "24.04"]},
+        "architecture": {"enum": ["aarch64", "x86_64"]}
+      }
+    },
+    "content": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["path", "type", "mode", "size", "sha256"],
+        "properties": {
+          "path": {"type": "string", "pattern": "^payload/.+$"},
+          "type": {"enum": ["directory", "file"]},
+          "mode": {"enum": [420, 493]},
+          "size": {"type": "integer", "minimum": 0},
+          "sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    },
+    "limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["entries", "unpacked_bytes", "maximum_path_bytes", "maximum_path_depth"],
+      "properties": {
+        "entries": {"type": "integer", "minimum": 3, "maximum": 200000},
+        "unpacked_bytes": {"type": "integer", "minimum": 1, "maximum": 21474836480},
+        "maximum_path_bytes": {"type": "integer", "minimum": 1, "maximum": 255},
+        "maximum_path_depth": {"type": "integer", "minimum": 1, "maximum": 32}
+      }
+    }
+  }
+}

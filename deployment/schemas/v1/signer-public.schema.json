@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/signer-public.schema.json",
+  "title": "III public release signer descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "descriptor_type", "signer_id", "algorithm", "authority", "public_key"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "descriptor_type": {"const": "iii.signer-public"},
+    "signer_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "algorithm": {"const": "Ed25519"},
+    "authority": {"enum": ["ci-qualified", "workstation-field"]},
+    "public_key": {"type": "string", "pattern": "^[A-Za-z0-9+/]{43}=$"}
+  }
+}
