@@ -23,7 +23,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 from .contracts import ContractError, ContractRegistry, canonical_json
 
 
-AUTHORITIES = {"ci-qualified", "workstation-field"}
+AUTHORITIES = {"ci-qualified", "workstation-field", "release-status"}
 PROOF_DOMAIN = b"iii.release-signer-proof/v1\0"
 
 

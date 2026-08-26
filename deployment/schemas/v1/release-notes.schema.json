@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/release-notes.schema.json",
+  "title": "III machine-derived deployment release notes",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "notes_type", "notes_id", "version", "release_id", "components", "compatibility", "profiles", "px4", "qgc", "evidence", "waivers", "change_summary", "operator_changes", "expected_downtime_s", "pre_deploy_commands", "post_deploy_commands", "annotation", "markdown"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "notes_type": {"const": "iii.release-notes"},
+    "notes_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "version": {"type": "string", "pattern": "^v(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$"},
+    "release_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "components": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["drone", "gc"]}},
+    "compatibility": {"type": "object"},
+    "profiles": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "px4": {"type": "object"},
+    "qgc": {"type": "object"},
+    "evidence": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "waivers": {"type": "array", "items": {"type": "object"}},
+    "change_summary": {"type": "object"},
+    "operator_changes": {"type": "array", "items": {"type": "string"}},
+    "expected_downtime_s": {"type": "integer", "minimum": 0},
+    "pre_deploy_commands": {"type": "array", "minItems": 1, "items": {"type": "array", "minItems": 1, "items": {"type": "string"}}},
+    "post_deploy_commands": {"type": "array", "minItems": 1, "items": {"type": "array", "minItems": 1, "items": {"type": "string"}}},
+    "annotation": {"type": ["string", "null"]},
+    "markdown": {"type": "string", "minLength": 1}
+  }
+}

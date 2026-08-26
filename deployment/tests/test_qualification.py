@@ -44,6 +44,8 @@ def _evidence(path: Path, repo: Path, version: str = "v1.2.3", **updates) -> Pat
                 "arm64-tests",
                 "dependency-lock",
                 "deployment-contracts",
+                "gc-build",
+                "gc-tests",
                 "governance-audit",
                 "promotion-evidence",
             )
@@ -87,6 +89,34 @@ def test_valid_release_tag_and_publish_preflight(release_repo: tuple[Path, Path]
     assert _inspect(repo, evidence, mode="publish").require_verified().verified
     _git(repo, "tag", "v1.2.3")
     assert _inspect(repo, evidence).require_verified().verified
+
+
+def test_tag_eligibility_can_defer_evidence_but_not_source_gates(
+    release_repo: tuple[Path, Path],
+) -> None:
+    repo, evidence = release_repo
+    _git(repo, "tag", "v1.2.3")
+    report = inspect_qualification(
+        repo,
+        version="v1.2.3",
+        evidence_path=evidence.parent / "not-created-yet.json",
+        mode="build",
+        lock_command=("/bin/true",),
+        registry=REGISTRY,
+        require_evidence=False,
+    ).require_verified()
+    assert next(check for check in report.checks if check.id == "evidence.deferred").passed
+    _write(repo / "dirty.txt", "dirty\n")
+    with pytest.raises(ContractError, match="source.clean"):
+        inspect_qualification(
+            repo,
+            version="v1.2.3",
+            evidence_path=evidence,
+            mode="build",
+            lock_command=("/bin/true",),
+            registry=REGISTRY,
+            require_evidence=False,
+        ).require_verified()
 
 
 def test_tag_outside_release_cannot_qualify(release_repo: tuple[Path, Path]) -> None:

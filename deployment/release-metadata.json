@@ -1,0 +1,33 @@
+{
+  "schema": "iii.release-metadata/v1",
+  "component_targets": {
+    "drone": {"target_id": "raspberry-pi-5-noble-arm64", "os": "ubuntu", "os_version": "24.04", "architecture": "aarch64"},
+    "gc": {"target_id": "gc-ubuntu-x86_64", "os": "ubuntu", "os_version": "24.04", "architecture": "x86_64"}
+  },
+  "compatibility": {
+    "api_ranges": {"runtime_api": ">=2.0.0,<3.0.0"},
+    "schema_ranges": {"configuration": ">=1,<2", "mission_catalog": ">=1,<2"}
+  },
+  "configuration": {"schema_version": 1, "compatible_from": [1], "capture_contract": "iii.capture/v1"},
+  "px4": {"firmware_range": ">=1.16.1,<1.17.0"},
+  "qgc": {"compatible_versions": ["5.0.6"]},
+  "profiles": [
+    {"id": "real", "status": "commissioned", "bootable": true, "parameter_profile": "real", "capabilities": ["flight"], "default_mission": "inspection-demo"},
+    {"id": "opti_track", "status": "commissioned", "bootable": true, "parameter_profile": "real", "capabilities": ["flight", "mocap"], "default_mission": "inspection-demo"},
+    {"id": "hil", "status": "not_commissioned", "bootable": false, "parameter_profile": "sim", "capabilities": [], "default_mission": "inspection-demo"}
+  ],
+  "mission_catalog": {"schema_version": 1},
+  "operator": {
+    "expected_downtime_s": 120,
+    "pre_deploy_commands": [["iii", "field", "check"], ["iii", "release", "show"]],
+    "post_deploy_commands": [["iii", "deploy", "status"], ["iii", "field", "check"]]
+  },
+  "input_paths": {
+    "configuration": ["src/III-Drone-Configuration/config"],
+    "px4_real": ["src/III-Drone-Configuration/config/parameter_sets/real/tracked/default.yaml"],
+    "px4_sim": ["src/III-Drone-Configuration/config/parameter_sets/sim/tracked/default.yaml"],
+    "px4_interface": ["PX4-Autopilot/src/modules/uxrce_dds_client/dds_topics.yaml", "src/III-Drone-Interfaces"],
+    "qgc_managed_settings": ["src/III-Drone-GC/config/params.yaml"],
+    "mission_catalog": ["src/III-Drone-Mission/mission_specification", "src/III-Drone-Mission/behavior_trees"]
+  }
+}

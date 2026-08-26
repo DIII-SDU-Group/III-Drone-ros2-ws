@@ -49,6 +49,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--component", choices=("drone", "gc"), action="append", required=True)
+    parser.add_argument(
+        "--qualified-paired",
+        action="store_true",
+        help="Build only the drone payload while a separately validated GC artifact satisfies paired impact.",
+    )
     parser.add_argument("--cache", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--wheelhouse", type=Path, required=True)
@@ -68,7 +73,12 @@ def main() -> int:
         current_snapshot = capture_source_snapshot(ROOT, source_policy, registry)
         if current_snapshot["content_identity"] != snapshot["content_identity"]:
             raise ContractError("live source no longer matches the verified source snapshot")
-        validate_component_selection(snapshot["impact"], args.component)
+        if args.qualified_paired:
+            if sorted(set(args.component)) != ["drone"]:
+                raise ContractError("qualified paired ARM64 build must request exactly the drone component")
+            validate_component_selection(snapshot["impact"], ["drone", "gc"])
+        else:
+            validate_component_selection(snapshot["impact"], args.component)
         policy = load_build_policy(ROOT / "deployment/build-policy.json", registry)
         target = load_target_definition(ROOT / policy["target_definition"], registry)
         lock = load_wheel_lock(

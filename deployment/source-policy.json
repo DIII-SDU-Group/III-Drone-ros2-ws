@@ -71,7 +71,7 @@
     {"id": "GC", "patterns": ["src/III-Drone-GC", "src/III-Drone-GC/**"], "components": ["gc"]},
     {"id": "DRONE", "patterns": ["src/III-Drone-Core", "src/III-Drone-Core/**", "src/III-Drone-Mission", "src/III-Drone-Mission/**", "src/III-Drone-Runtime", "src/III-Drone-Runtime/**", "src/III-Drone-Simulation", "src/III-Drone-Simulation/**", "src/III-Drone-Supervision", "src/III-Drone-Supervision/**", "src/iwr6843aop-ROS2-pkg", "src/iwr6843aop-ROS2-pkg/**"], "components": ["drone"]},
     {"id": "SHARED_CONTRACT", "patterns": ["src/III-Drone-Configuration", "src/III-Drone-Configuration/**", "src/III-Drone-Contracts", "src/III-Drone-Contracts/**", "src/III-Drone-Interfaces", "src/III-Drone-Interfaces/**", "tools/III-Drone-CLI", "tools/III-Drone-CLI/**"], "components": ["drone", "gc"]},
-    {"id": "WORKSPACE_INTEGRATION", "patterns": ["deployment/**", "cc_ws/**", "setup/**", "scripts/**", "Dockerfile*", "entrypoint_*.sh", "requirements.txt", "deps/submodule-lock.txt"], "components": ["drone", "gc"]}
+    {"id": "WORKSPACE_INTEGRATION", "patterns": [".dockerignore", ".github/**", "deployment/**", "cc_ws/**", "setup/**", "scripts/**", "Dockerfile*", "entrypoint_*.sh", "requirements.txt", "deps/submodule-lock.txt"], "components": ["drone", "gc"]}
   ],
   "non_artifact_patterns": ["docs/**", "codex-backlogs/**", "README.md", "AGENTS.md", "CONTEXT-MAP.md"]
 }

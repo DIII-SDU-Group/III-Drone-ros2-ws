@@ -105,25 +105,37 @@ def test_operational_policy_is_valid_hashed_and_cannot_be_weakened() -> None:
         merge_stricter_policy(policy, {"safety": {"telemetry_max_age_ms": 2000}}, REGISTRY)
 
 
-def _status(sequence: int, status: str, previous: dict | None) -> dict:
+def _status(
+    sequence: int,
+    status: str,
+    previous_global: dict | None,
+    previous_release: dict | None = None,
+) -> dict:
     return {
         "schema_version": "1", "statement_id": f"{sequence:064x}", "sequence": sequence,
+        "operation_id": f"release-status-test-{sequence}",
         "release_id": "a" * 64, "version": "v1.2.3", "status": status, "reason": "test",
         "superseding_version": None, "recorded_at": "2026-08-25T12:00:00Z",
         "signer_id": "b" * 64, "signature_algorithm": "Ed25519",
-        "previous_statement": None if previous is None else {"statement_id": previous["statement_id"], "sha256": content_identity(previous)},
+        "previous_statement": None if previous_global is None else {"statement_id": previous_global["statement_id"], "sha256": content_identity(previous_global)},
+        "previous_release_statement": None if previous_release is None else {"statement_id": previous_release["statement_id"], "sha256": content_identity(previous_release)},
+        "signature": "A" * 86 + "==",
     }
 
 
 def test_release_status_is_append_only_and_monotonic() -> None:
     first = _status(1, "qualified", None)
-    second = _status(2, "withdrawn", first)
+    second = _status(2, "withdrawn", first, first)
     REGISTRY.validate("release-status", first)
     REGISTRY.validate("release-status", second)
     validate_status_transition(None, first)
-    validate_status_transition(first, second)
+    validate_status_transition(first, second, previous_global=first)
     with pytest.raises(ContractError, match="non-monotonic"):
-        validate_status_transition(second, _status(3, "qualified", second))
+        validate_status_transition(
+            second,
+            _status(3, "qualified", second, second),
+            previous_global=second,
+        )
 
 
 def test_record_contract_correlates_capture_and_release_without_absolute_paths() -> None:

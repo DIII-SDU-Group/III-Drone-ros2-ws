@@ -1,0 +1,88 @@
+name: Release Status
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact qualified SemVer release
+        required: true
+        type: string
+      status:
+        description: Monotonic safety transition
+        required: true
+        type: choice
+        options: [withdrawn, unsafe]
+      reason:
+        description: Retained operator-visible reason
+        required: true
+        type: string
+      superseding_version:
+        description: Optional strict SemVer replacement
+        required: false
+        type: string
+      expected_statement_id:
+        description: Exact signed predecessor retained by the plan
+        required: true
+        type: string
+      client_operation_id:
+        description: Exact retained III CLI operation ID
+        required: true
+        type: string
+
+concurrency:
+  group: iii-release-status
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  publish-status:
+    if: github.ref == 'refs/heads/release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release-status
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout trusted release branch only
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: refs/heads/release
+          persist-credentials: false
+          fetch-depth: 1
+          submodules: recursive
+      - name: Validate, sign, and append one immutable status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATUS_VERSION: ${{ inputs.version }}
+          STATUS_VALUE: ${{ inputs.status }}
+          STATUS_REASON: ${{ inputs.reason }}
+          SUPERSEDING_VERSION: ${{ inputs.superseding_version }}
+          EXPECTED_STATEMENT_ID: ${{ inputs.expected_statement_id }}
+          CLIENT_OPERATION_ID: ${{ inputs.client_operation_id }}
+          STATUS_SIGNING_KEY: ${{ secrets.III_RELEASE_STATUS_SIGNING_KEY_PEM }}
+          STATUS_TRUST: ${{ vars.III_RELEASE_STATUS_SIGNERS_JSON }}
+          BUNDLE_TRUST: ${{ vars.III_QUALIFIED_SIGNERS_JSON }}
+        run: |
+          umask 077
+          [[ "$CLIENT_OPERATION_ID" =~ ^[a-z0-9][a-z0-9-]{7,63}$ ]]
+          printf '%s\n' "$STATUS_SIGNING_KEY" > "$RUNNER_TEMP/status-signing.pem"
+          printf '%s\n' "$STATUS_TRUST" > "$RUNNER_TEMP/status-trust.json"
+          printf '%s\n' "$BUNDLE_TRUST" > "$RUNNER_TEMP/bundle-trust.json"
+          args=(
+            --repository "$GITHUB_REPOSITORY"
+            --version "$STATUS_VERSION"
+            --status "$STATUS_VALUE"
+            --reason "$STATUS_REASON"
+            --expected-statement-id "$EXPECTED_STATEMENT_ID"
+            --operation-id "$CLIENT_OPERATION_ID"
+            --recorded-at "$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+            --private-key "$RUNNER_TEMP/status-signing.pem"
+            --status-trust "$RUNNER_TEMP/status-trust.json"
+            --bundle-trust "$RUNNER_TEMP/bundle-trust.json"
+            --output "$RUNNER_TEMP/status-publication"
+          )
+          if [[ -n "$SUPERSEDING_VERSION" ]]; then
+            args+=(--superseding-version "$SUPERSEDING_VERSION")
+          fi
+          python scripts/release/publish_release_status.py "${args[@]}"

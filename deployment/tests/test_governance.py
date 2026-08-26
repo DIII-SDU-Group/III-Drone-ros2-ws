@@ -57,6 +57,22 @@ def test_qualified_tag_ruleset_is_active_immutable_and_has_no_bypass() -> None:
     }
 
 
+def test_release_record_tag_ruleset_protects_status_and_failed_attempts() -> None:
+    ruleset = json.loads(
+        (ROOT / "deployment/governance/rulesets/workspace-release-record-tags.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert ruleset["target"] == "tag"
+    assert ruleset["enforcement"] == "active"
+    assert ruleset["bypass_actors"] == []
+    assert ruleset["conditions"]["ref_name"] == {
+        "exclude": [],
+        "include": ["refs/tags/iii-attempt-v*", "refs/tags/iii-status-*"],
+    }
+    assert {rule["type"] for rule in ruleset["rules"]} == {"deletion", "non_fast_forward"}
+
+
 def test_mechanical_diff_accepts_only_lock_and_gitlinks() -> None:
     validate_mechanical_diff(BRANCH, ["deps/submodule-lock.txt", "src/III-Drone-Core"])
     with pytest.raises(ContractError, match="non-gitlink"):

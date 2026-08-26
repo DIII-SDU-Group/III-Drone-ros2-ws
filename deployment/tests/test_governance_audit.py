@@ -47,7 +47,7 @@ def test_exact_live_governance_produces_concise_retained_evidence() -> None:
     report = audit_governance(ROOT, FakeClient(), now=NOW)
     assert report["outcome"] == "passed"
     assert report["repositories"] == 11
-    assert report["expected_rulesets"] == report["observed_rulesets"] == 24
+    assert report["expected_rulesets"] == report["observed_rulesets"] == 25
     assert report["findings"] == []
     assert len(report["audit_id"]) == 64
     assert len(json.dumps(report, sort_keys=True)) < 1000

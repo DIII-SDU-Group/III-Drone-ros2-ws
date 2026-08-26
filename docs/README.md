@@ -75,6 +75,10 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     Deterministic paired artifact layout, signing and signer rotation, inspection,
     verification, extraction limits, and operator commands.
 
+22. `qualified-release-pipeline.md`
+    Protected tag qualification, retained build/test evidence, immutable GitHub
+    publication, release-status transitions, CLI retrieval, and CI key rotation.
+
 Domain language and context ownership are indexed by the root
 `CONTEXT-MAP.md`.
 

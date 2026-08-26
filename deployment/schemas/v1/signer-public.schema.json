@@ -10,7 +10,7 @@
     "descriptor_type": {"const": "iii.signer-public"},
     "signer_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "algorithm": {"const": "Ed25519"},
-    "authority": {"enum": ["ci-qualified", "workstation-field"]},
+    "authority": {"enum": ["ci-qualified", "workstation-field", "release-status"]},
     "public_key": {"type": "string", "pattern": "^[A-Za-z0-9+/]{43}=$"}
   }
 }

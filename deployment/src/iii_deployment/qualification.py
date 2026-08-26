@@ -18,6 +18,8 @@ REQUIRED_QUALIFICATION_CHECKS = frozenset(
         "arm64-tests",
         "dependency-lock",
         "deployment-contracts",
+        "gc-build",
+        "gc-tests",
         "governance-audit",
         "promotion-evidence",
     }
@@ -111,6 +113,7 @@ def inspect_qualification(
     lock_path: Path | None = None,
     lock_command: Sequence[str] = ("scripts/git/verify_submodule_lock.sh",),
     registry: ContractRegistry | None = None,
+    require_evidence: bool = True,
 ) -> QualificationReport:
     """Inspect publication or tag-build state without mutating the repository.
 
@@ -166,9 +169,13 @@ def inspect_qualification(
     lock_sha256 = _sha256(lock_path)
     add("dependency-lock.present", lock_sha256 is not None, lock_sha256 or f"cannot hash {lock_path}")
 
-    evidence, evidence_detail = _load_evidence(evidence_path, registry)
-    add("evidence.contract", evidence is not None, evidence_detail)
-    if evidence is not None:
+    evidence: Mapping[str, Any] | None = None
+    if require_evidence:
+        evidence, evidence_detail = _load_evidence(evidence_path, registry)
+        add("evidence.contract", evidence is not None, evidence_detail)
+    else:
+        add("evidence.deferred", True, "qualification evidence is assembled after isolated checks")
+    if require_evidence and evidence is not None:
         add("evidence.commit-binding", evidence["source_commit"] == source_commit, "evidence identifies HEAD" if evidence["source_commit"] == source_commit else "evidence source commit differs from HEAD")
         add("evidence.version-binding", evidence["version"] == version, "evidence identifies version" if evidence["version"] == version else "evidence version differs")
         add("evidence.lock-binding", evidence["dependency_lock_sha256"] == lock_sha256, "evidence identifies dependency lock" if evidence["dependency_lock_sha256"] == lock_sha256 else "evidence dependency-lock identity differs")

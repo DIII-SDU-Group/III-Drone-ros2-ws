@@ -2696,6 +2696,8 @@ Implementation notes (2026-08-26):
 
 #### P1.T4: Implement The Qualified Release CI/CD Pipeline
 
+**Status: In-Progress.**
+
 Description:
 Implement the settled qualified-artifact producer policy as a protected,
 reproducible pipeline. Starting from an immutable `vX.Y.Z` tag on workspace

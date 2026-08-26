@@ -27,7 +27,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--json", action="store_true")
     commands = parser.add_subparsers(dest="command", required=True)
     generate = commands.add_parser("generate")
-    generate.add_argument("--authority", choices=("ci-qualified", "workstation-field"), required=True)
+    generate.add_argument(
+        "--authority",
+        choices=("ci-qualified", "workstation-field", "release-status"),
+        required=True,
+    )
     generate.add_argument("--private-key", type=Path, required=True)
     generate.add_argument("--public-descriptor", type=Path, required=True)
     proof = commands.add_parser("prove")
