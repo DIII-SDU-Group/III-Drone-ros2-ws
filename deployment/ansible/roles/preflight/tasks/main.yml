@@ -8,7 +8,7 @@
       - ansible_distribution_release == iii_expected_codename
       - ansible_architecture == iii_expected_architecture
       - iii_profile in ['real', 'opti_track']
-      - iii_logical_target is match('^[a-z][a-z0-9.-]{0,63}$')
+      - iii_logical_target == 'drone'
     fail_msg: The target does not match the governed Raspberry Pi 5 Noble ARM64 baseline.
 
 - name: Validate provisioning input shape and private operator network
@@ -21,9 +21,41 @@
       - iii_provisioning_inputs.bundle_trust_source is string
       - iii_provisioning_inputs.release_status_trust_source is string
       - iii_provisioning_inputs.receiver_update_trust_source is string
-      - iii_provisioning_inputs.operator_public_keys_source is string
+      - iii_provisioning_inputs.operator_enrollment_source is string
       - iii_provisioning_inputs.runtime_api_secret_source is string
     fail_msg: Supply all host inputs through an owner-only Git-ignored extra-vars file.
+  no_log: true
+
+- name: Load the governed shared target profile on the controller
+  ansible.builtin.set_fact:
+    iii_shared_target_profile: >-
+      {{ lookup('ansible.builtin.file', playbook_dir ~ '/../../targets/v1/shared-aircraft.json') | from_json }}
+
+- name: Bind provisioning to the governed shared target profile
+  ansible.builtin.assert:
+    that:
+      - iii_shared_target_profile.schema == 'iii.shared-target-profile/v1'
+      - iii_shared_target_profile.profile_id == iii_shared_target_profile_id
+      - iii_shared_target_profile.logical_target == iii_logical_target
+      - iii_shared_target_profile.target_class == iii_target_class
+      - iii_shared_target_profile.runtime.runtime_id == iii_runtime_api_id
+      - iii_shared_target_profile.runtime.system_id == iii_runtime_system_id
+      - iii_profile in iii_shared_target_profile.profiles
+      - iii_shared_target_profile.credentials.committed_secrets == false
+    fail_msg: The host inputs differ from the governed shared aircraft target profile.
+
+- name: Load the solo-operator browser secret on the controller
+  ansible.builtin.set_fact:
+    iii_runtime_api_secret_text: >-
+      {{ lookup('ansible.builtin.file', iii_provisioning_inputs.runtime_api_secret_source) }}
+  no_log: true
+
+- name: Reject shared CLI tokens and development browser credentials
+  ansible.builtin.assert:
+    that:
+      - iii_runtime_api_secret_text is match('^III_RUNTIME_API_BROWSER_PASSWORD=.{16,}$')
+      - iii_runtime_api_secret_text not in ['III_RUNTIME_API_BROWSER_PASSWORD=dev-password', 'III_RUNTIME_API_BROWSER_PASSWORD=change-me-browser-password']
+    fail_msg: Runtime secret input must contain only one non-development browser password; CLI credentials are per-machine verifiers.
   no_log: true
 
 - name: Inspect image-provided HTTPS bootstrap trust
@@ -47,7 +79,7 @@
     - "{{ iii_provisioning_inputs.bundle_trust_source }}"
     - "{{ iii_provisioning_inputs.release_status_trust_source }}"
     - "{{ iii_provisioning_inputs.receiver_update_trust_source }}"
-    - "{{ iii_provisioning_inputs.operator_public_keys_source }}"
+    - "{{ iii_provisioning_inputs.operator_enrollment_source }}"
     - "{{ iii_provisioning_inputs.runtime_api_secret_source }}"
   register: iii_controller_files
   delegate_to: localhost

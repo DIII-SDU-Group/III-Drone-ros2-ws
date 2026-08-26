@@ -31,6 +31,7 @@ from iii_deployment.receiver.config import (
     BUNDLE_TRUST_PATH,
     CONFIG_PATH,
     CLOCK_STATE_PATH,
+    FIELD_SIGNERS_PATH,
     INCOMING_ROOT,
     LIVE_STATE_PATH,
     LOG_ROOT,
@@ -42,6 +43,7 @@ from iii_deployment.receiver.config import (
     SOCKET_PATH,
     STATE_ROOT,
     STATUS_TRUST_PATH,
+    RUNTIME_VERIFIERS_PATH,
     ReceiverConfig,
     assert_production_root,
     load_live_state,
@@ -96,6 +98,8 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
     store = ReleaseStore(
         Path("/"),
         bundle_trust=BUNDLE_TRUST_PATH,
+        field_trust=FIELD_SIGNERS_PATH,
+        field_access_state=STATE_ROOT / "access-state.json",
         status_trust=STATUS_TRUST_PATH,
         registry=registry,
         host_limits=load_bundle_limits(OPERATIONAL_POLICY_PATH),
@@ -113,6 +117,10 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
     access = AccessManager(
         state_path=STATE_ROOT / "access-state.json",
         authorized_keys_path=AUTHORIZED_KEYS_PATH,
+        registry=registry,
+        runtime_verifiers_path=RUNTIME_VERIFIERS_PATH,
+        field_signers_path=FIELD_SIGNERS_PATH,
+        runtime_gid=config.runtime_gid,
     )
     slots = ReceiverSlotStore(
         Path("/"), trust={}, registry=ContractRegistry(SCHEMA_ROOT)

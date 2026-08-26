@@ -3,10 +3,12 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 import struct
+import hashlib
 
 import pytest
 
-from iii_deployment.contracts import ContractError
+from iii_deployment.contracts import ContractError, ContractRegistry
+from iii_deployment.identity import create_machine_enrollment
 from iii_deployment.receiver.access import AccessManager, client_id_for_public_key
 from iii_deployment.receiver.protocol import Action
 from iii_deployment.receiver.state import (
@@ -36,6 +38,29 @@ def key(character: int) -> str:
         + bytes([character]) * 32
     )
     return "ssh-ed25519 " + base64.b64encode(blob).decode("ascii")
+
+
+REGISTRY = ContractRegistry(Path(__file__).resolve().parents[1] / "schemas/v1")
+
+
+def enrollment(public_key: str, character: int) -> dict:
+    signer = bytes([character]) * 32
+    return create_machine_enrollment(
+        label=f"machine-{character}",
+        ssh_public_key=public_key,
+        runtime_token=base64.urlsafe_b64encode(bytes([character + 10]) * 32)
+        .decode("ascii")
+        .rstrip("="),
+        field_signer_descriptor={
+            "schema_version": "1",
+            "descriptor_type": "iii.signer-public",
+            "signer_id": hashlib.sha256(signer).hexdigest(),
+            "algorithm": "Ed25519",
+            "authority": "workstation-field",
+            "public_key": base64.b64encode(signer).decode("ascii"),
+        },
+        registry=REGISTRY,
+    )
 
 
 def plan(operation_id: str = "operation-0001", client_id: str = "a" * 64) -> dict:
@@ -170,26 +195,65 @@ def test_access_add_prove_revoke_and_final_key_denial(tmp_path: Path) -> None:
     manager = AccessManager(
         state_path=tmp_path / "access.json",
         authorized_keys_path=tmp_path / "authorized_keys",
+        registry=REGISTRY,
+        runtime_verifiers_path=tmp_path / "runtime-verifiers.json",
+        field_signers_path=tmp_path / "field-signers.json",
     )
     old_key = key(1)
     new_key = key(2)
     old_id = client_id_for_public_key(old_key)
     new_id = client_id_for_public_key(new_key)
-    manager.bootstrap([old_key])
-    manager.add_pending(requester=old_id, client_id=new_id, public_key=new_key)
+    old_enrollment = enrollment(old_key, 1)
+    new_enrollment = enrollment(new_key, 2)
+    manager.bootstrap([old_enrollment])
+    manager.add_pending(requester=old_id, enrollment=new_enrollment)
     forced = (tmp_path / "authorized_keys").read_text(encoding="ascii")
     assert (
         'restrict,command="/usr/bin/iii-deployment-ssh-gateway --client-id ' in forced
     )
     assert "pty" not in forced and "ssh-ed25519" in forced
     with pytest.raises(ContractError, match="prove itself"):
-        manager.prove(requester=old_id, client_id=new_id, public_key=new_key)
-    manager.prove(requester=new_id, client_id=new_id, public_key=new_key)
-    manager.revoke(requester=new_id, client_id=old_id)
+        manager.prove(requester=old_id, enrollment=new_enrollment)
+    manager.prove(requester=new_id, enrollment=new_enrollment)
+    manager.revoke_field_signer(
+        requester=old_id,
+        field_signer_id=old_enrollment["field_signing"]["signer_id"],
+    )
+    signing_loss = {item["machine_id"]: item for item in manager.list_clients()}[
+        old_enrollment["machine_id"]
+    ]
+    assert signing_loss["ssh_runtime_state"] == "active"
+    assert signing_loss["field_signing_state"] == "revoked"
+    assert old_enrollment["runtime_api"]["token_sha256"] in (
+        tmp_path / "runtime-verifiers.json"
+    ).read_text(encoding="utf-8")
+    manager.revoke(requester=new_id, machine_id=old_enrollment["machine_id"])
     assert old_key not in (tmp_path / "authorized_keys").read_text(encoding="ascii")
+    runtime = (tmp_path / "runtime-verifiers.json").read_text(encoding="utf-8")
+    signers = (tmp_path / "field-signers.json").read_text(encoding="utf-8")
+    assert old_enrollment["runtime_api"]["token_sha256"] not in runtime
+    assert new_enrollment["runtime_api"]["token_sha256"] in runtime
+    assert '"state":"revoked"' in signers and '"state":"active"' in signers
     with pytest.raises(ContractError, match="final usable"):
-        manager.revoke(requester=new_id, client_id=new_id)
+        manager.revoke(requester=new_id, machine_id=new_enrollment["machine_id"])
     assert all("public_key" not in item for item in manager.list_clients())
+
+
+def test_initial_receiver_reconcile_is_safe_before_access_bootstrap(
+    tmp_path: Path,
+) -> None:
+    manager = AccessManager(
+        state_path=tmp_path / "missing-access.json",
+        authorized_keys_path=tmp_path / "authorized_keys",
+        registry=REGISTRY,
+        runtime_verifiers_path=tmp_path / "runtime-verifiers.json",
+        field_signers_path=tmp_path / "field-signers.json",
+    )
+
+    manager.reconcile_derived_access()
+
+    assert not (tmp_path / "missing-access.json").exists()
+    assert (tmp_path / "authorized_keys").read_bytes() == b""
 
 
 def test_audit_is_hash_chained_and_never_contains_request_payload_or_key(

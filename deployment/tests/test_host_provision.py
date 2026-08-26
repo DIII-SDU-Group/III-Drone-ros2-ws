@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 import subprocess
+import base64
+import hashlib
+import struct
 
 import pytest
 
@@ -15,6 +17,8 @@ from iii_deployment.host_provision import (
     build_plan,
     check_plan,
 )
+from iii_deployment.contracts import ContractRegistry, canonical_json
+from iii_deployment.identity import create_machine_enrollment
 
 
 def _git_repo(path: Path) -> Path:
@@ -50,22 +54,47 @@ def _fixture(tmp_path: Path) -> dict[str, Path]:
         "bundle_trust_source",
         "release_status_trust_source",
         "receiver_update_trust_source",
-        "operator_public_keys_source",
+        "operator_enrollment_source",
         "runtime_api_secret_source",
     ]
     source_paths = {}
     for field in fields:
         path = sources / field
-        path.write_text("fixture\n")
+        path.write_text(
+            "III_RUNTIME_API_BROWSER_PASSWORD=target-browser-secret\n"
+            if field == "runtime_api_secret_source"
+            else "fixture\n"
+        )
         path.chmod(0o600)
         source_paths[field] = str(path)
+    ssh_blob = (
+        struct.pack(">I", 11) + b"ssh-ed25519" + struct.pack(">I", 32) + b"o" * 32
+    )
+    signer = b"s" * 32
+    enrollment = create_machine_enrollment(
+        label="host-plan",
+        ssh_public_key="ssh-ed25519 " + base64.b64encode(ssh_blob).decode("ascii"),
+        runtime_token="R" * 43,
+        field_signer_descriptor={
+            "schema_version": "1",
+            "descriptor_type": "iii.signer-public",
+            "signer_id": hashlib.sha256(signer).hexdigest(),
+            "algorithm": "Ed25519",
+            "authority": "workstation-field",
+            "public_key": base64.b64encode(signer).decode("ascii"),
+        },
+        registry=ContractRegistry(Path(__file__).parents[1] / "schemas/v1"),
+    )
+    Path(source_paths["operator_enrollment_source"]).write_bytes(
+        canonical_json(enrollment) + b"\n"
+    )
     inputs = tmp_path / "inputs.json"
     inputs.write_text(
         json.dumps(
             {
                 "schema": "iii.host-provisioning-input/v1",
                 "target_class": "raspberry-pi-5-noble-arm64",
-                "logical_target": "iii",
+                "logical_target": "drone",
                 "profile": "real",
                 "operator_cidr": "192.168.10.0/24",
                 "receiver_bundle_source": str(bundle),
@@ -131,7 +160,9 @@ def test_check_refuses_input_changed_after_retention(
     monkeypatch, tmp_path: Path
 ) -> None:
     plan, fixture = _plan(tmp_path)
-    fixture["source"].write_text("changed\n")
+    fixture["source"].write_text(
+        "III_RUNTIME_API_BROWSER_PASSWORD=changed-browser-secret\n"
+    )
 
     with pytest.raises(HostProvisionChangedError, match="runtime_api_secret_source"):
         check_plan(plan, schema_root=Path(__file__).parents[1] / "schemas/v1")

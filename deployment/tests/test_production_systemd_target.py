@@ -141,12 +141,30 @@ def test_boot_restart_failure_recovery_and_release_switch(tmp_path: Path) -> Non
     runtime_env.write_text(
         "III_SYSTEM_PROFILE=real\nIII_RUNTIME_API_PROFILE=real\n"
         "III_RECEIVER_CLOCK_STATE_PATH=/var/lib/iii/deployment/clock-state.json\n"
+        "III_RUNTIME_API_CREDENTIALS_PATH=/var/lib/iii/deployment/runtime-api-client-verifiers.json\n"
     )
     secret = payload / "etc/iii/secrets/runtime-api.env"
     secret.parent.mkdir(parents=True)
-    secret.write_text(
-        "III_RUNTIME_API_BROWSER_PASSWORD=test-only\n"
-        "III_RUNTIME_API_CLI_TOKEN=test-only\n"
+    secret.write_text("III_RUNTIME_API_BROWSER_PASSWORD=test-only\n")
+    verifiers = {
+        "schema": "iii.runtime-api-client-verifiers/v1",
+        "verifier_id": "0" * 64,
+        "access_id": "9" * 64,
+        "generation": 1,
+        "clients": [
+            {
+                "machine_id": "8" * 64,
+                "label": "systemd-test",
+                "token_sha256": "7" * 64,
+            }
+        ],
+    }
+    verifiers["verifier_id"] = content_identity(
+        {key: item for key, item in verifiers.items() if key != "verifier_id"}
+    )
+    _write(
+        payload / "var/lib/iii/deployment/runtime-api-client-verifiers.json",
+        verifiers,
     )
     release_a, selector_a = _release(payload, "a")
     release_b, selector_b = _release(payload, "b")

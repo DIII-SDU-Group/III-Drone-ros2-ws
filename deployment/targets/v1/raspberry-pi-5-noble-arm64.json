@@ -1,6 +1,6 @@
 {
   "schema": "iii.target-definition/v1",
-  "definition_id": "0feda56e871ca6f2948274b7f6b37abdd705c25f11db769398b361e7d6f2af47",
+  "definition_id": "529afb40ba8854deaa14b63d55b5ba507905bac5d7504907673cc924b6ccdbff",
   "target": {
     "target_id": "raspberry-pi-5-noble-arm64",
     "board": "raspberry-pi-5",
@@ -80,8 +80,9 @@
     "mutable_host_paths_forbidden": ["/home", "/var/lib/iii", "/var/log/iii", "/run/iii", "/etc/iii"]
   },
   "host_baseline": {
-    "contract_id": "8d5cc63fe700603893bba493ae880c1da8af8b6d375964fb68ddba92c97556bd",
-    "unit_contract_id": "00a6fa628fb5fcf6ca5d7b0484b9f63b7a4353407cc0d705c968283e8c55470b",
+    "contract_id": "9e8ccc20434cb6cf43508bf93bd70b238b009a54fa7427f29a2bb96d8890a1f6",
+    "unit_contract_id": "a44b9176c01344aaa3f4e105ccb14eafd6cca67f423a4c43a31d4cde534236fe",
+    "shared_target_profile_id": "a14f199fd5a75f0b60f17f35eb52a69405ef1de89a0b6983224edf52b959cf33",
     "owner": "ansible",
     "converged_by": "Q93 aircraft host baseline",
     "owns": ["ubuntu", "kernel-firmware", "glibc-loader", "ros-jazzy", "systemd", "udev-hardware", "platform-libraries", "system-python"],

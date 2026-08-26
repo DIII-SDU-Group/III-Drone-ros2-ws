@@ -1,19 +1,37 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
-import os
 from pathlib import Path
 import subprocess
+import struct
 
 import pytest
 
-from iii_deployment.contracts import ContractError, canonical_json, content_identity
+from iii_deployment.contracts import (
+    ContractError,
+    ContractRegistry,
+    canonical_json,
+    content_identity,
+)
+from iii_deployment.identity import create_machine_enrollment
+from iii_deployment.receiver.access import AccessManager
 from iii_deployment.receiver.host_finalize import finalize_host
+from iii_deployment.signers import generate_signer
 
 
 BASELINE_ID = "a" * 64
 RECEIVER_ID = "b" * 64
-CLIENT_ID = "c" * 64
+SCHEMAS = Path(__file__).resolve().parents[1] / "schemas/v1"
+SSH_WIRE_KEY = (
+    struct.pack(">I", len(b"ssh-ed25519"))
+    + b"ssh-ed25519"
+    + struct.pack(">I", 32)
+    + b"k" * 32
+)
+SSH_PUBLIC_KEY = "ssh-ed25519 " + base64.b64encode(SSH_WIRE_KEY).decode("ascii")
+CLIENT_ID = hashlib.sha256(SSH_PUBLIC_KEY.encode("ascii")).hexdigest()
 
 
 def _write(path: Path, value: object | bytes) -> None:
@@ -30,7 +48,8 @@ def _root(tmp_path: Path) -> Path:
         "state": "converged",
         "baseline_id": BASELINE_ID,
         "target_definition_id": "d" * 64,
-        "logical_target": "iii",
+        "shared_target_profile_id": "e" * 64,
+        "logical_target": "drone",
         "profile": "real",
         "receiver": {"receiver_id": RECEIVER_ID, "generation": 1},
     }
@@ -41,32 +60,32 @@ def _root(tmp_path: Path) -> Path:
         "socket_open": True,
         "self_tests_passed": True,
     }
-    access = {
-        "schema": "iii.receiver-access-state/v1",
-        "access_id": "",
-        "generation": 1,
-        "clients": {
-            CLIENT_ID: {
-                "public_key": "ssh-ed25519 placeholder",
-                "state": "active",
-                "added_by": "ansible-bootstrap",
-                "proved_by": CLIENT_ID,
-            }
-        },
-    }
-    access["access_id"] = content_identity(
-        {key: value for key, value in access.items() if key != "access_id"}
+    signer_descriptor = generate_signer(
+        tmp_path / "field-key.pem",
+        tmp_path / "field-public.json",
+        authority="workstation-field",
+        registry=ContractRegistry(SCHEMAS),
+    )
+    enrollment = create_machine_enrollment(
+        label="bootstrap-controller",
+        ssh_public_key=SSH_PUBLIC_KEY,
+        runtime_token="R" * 43,
+        field_signer_descriptor=signer_descriptor,
+        registry=ContractRegistry(SCHEMAS),
     )
     _write(tmp_path / "var/lib/iii/deployment/host-baseline-report.json", health)
     _write(tmp_path / "run/iii/receiver-readiness.json", readiness)
-    _write(tmp_path / "var/lib/iii/deployment/access-state.json", access)
-    _write(
-        tmp_path / "home/iii/.ssh/authorized_keys",
-        (
-            f'restrict,command="/usr/bin/iii-deployment-ssh-gateway --client-id {CLIENT_ID}" '
-            "ssh-ed25519 placeholder\n"
-        ).encode(),
-    )
+    AccessManager(
+        state_path=tmp_path / "var/lib/iii/deployment/access-state.json",
+        authorized_keys_path=tmp_path / "home/iii/.ssh/authorized_keys",
+        registry=ContractRegistry(SCHEMAS),
+        runtime_verifiers_path=(
+            tmp_path / "var/lib/iii/deployment/runtime-api-client-verifiers.json"
+        ),
+        field_signers_path=(
+            tmp_path / "var/lib/iii/deployment/workstation-field-signers.json"
+        ),
+    ).bootstrap([enrollment])
     slots = tmp_path / "opt/iii/receiver/slots"
     (slots / "a").mkdir(parents=True)
     selectors = tmp_path / "opt/iii/receiver/selectors"
@@ -158,6 +177,47 @@ def test_finalize_refuses_pending_access_and_preserves_bootstrap(
     _write(path, access)
 
     with pytest.raises(ContractError, match="absent, pending, or revoked"):
+        finalize_host(
+            baseline_id=BASELINE_ID,
+            root=root,
+            run=lambda _argv: None,
+            user_exists=lambda _name: True,
+        )
+
+    assert (root / "boot/firmware/user-data").is_file()
+
+
+@pytest.mark.parametrize(
+    ("relative", "field", "value", "message"),
+    [
+        (
+            "runtime-api-client-verifiers.json",
+            "generation",
+            99,
+            "Runtime API machine verifier projection",
+        ),
+        (
+            "workstation-field-signers.json",
+            "store_type",
+            "iii.tampered-signers",
+            "field signer trust projection",
+        ),
+    ],
+)
+def test_finalize_refuses_access_projection_drift_before_sanitization(
+    tmp_path: Path,
+    relative: str,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    root = _root(tmp_path)
+    path = root / "var/lib/iii/deployment" / relative
+    projection = json.loads(path.read_text())
+    projection[field] = value
+    _write(path, projection)
+
+    with pytest.raises(ContractError, match=message):
         finalize_host(
             baseline_id=BASELINE_ID,
             root=root,

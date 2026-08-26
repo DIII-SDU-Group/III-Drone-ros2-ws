@@ -35,8 +35,38 @@ Prepare these controller-side artifacts outside Git with owner-only permissions:
 - a separately signed initial receiver bundle;
 - a complete offline wheelhouse and `receiver-requirements.txt` with hashes;
 - bundle, release-status, and receiver-update public trust stores;
-- one or more canonical OpenSSH Ed25519 public keys for permanent operators;
-- the runtime API secret environment file.
+- one public `iii.machine-enrollment/v1` record for the provisioning computer;
+- the runtime API secret environment file containing only the solo-operator
+  browser password.
+
+Generate the provisioning computer's independent SSH key, encrypted field
+signing key, Runtime API token, and public-only enrollment outside the repository:
+
+```bash
+iii access enroll prepare \
+  --directory "$XDG_CONFIG_HOME/iii/credentials/provisioning" \
+  --label provisioning \
+  --signer-passphrase-file /owner-only/path/field-signing.passphrase \
+  --dry-run --operation-id iii-access-prepare-provisioning
+```
+
+Review the retained plan, then execute only the exact confirmed apply command
+returned by the CLI. Planning never creates credentials.
+
+The signing passphrase may instead be stored without entering it in shell
+history and retrieved from the desktop OS keyring:
+
+```bash
+secret-tool store \
+  --label='III field signing - provisioning' \
+  service iii-field-signing account provisioning
+```
+
+Use the same account with `--keyring-account provisioning`; `secret-tool` prompts
+for the secret and the CLI never prints it. The generated directory is
+owner-only. Only `enrollment.json` is copied into provisioning input; never copy
+`ssh_ed25519`, `field-signing-key.pem`, `runtime-api-token`, a passphrase, or an
+SSH agent socket.
 
 The receiver bundle and wheelhouse are recursively content-addressed in the plan.
 Symlinks, special files, empty trees, input files writable by another identity,
@@ -51,7 +81,7 @@ Git-ignored directory. Relative artifact paths are resolved against this file.
 {
   "schema": "iii.host-provisioning-input/v1",
   "target_class": "raspberry-pi-5-noble-arm64",
-  "logical_target": "iii",
+  "logical_target": "drone",
   "profile": "real",
   "operator_cidr": "192.168.10.0/24",
   "receiver_bundle_source": "artifacts/receiver-bundle",
@@ -59,7 +89,7 @@ Git-ignored directory. Relative artifact paths are resolved against this file.
   "bundle_trust_source": "trust/bundle-signers.json",
   "release_status_trust_source": "trust/release-status-signers.json",
   "receiver_update_trust_source": "trust/receiver-update-signers.json",
-  "operator_public_keys_source": "access/operator-keys",
+  "operator_enrollment_source": "access/provisioning-enrollment.json",
   "runtime_api_secret_source": "secrets/runtime-api.env",
   "offline": false
 }
@@ -69,7 +99,7 @@ Git-ignored directory. Relative artifact paths are resolved against this file.
 chmod 0700 .iii .iii/host-provision
 chmod 0600 .iii/host-provision/inputs.json \
   .iii/host-provision/trust/*.json \
-  .iii/host-provision/access/operator-keys \
+  .iii/host-provision/access/provisioning-enrollment.json \
   .iii/host-provision/secrets/runtime-api.env
 ```
 
@@ -169,3 +199,57 @@ state; correct the failing proof and resume the same retained plan only when its
 content bindings remain current. If all authenticated SSH access is lost, inspect
 backup evidence and physically reimage/restore/recommission; no remote bypass is
 provided.
+
+## Add, Prove, And Revoke A Ground-Control Computer
+
+Prepare fresh credentials on the ground-control computer itself. Do not export a
+private SSH/signing key or reuse the provisioning computer's Runtime token:
+
+```bash
+iii access enroll prepare \
+  --directory "$XDG_CONFIG_HOME/iii/credentials/gc-primary" \
+  --label gc-primary \
+  --keyring-account gc-primary \
+  --dry-run --operation-id iii-access-prepare-gc
+```
+
+From an already active provisioning computer, authorize only the new public
+record with `iii access enroll add --enrollment <gc-enrollment.json>`. Plan each
+mutation first and execute only its returned confirmed apply command. Then switch
+to the new computer's `III_SSH_IDENTITY_FILE` and run
+`iii access enroll prove --enrollment <gc-enrollment.json>`. Proof must arrive in
+a new SSH session authenticated by the pending key. Verify both machines with
+`iii access list` and authenticate the Runtime API using each computer's own
+`runtime-api-token`. Only after the replacement passes SSH, Runtime API, and
+field-signer checks may an active computer run
+`iii access revoke --machine-id <old-machine-id>`.
+
+The receiver keeps one state machine but reports the authorities independently:
+
+- SSH stores only public keys in forced-command `authorized_keys`;
+- the Runtime API stores only SHA-256 token verifiers for active machines;
+- field signing stores public Ed25519 verifiers and active/revoked state.
+
+Revocation removes SSH and Runtime access for that machine and revokes its field
+signer without rewriting historical signatures. The final usable SSH machine
+cannot be revoked. Signing-only key loss does not remove SSH or Runtime access:
+use `iii access signer revoke --signer-id <lost-signer-id>` to remove only that
+signing authority, then use the remaining SSH authority to enroll and prove fresh
+machine credentials. The field signing agent decrypts its key only into
+memory, defaults to an 8-hour unlock, refuses TTLs above 24 hours, and signs only
+schema-validated manifest, release-status, promotion/qualification evidence, or
+field-readiness digests.
+
+For computer replacement, restore only verified P2.T8 non-secret records and
+caches. Generate fresh SSH, Runtime, and signing credentials on the replacement;
+never restore a machine identity or private credential from an archive. Prove
+the replacement before revoking the old machine.
+
+If every authorized SSH private key is unavailable, stop. Passwords, default
+credentials, cloud-init/bootstrap resurrection, boot-partition key injection,
+receiver bypass, and Runtime-token escalation are unsupported and rejected.
+Power the aircraft down, remove the SD card, inspect/salvage it read-only, verify
+the latest backup, write a fresh governed image, run retained Ansible provisioning
+with a fresh enrollment, restore only verified backup domains, and repeat complete
+commissioning before flight. Losing all SSH authority is a physical reimage path;
+losing only field signing authority is not.

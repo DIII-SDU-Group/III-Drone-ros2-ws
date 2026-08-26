@@ -21,6 +21,7 @@ from iii_deployment.signers import add_trusted_signer, generate_signer, signer_p
 from iii_deployment.staging import ReleaseStore
 from iii_deployment.contracts import canonical_json
 from iii_deployment.receiver.access import AccessManager, client_id_for_public_key
+from iii_deployment.identity import create_machine_enrollment
 from iii_deployment.receiver.engine import ReceiverEngine
 from iii_deployment.receiver.protocol import Request
 from iii_deployment.receiver.state import (
@@ -32,6 +33,88 @@ from iii_deployment.receiver.state import (
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ContractRegistry(ROOT / "deployment/schemas/v1")
+
+
+def machine_enrollment(public_key: str, character: int) -> dict:
+    signer = bytes([character]) * 32
+    return create_machine_enrollment(
+        label=f"machine-{character}",
+        ssh_public_key=public_key,
+        runtime_token=base64.urlsafe_b64encode(bytes([character + 10]) * 32)
+        .decode("ascii")
+        .rstrip("="),
+        field_signer_descriptor={
+            "schema_version": "1",
+            "descriptor_type": "iii.signer-public",
+            "signer_id": hashlib.sha256(signer).hexdigest(),
+            "algorithm": "Ed25519",
+            "authority": "workstation-field",
+            "public_key": base64.b64encode(signer).decode("ascii"),
+        },
+        registry=REGISTRY,
+    )
+
+
+def test_receiver_uses_access_derived_field_signer_state(
+    tmp_path: Path, cases: "ReleaseCases"
+) -> None:
+    case = cases.bundle(
+        "field-trust",
+        release_id="f" * 64,
+        release_class="field-development",
+        version=None,
+    )
+    operator_blob = (
+        struct.pack(">I", 11) + b"ssh-ed25519" + struct.pack(">I", 32) + b"f" * 32
+    )
+    operator_key = "ssh-ed25519 " + base64.b64encode(operator_blob).decode("ascii")
+    enrollment = create_machine_enrollment(
+        label="field-builder",
+        ssh_public_key=operator_key,
+        runtime_token="F" * 43,
+        field_signer_descriptor=cases.bundle_keys["workstation-field"][1],
+        registry=REGISTRY,
+    )
+    state_path = tmp_path / "access-state.json"
+    field_path = tmp_path / "field-signers.json"
+    access = AccessManager(
+        state_path=state_path,
+        authorized_keys_path=tmp_path / "authorized_keys",
+        registry=REGISTRY,
+        runtime_verifiers_path=tmp_path / "runtime-verifiers.json",
+        field_signers_path=field_path,
+    )
+    access.bootstrap([enrollment])
+    active_projection = field_path.read_bytes()
+    store = cases.store(
+        tmp_path / "active",
+        field_trust=field_path,
+        field_access_state=state_path,
+    )
+    assert store.stage(case.paths.directory, status_index=None, staged_at=NOW).staged
+
+    access.revoke_field_signer(
+        requester=enrollment["ssh"]["client_id"],
+        field_signer_id=enrollment["field_signing"]["signer_id"],
+    )
+    rejected = cases.store(
+        tmp_path / "revoked",
+        field_trust=field_path,
+        field_access_state=state_path,
+    )
+    with pytest.raises(ContractError, match="revoked"):
+        rejected.stage(case.paths.directory, status_index=None, staged_at=NOW)
+
+    field_path.write_bytes(active_projection)
+    stale = cases.store(
+        tmp_path / "stale",
+        field_trust=field_path,
+        field_access_state=state_path,
+    )
+    with pytest.raises(ContractError, match="projection differs"):
+        stale.stage(case.paths.directory, status_index=None, staged_at=NOW)
+
+
 LIMITS = load_bundle_limits(ROOT / "deployment/operational-policy.json")
 FIXTURE = ROOT / "deployment/tests/fixtures/release_manifest.json"
 NOW = "2026-08-26T10:00:00Z"
@@ -286,8 +369,9 @@ def test_receiver_engine_stages_a_real_signed_bundle_and_status_chain(
     access = AccessManager(
         state_path=tmp_path / "receiver/access.json",
         authorized_keys_path=tmp_path / "home/iii/.ssh/authorized_keys",
+        registry=REGISTRY,
     )
-    access.bootstrap([operator_key])
+    access.bootstrap([machine_enrollment(operator_key, 1)])
     clock = SimpleNamespace(value=10.0, boot="boot-a")
     control = ReceiverControlStore(
         tmp_path / "receiver",

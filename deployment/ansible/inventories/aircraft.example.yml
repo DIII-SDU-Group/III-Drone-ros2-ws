@@ -6,7 +6,9 @@ all:
         iii.local:
           ansible_user: iii-bootstrap
           iii_target_class: raspberry-pi-5-noble-arm64
-          iii_logical_target: iii
+          iii_logical_target: drone
           iii_profile: real
+          # Runtime/system identity comes from the one committed shared target
+          # profile, never a per-aircraft serial or inventory override.
           # Supply iii_provisioning_inputs through an owner-only, Git-ignored
           # --extra-vars file. No credential or host-specific secret belongs here.

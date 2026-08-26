@@ -1,67 +1,119 @@
 from __future__ import annotations
 
-from pathlib import Path
 import base64
+import hashlib
+from pathlib import Path
 import struct
 
 import pytest
 
-from iii_deployment.contracts import ContractError
+from iii_deployment.contracts import ContractError, ContractRegistry, canonical_json
+from iii_deployment.identity import create_machine_enrollment
 from iii_deployment.receiver import access_bootstrap
 from iii_deployment.receiver.access import AccessManager
 
 
-def _key(character: bytes) -> str:
+SCHEMAS = Path(__file__).resolve().parents[1] / "schemas/v1"
+REGISTRY = ContractRegistry(SCHEMAS)
+
+
+def _key(character: int) -> str:
     blob = (
-        struct.pack(">I", 11) + b"ssh-ed25519" + struct.pack(">I", 32) + character * 32
+        struct.pack(">I", 11)
+        + b"ssh-ed25519"
+        + struct.pack(">I", 32)
+        + bytes([character]) * 32
     )
     return "ssh-ed25519 " + base64.b64encode(blob).decode("ascii")
 
 
-KEY_A = _key(b"a")
-KEY_B = _key(b"b")
-
-
-def test_access_bootstrap_is_idempotent_and_reconciles_forced_commands(
-    monkeypatch, tmp_path: Path
-) -> None:
-    state = tmp_path / "access-state.json"
-    authorized = tmp_path / "authorized_keys"
-    monkeypatch.setattr(access_bootstrap, "STATE_ROOT", tmp_path)
-    monkeypatch.setattr(access_bootstrap, "AUTHORIZED_KEYS_PATH", authorized)
-    keys = tmp_path / "keys"
-    keys.write_text(KEY_A + "\n")
-    first = access_bootstrap.reconcile(keys)
-    assert first["changed"] is True
-    assert first["active_clients"]
-    authorized.write_text("tampered\n")
-    second = access_bootstrap.reconcile(keys)
-    assert second["changed"] is False
-    assert (
-        'restrict,command="/usr/bin/iii-deployment-ssh-gateway'
-        in authorized.read_text()
-    )
-    assert (
-        AccessManager(state_path=state, authorized_keys_path=authorized).load()[
-            "access_id"
-        ]
-        == first["access_id"]
+def _enrollment(character: int) -> dict:
+    signer = bytes([character]) * 32
+    return create_machine_enrollment(
+        label=f"machine-{character}",
+        ssh_public_key=_key(character),
+        runtime_token=base64.urlsafe_b64encode(bytes([character + 10]) * 32)
+        .decode("ascii")
+        .rstrip("="),
+        field_signer_descriptor={
+            "schema_version": "1",
+            "descriptor_type": "iii.signer-public",
+            "signer_id": hashlib.sha256(signer).hexdigest(),
+            "algorithm": "Ed25519",
+            "authority": "workstation-field",
+            "public_key": base64.b64encode(signer).decode("ascii"),
+        },
+        registry=REGISTRY,
     )
 
 
-def test_access_bootstrap_rejects_key_set_change_and_noncanonical_input(
-    monkeypatch, tmp_path: Path
-) -> None:
+def _configure(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(access_bootstrap, "STATE_ROOT", tmp_path)
     monkeypatch.setattr(
         access_bootstrap, "AUTHORIZED_KEYS_PATH", tmp_path / "authorized_keys"
     )
-    keys = tmp_path / "keys"
-    keys.write_text(KEY_A + "\n")
-    access_bootstrap.reconcile(keys)
-    keys.write_text(KEY_A + "\n" + KEY_B + "\n")
-    with pytest.raises(ContractError, match="differs"):
-        access_bootstrap.reconcile(keys)
-    keys.write_text("# comment\n" + KEY_A + "\n")
-    with pytest.raises(ContractError, match="only canonical"):
-        access_bootstrap.reconcile(keys)
+    monkeypatch.setattr(
+        access_bootstrap, "RUNTIME_VERIFIERS_PATH", tmp_path / "runtime-verifiers.json"
+    )
+    monkeypatch.setattr(
+        access_bootstrap, "FIELD_SIGNERS_PATH", tmp_path / "field-signers.json"
+    )
+
+
+def _write(path: Path, value: dict) -> None:
+    path.write_bytes(canonical_json(value) + b"\n")
+
+
+def test_access_bootstrap_is_idempotent_and_reconciles_all_derived_access(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _configure(monkeypatch, tmp_path)
+    source = tmp_path / "enrollment.json"
+    _write(source, _enrollment(1))
+    first = access_bootstrap.reconcile([source], schema_root=SCHEMAS)
+    assert first["changed"] is True
+    assert first["active_machines"]
+    (tmp_path / "authorized_keys").write_text("tampered\n")
+    (tmp_path / "runtime-verifiers.json").write_text("tampered\n")
+    (tmp_path / "access-state.json").chmod(0o600)
+    second = access_bootstrap.reconcile([source], schema_root=SCHEMAS)
+    assert second["changed"] is True
+    assert (tmp_path / "access-state.json").stat().st_mode & 0o777 == 0o640
+    assert (
+        'restrict,command="/usr/bin/iii-deployment-ssh-gateway'
+        in (tmp_path / "authorized_keys").read_text()
+    )
+    assert (
+        AccessManager(
+            state_path=tmp_path / "access-state.json",
+            authorized_keys_path=tmp_path / "authorized_keys",
+            registry=REGISTRY,
+        ).load()["access_id"]
+        == first["access_id"]
+    )
+
+
+def test_access_bootstrap_allows_later_enrollment_but_rejects_bootstrap_change(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _configure(monkeypatch, tmp_path)
+    source = tmp_path / "enrollment.json"
+    first = _enrollment(1)
+    second = _enrollment(2)
+    _write(source, first)
+    access_bootstrap.reconcile([source], schema_root=SCHEMAS)
+    manager = AccessManager(
+        state_path=tmp_path / "access-state.json",
+        authorized_keys_path=tmp_path / "authorized_keys",
+        runtime_verifiers_path=tmp_path / "runtime-verifiers.json",
+        field_signers_path=tmp_path / "field-signers.json",
+        registry=REGISTRY,
+    )
+    manager.add_pending(requester=first["ssh"]["client_id"], enrollment=second)
+    manager.prove(requester=second["ssh"]["client_id"], enrollment=second)
+    assert access_bootstrap.reconcile([source], schema_root=SCHEMAS)["changed"] is False
+    manager.revoke(requester=second["ssh"]["client_id"], machine_id=first["machine_id"])
+    assert access_bootstrap.reconcile([source], schema_root=SCHEMAS)["changed"] is False
+    _write(source, _enrollment(3))
+    with pytest.raises(ContractError, match="bootstrap enrollment"):
+        access_bootstrap.reconcile([source], schema_root=SCHEMAS)

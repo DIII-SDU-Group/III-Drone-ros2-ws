@@ -3,8 +3,10 @@
   ansible.builtin.command:
     argv:
       - /opt/iii/receiver/bootstrap/bin/iii-receiver-access-bootstrap
-      - --keys
-      - /etc/iii/bootstrap-operator-keys
+      - --enrollment
+      - /etc/iii/bootstrap-machine-enrollment.json
+      - --runtime-gid
+      - "{{ iii_runtime_gid | string }}"
   register: iii_finalize_access
   changed_when: false
   check_mode: false
@@ -13,7 +15,7 @@
   ansible.builtin.assert:
     that:
       - not (iii_finalize_access.stdout | from_json).changed
-      - (iii_finalize_access.stdout | from_json).active_clients | length > 0
+      - (iii_finalize_access.stdout | from_json).active_machines | length > 0
       - (iii_finalize_access.stdout | from_json).forced_command == '/usr/bin/iii-deployment-ssh-gateway'
 
 - name: Finalize cloud-init sanitization and revoke bootstrap authority atomically

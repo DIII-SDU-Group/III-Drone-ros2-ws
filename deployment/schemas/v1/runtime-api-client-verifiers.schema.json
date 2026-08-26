@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/runtime-api-client-verifiers.schema.json",
+  "title": "III derived active Runtime API machine verifiers",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "verifier_id", "access_id", "generation", "clients"],
+  "properties": {
+    "schema": {"const": "iii.runtime-api-client-verifiers/v1"},
+    "verifier_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "access_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "generation": {"type": "integer", "minimum": 0},
+    "clients": {
+      "type": "array", "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["machine_id", "label", "token_sha256"],
+        "properties": {
+          "machine_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "label": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+          "token_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  }
+}

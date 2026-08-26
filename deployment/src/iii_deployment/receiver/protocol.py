@@ -68,6 +68,75 @@ TARGET_ID = re.compile(r"^[a-z][a-z0-9.-]{0,63}$")
 # Comments are deliberately excluded so a key has one stable client identity.
 PUBLIC_KEY = re.compile(r"^ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI[A-Za-z0-9+/]{43}$")
 PLAN_SCHEMA = "iii.receiver-mutation-plan/v1"
+MACHINE_LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+ED25519_PUBLIC = re.compile(r"^[A-Za-z0-9+/]{43}=$")
+
+
+def _machine_enrollment(value: Any) -> None:
+    if not isinstance(value, dict):
+        raise ContractError("machine enrollment must be an object")
+    _exact(
+        value,
+        {
+            "schema",
+            "enrollment_id",
+            "machine_id",
+            "label",
+            "ssh",
+            "runtime_api",
+            "field_signing",
+        },
+        label="machine enrollment",
+    )
+    if value["schema"] != "iii.machine-enrollment/v1":
+        raise ContractError("machine enrollment schema is unsupported")
+    for field in ("enrollment_id", "machine_id"):
+        _identity(value[field], label=f"machine enrollment {field}")
+    if not isinstance(value["label"], str) or not MACHINE_LABEL.fullmatch(
+        value["label"]
+    ):
+        raise ContractError("machine enrollment label is invalid")
+    ssh = value["ssh"]
+    runtime = value["runtime_api"]
+    signer = value["field_signing"]
+    if not isinstance(ssh, dict):
+        raise ContractError("machine enrollment SSH descriptor is malformed")
+    _exact(ssh, {"client_id", "public_key"}, label="machine enrollment SSH")
+    _identity(ssh["client_id"], label="machine enrollment SSH identity")
+    if not isinstance(ssh["public_key"], str) or not PUBLIC_KEY.fullmatch(
+        ssh["public_key"]
+    ):
+        raise ContractError("machine enrollment SSH key is invalid")
+    if not isinstance(runtime, dict):
+        raise ContractError("machine enrollment Runtime descriptor is malformed")
+    _exact(runtime, {"token_sha256"}, label="machine enrollment Runtime API")
+    _identity(runtime["token_sha256"], label="Runtime API verifier")
+    if not isinstance(signer, dict):
+        raise ContractError("machine enrollment signer descriptor is malformed")
+    _exact(
+        signer,
+        {"signer_id", "algorithm", "authority", "public_key"},
+        label="machine enrollment field signer",
+    )
+    _identity(signer["signer_id"], label="field signer identity")
+    if signer["algorithm"] != "Ed25519" or signer["authority"] != "workstation-field":
+        raise ContractError("machine enrollment field signer authority is invalid")
+    if not isinstance(signer["public_key"], str) or not ED25519_PUBLIC.fullmatch(
+        signer["public_key"]
+    ):
+        raise ContractError("machine enrollment field signer key is invalid")
+
+
+def _access_revoke_parameters(value: Mapping[str, Any], *, label: str) -> None:
+    if value.get("authority") == "machine":
+        _exact(value, {"authority", "machine_id"}, label=label)
+        _identity(value["machine_id"], label="access machine identity")
+        return
+    if value.get("authority") == "field-signing":
+        _exact(value, {"authority", "field_signer_id"}, label=label)
+        _identity(value["field_signer_id"], label="field signer identity")
+        return
+    raise ContractError("receiver access-revoke authority is invalid")
 
 
 @dataclass(frozen=True)
@@ -373,19 +442,14 @@ def validate_mutation_plan(
     elif plan["action"] == Action.ACCESS_ADD.value:
         _exact(
             parameters,
-            {"phase", "client_id", "public_key"},
+            {"phase", "enrollment"},
             label="receiver access-add parameters",
         )
         if parameters["phase"] not in {"add", "prove"}:
             raise ContractError("receiver access-add phase is invalid")
-        _identity(parameters["client_id"], label="access client identity")
-        if not isinstance(parameters["public_key"], str) or not PUBLIC_KEY.fullmatch(
-            parameters["public_key"]
-        ):
-            raise ContractError("receiver access-add public key is invalid")
+        _machine_enrollment(parameters["enrollment"])
     else:
-        _exact(parameters, {"client_id"}, label="receiver access-revoke parameters")
-        _identity(parameters["client_id"], label="access client identity")
+        _access_revoke_parameters(parameters, label="receiver access-revoke parameters")
     target = plan["target"]
     if not isinstance(target, dict):
         raise ContractError("receiver mutation plan target is malformed")
@@ -663,21 +727,14 @@ def validate_request_payload(request: Request) -> None:
         if payload["action"] == Action.ACCESS_ADD.value:
             _exact(
                 parameters,
-                {"phase", "client_id", "public_key"},
+                {"phase", "enrollment"},
                 label="plan access-add",
             )
             if parameters["phase"] not in {"add", "prove"}:
                 raise ContractError("plan access-add phase must be add or prove")
-            _identity(parameters["client_id"], label="access client identity")
-            if not isinstance(
-                parameters["public_key"], str
-            ) or not PUBLIC_KEY.fullmatch(parameters["public_key"]):
-                raise ContractError(
-                    "plan access public key must be canonical ssh-ed25519"
-                )
+            _machine_enrollment(parameters["enrollment"])
         else:
-            _exact(parameters, {"client_id"}, label="plan access-revoke")
-            _identity(parameters["client_id"], label="access client identity")
+            _access_revoke_parameters(parameters, label="plan access-revoke")
         return
     if request.action == Action.STAGE:
         _exact(payload, {"plan"}, label="stage payload")

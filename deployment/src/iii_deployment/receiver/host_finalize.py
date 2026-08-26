@@ -172,6 +172,16 @@ def finalize_host(
         raise ContractError("host health report is not converged")
     if health.get("baseline_id") != baseline_id:
         raise ContractError("host health report belongs to another baseline")
+    shared_target_profile_id = health.get("shared_target_profile_id")
+    if (
+        not isinstance(shared_target_profile_id, str)
+        or len(shared_target_profile_id) != 64
+        or any(
+            character not in "0123456789abcdef"
+            for character in shared_target_profile_id
+        )
+    ):
+        raise ContractError("host health report lacks the shared target profile")
 
     readiness = _document(
         _under(root, Path("/run/iii/receiver-readiness.json")),
@@ -192,7 +202,7 @@ def finalize_host(
         _under(root, Path("/var/lib/iii/deployment/access-state.json")),
         label="receiver access state",
     )
-    if access.get("schema") != "iii.receiver-access-state/v1":
+    if access.get("schema") != "iii.receiver-access-state/v2":
         raise ContractError("receiver access state has an unsupported schema")
     expected_access_id = content_identity(
         {key: value for key, value in access.items() if key != "access_id"}
@@ -200,14 +210,26 @@ def finalize_host(
     clients = access.get("clients")
     if access.get("access_id") != expected_access_id or not isinstance(clients, dict):
         raise ContractError("receiver access-state identity is invalid")
-    active = sorted(
-        client_id
-        for client_id, record in clients.items()
-        if isinstance(record, dict) and record.get("state") == "active"
-    )
+    required_machine_fields = {
+        "machine_id",
+        "label",
+        "public_key",
+        "runtime_token_sha256",
+        "field_signer_id",
+        "field_signer_public_key",
+        "state",
+        "field_signer_state",
+        "added_by",
+        "proved_by",
+    }
+    active = sorted(clients)
     if not active or any(
-        not isinstance(record, dict) or record.get("state") != "active"
-        for record in clients.values()
+        not isinstance(record, dict)
+        or set(record) != required_machine_fields
+        or record.get("state") != "active"
+        or record.get("field_signer_state") != "active"
+        or record.get("proved_by") != client_id
+        for client_id, record in clients.items()
     ):
         raise ContractError("permanent operator access is absent, pending, or revoked")
     authorized_keys = _under(root, Path("/home/iii/.ssh/authorized_keys"))
@@ -215,18 +237,78 @@ def finalize_host(
         raise ContractError(
             "permanent forced-command authorized_keys is absent or linked"
         )
-    key_lines = [
+    key_lines = sorted(
         line
         for line in authorized_keys.read_text(encoding="ascii").splitlines()
         if line
-    ]
-    if len(key_lines) != len(active) or any(
-        'restrict,command="/usr/bin/iii-deployment-ssh-gateway --client-id ' not in line
-        for line in key_lines
-    ):
+    )
+    expected_key_lines = sorted(
+        'restrict,command="/usr/bin/iii-deployment-ssh-gateway --client-id '
+        + client_id
+        + '" '
+        + clients[client_id]["public_key"]
+        for client_id in active
+    )
+    if key_lines != expected_key_lines:
         raise ContractError(
             "permanent operator keys are not restricted to the receiver gateway"
         )
+
+    runtime_verifiers = {
+        "schema": "iii.runtime-api-client-verifiers/v1",
+        "verifier_id": "0" * 64,
+        "access_id": access["access_id"],
+        "generation": access["generation"],
+        "clients": sorted(
+            (
+                {
+                    "machine_id": record["machine_id"],
+                    "label": record["label"],
+                    "token_sha256": record["runtime_token_sha256"],
+                }
+                for record in clients.values()
+            ),
+            key=lambda item: item["machine_id"],
+        ),
+    }
+    runtime_verifiers["verifier_id"] = content_identity(
+        {key: value for key, value in runtime_verifiers.items() if key != "verifier_id"}
+    )
+    observed_runtime_verifiers = _document(
+        _under(
+            root,
+            Path("/var/lib/iii/deployment/runtime-api-client-verifiers.json"),
+        ),
+        label="Runtime API machine verifier projection",
+    )
+    if observed_runtime_verifiers != runtime_verifiers:
+        raise ContractError(
+            "Runtime API machine verifier projection differs from access state"
+        )
+
+    field_signers = {
+        "schema_version": "1",
+        "store_type": "iii.trusted-signers",
+        "signers": sorted(
+            (
+                {
+                    "signer_id": record["field_signer_id"],
+                    "algorithm": "Ed25519",
+                    "authority": "workstation-field",
+                    "public_key": record["field_signer_public_key"],
+                    "state": "active",
+                }
+                for record in clients.values()
+            ),
+            key=lambda item: item["signer_id"],
+        ),
+    }
+    observed_field_signers = _document(
+        _under(root, Path("/var/lib/iii/deployment/workstation-field-signers.json")),
+        label="field signer trust projection",
+    )
+    if observed_field_signers != field_signers:
+        raise ContractError("field signer trust projection differs from access state")
 
     current_slot = _selector_slot(root, "current")
     fallback_slot = _selector_slot(root, "fallback")
@@ -289,6 +371,7 @@ def finalize_host(
         "state": "provisioned",
         "baseline_id": baseline_id,
         "target_definition_id": health.get("target_definition_id"),
+        "shared_target_profile_id": shared_target_profile_id,
         "logical_target": health.get("logical_target"),
         "profile": health.get("profile"),
         "receiver_id": readiness["receiver_id"],
@@ -296,6 +379,9 @@ def finalize_host(
         "receiver_slot": current_slot,
         "access_id": access["access_id"],
         "active_operator_clients": active,
+        "active_operator_machines": sorted(
+            record["machine_id"] for record in clients.values()
+        ),
         "network_configuration": "/etc/netplan/90-iii-operator.yaml",
         "cloud_init_disabled": True,
         "secret_bearing_seed_and_instance_data_removed": True,

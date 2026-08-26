@@ -36,10 +36,10 @@
     mode: "0640"
   no_log: true
 
-- name: Stage the first permanent operator public keys
+- name: Stage the first public machine enrollment
   ansible.builtin.copy:
-    src: "{{ iii_provisioning_inputs.operator_public_keys_source }}"
-    dest: /etc/iii/bootstrap-operator-keys
+    src: "{{ iii_provisioning_inputs.operator_enrollment_source }}"
+    dest: /etc/iii/bootstrap-machine-enrollment.json
     owner: root
     group: root
     mode: "0600"
@@ -151,8 +151,10 @@
   ansible.builtin.command:
     argv:
       - /opt/iii/receiver/bootstrap/bin/iii-receiver-access-bootstrap
-      - --keys
-      - /etc/iii/bootstrap-operator-keys
+      - --enrollment
+      - /etc/iii/bootstrap-machine-enrollment.json
+      - --runtime-gid
+      - "{{ iii_runtime_gid | string }}"
   register: iii_access_bootstrap
   changed_when: (iii_access_bootstrap.stdout | from_json).changed
   when: not ansible_check_mode

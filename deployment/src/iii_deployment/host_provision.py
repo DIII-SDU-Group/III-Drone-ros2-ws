@@ -11,7 +11,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping
 
 from iii_deployment.contracts import ContractError, ContractRegistry, content_identity
 
@@ -23,7 +23,7 @@ FILE_INPUT_FIELDS = (
     "bundle_trust_source",
     "release_status_trust_source",
     "receiver_update_trust_source",
-    "operator_public_keys_source",
+    "operator_enrollment_source",
     "runtime_api_secret_source",
 )
 DIRECTORY_INPUT_FIELDS = ("receiver_bundle_source", "receiver_wheelhouse_source")
@@ -159,6 +159,34 @@ def load_input(path: Path, *, schema_root: Path) -> tuple[dict[str, Any], Path]:
         value[field] = str(candidate.resolve())
     for field in FILE_INPUT_FIELDS:
         _secure_regular_file(Path(value[field]), label=field)
+    from iii_deployment.identity import load_machine_enrollment
+
+    load_machine_enrollment(
+        Path(value["operator_enrollment_source"]), ContractRegistry(schema_root)
+    )
+    try:
+        secret_lines = (
+            Path(value["runtime_api_secret_source"])
+            .read_text(encoding="utf-8")
+            .splitlines()
+        )
+    except (OSError, UnicodeError) as exc:
+        raise HostProvisionError(f"cannot read runtime API secret: {exc}") from exc
+    assignments = {
+        line.split("=", 1)[0]: line.split("=", 1)[1]
+        for line in secret_lines
+        if line and not line.startswith("#") and "=" in line
+    }
+    browser_password = assignments.get("III_RUNTIME_API_BROWSER_PASSWORD", "")
+    if (
+        set(assignments) != {"III_RUNTIME_API_BROWSER_PASSWORD"}
+        or len(browser_password) < 16
+        or browser_password in {"dev-password", "change-me-browser-password"}
+    ):
+        raise HostProvisionError(
+            "runtime API secret must contain only a non-development browser password "
+            "of at least 16 characters"
+        )
     for field in DIRECTORY_INPUT_FIELDS:
         _tree_manifest(Path(value[field]), label=field)
     return value, source

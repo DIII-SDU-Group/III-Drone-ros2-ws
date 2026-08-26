@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/shared-target-profile.schema.json",
+  "title": "III shared aircraft target identity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "profile_id", "name", "target_class", "logical_target", "inventory_mode", "endpoint", "runtime", "profiles", "network", "credentials"],
+  "properties": {
+    "schema": {"const": "iii.shared-target-profile/v1"},
+    "profile_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "name": {"const": "iii-shared-aircraft"},
+    "target_class": {"const": "raspberry-pi-5-noble-arm64"},
+    "logical_target": {"const": "drone"},
+    "inventory_mode": {"const": "shared-hardware-class"},
+    "endpoint": {
+      "type": "object", "additionalProperties": false,
+      "required": ["hostname", "ssh_user"],
+      "properties": {"hostname": {"const": "iii.local"}, "ssh_user": {"const": "iii"}}
+    },
+    "runtime": {
+      "type": "object", "additionalProperties": false,
+      "required": ["runtime_id", "system_id", "display_name", "mdns_instance"],
+      "properties": {
+        "runtime_id": {"const": "iii-aircraft-runtime"},
+        "system_id": {"const": "iii-aircraft"},
+        "display_name": {"const": "III Aircraft Runtime"},
+        "mdns_instance": {"const": "III Aircraft Runtime"}
+      }
+    },
+    "profiles": {
+      "type": "array", "const": ["real", "opti_track"]
+    },
+    "network": {
+      "type": "object", "additionalProperties": false,
+      "required": ["runtime_api_port", "mdns_port", "operator_cidr_is_site_input"],
+      "properties": {
+        "runtime_api_port": {"const": 8765},
+        "mdns_port": {"const": 5353},
+        "operator_cidr_is_site_input": {"const": true}
+      }
+    },
+    "credentials": {
+      "type": "object", "additionalProperties": false,
+      "required": ["committed_secrets", "browser", "runtime_cli", "ssh", "field_signing"],
+      "properties": {
+        "committed_secrets": {"const": false},
+        "browser": {"const": "external-solo-operator-secret"},
+        "runtime_cli": {"const": "per-machine-sha256-verifier"},
+        "ssh": {"const": "per-machine-ed25519-public-key"},
+        "field_signing": {"const": "per-machine-ed25519-public-verifier"}
+      }
+    }
+  }
+}

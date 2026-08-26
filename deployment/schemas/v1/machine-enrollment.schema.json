@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/machine-enrollment.schema.json",
+  "title": "III per-computer public credential enrollment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "enrollment_id", "machine_id", "label", "ssh", "runtime_api", "field_signing"],
+  "properties": {
+    "schema": {"const": "iii.machine-enrollment/v1"},
+    "enrollment_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "machine_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "label": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+    "ssh": {
+      "type": "object", "additionalProperties": false,
+      "required": ["client_id", "public_key"],
+      "properties": {
+        "client_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "public_key": {"type": "string", "pattern": "^ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI[A-Za-z0-9+/]{43}$"}
+      }
+    },
+    "runtime_api": {
+      "type": "object", "additionalProperties": false,
+      "required": ["token_sha256"],
+      "properties": {"token_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+    },
+    "field_signing": {
+      "type": "object", "additionalProperties": false,
+      "required": ["signer_id", "algorithm", "authority", "public_key"],
+      "properties": {
+        "signer_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "algorithm": {"const": "Ed25519"},
+        "authority": {"const": "workstation-field"},
+        "public_key": {"type": "string", "pattern": "^[A-Za-z0-9+/]{43}=$"}
+      }
+    }
+  }
+}

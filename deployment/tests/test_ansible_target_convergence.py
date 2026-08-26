@@ -17,6 +17,7 @@ from iii_deployment.host_provision import (
     _run_ansible,
     build_plan,
 )
+from iii_deployment.identity import create_machine_enrollment
 from iii_deployment.receiver.update import package_receiver_update
 from iii_deployment.signers import generate_signer
 
@@ -249,11 +250,32 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
     ssh_key = tmp_path / "bootstrap"
     _run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(ssh_key)])
     public_key = " ".join((ssh_key.with_suffix(".pub")).read_text().split()[:2])
-    operator_keys = tmp_path / "operator-keys"
-    operator_keys.write_text(public_key + "\n")
-    operator_keys.chmod(0o600)
+    field_key = tmp_path / "field.pem"
+    field_descriptor_path = tmp_path / "field-public.json"
+    field_descriptor = generate_signer(
+        field_key,
+        field_descriptor_path,
+        authority="workstation-field",
+        registry=ContractRegistry(SCHEMAS),
+    )
+    operator_enrollment = tmp_path / "operator-enrollment.json"
+    operator_enrollment.write_bytes(
+        canonical_json(
+            create_machine_enrollment(
+                label="target-convergence-controller",
+                ssh_public_key=public_key,
+                runtime_token="T" * 43,
+                field_signer_descriptor=field_descriptor,
+                registry=ContractRegistry(SCHEMAS),
+            )
+        )
+        + b"\n"
+    )
+    operator_enrollment.chmod(0o600)
     runtime_secret = tmp_path / "runtime-api.env"
-    runtime_secret.write_text("III_RUNTIME_API_TOKEN=target-test-only\n")
+    runtime_secret.write_text(
+        "III_RUNTIME_API_BROWSER_PASSWORD=target-browser-secret\n"
+    )
     runtime_secret.chmod(0o600)
     bundle, wheelhouse, bundle_trust, status_trust, receiver_trust = (
         _receiver_artifacts(tmp_path)
@@ -327,7 +349,7 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
                 {
                     "schema": "iii.host-provisioning-input/v1",
                     "target_class": "raspberry-pi-5-noble-arm64",
-                    "logical_target": "iii",
+                    "logical_target": "drone",
                     "profile": "real",
                     "operator_cidr": "172.16.0.0/12",
                     "receiver_bundle_source": str(bundle),
@@ -335,7 +357,7 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
                     "bundle_trust_source": str(bundle_trust),
                     "release_status_trust_source": str(status_trust),
                     "receiver_update_trust_source": str(receiver_trust),
-                    "operator_public_keys_source": str(operator_keys),
+                    "operator_enrollment_source": str(operator_enrollment),
                     "runtime_api_secret_source": str(runtime_secret),
                 },
                 sort_keys=True,

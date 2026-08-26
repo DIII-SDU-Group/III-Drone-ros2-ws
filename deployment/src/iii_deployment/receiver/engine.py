@@ -156,11 +156,32 @@ class ReceiverEngine:
 
     def _handle(self, request: Request) -> dict[str, Any]:
         if request.action == Action.STATUS:
-            self.access.require_active(request.client_id)
+            try:
+                self.access.require_active(request.client_id)
+            except ContractError:
+                journal = self.journals.load(request.operation_id)
+                self.access.require_pending(request.client_id)
+                if (
+                    journal is None
+                    or journal.get("client_id") != request.client_id
+                    or journal.get("action") != Action.ACCESS_ADD.value
+                ):
+                    raise ContractError(
+                        "pending machine may inspect only its own enrollment proof"
+                    )
+                return self._result(
+                    request,
+                    operation=journal,
+                    pending_enrollment_proof=True,
+                )
             return self._status(request.operation_id)
         if request.action == Action.ACCESS_LIST:
             self.access.require_active(request.client_id)
-            return self._result(request, clients=self.access.list_clients())
+            return self._result(
+                request,
+                target={"logical_id": self.logical_target, "profile": self.profile},
+                clients=self.access.list_clients(),
+            )
         if request.action == Action.LOG_EXPORT:
             self.access.require_active(request.client_id)
             if self.log_inventory is None:
@@ -251,8 +272,7 @@ class ReceiverEngine:
             if action == Action.ACCESS_ADD.value and parameters["phase"] == "prove":
                 self.access.require_pending_proof(
                     requester=request.client_id,
-                    client_id=parameters["client_id"],
-                    public_key=parameters["public_key"],
+                    enrollment=parameters["enrollment"],
                 )
                 return
         self.access.require_active(request.client_id)
@@ -333,8 +353,7 @@ class ReceiverEngine:
             parameters = plan["parameters"]
             self.access.require_pending_proof(
                 requester=request.client_id,
-                client_id=parameters["client_id"],
-                public_key=parameters["public_key"],
+                enrollment=parameters["enrollment"],
             )
             return
         self.access.require_active(request.client_id)
@@ -775,34 +794,43 @@ class ReceiverEngine:
             if parameters["phase"] == "add":
                 state = self.access.add_pending(
                     requester=plan["client_id"],
-                    client_id=parameters["client_id"],
-                    public_key=parameters["public_key"],
+                    enrollment=parameters["enrollment"],
                 )
                 state_name = "pending"
             else:
                 state = self.access.prove(
                     requester=plan["client_id"],
-                    client_id=parameters["client_id"],
-                    public_key=parameters["public_key"],
+                    enrollment=parameters["enrollment"],
                 )
                 state_name = "active"
             return {
                 "kind": "access",
                 "access_id": state["access_id"],
                 "generation": state["generation"],
-                "client_id": parameters["client_id"],
+                "client_id": parameters["enrollment"]["ssh"]["client_id"],
+                "machine_id": parameters["enrollment"]["machine_id"],
                 "state": state_name,
             }
         if action == Action.ACCESS_REVOKE.value:
-            state = self.access.revoke(
-                requester=plan["client_id"], client_id=parameters["client_id"]
-            )
+            if parameters["authority"] == "machine":
+                state = self.access.revoke(
+                    requester=plan["client_id"], machine_id=parameters["machine_id"]
+                )
+                identity = {"machine_id": parameters["machine_id"]}
+                state_name = "revoked"
+            else:
+                state = self.access.revoke_field_signer(
+                    requester=plan["client_id"],
+                    field_signer_id=parameters["field_signer_id"],
+                )
+                identity = {"field_signer_id": parameters["field_signer_id"]}
+                state_name = "signing-revoked-runtime-active"
             return {
                 "kind": "access",
                 "access_id": state["access_id"],
                 "generation": state["generation"],
-                "client_id": parameters["client_id"],
-                "state": "revoked",
+                **identity,
+                "state": state_name,
             }
         if action == Action.LOG_RECEIPT.value:
             if self.log_transfer is None:
@@ -830,7 +858,7 @@ class ReceiverEngine:
         """Recover durable work only; never activate or start application autonomy."""
 
         with self._mutex:
-            self.access.reconcile_authorized_keys()
+            self.access.reconcile_derived_access()
             activation_recovery = (
                 self.activation_coordinator.reconcile()
                 if self.activation_coordinator is not None

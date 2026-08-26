@@ -172,6 +172,8 @@ class ReleaseStore:
         target_root: Path,
         *,
         bundle_trust: Path | Mapping[str, Any],
+        field_trust: Path | None = None,
+        field_access_state: Path | None = None,
         status_trust: Path | Mapping[str, Any],
         registry: ContractRegistry,
         host_limits: Mapping[str, int],
@@ -191,6 +193,8 @@ class ReleaseStore:
         self.status_path = self.state_root / STATUS_INDEX_NAME
         self.lock_path = self.state_root / LOCK_NAME
         self.bundle_trust = bundle_trust
+        self.field_trust = field_trust
+        self.field_access_state = field_access_state
         self.status_trust = status_trust
         self.registry = registry
         self.host_limits = dict(host_limits)
@@ -217,6 +221,69 @@ class ReleaseStore:
         if self.target_root == Path("/"):
             os.chown(self.releases_root, 0, self.runtime_gid)
             os.chown(self.state_root, 0, self.runtime_gid)
+
+    def _bundle_trust(self) -> Mapping[str, Any] | Path:
+        if self.field_trust is None:
+            return self.bundle_trust
+        base = (
+            load_trusted_signers(self.bundle_trust, self.registry)
+            if isinstance(self.bundle_trust, Path)
+            else dict(self.bundle_trust)
+        )
+        field = load_trusted_signers(self.field_trust, self.registry)
+        if self.field_access_state is not None:
+            access = self._field_access_document()
+            expected_field = {
+                "schema_version": "1",
+                "store_type": "iii.trusted-signers",
+                "signers": sorted(
+                    (
+                        {
+                            "signer_id": record["field_signer_id"],
+                            "algorithm": "Ed25519",
+                            "authority": "workstation-field",
+                            "public_key": record["field_signer_public_key"],
+                            "state": record["field_signer_state"],
+                        }
+                        for record in access["clients"].values()
+                        if record["field_signer_state"] in {"active", "revoked"}
+                    ),
+                    key=lambda item: item["signer_id"],
+                ),
+            }
+            self.registry.validate("trusted-signers", expected_field)
+            if field != expected_field:
+                raise ContractError(
+                    "field signer projection differs from authoritative access state"
+                )
+        signers = [
+            dict(item)
+            for item in base["signers"]
+            if item["authority"] != "workstation-field"
+        ] + [dict(item) for item in field["signers"]]
+        identities = [item["signer_id"] for item in signers]
+        if len(identities) != len(set(identities)):
+            raise ContractError("combined bundle trust repeats a signer identity")
+        value = {
+            "schema_version": "1",
+            "store_type": "iii.trusted-signers",
+            "signers": sorted(signers, key=lambda item: item["signer_id"]),
+        }
+        self.registry.validate("trusted-signers", value)
+        return value
+
+    def _field_access_document(self) -> dict[str, Any]:
+        assert self.field_access_state is not None
+        path = self.field_access_state
+        if path.is_symlink() or not path.is_file():
+            raise ContractError("field signer access state is missing or linked")
+        from iii_deployment.receiver.access import AccessManager
+
+        return AccessManager(
+            state_path=path,
+            authorized_keys_path=path.with_name(".unused-authorized-keys"),
+            registry=self.registry,
+        ).load()
 
     @contextmanager
     def _locked(self) -> Iterator[None]:
@@ -493,7 +560,7 @@ class ReleaseStore:
             extracted_verified = extract_bundle(
                 verified.paths.directory,
                 extracted,
-                self.bundle_trust,
+                self._bundle_trust(),
                 registry=self.registry,
                 host_limits=self.host_limits,
             )
@@ -672,7 +739,7 @@ class ReleaseStore:
 
         verified = verify_bundle(
             component_directory,
-            self.bundle_trust,
+            self._bundle_trust(),
             registry=self.registry,
             host_limits=self.host_limits,
         )

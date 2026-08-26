@@ -3826,6 +3826,15 @@ that remains commissioning evidence rather than an unverified task result.
 
 #### P3.T3: Implement Shared Target Identity And Secret Provisioning
 
+**Status: Completed (2026-08-26).** Added one content-identified shared-aircraft
+profile with stable `iii-aircraft` / `iii-aircraft-runtime` hardware-role IDs,
+public machine-enrollment records, receiver-derived SSH and Runtime verifier
+projections, independently revocable field-signing authority, and fail-closed
+real-profile startup. The retained `iii access` workflow now prepares fresh
+owner-only credentials outside Git, proves second-computer enrollment, inventories
+independent authorities, and revokes either a machine or only its signer without
+copying private material or retaining a shared onboard CLI token.
+
 Description:
 Define one shared target profile for the Raspberry Pi 5 hardware class while
 keeping real secrets outside Git. Provision the shared runtime/system IDs,
@@ -3837,26 +3846,26 @@ ground-control computer without copying private keys.
 
 Acceptance:
 
-- [ ] The committed example target profile is safe and documents all non-secret fields.
-- [ ] The shared logical target identity is stable across release changes,
+- [x] The committed example target profile is safe and documents all non-secret fields.
+- [x] The shared logical target identity is stable across release changes,
       physical reboot, and replacement Pis.
-- [ ] Missing/generic identity or development credentials fail real-profile startup.
-- [ ] A second computer can be authorized, verified, and later revoked through
+- [x] Missing/generic identity or development credentials fail real-profile startup.
+- [x] A second computer can be authorized, verified, and later revoked through
       the documented deployment workflow.
-- [ ] `iii access enroll/list/revoke` manages independently identified machine
+- [x] `iii access enroll/list/revoke` manages independently identified machine
       credentials without copying private SSH/signing keys or retaining one shared
       all-computers CLI token; onboard values are stored as verifiers/hashes.
-- [ ] Workstation/GC field-signing keys are generated outside the repository with
+- [x] Workstation/GC field-signing keys are generated outside the repository with
       owner-only storage and OS-keyring/passphrase protection; the signing agent
       enforces the settled 8-hour default/24-hour maximum and signs only validated
       manifest/status/evidence digests, never arbitrary builder-container input.
-- [ ] Replacement-computer recovery generates fresh machine identity and keys,
+- [x] Replacement-computer recovery generates fresh machine identity and keys,
       verifies enrollment before revoking an old computer, and imports only
       verified non-secret records/caches through P2.T8.
-- [ ] If all authorized SSH credentials are unavailable, every remote recovery or
+- [x] If all authorized SSH credentials are unavailable, every remote recovery or
       boot-partition injection attempt is rejected and documentation directs the
       operator to backup inspection, physical reimage, restore, and recommission.
-- [ ] Losing or revoking a field-signing key does not remove runtime-only access;
+- [x] Losing or revoking a field-signing key does not remove runtime-only access;
       signing and SSH authorities are reported and recovered independently.
 
 Tests:
@@ -3864,6 +3873,21 @@ Tests:
 - Inventory schema tests; first/second-computer enrollment; signing-only loss;
   staged replacement with old-key revocation; all-SSH-key-loss denial; attempted
   default password/bypass; and reimage/restore/recommission recovery acceptance.
+
+Verification (2026-08-26): the final cross-repository task matrix passed 147
+tests with one intentional non-root skip; that exact root-owned production
+credential-projection case passed separately under `sudo`. The active Jazzy
+devcontainer built `iii_drone_runtime` and passed all 27 selected credential,
+configuration, and gating tests. All 86 deployment schemas passed Draft-07
+meta-validation, target profiles parsed, the Ansible JSON template test passed,
+production-profile Ansible lint reported zero failures/warnings across 41 files,
+and both aircraft playbooks passed syntax checks. Focused Black, Pyflakes,
+compile, diff, documentation, and contract checks passed. The privileged native
+systemd target passed in 12.23 s, and the final target-equivalent Ansible
+first-convergence, zero-drift, injected-drift repair, and second-zero-drift path
+passed in 478.70 s. No physical Raspberry Pi was attached, so physical reimage,
+power-cycle, and recommission remain commissioning evidence rather than an
+unverified hardware claim.
 
 #### P3.T4: Implement Controlled Host Maintenance
 

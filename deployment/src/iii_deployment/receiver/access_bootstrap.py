@@ -1,63 +1,85 @@
-"""Idempotent root-only bootstrap of the first forced-command operator keys."""
+"""Idempotent root-only bootstrap of public per-machine credentials."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
+import stat
 
-from iii_deployment.contracts import ContractError
-from iii_deployment.receiver.access import AccessManager, client_id_for_public_key
-from iii_deployment.receiver.config import AUTHORIZED_KEYS_PATH, STATE_ROOT
+from iii_deployment.contracts import ContractError, ContractRegistry
+from iii_deployment.identity import load_machine_enrollment
+from iii_deployment.receiver.access import AccessManager
+from iii_deployment.receiver.config import (
+    AUTHORIZED_KEYS_PATH,
+    FIELD_SIGNERS_PATH,
+    RUNTIME_VERIFIERS_PATH,
+    SCHEMA_ROOT,
+    STATE_ROOT,
+)
 
 
-def _keys(path: Path) -> list[str]:
-    if path.is_symlink() or not path.is_file():
-        raise ContractError("operator public-key input is missing or linked")
-    values = [line.strip() for line in path.read_text(encoding="ascii").splitlines()]
-    if not values or any(not value or value.startswith("#") for value in values):
-        raise ContractError(
-            "operator public-key input must contain only canonical keys"
+def _projection() -> tuple[tuple[str, int, int, int, str] | None, ...]:
+    paths = (
+        STATE_ROOT / "access-state.json",
+        AUTHORIZED_KEYS_PATH,
+        RUNTIME_VERIFIERS_PATH,
+        FIELD_SIGNERS_PATH,
+    )
+    rows = []
+    for path in paths:
+        if not path.exists() and not path.is_symlink():
+            rows.append(None)
+            continue
+        metadata = path.lstat()
+        digest = (
+            hashlib.sha256(path.read_bytes()).hexdigest()
+            if stat.S_ISREG(metadata.st_mode)
+            else "unsafe"
         )
-    identities = [client_id_for_public_key(value) for value in values]
-    if len(set(identities)) != len(identities):
-        raise ContractError("operator public-key input repeats a key")
-    return values
+        rows.append(
+            (
+                path.name,
+                stat.S_IMODE(metadata.st_mode),
+                metadata.st_uid,
+                metadata.st_gid,
+                digest,
+            )
+        )
+    return tuple(rows)
 
 
-def reconcile(path: Path) -> dict:
+def reconcile(
+    paths: list[Path],
+    *,
+    schema_root: Path = SCHEMA_ROOT,
+    runtime_gid: int | None = None,
+) -> dict:
+    registry = ContractRegistry(schema_root)
+    enrollments = [load_machine_enrollment(path, registry) for path in paths]
     manager = AccessManager(
         state_path=STATE_ROOT / "access-state.json",
         authorized_keys_path=AUTHORIZED_KEYS_PATH,
+        registry=registry,
+        runtime_verifiers_path=RUNTIME_VERIFIERS_PATH,
+        field_signers_path=FIELD_SIGNERS_PATH,
+        runtime_gid=runtime_gid,
     )
-    keys = _keys(path)
-    state = manager.load()
-    if not state["clients"]:
-        state = manager.bootstrap(keys)
-        changed = True
-    else:
-        expected = {client_id_for_public_key(value): value for value in keys}
-        active = {
-            client_id: record["public_key"]
-            for client_id, record in state["clients"].items()
-            if record["state"] == "active"
-        }
-        if active != expected or any(
-            record["state"] == "pending" for record in state["clients"].values()
-        ):
-            raise ContractError(
-                "existing receiver access state differs from the Ansible bootstrap keys"
-            )
-        manager.reconcile_authorized_keys()
-        changed = False
+    before_projection = _projection()
+    before = manager.load()
+    state = manager.bootstrap(enrollments)
     return {
-        "schema": "iii.receiver-access-bootstrap/v1",
-        "changed": changed,
+        "schema": "iii.receiver-access-bootstrap/v2",
+        "changed": (
+            before["access_id"] != state["access_id"]
+            or before_projection != _projection()
+        ),
         "access_id": state["access_id"],
-        "active_clients": sorted(
-            client_id
-            for client_id, record in state["clients"].items()
+        "active_machines": sorted(
+            record["machine_id"]
+            for record in state["clients"].values()
             if record["state"] == "active"
         ),
         "forced_command": "/usr/bin/iii-deployment-ssh-gateway",
@@ -66,12 +88,18 @@ def reconcile(path: Path) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="iii-receiver-access-bootstrap")
-    parser.add_argument("--keys", type=Path, required=True)
+    parser.add_argument("--enrollment", type=Path, action="append", required=True)
+    parser.add_argument("--runtime-gid", type=int, required=True)
+    parser.add_argument("--schema-root", type=Path, default=SCHEMA_ROOT)
     arguments = parser.parse_args()
     try:
         if os.geteuid() != 0:
             raise ContractError("receiver access bootstrap requires root")
-        result = reconcile(arguments.keys)
+        result = reconcile(
+            arguments.enrollment,
+            schema_root=arguments.schema_root,
+            runtime_gid=arguments.runtime_gid,
+        )
     except (ContractError, OSError, UnicodeError) as exc:
         parser.error(str(exc))
     print(json.dumps(result, sort_keys=True, separators=(",", ":")))

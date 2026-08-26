@@ -27,6 +27,14 @@
     group: "{{ iii_runtime_group_effective }}"
     mode: "0640"
 
+- name: Install the public shared target profile
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../targets/v1/shared-aircraft.json"
+    dest: /etc/iii/shared-target-profile.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
+
 - name: Install the real-profile non-secret runtime environment
   ansible.builtin.template:
     src: runtime.env.j2

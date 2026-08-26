@@ -11,6 +11,7 @@ import pytest
 
 from iii_deployment.contracts import ContractError, ContractRegistry, canonical_json
 from iii_deployment.log_lifecycle import LogInventory, LogTransferStore
+from iii_deployment.identity import create_machine_enrollment
 from iii_deployment.receiver.access import AccessManager, client_id_for_public_key
 from iii_deployment.receiver.engine import ReceiverEngine
 from iii_deployment.receiver.clock import ClockController
@@ -86,6 +87,26 @@ def key(character: int) -> str:
     return "ssh-ed25519 " + base64.b64encode(blob).decode("ascii")
 
 
+def enrollment(public_key: str, character: int) -> dict:
+    signer = bytes([character]) * 32
+    return create_machine_enrollment(
+        label=f"machine-{character}",
+        ssh_public_key=public_key,
+        runtime_token=base64.urlsafe_b64encode(bytes([character + 10]) * 32)
+        .decode("ascii")
+        .rstrip("="),
+        field_signer_descriptor={
+            "schema_version": "1",
+            "descriptor_type": "iii.signer-public",
+            "signer_id": hashlib.sha256(signer).hexdigest(),
+            "algorithm": "Ed25519",
+            "authority": "workstation-field",
+            "public_key": base64.b64encode(signer).decode("ascii"),
+        },
+        registry=REGISTRY,
+    )
+
+
 def request(
     action: str,
     operation_id: str,
@@ -114,10 +135,11 @@ def receiver(tmp_path: Path):
     access = AccessManager(
         state_path=tmp_path / "state/access.json",
         authorized_keys_path=tmp_path / "home/iii/.ssh/authorized_keys",
+        registry=REGISTRY,
     )
     operator_key = key(1)
     operator_id = client_id_for_public_key(operator_key)
-    access.bootstrap([operator_key])
+    access.bootstrap([enrollment(operator_key, 1)])
     live = {
         "active_release_id": None,
         "configuration_hash": "a" * 64,
@@ -689,6 +711,7 @@ def test_key_rotation_through_planned_receiver_actions_and_final_key_loss_denial
     receiver.engine.executor = ImmediateExecutor()
     new_key = key(2)
     new_id = client_id_for_public_key(new_key)
+    new_enrollment = enrollment(new_key, 2)
 
     def plan_access(operation_id: str, requester: str, action: str, parameters: dict):
         return receiver.engine.handle(
@@ -708,7 +731,7 @@ def test_key_rotation_through_planned_receiver_actions_and_final_key_loss_denial
         "access-add-0001",
         receiver.operator_id,
         "access-add",
-        {"phase": "add", "client_id": new_id, "public_key": new_key},
+        {"phase": "add", "enrollment": new_enrollment},
     )
     receiver.engine.handle(
         request(
@@ -723,7 +746,7 @@ def test_key_rotation_through_planned_receiver_actions_and_final_key_loss_denial
         "access-prove-0001",
         new_id,
         "access-add",
-        {"phase": "prove", "client_id": new_id, "public_key": new_key},
+        {"phase": "prove", "enrollment": new_enrollment},
     )
     receiver.engine.handle(
         request(
@@ -738,7 +761,10 @@ def test_key_rotation_through_planned_receiver_actions_and_final_key_loss_denial
         "access-revoke-0001",
         new_id,
         "access-revoke",
-        {"client_id": receiver.operator_id},
+        {
+            "authority": "machine",
+            "machine_id": enrollment(key(1), 1)["machine_id"],
+        },
     )
     receiver.engine.handle(
         request(
@@ -756,7 +782,10 @@ def test_key_rotation_through_planned_receiver_actions_and_final_key_loss_denial
         new_id: "active",
     }
     final = plan_access(
-        "access-revoke-0002", new_id, "access-revoke", {"client_id": new_id}
+        "access-revoke-0002",
+        new_id,
+        "access-revoke",
+        {"authority": "machine", "machine_id": new_enrollment["machine_id"]},
     )
     receiver.engine.handle(
         request(
@@ -774,6 +803,70 @@ def test_key_rotation_through_planned_receiver_actions_and_final_key_loss_denial
     assert listed[new_id] == "active"
     raw_audit = (receiver.root / "log/audit.jsonl").read_text(encoding="utf-8")
     assert new_key not in raw_audit and "public_key" not in raw_audit
+
+
+def test_pending_machine_can_poll_only_its_own_proof_operation(receiver) -> None:
+    receiver.engine.executor = ImmediateExecutor()
+    new_key = key(2)
+    new_id = client_id_for_public_key(new_key)
+    new_enrollment = enrollment(new_key, 2)
+    added = receiver.engine.handle(
+        request(
+            "plan-access",
+            "access-add-poll-0001",
+            receiver.operator_id,
+            {
+                "action": "access-add",
+                "parameters": {"phase": "add", "enrollment": new_enrollment},
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    receiver.engine.handle(
+        request(
+            "access-add",
+            "access-add-poll-0001",
+            receiver.operator_id,
+            {"plan": added["plan"]},
+            added["nonce"],
+        )
+    )
+
+    receiver.engine.executor = receiver.executor
+    proof = receiver.engine.handle(
+        request(
+            "plan-access",
+            "access-proof-poll-0001",
+            new_id,
+            {
+                "action": "access-add",
+                "parameters": {"phase": "prove", "enrollment": new_enrollment},
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    receiver.engine.handle(
+        request(
+            "access-add",
+            "access-proof-poll-0001",
+            new_id,
+            {"plan": proof["plan"]},
+            proof["nonce"],
+        )
+    )
+    polled = receiver.engine.handle(
+        request("status", "access-proof-poll-0001", new_id, {})
+    )
+    assert polled["pending_enrollment_proof"] is True
+    assert polled["operation"]["state"] == "accepted"
+    with pytest.raises(ContractError, match="only its own"):
+        receiver.engine.handle(request("status", "unknown-proof-0001", new_id, {}))
+
+    receiver.executor.run_next()
+    completed = receiver.engine.handle(
+        request("status", "access-proof-poll-0001", new_id, {})
+    )
+    assert completed["operation"]["state"] == "completed"
 
 
 def test_receiver_log_pull_receipt_and_exact_prune_flow(receiver) -> None:

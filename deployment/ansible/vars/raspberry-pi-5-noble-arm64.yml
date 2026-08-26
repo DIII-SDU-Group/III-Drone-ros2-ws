@@ -1,8 +1,8 @@
 ---
 iii_baseline_schema: iii.ansible-host-baseline/v1
-iii_baseline_id: 8d5cc63fe700603893bba493ae880c1da8af8b6d375964fb68ddba92c97556bd
-iii_unit_contract_id: 00a6fa628fb5fcf6ca5d7b0484b9f63b7a4353407cc0d705c968283e8c55470b
-iii_target_definition_id: 0feda56e871ca6f2948274b7f6b37abdd705c25f11db769398b361e7d6f2af47
+iii_baseline_id: 9e8ccc20434cb6cf43508bf93bd70b238b009a54fa7427f29a2bb96d8890a1f6
+iii_unit_contract_id: a44b9176c01344aaa3f4e105ccb14eafd6cca67f423a4c43a31d4cde534236fe
+iii_target_definition_id: 529afb40ba8854deaa14b63d55b5ba507905bac5d7504907673cc924b6ccdbff
 iii_expected_distribution: Ubuntu
 iii_expected_release: "24.04"
 iii_expected_codename: noble
@@ -15,6 +15,11 @@ iii_runtime_owner_effective: "{{ (iii_runtime_uid | string) if ansible_check_mod
 iii_runtime_group_effective: "{{ (iii_runtime_gid | string) if ansible_check_mode else iii_runtime_group }}"
 iii_runtime_api_port: 8765
 iii_mdns_port: 5353
+iii_shared_target_profile_id: a14f199fd5a75f0b60f17f35eb52a69405ef1de89a0b6983224edf52b959cf33
+iii_runtime_api_id: iii-aircraft-runtime
+iii_runtime_system_id: iii-aircraft
+iii_runtime_display_name: III Aircraft Runtime
+iii_runtime_mdns_instance: III Aircraft Runtime
 iii_ubuntu_snapshot: https://snapshot.ubuntu.com/ubuntu/20260801T000000Z
 iii_ros_snapshot: http://snapshots.ros.org/jazzy/2026-06-18/ubuntu
 iii_ros_key_sha256: 6d2ff4af9d56b304213de7664551f6986174a68bae76476b7ad21469b27a28c4

@@ -46,6 +46,8 @@ def test_definition_and_host_baseline_have_verified_content_identities(
     assert baseline["contract_id"] == content_identity(
         {key: value for key, value in baseline.items() if key != "contract_id"}
     )
+    shared_profile = _json(ROOT / "deployment/targets/v1/shared-aircraft.json")
+    assert baseline["shared_target_profile_id"] == shared_profile["profile_id"]
     assert definition["sysroot"]["aircraft_derived"] is False
     sysroot = definition["sysroot"]
     assert sysroot["content_id"] == content_identity(
