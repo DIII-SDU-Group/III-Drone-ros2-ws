@@ -172,3 +172,18 @@ _Avoid_: Removing old scripts first
 - Normal application release operations cannot modify receiver bootstrap/fallback,
   stable receiver systemd units, or trust roots. Those belong to separately
   qualified host convergence or receiver A/B self-update transactions.
+- Normal activation requires a content-identified runtime observation proving the
+  configured logical target/profile, fresh runtime and PX4 state, three continuous
+  seconds landed/disarmed/failsafe-clear in a maintenance-safe navigation state,
+  no Mission, Custom Operation, Direct Operation, or Reference Owner, and a ready
+  configuration checkpoint. Unknown and stale fields fail closed.
+- Broken-runtime recovery has a separate single-operation maintenance override.
+  It is unavailable without an attended TTY, stops `iii.target` before prompting,
+  retains the actor/operation/release/target/observation binding in audit, and
+  cannot waive any known armed, airborne, or active-control evidence or an
+  unready configuration migration.
+- `active-selector.json` is the atomic code/configuration/catalog identity. The
+  `/opt/iii/current` and persistent-configuration symlinks are materialized views;
+  a durable activation journal precedes each view change so boot reconciliation
+  can finish or restore the matching tuple. Selector mutation never starts Mission
+  Execution, Direct Operation, or any application autonomy.

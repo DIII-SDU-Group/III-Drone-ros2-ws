@@ -2961,6 +2961,8 @@ Implementation notes (2026-08-26):
 
 #### P2.T1: Implement Safety-Gated Activation
 
+**Status: Completed.**
+
 Description:
 Before stopping runtime, verify the shared logical target identity, release compatibility, fresh
 PX4 state, control ownership, Mission Execution state, and configuration
@@ -2969,20 +2971,55 @@ transaction before each irreversible step.
 
 Acceptance:
 
-- [ ] Activation is rejected while safety state is stale or operational gates fail.
-- [ ] The maintenance override is interactive, audited, narrowly authorized,
+- [x] Activation is rejected while safety state is stale or operational gates fail.
+- [x] The maintenance override is interactive, audited, narrowly authorized,
       stops all III units first, requires physical-safety confirmation, and is
       unavailable to unattended scripts by default.
-- [ ] Activation never starts Mission Execution or a Direct Operation.
-- [ ] Activation switches code, configuration checkpoint, and mission catalog as
+- [x] Activation never starts Mission Execution or a Direct Operation.
+- [x] Activation switches code, configuration checkpoint, and mission catalog as
       one compatible release transaction; rollback restores the matching catalog.
-- [ ] Real runtime rejects mission selection by arbitrary filesystem path and
+- [x] Real runtime rejects mission selection by arbitrary filesystem path and
       records exact catalog/spec/tree IDs for selection and execution evidence.
 
 Tests:
 
 - State-matrix tests for landed/disarmed, armed, airborne, Mission-owned,
   Custom Operation, stale PX4, unavailable runtime API, and maintenance override.
+
+Implementation notes (2026-08-26):
+
+- Added a content-identified `iii.activation-safety/v1` observation and fail-closed
+  gate binding logical target/profile, runtime identity/freshness, PX4 availability,
+  landed/disarmed/failsafe/navigation state, Mission/Custom/Direct/Reference
+  ownership, configuration migration readiness, and the settled three-second
+  continuous-safe interval. Unknown, unavailable, stale, active, and mismatched
+  observations are rejected before selector mutation.
+- Added the attended recovery-only maintenance override. It is disabled for
+  unattended calls and non-TTY streams, stops and proves `iii.target` plus only
+  canonical III units before prompting, requires the target-specific physical
+  safety phrase, and audit-binds actor, operation, release, target/profile, stopped
+  units, and exact observation. It cannot waive known armed, airborne, active
+  Mission/Custom/Direct/Reference ownership or an unready configuration checkpoint.
+- Added a durable, fsync-backed activation transaction and versioned composite
+  selector binding immutable release, configuration checkpoint/schema, mission
+  catalog hash, and profile. The transaction journal precedes every code,
+  configuration, and composite-selector mutation. Rollback restores the complete
+  prior tuple and matching catalog; every journal proves `autonomy_started:false`.
+- Extended the filesystem contract for persistent configuration checkpoints and
+  receiver-owned activation journals, documented the receiver safety boundary,
+  and added Draft-7 schemas for safety observations, overrides, selectors, and
+  transactions.
+- Extended Mission interfaces, catalog resolution, Runtime contracts, selection
+  results, latched execution status, and command-decision events with exact catalog
+  ID/hash, entry hash, specification asset ID, and sorted behavior-tree asset IDs.
+  Mission rejects specifications whose used tree identities differ from their
+  catalog entry closure; Runtime rejects missing or malformed selection evidence
+  and continues to reject filesystem path selection on real targets.
+- Verification passed 17 focused activation/state-matrix/rollback tests, 25 focused
+  Runtime mission identity/event tests, the full 256/256 deployment suite, and the
+  four affected ROS package build/test run (662 tests, zero failures) in the Jazzy
+  devcontainer. All deployment JSON and Draft-7 schemas parsed/validated; Python
+  compile, fatal Flake8, and repository diff-hygiene checks passed.
 
 #### P2.T2: Implement The Onboard Deployment Receiver
 
