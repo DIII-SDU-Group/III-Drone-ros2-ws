@@ -3,25 +3,25 @@
   "operations": {
     "feature-pr": {
       "entry_point": "iii automation feature-pr",
-      "mutation_kinds": ["push", "pr-upsert"],
+      "mutation_kinds": ["push", "pr-upsert", "pr-close", "pr-merge"],
       "permissions": ["contents:write", "pull-requests:write"],
       "next_command": ["iii", "automation", "status"]
     },
     "stacked-pr": {
       "entry_point": "iii automation stacked-pr",
-      "mutation_kinds": ["push", "pr-upsert"],
+      "mutation_kinds": ["push", "pr-upsert", "pr-close", "pr-merge"],
       "permissions": ["contents:write", "pull-requests:write"],
       "next_command": ["iii", "automation", "status"]
     },
     "develop-to-main": {
       "entry_point": "iii automation develop-to-main",
-      "mutation_kinds": ["push", "pr-upsert"],
+      "mutation_kinds": ["push", "pr-upsert", "pr-close", "pr-merge"],
       "permissions": ["contents:write", "pull-requests:write"],
       "next_command": ["iii", "automation", "status"]
     },
     "main-to-release": {
       "entry_point": "iii automation main-to-release",
-      "mutation_kinds": ["pr-upsert"],
+      "mutation_kinds": ["pr-upsert", "pr-close", "pr-merge"],
       "permissions": ["pull-requests:write"],
       "next_command": ["iii", "automation", "status"]
     },

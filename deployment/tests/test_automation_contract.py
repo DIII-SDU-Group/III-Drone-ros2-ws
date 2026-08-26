@@ -210,6 +210,9 @@ def test_operation_contract_covers_every_settled_automation_boundary() -> None:
         "deployment-handoff",
     }
     assert CONTRACT["trusted_boundaries"]["pull_request_body"] == "untrusted transport only"
+    for family in ("feature-pr", "stacked-pr", "develop-to-main", "main-to-release"):
+        assert "pr-close" in CONTRACT["operations"][family]["mutation_kinds"]
+        assert "pr-merge" in CONTRACT["operations"][family]["mutation_kinds"]
 
 
 @pytest.mark.parametrize("operation", sorted(CONTRACT["operations"]))
