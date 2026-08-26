@@ -1,7 +1,7 @@
 {
   "schema": "iii.target-abi-probe/v1",
   "target_id": "raspberry-pi-5-noble-arm64",
-  "source_image_digest": "sha256:d849b6203853848bf20f5e5d6d77c1275bff1ff727d93ab055799cb33c2dac7a",
+  "source_image_digest": "sha256:cf36a2ca2ce9d3f239ab3df02430d580a7d643d907cd7bf0926b6f18fb7bd769",
   "os": "ubuntu",
   "os_version": "24.04",
   "os_codename": "noble",

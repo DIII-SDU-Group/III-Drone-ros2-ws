@@ -2559,6 +2559,8 @@ Implementation notes (2026-08-26):
 
 #### P1.T2: Implement Cached Cross-Compilation
 
+**Status: Completed.**
+
 Description:
 Build III packages offboard using persistent compiler/build caches, package
 change detection, and targeted colcon rebuilds while producing a complete
@@ -2567,25 +2569,65 @@ III-only test policy.
 
 Acceptance:
 
-- [ ] No build action is sent to the aircraft.
-- [ ] Incremental field builds reuse caches without contaminating release output.
-- [ ] The output contains no absolute developer-workspace dependencies.
-- [ ] Release output follows the final Q92 colcon layout, includes a release-owned
+- [x] No build action is sent to the aircraft.
+- [x] Incremental field builds reuse caches without contaminating release output.
+- [x] The output contains no absolute developer-workspace dependencies.
+- [x] Release output follows the final Q92 colcon layout, includes a release-owned
       environment wrapper, resolves package data through ament, and contains no
       source/build/log tree or development symlink escaping the release root.
-- [ ] Failed partial builds cannot be packaged as complete releases.
-- [ ] All non-host runtime dependencies declared by Q93 are present inside the
+- [x] Failed partial builds cannot be packaged as complete releases.
+- [x] All non-host runtime dependencies declared by Q93 are present inside the
       immutable release and verified without apt/pip/network access on target.
-- [ ] Python dependency packaging follows the final Q94 target-ABI, lock, hash,
+- [x] Python dependency packaging follows the final Q94 target-ABI, lock, hash,
       import-validation, and release-local path contract without embedding builder
       paths or requiring a relocatable virtualenv.
-- [ ] Native library closure follows the final Q95 host allowlist/bundling/RUNPATH
+- [x] Native library closure follows the final Q95 host allowlist/bundling/RUNPATH
       contract and passes complete ELF dependency validation before packaging.
 
 Tests:
 
 - Clean build, no-change rebuild, single-package change, interface change with
   downstream rebuild, and deliberate compile failure.
+
+Implementation notes (2026-08-26):
+
+- Added schema-validated build policy and build-record contracts, an isolated
+  offboard ARM64 colcon builder, content-bound package/downstream cache keys,
+  persistent ccache/build state, immutable partial-to-complete promotion, and
+  live source-recapture rejection. Normal builds use only local Docker and
+  explicitly disallow target package-manager or aircraft build transports.
+- The final release is a non-symlinked isolated `install/<package>` tree with a
+  release-owned environment wrapper at canonical `/opt/iii/current`, no
+  source/build/log tree, no escaping symlinks, and no absolute builder/sysroot
+  paths. Package exports were made relocatable and production runtime log
+  discovery now defaults to `/var/log/iii` rather than a workspace.
+- `iwr6843aop_pub` now installs all ten radar profiles beneath its ament share,
+  resolves the default profile through `ament_index_python`, and declares its
+  NumPy/serial/ament runtime dependencies. The source snapshot policy captures
+  this fork as a drone build input, and byte-identity validation proves installed
+  package assets match governed source before the build source is removed.
+- Added a hash-pinned CPython 3.12 ARM64 wheel lock and offline materializer.
+  The builder verifies exact wheelhouse membership/hashes/tags, streams a plain
+  release-local site-packages extraction, rejects path/collision/data-layout
+  faults, and validates every declared import under the target image with the
+  network disabled.
+- Complete target-side ELF closure validates all 76 installed ELF objects through
+  the release wrapper against the exact 148-SONAME host allowlist, bundled
+  libraries, real resolved paths, and RUNPATH rules. Missing/unapproved SONAMEs,
+  unresolved dependencies, builder paths, or network/package-manager reliance
+  fail sealing.
+- Acceptance evidence covers a clean build, a 7.31-second no-change rebuild with
+  all eight III cache entries hit and zero compiler work, a runtime-only change,
+  an Interfaces change rebuilding its downstream closure, and a deliberate Core
+  compile failure that produced no build record or committed failed cache key.
+  The final post-merge sealed builds are `7366c6628c080213f980f6505126e2911e3a6db3e806393014f8e8060321d336`
+  and no-change `fd1247042889f9f0b66c04cc141d05c377eca498868e17bcd332a49202d68751`.
+- Verification passed 141/141 deployment tests on both host and Jazzy
+  devcontainer, 626/626 touched III package tests, the emulated target ABI probe,
+  locked-wheel offline imports, installed ament lookup, exact asset/path/symlink
+  audits, failure-path tests, diff hygiene, and the refreshed submodule lock.
+  Owning PRs merged: Configuration #17, Core #58, Mission #12, Runtime #6,
+  Supervision #13, and IWR fork #1.
 
 #### P1.T3: Package And Verify Release Bundles
 

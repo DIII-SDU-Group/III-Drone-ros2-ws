@@ -38,7 +38,7 @@ def _repo(path: Path) -> Path:
     _git(path, "init", "-q")
     _git(path, "config", "user.email", "test@example.invalid")
     _git(path, "config", "user.name", "Test")
-    _write(path / ".gitignore", "build/\nlog/\n*.key\n")
+    _write(path / ".gitignore", "/build/\n/log/\n*.key\n")
     _write(path / "deps/submodule-lock.txt", "fixture 0000000000000000000000000000000000000000\n")
     _write(path / "src/app.py", "VALUE = 1\n")
     _git(path, "add", ".")
@@ -97,6 +97,21 @@ def test_secrets_generated_outputs_datasets_and_unrelated_files_are_excluded(tmp
     assert "build/object.o" not in captured
     assert {"path": "src/token.secret", "reason": "sensitive"} in snapshot["excluded"]
     assert {"path": "notes.txt", "reason": "unrelated"} in snapshot["excluded"]
+
+
+def test_source_directory_named_build_is_not_mistaken_for_generated_output(tmp_path: Path) -> None:
+    repo = _repo(tmp_path / "repo")
+    _write(repo / "scripts/build/release.py", "RELEASE = True\n")
+    policy = _policy()
+    policy["workspace_source_roots"] = ["src", "scripts"]
+    policy["component_rules"].append({
+        "id": "INTEGRATION", "patterns": ["scripts/**"], "components": ["drone", "gc"],
+    })
+    snapshot = capture_source_snapshot(repo, policy, REGISTRY)
+    assert "scripts/build/release.py" in {
+        entry["path"] for entry in snapshot["repositories"][0]["untracked"]
+    }
+    assert snapshot["impact"]["components"] == ["drone", "gc"]
 
 
 def test_governed_submodule_dirty_and_untracked_state_changes_identity(tmp_path: Path) -> None:
@@ -159,4 +174,16 @@ def test_unsafe_symlink_fails_instead_of_omitting_source(tmp_path: Path) -> None
 def test_canonical_policy_matches_governed_repository_inventory() -> None:
     documentation = json.loads((ROOT / "deployment/documentation-policy.json").read_text())
     expected = [repo["path"] for repo in documentation["repositories"] if repo["governed"]]
-    assert BASE_POLICY["governed_repositories"] == expected
+    assert set(expected).issubset(BASE_POLICY["governed_repositories"])
+
+
+def test_canonical_policy_captures_every_release_asset_repository() -> None:
+    build_policy = json.loads((ROOT / "deployment/build-policy.json").read_text())
+    governed = set(BASE_POLICY["governed_repositories"])
+    for asset in build_policy["release_assets"]:
+        source = Path(asset["source"])
+        assert any(
+            source == Path(repository) or Path(repository) in source.parents
+            for repository in governed
+            if repository != "."
+        ), asset["source"]

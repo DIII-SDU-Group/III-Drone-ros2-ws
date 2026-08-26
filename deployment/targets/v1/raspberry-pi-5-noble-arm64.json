@@ -1,6 +1,6 @@
 {
   "schema": "iii.target-definition/v1",
-  "definition_id": "c7f26d6551e6ffa1a23cda44fffdc2e456b0b9032ea96d9032873098b37d548e",
+  "definition_id": "14abe3430aa4b172ee81d95717399accbfec2192da9a5ea61c8d419bc0a183df",
   "target": {
     "target_id": "raspberry-pi-5-noble-arm64",
     "board": "raspberry-pi-5",
@@ -17,16 +17,28 @@
   },
   "images": {
     "target_seed": {
-      "reference": "docker.io/library/ros:jazzy-ros-base",
-      "index_digest": "sha256:2589a8fba5257307857890173c069852c2abf913a0be7970f172478baecb09e4",
+      "reference": "docker.io/library/ros:jazzy-perception",
+      "index_digest": "sha256:63407fb78383d0c68849c2913a3b6a5675069d2c2c33c21b3e7c454e028e8b5d",
       "platform": "linux/arm64/v8",
-      "platform_digest": "sha256:d849b6203853848bf20f5e5d6d77c1275bff1ff727d93ab055799cb33c2dac7a"
+      "platform_digest": "sha256:cf36a2ca2ce9d3f239ab3df02430d580a7d643d907cd7bf0926b6f18fb7bd769"
     },
     "builder": {
       "reference": "docker.io/library/ubuntu:24.04",
       "index_digest": "sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517",
       "platform": "linux/amd64",
       "platform_digest": "sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316"
+    },
+    "build_tools": {
+      "reference": "docker.io/library/ros:jazzy-ros-base",
+      "index_digest": "sha256:2589a8fba5257307857890173c069852c2abf913a0be7970f172478baecb09e4",
+      "platform": "linux/amd64",
+      "platform_digest": "sha256:bab7e640bf79cd84957e4e18fcba7d87efc3385b4e3f36a32eeca01638e43206"
+    },
+    "wheel_resolver": {
+      "reference": "docker.io/library/python:3.12.3-slim-bookworm",
+      "index_digest": "sha256:afc139a0a640942491ec481ad8dda10f2c5b753f5c969393b12480155fe15a63",
+      "platform": "linux/amd64",
+      "platform_digest": "sha256:fd3817f3a855f6c2ada16ac9468e5ee93e361005bd226fd5a5ee1a504e038c84"
     }
   },
   "apt_snapshot": {
@@ -43,27 +55,43 @@
     "compiler_package_version": "13.3.0-6ubuntu2~24.04.1cross1",
     "libc_dev_package_version": "2.39-0ubuntu8cross1",
     "cmake_version": "3.28.3-1build7",
-    "ninja_version": "1.11.1-2"
+    "ninja_version": "1.11.1-2",
+    "ccache_version": "4.9.1-1"
   },
   "sysroot": {
-    "source": "pinned-oci-target-seed",
+    "content_id": "4dbcbd43099bc0cbda68cfa9505cda75e64613562867143f57f088975d952d2f",
+    "source": "pinned-oci-seed-plus-snapshots",
     "aircraft_derived": false,
-    "seed_sha256": "d849b6203853848bf20f5e5d6d77c1275bff1ff727d93ab055799cb33c2dac7a",
+    "seed_sha256": "cf36a2ca2ce9d3f239ab3df02430d580a7d643d907cd7bf0926b6f18fb7bd769",
+    "ros_snapshot": {
+      "uri": "http://snapshots.ros.org/jazzy/2026-06-18/ubuntu",
+      "date": "2026-06-18",
+      "key_fingerprint": "4B63CF8FDE49746E98FA01DDAD19BAB3CBF125EA",
+      "key_sha256": "6d2ff4af9d56b304213de7664551f6986174a68bae76476b7ad21469b27a28c4"
+    },
+    "packages": [
+      {"name": "ros-jazzy-generate-parameter-library", "version": "0.7.3-1noble.20260612.124157"},
+      {"name": "ros-jazzy-generate-parameter-library-py", "version": "0.7.3-1noble.20260514.121849"},
+      {"name": "ros-jazzy-parameter-traits", "version": "0.7.3-1noble.20260612.123910"},
+      {"name": "ros-jazzy-rmw-cyclonedds-cpp", "version": "2.2.3-1noble.20260612.091852"},
+      {"name": "ros-jazzy-usb-cam", "version": "0.8.1-1noble.20260614.090116"}
+    ],
     "path": "/opt/iii/sysroot",
     "mutable_host_paths_forbidden": ["/home", "/var/lib/iii", "/var/log/iii", "/run/iii", "/etc/iii"]
   },
   "host_baseline": {
-    "contract_id": "33310a8e56be547d7692a38c0896b6e4ea63c8bd2e585bfbd8e62e7c64213cd3",
+    "contract_id": "9ae8aecf91dfbab834940fa8567abdf4ece60073fdbc459d87b3a5f0ba289686",
     "owner": "ansible",
     "converged_by": "Q93 aircraft host baseline",
     "owns": ["ubuntu", "kernel-firmware", "glibc-loader", "ros-jazzy", "systemd", "udev-hardware", "platform-libraries", "system-python"],
     "package_constraints": [
+      {"name": "libarmadillo12", "constraint": ">=1:12.6.7+dfsg-1build2,<1:13", "abi_role": "platform"},
       {"name": "libc6", "constraint": ">=2.39,<2.40", "abi_role": "platform"},
       {"name": "libstdc++6", "constraint": ">=14.2.0-4ubuntu2~24.04,<15", "abi_role": "platform"},
       {"name": "python3", "constraint": ">=3.12.3,<3.13", "abi_role": "python"},
       {"name": "ros-jazzy-ros-base", "constraint": "jazzy", "abi_role": "ros"},
       {"name": "ros-jazzy-rmw-cyclonedds-cpp", "constraint": "jazzy", "abi_role": "ros"},
-      {"name": "libopencv-core4.6t64", "constraint": ">=4.6,<4.7", "abi_role": "platform"},
+      {"name": "libopencv-core406t64", "constraint": ">=4.6,<4.7", "abi_role": "platform"},
       {"name": "libpcl-common1.14", "constraint": ">=1.14,<1.15", "abi_role": "platform"},
       {"name": "libzmq5", "constraint": ">=4.3.5,<4.4", "abi_role": "platform"},
       {"name": "udev", "constraint": ">=255.4,<256", "abi_role": "hardware"}

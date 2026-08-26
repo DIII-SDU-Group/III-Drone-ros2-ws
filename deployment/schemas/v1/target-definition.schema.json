@@ -28,10 +28,12 @@
     },
     "images": {
       "type": "object", "additionalProperties": false,
-      "required": ["target_seed", "builder"],
+      "required": ["target_seed", "builder", "build_tools", "wheel_resolver"],
       "properties": {
         "target_seed": {"$ref": "#/definitions/image"},
-        "builder": {"$ref": "#/definitions/image"}
+        "builder": {"$ref": "#/definitions/image"},
+        "build_tools": {"$ref": "#/definitions/image"},
+        "wheel_resolver": {"$ref": "#/definitions/image"}
       }
     },
     "apt_snapshot": {
@@ -46,7 +48,7 @@
     },
     "toolchain": {
       "type": "object", "additionalProperties": false,
-      "required": ["target_triple", "c_compiler", "cxx_compiler", "compiler_version", "compiler_package_version", "libc_dev_package_version", "cmake_version", "ninja_version"],
+      "required": ["target_triple", "c_compiler", "cxx_compiler", "compiler_version", "compiler_package_version", "libc_dev_package_version", "cmake_version", "ninja_version", "ccache_version"],
       "properties": {
         "target_triple": {"const": "aarch64-linux-gnu"},
         "c_compiler": {"const": "/usr/bin/aarch64-linux-gnu-gcc-13"},
@@ -55,16 +57,29 @@
         "compiler_package_version": {"const": "13.3.0-6ubuntu2~24.04.1cross1"},
         "libc_dev_package_version": {"const": "2.39-0ubuntu8cross1"},
         "cmake_version": {"const": "3.28.3-1build7"},
-        "ninja_version": {"const": "1.11.1-2"}
+        "ninja_version": {"const": "1.11.1-2"},
+        "ccache_version": {"const": "4.9.1-1"}
       }
     },
     "sysroot": {
       "type": "object", "additionalProperties": false,
-      "required": ["source", "aircraft_derived", "seed_sha256", "path", "mutable_host_paths_forbidden"],
+      "required": ["content_id", "source", "aircraft_derived", "seed_sha256", "ros_snapshot", "packages", "path", "mutable_host_paths_forbidden"],
       "properties": {
-        "source": {"const": "pinned-oci-target-seed"},
+        "content_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "source": {"const": "pinned-oci-seed-plus-snapshots"},
         "aircraft_derived": {"const": false},
         "seed_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "ros_snapshot": {
+          "type": "object", "additionalProperties": false,
+          "required": ["uri", "date", "key_fingerprint", "key_sha256"],
+          "properties": {
+            "uri": {"const": "http://snapshots.ros.org/jazzy/2026-06-18/ubuntu"},
+            "date": {"const": "2026-06-18"},
+            "key_fingerprint": {"const": "4B63CF8FDE49746E98FA01DDAD19BAB3CBF125EA"},
+            "key_sha256": {"const": "6d2ff4af9d56b304213de7664551f6986174a68bae76476b7ad21469b27a28c4"}
+          }
+        },
+        "packages": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/definitions/sysroot_package"}},
         "path": {"const": "/opt/iii/sysroot"},
         "mutable_host_paths_forbidden": {"const": ["/home", "/var/lib/iii", "/var/log/iii", "/run/iii", "/etc/iii"]}
       }
@@ -120,6 +135,14 @@
         "name": {"type": "string", "pattern": "^[a-z0-9.+-]+$"},
         "constraint": {"type": "string", "minLength": 1},
         "abi_role": {"enum": ["platform", "ros", "hardware", "python"]}
+      }
+    },
+    "sysroot_package": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^ros-jazzy-[a-z0-9-]+$"},
+        "version": {"type": "string", "pattern": "^[0-9][A-Za-z0-9.+:~_-]+$"}
       }
     }
   }

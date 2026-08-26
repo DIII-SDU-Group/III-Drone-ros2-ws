@@ -44,7 +44,17 @@ def test_definition_and_host_baseline_have_verified_content_identities(definitio
         {key: value for key, value in baseline.items() if key != "contract_id"}
     )
     assert definition["sysroot"]["aircraft_derived"] is False
+    sysroot = definition["sysroot"]
+    assert sysroot["content_id"] == content_identity(
+        {key: value for key, value in sysroot.items() if key != "content_id"}
+    )
     assert not set(definition["host_baseline"]["owns"]) & set(definition["release_boundary"]["owns"])
+    package_names = {
+        item["name"] for item in definition["host_baseline"]["package_constraints"]
+    }
+    assert "libarmadillo12" in package_names
+    assert "libopencv-core406t64" in package_names
+    assert "libopencv-core4.6t64" not in package_names
 
 
 def test_manifest_metadata_is_derived_from_one_definition(definition: dict) -> None:
@@ -99,7 +109,16 @@ def test_build_and_real_runtime_files_match_the_definition(definition: dict) -> 
     assert definition["images"]["target_seed"]["index_digest"] in dockerfile
     assert definition["images"]["builder"]["index_digest"] in dockerfile
     assert definition["apt_snapshot"]["uri"] in dockerfile
+    assert definition["sysroot"]["ros_snapshot"]["uri"] in dockerfile
+    assert definition["sysroot"]["ros_snapshot"]["key_sha256"] in dockerfile
+    for package in definition["sysroot"]["packages"]:
+        assert package["name"] in dockerfile
+        assert package["version"] in dockerfile
     assert definition["toolchain"]["compiler_package_version"] in dockerfile
+    assert definition["toolchain"]["ccache_version"] in dockerfile
+    assert "CMAKE_CXX_COMPILER_LAUNCHER" in (
+        ROOT / "cc_ws/arm64-toolchain.cmake"
+    ).read_text(encoding="utf-8")
     assert target["ros"]["prefix"] in all_runtime
     assert target["target_id"] in dockerfile + runtime_dockerfile
     assert "humble" not in all_runtime.lower()
@@ -107,7 +126,7 @@ def test_build_and_real_runtime_files_match_the_definition(definition: dict) -> 
 
 
 def test_sysroot_source_and_release_boundary_forbid_aircraft_mutability(definition: dict) -> None:
-    assert definition["sysroot"]["source"] == "pinned-oci-target-seed"
+    assert definition["sysroot"]["source"] == "pinned-oci-seed-plus-snapshots"
     assert definition["release_boundary"]["normal_deployment_may_run_package_manager"] is False
     forbidden = set(definition["release_boundary"]["must_not_bundle"])
     assert {"glibc", "dynamic-loader", "ros-jazzy", "system-python"} <= forbidden

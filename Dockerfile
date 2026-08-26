@@ -1,4 +1,4 @@
-ARG TARGET_BASE_IMAGE=docker.io/library/ros:jazzy-ros-base@sha256:2589a8fba5257307857890173c069852c2abf913a0be7970f172478baecb09e4
+ARG TARGET_BASE_IMAGE=docker.io/library/ros:jazzy-perception@sha256:63407fb78383d0c68849c2913a3b6a5675069d2c2c33c21b3e7c454e028e8b5d
 
 FROM --platform=linux/arm64 ${TARGET_BASE_IMAGE}
 
