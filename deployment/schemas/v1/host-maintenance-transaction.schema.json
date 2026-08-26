@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/host-maintenance-transaction.schema.json",
+  "title": "III durable host-maintenance transaction",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "transaction_id", "maintenance_id", "operation_id", "client_id", "kind", "phase", "before", "after", "changed_packages", "trust_change", "reboot", "protected_release_validation", "commissioning", "failure"],
+  "properties": {
+    "schema": {"const": "iii.host-maintenance-transaction/v1"},
+    "transaction_id": {"$ref": "#/definitions/hash"},
+    "maintenance_id": {"$ref": "#/definitions/hash"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "client_id": {"$ref": "#/definitions/hash"},
+    "kind": {"enum": ["packages", "bundle-trust", "release-status-trust"]},
+    "phase": {"enum": ["applying", "reboot-required", "reboot-scheduled", "validating", "completed", "failed"]},
+    "before": {"type": "object"},
+    "after": {"anyOf": [{"type": "null"}, {"type": "object"}]},
+    "changed_packages": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.+-]*$"}},
+    "trust_change": {"anyOf": [{"type": "null"}, {"type": "object"}]},
+    "reboot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "scheduled", "before_boot_id", "after_boot_id"],
+      "properties": {
+        "required": {"type": "boolean"},
+        "scheduled": {"type": "boolean"},
+        "before_boot_id": {"type": "string", "minLength": 1},
+        "after_boot_id": {"anyOf": [{"type": "null"}, {"type": "string", "minLength": 1}]}
+      }
+    },
+    "protected_release_validation": {"anyOf": [{"type": "null"}, {"type": "object"}]},
+    "commissioning": {"type": "object"},
+    "failure": {"anyOf": [{"type": "null"}, {"type": "object"}]}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

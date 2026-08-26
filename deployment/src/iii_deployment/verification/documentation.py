@@ -10,7 +10,6 @@ import re
 import subprocess
 from typing import Any, Iterable
 
-
 MANIFEST_SCHEMA = "iii.documentation-manifest/v1"
 POLICY_SCHEMA = "iii.documentation-policy/v1"
 DOC_SUFFIXES = (".md", ".rst")
@@ -33,7 +32,9 @@ def load_policy(path: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError) as exc:
         raise DocumentationError(f"invalid documentation policy: {exc}") from exc
     if policy.get("schema") != POLICY_SCHEMA:
-        raise DocumentationError(f"unsupported documentation policy schema: {policy.get('schema')!r}")
+        raise DocumentationError(
+            f"unsupported documentation policy schema: {policy.get('schema')!r}"
+        )
     if not policy.get("repositories"):
         raise DocumentationError("documentation policy has no repositories")
     return policy
@@ -42,7 +43,13 @@ def load_policy(path: Path) -> dict[str, Any]:
 def _git_files(repo: Path) -> tuple[str, ...]:
     process = subprocess.run(
         [
-            "git", "-C", str(repo), "ls-files", "--cached", "*.md", "*.rst",
+            "git",
+            "-C",
+            str(repo),
+            "ls-files",
+            "--cached",
+            "*.md",
+            "*.rst",
         ],
         check=False,
         capture_output=True,
@@ -72,7 +79,9 @@ def _classification(path: str) -> tuple[str, str, bool, bool]:
         return ("adr", "engineering", True, True)
     if path.startswith("codex-backlogs/") or "backlog" in name or "plan" in name:
         return ("historical-record", "engineering", False, False)
-    if path.startswith("docs/") and ("operation" in name or "testing" in name):
+    if path.startswith("docs/") and (
+        "operation" in name or "testing" in name or "maintenance" in name
+    ):
         return ("runbook", "operator", True, True)
     if name == "readme.md":
         return ("canonical", "mixed", True, True)
@@ -85,9 +94,13 @@ def materialize_manifest(root: Path, policy: dict[str, Any]) -> dict[str, Any]:
     for repo_data in policy["repositories"]:
         repo = Repository(repo_data["id"], root / repo_data["path"])
         if not repo.path.is_dir():
-            raise DocumentationError(f"governed repository is missing: {repo_data['path']}")
+            raise DocumentationError(
+                f"governed repository is missing: {repo_data['path']}"
+            )
         for path in _git_files(repo.path):
-            is_excluded, reason = _excluded(path, exclusions if repo.id == "workspace" else ())
+            is_excluded, reason = _excluded(
+                path, exclusions if repo.id == "workspace" else ()
+            )
             classification, audience, canonical, release_include = _classification(path)
             entries.append(
                 {
@@ -95,14 +108,26 @@ def materialize_manifest(root: Path, policy: dict[str, Any]) -> dict[str, Any]:
                     "repository_path": repo_data["path"],
                     "path": path,
                     "owner": repo.id,
-                    "context": repo.id if repo.id != "workspace" else "workspace-integration",
+                    "context": (
+                        repo.id if repo.id != "workspace" else "workspace-integration"
+                    ),
                     "audience": audience,
                     "classification": "excluded" if is_excluded else classification,
                     "canonical": False if is_excluded else canonical,
-                    "lifecycle": "excluded" if is_excluded else ("maintained" if classification != "historical-record" else "historical"),
+                    "lifecycle": (
+                        "excluded"
+                        if is_excluded
+                        else (
+                            "maintained"
+                            if classification != "historical-record"
+                            else "historical"
+                        )
+                    ),
                     "source_of_truth": path,
                     "generated": False,
-                    "qualified_release_inclusion": False if is_excluded else release_include,
+                    "qualified_release_inclusion": (
+                        False if is_excluded else release_include
+                    ),
                     "exclusion_reason": reason,
                 }
             )
@@ -131,13 +156,19 @@ def _local_link_errors(file_path: Path, logical_path: str) -> list[str]:
     return errors
 
 
-def audit_manifest(root: Path, policy: dict[str, Any], manifest: dict[str, Any]) -> list[str]:
+def audit_manifest(
+    root: Path, policy: dict[str, Any], manifest: dict[str, Any]
+) -> list[str]:
     errors: list[str] = []
     if manifest.get("schema") != MANIFEST_SCHEMA:
-        return [f"unsupported documentation manifest schema: {manifest.get('schema')!r}"]
+        return [
+            f"unsupported documentation manifest schema: {manifest.get('schema')!r}"
+        ]
     expected = materialize_manifest(root, policy)
     if manifest != expected:
-        expected_keys = {(row["repository"], row["path"]) for row in expected["documents"]}
+        expected_keys = {
+            (row["repository"], row["path"]) for row in expected["documents"]
+        }
         actual_keys = {
             (row.get("repository"), row.get("path"))
             for row in manifest.get("documents", [])
@@ -148,7 +179,9 @@ def audit_manifest(root: Path, policy: dict[str, Any], manifest: dict[str, Any])
         for key in sorted(actual_keys - expected_keys):
             errors.append(f"documentation manifest has stale entry {key[0]}:{key[1]}")
         if not errors:
-            errors.append("documentation manifest metadata differs from policy-derived inventory")
+            errors.append(
+                "documentation manifest metadata differs from policy-derived inventory"
+            )
     seen: set[tuple[str, str]] = set()
     for entry in manifest.get("documents", []):
         key = (entry["repository"], entry["path"])

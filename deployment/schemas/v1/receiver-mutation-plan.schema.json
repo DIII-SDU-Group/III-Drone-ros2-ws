@@ -8,7 +8,7 @@
   "properties": {
     "schema": {"const": "iii.receiver-mutation-plan/v1"},
     "plan_id": {"$ref": "#/definitions/identity"},
-    "action": {"enum": ["stage", "activate", "rollback", "clock-sync", "access-add", "access-revoke", "log-receipt", "log-prune"]},
+    "action": {"enum": ["stage", "activate", "rollback", "clock-sync", "access-add", "access-revoke", "log-receipt", "log-prune", "host-maintenance", "host-reboot"]},
     "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
     "client_id": {"$ref": "#/definitions/identity"},
     "receiver_generation": {"type": "integer", "minimum": 1},
@@ -54,6 +54,14 @@
     {
       "if": {"properties": {"action": {"const": "access-revoke"}}},
       "then": {"properties": {"parameters": {"$ref": "#/definitions/access_revoke_parameters"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "host-maintenance"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/host_maintenance_parameters"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "host-reboot"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/host_reboot_parameters"}}}
     }
   ],
   "definitions": {
@@ -98,6 +106,35 @@
       "type": "object", "additionalProperties": false,
       "required": ["client_id"],
       "properties": {"client_id": {"$ref": "#/definitions/identity"}}
+    },
+    "host_maintenance_parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "maintenance_id", "operation_id", "client_id", "request", "before", "installed_policy_id", "playbook_sha256", "executor_sha256", "expected_package_changes", "trust_change", "mutations", "required_checks", "declared_permissions", "reboot_expected", "no_change"],
+      "properties": {
+        "schema": {"const": "iii.host-maintenance-plan/v1"},
+        "maintenance_id": {"$ref": "#/definitions/identity"},
+        "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+        "client_id": {"$ref": "#/definitions/identity"},
+        "request": {"type": "object"},
+        "before": {"type": "object"},
+        "installed_policy_id": {"$ref": "#/definitions/identity"},
+        "playbook_sha256": {"$ref": "#/definitions/identity"},
+        "executor_sha256": {"$ref": "#/definitions/identity"},
+        "expected_package_changes": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "trust_change": {"type": ["object", "null"]},
+        "mutations": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "required_checks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+        "declared_permissions": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "reboot_expected": {"type": "boolean"},
+        "no_change": {"type": "boolean"}
+      }
+    },
+    "host_reboot_parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maintenance_id"],
+      "properties": {"maintenance_id": {"$ref": "#/definitions/identity"}}
     }
   }
 }

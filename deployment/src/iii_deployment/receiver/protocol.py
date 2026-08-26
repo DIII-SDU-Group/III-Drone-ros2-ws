@@ -23,6 +23,8 @@ class Action(str, Enum):
     PLAN_ROLLBACK = "plan-rollback"
     PLAN_ACCESS = "plan-access"
     PLAN_CLOCK_SYNC = "plan-clock-sync"
+    PLAN_HOST_MAINTENANCE = "plan-host-maintenance"
+    PLAN_HOST_REBOOT = "plan-host-reboot"
     LOG_EXPORT = "log-export"
     LOG_CHUNK = "log-chunk"
     PLAN_LOG_RECEIPT = "plan-log-receipt"
@@ -37,6 +39,9 @@ class Action(str, Enum):
     ACCESS_LIST = "access-list"
     ACCESS_ADD = "access-add"
     ACCESS_REVOKE = "access-revoke"
+    HOST_MAINTENANCE = "host-maintenance"
+    HOST_REBOOT = "host-reboot"
+    HOST_MAINTENANCE_STATUS = "host-maintenance-status"
     NETWORK_PLAN = "network-plan"
     NETWORK_APPLY = "network-apply"
     BACKUP_SEAL = "backup-seal"
@@ -50,11 +55,14 @@ READ_ONLY_ACTIONS = frozenset(
         Action.PLAN_ROLLBACK,
         Action.PLAN_ACCESS,
         Action.PLAN_CLOCK_SYNC,
+        Action.PLAN_HOST_MAINTENANCE,
+        Action.PLAN_HOST_REBOOT,
         Action.LOG_EXPORT,
         Action.LOG_CHUNK,
         Action.PLAN_LOG_RECEIPT,
         Action.PLAN_LOG_PRUNE,
         Action.ACCESS_LIST,
+        Action.HOST_MAINTENANCE_STATUS,
         Action.NETWORK_PLAN,
         Action.CANCEL,
     }
@@ -369,6 +377,8 @@ def validate_mutation_plan(
         Action.CLOCK_SYNC.value,
         Action.LOG_RECEIPT.value,
         Action.LOG_PRUNE.value,
+        Action.HOST_MAINTENANCE.value,
+        Action.HOST_REBOOT.value,
     }:
         raise ContractError("unsupported receiver mutation plan")
     _identity(plan["plan_id"], label="receiver plan identity")
@@ -448,8 +458,43 @@ def validate_mutation_plan(
         if parameters["phase"] not in {"add", "prove"}:
             raise ContractError("receiver access-add phase is invalid")
         _machine_enrollment(parameters["enrollment"])
-    else:
+    elif plan["action"] == Action.ACCESS_REVOKE.value:
         _access_revoke_parameters(parameters, label="receiver access-revoke parameters")
+    elif plan["action"] == Action.HOST_MAINTENANCE.value:
+        required = {
+            "schema",
+            "maintenance_id",
+            "operation_id",
+            "client_id",
+            "request",
+            "before",
+            "installed_policy_id",
+            "playbook_sha256",
+            "executor_sha256",
+            "expected_package_changes",
+            "trust_change",
+            "mutations",
+            "required_checks",
+            "declared_permissions",
+            "reboot_expected",
+            "no_change",
+        }
+        _exact(parameters, required, label="host-maintenance parameters")
+        if parameters["schema"] != "iii.host-maintenance-plan/v1":
+            raise ContractError("unsupported host-maintenance plan")
+        _identity(parameters["maintenance_id"], label="host maintenance")
+        if parameters["maintenance_id"] != content_identity(
+            {key: item for key, item in parameters.items() if key != "maintenance_id"}
+        ):
+            raise ContractError("host-maintenance plan identity mismatch")
+        if (
+            parameters["operation_id"] != plan["operation_id"]
+            or parameters["client_id"] != plan["client_id"]
+        ):
+            raise ContractError("host-maintenance plan binding mismatch")
+    else:
+        _exact(parameters, {"maintenance_id"}, label="host-reboot parameters")
+        _identity(parameters["maintenance_id"], label="host maintenance")
     target = plan["target"]
     if not isinstance(target, dict):
         raise ContractError("receiver mutation plan target is malformed")
@@ -505,6 +550,8 @@ def create_mutation_plan(
         Action.PLAN_CLOCK_SYNC,
         Action.PLAN_LOG_RECEIPT,
         Action.PLAN_LOG_PRUNE,
+        Action.PLAN_HOST_MAINTENANCE,
+        Action.PLAN_HOST_REBOOT,
     }:
         raise ContractError(
             "only fixed receiver planning actions can create mutation plans"
@@ -516,6 +563,10 @@ def create_mutation_plan(
             action = Action.LOG_RECEIPT.value
         elif request.action == Action.PLAN_LOG_PRUNE:
             action = Action.LOG_PRUNE.value
+        elif request.action == Action.PLAN_HOST_MAINTENANCE:
+            action = Action.HOST_MAINTENANCE.value
+        elif request.action == Action.PLAN_HOST_REBOOT:
+            action = Action.HOST_REBOOT.value
         else:
             raise ContractError(
                 "receiver parameter override is not allowed for this plan"
@@ -564,7 +615,11 @@ def create_mutation_plan(
 
 def validate_request_payload(request: Request) -> None:
     payload = request.payload
-    if request.action in {Action.STATUS, Action.ACCESS_LIST}:
+    if request.action in {
+        Action.STATUS,
+        Action.ACCESS_LIST,
+        Action.HOST_MAINTENANCE_STATUS,
+    }:
         _exact(payload, set(), label=f"{request.action.value} payload")
         return
     if request.action == Action.LOG_EXPORT:
@@ -736,6 +791,25 @@ def validate_request_payload(request: Request) -> None:
         else:
             _access_revoke_parameters(parameters, label="plan access-revoke")
         return
+    if request.action == Action.PLAN_HOST_MAINTENANCE:
+        _exact(
+            payload,
+            {"request", "target"},
+            label="plan-host-maintenance payload",
+        )
+        if not isinstance(payload["request"], dict):
+            raise ContractError("host-maintenance request must be an object")
+        _target(payload["target"], label="plan-host-maintenance target")
+        return
+    if request.action == Action.PLAN_HOST_REBOOT:
+        _exact(
+            payload,
+            {"maintenance_id", "target"},
+            label="plan-host-reboot payload",
+        )
+        _identity(payload["maintenance_id"], label="host maintenance")
+        _target(payload["target"], label="plan-host-reboot target")
+        return
     if request.action == Action.STAGE:
         _exact(payload, {"plan"}, label="stage payload")
         if not isinstance(payload["plan"], dict):
@@ -829,6 +903,20 @@ def validate_request_payload(request: Request) -> None:
         if payload["plan"]["action"] != Action.ACCESS_REVOKE.value:
             raise ContractError(
                 "access-revoke request carries a different mutation plan"
+            )
+        return
+    if request.action in {Action.HOST_MAINTENANCE, Action.HOST_REBOOT}:
+        _exact(payload, {"plan"}, label=f"{request.action.value} payload")
+        if not isinstance(payload["plan"], dict):
+            raise ContractError(f"{request.action.value} plan must be an object")
+        validate_mutation_plan(
+            payload["plan"],
+            operation_id=request.operation_id,
+            client_id=request.client_id,
+        )
+        if payload["plan"]["action"] != request.action.value:
+            raise ContractError(
+                f"{request.action.value} request carries a different mutation plan"
             )
         return
     # Later task owners retain fixed action names but cannot smuggle arbitrary

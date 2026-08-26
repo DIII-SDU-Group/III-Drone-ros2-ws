@@ -30,7 +30,6 @@ from iii_deployment.receiver.state import (
     ReceiverControlStore,
 )
 
-
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ContractRegistry(ROOT / "deployment/schemas/v1")
 
@@ -439,6 +438,36 @@ def test_receiver_engine_stages_a_real_signed_bundle_and_status_chain(
     state = store.state()
     assert state["candidate_release_id"] == case.release_id
     assert state["status_index_id"] == status_index["index_id"]
+
+
+def test_protected_qualified_release_validation_rechecks_tree_status_and_host_contract(
+    tmp_path: Path, cases: ReleaseCases
+) -> None:
+    store = cases.store(tmp_path / "target")
+    case, index = _stage_qualified(cases, store, "protected-recovery", "a", "v1.0.0")
+    _accept(store, case, index, qualified=True)
+    manifest = json.loads((case.paths.directory / "release-manifest.json").read_text())
+    target = manifest["target"]
+    report = {
+        "schema": "iii.host-baseline-report/v1",
+        "baseline_id": target["host_baseline"],
+        "unit_contract_id": target["host_unit_contract"],
+        "target_definition_id": target["definition_id"],
+    }
+    report_path = tmp_path / "target/var/lib/iii/deployment/host-baseline-report.json"
+    report_path.write_bytes(canonical_json(report) + b"\n")
+
+    proof = store.validate_protected_qualified_release()
+
+    assert proof["release_id"] == case.release_id
+    assert proof["release_status"] == "qualified"
+    assert proof["status_index_id"] == index["index_id"]
+    assert proof["valid"] is True
+
+    report["target_definition_id"] = "f" * 64
+    report_path.write_bytes(canonical_json(report) + b"\n")
+    with pytest.raises(ContractError, match="incompatible"):
+        store.validate_protected_qualified_release()
 
 
 def test_first_stage_is_immutable_and_duplicate_is_idempotent(

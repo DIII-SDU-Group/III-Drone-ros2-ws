@@ -1,0 +1,20 @@
+[Unit]
+Description=III controlled host-maintenance transaction %i
+After=network-online.target
+ConditionPathIsReadWrite=/
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0027
+Environment=ANSIBLE_NOCOLOR=1
+ExecStart=/usr/bin/ansible-playbook --inventory localhost, --limit localhost --extra-vars @/var/lib/iii/deployment/host-maintenance/%i/ansible-extra-vars.json /usr/share/iii/host-maintenance/aircraft-maintenance.yml
+TimeoutStartSec=2h
+KillMode=mixed
+NoNewPrivileges=yes
+PrivateNetwork=no
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=no
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

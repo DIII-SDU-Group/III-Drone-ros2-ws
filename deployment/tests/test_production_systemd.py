@@ -57,6 +57,18 @@ def test_minimal_time_untrusted_clock_audit_has_host_retention_policy():
     assert "rotate 14" in filesystem
 
 
+def test_host_maintenance_privilege_is_isolated_in_fixed_oneshot_unit():
+    receiver = (SYSTEMD / "iii-deployment-receiver.service").read_text()
+    maintenance = (SYSTEMD / "iii-host-maintenance@.service").read_text()
+    assert "ProtectSystem=strict" in receiver
+    assert "PrivateNetwork=yes" in receiver
+    assert "ProtectSystem=no" in maintenance
+    assert "PrivateNetwork=no" in maintenance
+    assert "Type=oneshot" in maintenance
+    assert "%i/ansible-extra-vars.json" in maintenance
+    assert "/usr/share/iii/host-maintenance/aircraft-maintenance.yml" in maintenance
+
+
 def test_systemd_unit_graph_verifies_with_installed_commands_represented(tmp_path):
     for source in SYSTEMD.iterdir():
         if source.suffix in {".service", ".target", ".timer"}:

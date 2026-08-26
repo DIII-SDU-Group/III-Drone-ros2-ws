@@ -3891,6 +3891,19 @@ unverified hardware claim.
 
 #### P3.T4: Implement Controlled Host Maintenance
 
+**Status: Completed (2026-08-27).** Implemented receiver-owned, retained
+`iii host maintenance` check/apply/status/reboot operations and a fixed
+root-owned systemd/Ansible execution boundary. Package work is bound to an
+identified Noble/Jazzy/ARM64 policy, isolated signed snapshot sources, exact
+preflighted package deltas, a state-bound verified backup, and complete durable
+before/after evidence. Offline cache preflight, explicit reboot journaling,
+post-boot protected-release authentication, boot gating on failure, and
+recovery/reprovision guidance all fail closed. Bundle and release-status trust
+rotations require proof of possession, preserve old public history, retain
+backup copies, prevent final-signer/operator stranding, and create a
+recommissioning marker; SSH and runtime credentials remain separate `iii
+access` operations.
+
 Description:
 Add an explicit III CLI and Ansible workflow for Ubuntu, kernel, ROS, and system
 package maintenance. Keep it separate from release deployment, suppress
@@ -3900,21 +3913,21 @@ maintenance reboot. Route major platform transitions to SD-card reprovisioning.
 
 Acceptance:
 
-- [ ] Normal qualified and field-release deployments cannot invoke package
+- [x] Normal qualified and field-release deployments cannot invoke package
       installation, upgrade, removal, or repository changes.
-- [ ] Host maintenance requires explicit operator intent and produces a retained
+- [x] Host maintenance requires explicit operator intent and produces a retained
       before/after package and platform report.
-- [ ] Offline runs fail before mutation when required packages are absent from
+- [x] Offline runs fail before mutation when required packages are absent from
       the local cache; cached maintenance is supported where practical.
-- [ ] Kernel/reboot-required changes schedule an explicit reboot and post-boot
+- [x] Kernel/reboot-required changes schedule an explicit reboot and post-boot
       validation rather than rebooting unexpectedly.
-- [ ] Failure to validate the protected qualified release is surfaced with a
+- [x] Failure to validate the protected qualified release is surfaced with a
       documented recovery or reprovision recommendation.
-- [ ] Major Ubuntu/ROS baseline changes are rejected by in-place maintenance.
-- [ ] Bundle signer, release-status signer, SSH authority, and runtime credential
+- [x] Major Ubuntu/ROS baseline changes are rejected by in-place maintenance.
+- [x] Bundle signer, release-status signer, SSH authority, and runtime credential
       rotation are separate planned changes; trust-root replacement is backup-first,
       cannot strand the final usable operator, and triggers Q110 recommissioning.
-- [ ] A compromised release-status signer can be removed and replaced without
+- [x] A compromised release-status signer can be removed and replaced without
       mutating historical release/status records; conflicting statements remain
       visible and are resolved by the newly commissioned trust policy.
 
@@ -3924,6 +3937,23 @@ Tests:
   reboot-required update, interrupted Ansible run, post-boot validation failure,
   major-baseline rejection, signer rotation, compromised-status-key replacement,
   final-operator-stranding rejection, and post-trust-change recommissioning.
+
+Implementation notes and verification:
+
+- Added the four host-maintenance contracts, fixed policy/playbook, installed
+  oneshot executor and Ansible role, receiver protocol/engine/reconciliation,
+  protected-anchor validator, signer history-boundary semantics, CLI surface,
+  documentation, and focused deployment/CLI/systemd tests.
+- The final focused matrix passed 163 deployment tests and 38 CLI tests. Black,
+  Pyflakes, compile, diff, 91-schema Draft-07 meta-validation, policy identity,
+  production-profile Ansible lint (zero findings across 21 files), and three
+  syntax checks passed. The privileged native-systemd target passed in 11.94 s.
+- The first target-equivalent run failed after 303.18 s because its dedicated
+  playbook omitted the new install role while host health required the installed
+  artifacts. After adding the role, the full first-convergence, zero-drift,
+  injected-drift repair, second-zero-drift, and finalization scenario passed in
+  532.22 s. No physical Raspberry Pi was attached, so an actual aircraft reboot
+  remains commissioning evidence rather than a claimed local result.
 
 #### P3.T5: Implement And Commission The Shared Hardware-Role Manifest
 

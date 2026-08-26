@@ -2,6 +2,7 @@
   "schema_version": "1",
   "safety": {"telemetry_max_age_ms": 1000, "stable_preflight_s": 3, "acceptance_stable_s": 10},
   "activation": {"target_acceptance_s": 60, "hard_deadline_s": 120, "rollback_target_s": 60},
+  "host_maintenance": {"target_acceptance_s": 1800, "hard_deadline_s": 7200, "rollback_target_s": 60},
   "receiver": {"self_update_deadline_s": 30},
   "network": {"confirmation_deadline_s": 90, "ethernet_dhcp_required": true},
   "storage": {"minimum_reserve_bytes": 2147483648, "minimum_reserve_percent": 10},
@@ -16,4 +17,3 @@
   "bundle": {"maximum_unpacked_bytes": 21474836480, "maximum_entries": 200000, "maximum_path_bytes": 255, "maximum_path_depth": 32},
   "status": {"offline_age_warning_days": 7}
 }
-

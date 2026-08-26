@@ -30,7 +30,6 @@ from .filesystem import (
 from .release_status import require_fetchable_status, verify_status_index
 from .signers import load_trusted_signers
 
-
 STATE_SCHEMA = "iii.onboard-release-state/v1"
 RECEIPT_SCHEMA = "iii.staged-release/v1"
 STATUS_INDEX_NAME = "release-status-index.json"
@@ -885,6 +884,74 @@ class ReleaseStore:
             self._apply_statuses(state, selected_index, latest)
             _atomic_document(self.status_path, selected_index, owner=self.state_owner)
             return self._commit_state(state)
+
+    def validate_protected_qualified_release(self) -> dict[str, Any]:
+        """Authenticate the protected recovery anchor against current host policy.
+
+        This is intentionally read-only. A maintenance transaction may rotate the
+        index signature while preserving its exact statement chain, so the durable
+        release state's derived index identity need not be rewritten merely to
+        prove the same historical status under newly commissioned trust.
+        """
+
+        with self._locked():
+            state = self._load_state()
+            index, latest = self._verified_status_update(None)
+            anchor = state["qualified_anchor_release_id"]
+            if anchor is None or index is None:
+                raise ContractError(
+                    "no signed protected qualified recovery release is available"
+                )
+            record = state["releases"].get(anchor)
+            statement = latest.get(anchor)
+            if (
+                not isinstance(record, dict)
+                or record["release_class"] != "qualified"
+                or not isinstance(statement, dict)
+                or statement["version"] != record["version"]
+                or statement["status"] != "qualified"
+            ):
+                raise ContractError(
+                    "protected recovery release is withdrawn, unsafe, or unauthenticated"
+                )
+            release_root = self.releases_root / anchor
+            receipt = self._verify_release_tree(release_root)
+            if receipt["release_id"] != anchor:
+                raise ContractError(
+                    "protected recovery release receipt identity mismatch"
+                )
+            release = _canonical_document(
+                release_root / "release-manifest.json",
+                label="protected release manifest",
+            )
+            report = _canonical_document(
+                self.state_root / "host-baseline-report.json",
+                label="host baseline report",
+            )
+            target = release["target"]
+            if (
+                target["host_baseline"] != report.get("baseline_id")
+                or target["host_unit_contract"] != report.get("unit_contract_id")
+                or target["definition_id"] != report.get("target_definition_id")
+            ):
+                raise ContractError(
+                    "protected qualified release is incompatible with the maintained host contract"
+                )
+            value = {
+                "schema": "iii.host-maintenance-recovery-validation/v1",
+                "validation_id": "0" * 64,
+                "release_id": anchor,
+                "release_status": statement["status"],
+                "status_statement_id": statement["statement_id"],
+                "status_index_id": index["index_id"],
+                "release_receipt_id": content_identity(receipt),
+                "host_baseline": report["baseline_id"],
+                "valid": True,
+            }
+            value["validation_id"] = content_identity(
+                {key: item for key, item in value.items() if key != "validation_id"}
+            )
+            return value
 
     def authorize_activation(
         self,

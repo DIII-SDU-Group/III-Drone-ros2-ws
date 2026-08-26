@@ -1,0 +1,41 @@
+---
+- name: Install the fixed local host-maintenance directory
+  ansible.builtin.file:
+    path: /usr/share/iii/host-maintenance
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the fixed host-maintenance Ansible playbook
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../host-maintenance/aircraft-maintenance.yml"
+    dest: /usr/share/iii/host-maintenance/aircraft-maintenance.yml
+    owner: root
+    group: root
+    mode: "0444"
+
+- name: Install the content-identified host-maintenance policy
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../host-maintenance/host-maintenance-policy.json"
+    dest: /etc/iii/host-maintenance-policy.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
+
+- name: Install the fixed privileged host-maintenance executor
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../systemd/iii-host-maintenance@.service"
+    dest: /etc/systemd/system/iii-host-maintenance@.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd for host maintenance
+
+- name: Create the receiver-owned maintenance transaction root
+  ansible.builtin.file:
+    path: /var/lib/iii/deployment/host-maintenance
+    state: directory
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0750"

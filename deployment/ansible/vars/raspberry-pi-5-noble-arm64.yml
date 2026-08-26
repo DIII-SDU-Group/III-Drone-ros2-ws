@@ -25,6 +25,7 @@ iii_ros_snapshot: http://snapshots.ros.org/jazzy/2026-06-18/ubuntu
 iii_ros_key_sha256: 6d2ff4af9d56b304213de7664551f6986174a68bae76476b7ad21469b27a28c4
 iii_ros_key_fingerprint: 4B63CF8FDE49746E98FA01DDAD19BAB3CBF125EA
 iii_host_packages:
+  - ansible-core
   - ca-certificates
   - chrony
   - curl

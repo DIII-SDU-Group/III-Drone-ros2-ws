@@ -12,13 +12,35 @@ import secrets
 from typing import Any, Callable, Mapping
 
 from iii_deployment.contracts import ContractError, canonical_json, content_identity
-from iii_deployment.receiver.protocol import Action, IDENTITY, OPERATION_ID, validate_mutation_plan
-
+from iii_deployment.receiver.protocol import (
+    Action,
+    IDENTITY,
+    OPERATION_ID,
+    validate_mutation_plan,
+)
 
 CONTROL_SCHEMA = "iii.receiver-control-state/v1"
 JOURNAL_SCHEMA = "iii.receiver-operation-journal/v1"
 AUDIT_SCHEMA = "iii.receiver-audit/v1"
 TERMINAL_STATES = frozenset({"cancelled", "completed", "failed"})
+DEFAULT_DEADLINES = {
+    "target_acceptance_s": 60,
+    "hard_deadline_s": 120,
+    "rollback_target_s": 60,
+}
+HOST_MAINTENANCE_DEADLINES = {
+    "target_acceptance_s": 1800,
+    "hard_deadline_s": 7200,
+    "rollback_target_s": 60,
+}
+
+
+def operation_deadlines(action: str) -> dict[str, int]:
+    return dict(
+        HOST_MAINTENANCE_DEADLINES
+        if action == Action.HOST_MAINTENANCE.value
+        else DEFAULT_DEADLINES
+    )
 
 
 def _canonical_document(path: Path, *, label: str) -> dict[str, Any]:
@@ -46,7 +68,9 @@ def atomic_bytes(path: Path, raw: bytes, *, mode: int = 0o600) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = path.parent / f".{path.name}.partial-{os.getpid()}"
     if temporary.exists() or temporary.is_symlink():
-        raise ContractError(f"stale receiver state partial requires reconciliation: {temporary.name}")
+        raise ContractError(
+            f"stale receiver state partial requires reconciliation: {temporary.name}"
+        )
     descriptor = os.open(
         temporary,
         os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
@@ -78,7 +102,9 @@ def _identity(value: Mapping[str, Any], field: str) -> str:
 
 def read_boot_id() -> str:
     try:
-        value = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
+        value = (
+            Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
+        )
     except OSError as exc:
         raise ContractError(f"cannot read host boot identity: {exc}") from exc
     if not value:
@@ -113,9 +139,9 @@ class ReceiverControlStore:
         if not self.path.exists() and not self.path.is_symlink():
             return self._initial()
         value = _canonical_document(self.path, label="receiver control state")
-        if value.get("schema") != CONTROL_SCHEMA or value.get("control_id") != _identity(
-            value, "control_id"
-        ):
+        if value.get("schema") != CONTROL_SCHEMA or value.get(
+            "control_id"
+        ) != _identity(value, "control_id"):
             raise ContractError("receiver control-state identity mismatch")
         if set(value) != {
             "schema",
@@ -126,30 +152,40 @@ class ReceiverControlStore:
         }:
             raise ContractError("receiver control-state fields are malformed")
         if value.get("receiver_generation") != self.receiver_generation:
-            raise ContractError("receiver control state belongs to another receiver generation")
+            raise ContractError(
+                "receiver control state belongs to another receiver generation"
+            )
         if not isinstance(value.get("nonces"), dict):
             raise ContractError("receiver control nonces are malformed")
         for nonce_hash, record in value["nonces"].items():
-            if not IDENTITY.fullmatch(nonce_hash) or not isinstance(record, dict) or set(record) != {
-                "operation_id",
-                "client_id",
-                "plan_id",
-                "issued_boot_id",
-                "issued_monotonic",
-                "expires_monotonic",
-                "consumed",
-            }:
+            if (
+                not IDENTITY.fullmatch(nonce_hash)
+                or not isinstance(record, dict)
+                or set(record)
+                != {
+                    "operation_id",
+                    "client_id",
+                    "plan_id",
+                    "issued_boot_id",
+                    "issued_monotonic",
+                    "expires_monotonic",
+                    "consumed",
+                }
+            ):
                 raise ContractError("receiver control nonce record is malformed")
             if not OPERATION_ID.fullmatch(str(record["operation_id"])):
                 raise ContractError("receiver control nonce operation ID is invalid")
-            if not IDENTITY.fullmatch(str(record["client_id"])) or not IDENTITY.fullmatch(
-                str(record["plan_id"])
-            ):
+            if not IDENTITY.fullmatch(
+                str(record["client_id"])
+            ) or not IDENTITY.fullmatch(str(record["plan_id"])):
                 raise ContractError("receiver control nonce binding is invalid")
             if not isinstance(record["consumed"], bool):
-                raise ContractError("receiver control nonce consumption state is invalid")
+                raise ContractError(
+                    "receiver control nonce consumption state is invalid"
+                )
             if not isinstance(record["issued_boot_id"], str) or not all(
-                isinstance(record[field], (int, float)) and not isinstance(record[field], bool)
+                isinstance(record[field], (int, float))
+                and not isinstance(record[field], bool)
                 for field in ("issued_monotonic", "expires_monotonic")
             ):
                 raise ContractError("receiver control nonce clock binding is invalid")
@@ -231,7 +267,10 @@ class ReceiverControlStore:
         value = self.load()
         lease = value["lease"]
         if lease is not None:
-            if lease["operation_id"] == operation_id and lease["client_id"] == client_id:
+            if (
+                lease["operation_id"] == operation_id
+                and lease["client_id"] == client_id
+            ):
                 raise ContractError("receiver operation is already durably accepted")
             raise ContractError(
                 "receiver mutation lease is held by "
@@ -246,11 +285,15 @@ class ReceiverControlStore:
         if record["consumed"]:
             raise ContractError("receiver nonce was already consumed")
         if record["issued_boot_id"] != boot or now > record["expires_monotonic"]:
-            raise ContractError("receiver nonce expired before mutation lock acquisition")
+            raise ContractError(
+                "receiver nonce expired before mutation lock acquisition"
+            )
         expected = (operation_id, client_id, plan_id)
         observed = (record["operation_id"], record["client_id"], record["plan_id"])
         if observed != expected:
-            raise ContractError("receiver nonce is bound to another operation, client, or plan")
+            raise ContractError(
+                "receiver nonce is bound to another operation, client, or plan"
+            )
         record["consumed"] = True
         value["lease"] = {
             "operation_id": operation_id,
@@ -302,11 +345,15 @@ class OperationJournalStore:
         if not directory.exists() and not directory.is_symlink():
             return []
         if directory.is_symlink() or not directory.is_dir():
-            raise ContractError("receiver operation journal directory is linked or invalid")
+            raise ContractError(
+                "receiver operation journal directory is linked or invalid"
+            )
         values: list[dict[str, Any]] = []
         for path in sorted(directory.iterdir()):
             if path.is_symlink() or not path.is_file() or path.suffix != ".json":
-                raise ContractError("receiver operation journal directory contains an unsafe entry")
+                raise ContractError(
+                    "receiver operation journal directory contains an unsafe entry"
+                )
             operation_id = path.stem
             value = self.load(operation_id)
             assert value is not None
@@ -324,8 +371,16 @@ class OperationJournalStore:
         validate_mutation_plan(plan)
         if self.load(plan["operation_id"]) is not None:
             raise ContractError("receiver operation ID already has a durable journal")
-        if (target_acceptance_s, hard_deadline_s, rollback_target_s) != (60, 120, 60):
-            raise ContractError("receiver deadlines differ from the fixed 60/120/60 policy")
+        expected_deadlines = operation_deadlines(str(plan["action"]))
+        if (target_acceptance_s, hard_deadline_s, rollback_target_s) != tuple(
+            expected_deadlines[field]
+            for field in (
+                "target_acceptance_s",
+                "hard_deadline_s",
+                "rollback_target_s",
+            )
+        ):
+            raise ContractError("receiver deadlines differ from fixed action policy")
         boot = self.boot_id()
         now = self.monotonic()
         value: dict[str, Any] = {
@@ -444,7 +499,9 @@ class OperationJournalStore:
         if value["state"] in TERMINAL_STATES:
             return value
         if not value["cancellation_safe"]:
-            raise ContractError("receiver operation has passed its cancellation-safe checkpoint")
+            raise ContractError(
+                "receiver operation has passed its cancellation-safe checkpoint"
+            )
         return self.transition(
             operation_id,
             state="cancel-requested",
@@ -503,16 +560,15 @@ class OperationJournalStore:
             raise ContractError("receiver operation journal has invalid state")
         if not isinstance(value["sequence"], int) or value["sequence"] < 1:
             raise ContractError("receiver operation journal sequence is invalid")
-        if value["deadlines"] != {
-            "target_acceptance_s": 60,
-            "hard_deadline_s": 120,
-            "rollback_target_s": 60,
-        }:
+        expected_deadlines = operation_deadlines(str(value["action"]))
+        if value["deadlines"] != expected_deadlines:
             raise ContractError("receiver operation journal deadlines are invalid")
         if (
             not isinstance(value["remaining_hard_s"], (int, float))
             or isinstance(value["remaining_hard_s"], bool)
-            or not 0 <= value["remaining_hard_s"] <= 120
+            or not 0
+            <= value["remaining_hard_s"]
+            <= expected_deadlines["hard_deadline_s"]
         ):
             raise ContractError("receiver operation remaining deadline is invalid")
         if not isinstance(value["accepted_boot_id"], str) or not isinstance(
@@ -520,12 +576,15 @@ class OperationJournalStore:
         ):
             raise ContractError("receiver operation boot binding is invalid")
         if not all(
-            isinstance(value[field], (int, float)) and not isinstance(value[field], bool)
+            isinstance(value[field], (int, float))
+            and not isinstance(value[field], bool)
             for field in ("accepted_monotonic", "budget_monotonic")
         ):
             raise ContractError("receiver operation monotonic clock is invalid")
         if len(value["events"]) != value["sequence"]:
-            raise ContractError("receiver operation journal event sequence is incomplete")
+            raise ContractError(
+                "receiver operation journal event sequence is incomplete"
+            )
         for index, event in enumerate(value["events"], start=1):
             if not isinstance(event, dict) or set(event) != {
                 "sequence",
@@ -535,11 +594,19 @@ class OperationJournalStore:
                 "monotonic",
                 "evidence_hash",
             }:
-                raise ContractError("receiver operation journal event fields are malformed")
+                raise ContractError(
+                    "receiver operation journal event fields are malformed"
+                )
             if event.get("sequence") != index:
-                raise ContractError("receiver operation journal events are not contiguous")
-            if not isinstance(event["event"], str) or not isinstance(event["checkpoint"], str):
-                raise ContractError("receiver operation journal event labels are invalid")
+                raise ContractError(
+                    "receiver operation journal events are not contiguous"
+                )
+            if not isinstance(event["event"], str) or not isinstance(
+                event["checkpoint"], str
+            ):
+                raise ContractError(
+                    "receiver operation journal event labels are invalid"
+                )
             if not isinstance(event["boot_id"], str) or not isinstance(
                 event["monotonic"], (int, float)
             ):
@@ -547,7 +614,9 @@ class OperationJournalStore:
             if event["evidence_hash"] is not None and not IDENTITY.fullmatch(
                 str(event["evidence_hash"])
             ):
-                raise ContractError("receiver operation journal event evidence is invalid")
+                raise ContractError(
+                    "receiver operation journal event evidence is invalid"
+                )
         if value["events"][-1]["checkpoint"] != value["checkpoint"]:
             raise ContractError("receiver journal checkpoint differs from latest event")
         if not isinstance(value["cancellation_safe"], bool) or not isinstance(
@@ -557,7 +626,9 @@ class OperationJournalStore:
         if value["state"] in {"accepted", "running", "cancel-requested"} and (
             value["result"] is not None or value["failure"] is not None
         ):
-            raise ContractError("nonterminal receiver journal contains a terminal outcome")
+            raise ContractError(
+                "nonterminal receiver journal contains a terminal outcome"
+            )
         if value["state"] == "completed" and (
             not isinstance(value["result"], dict) or value["failure"] is not None
         ):
@@ -614,7 +685,10 @@ class AuditLog:
                 "evidence_hash",
             }:
                 raise ContractError("receiver audit entry fields are malformed")
-            if value.get("schema") != AUDIT_SCHEMA or value.get("previous_event_id") != previous:
+            if (
+                value.get("schema") != AUDIT_SCHEMA
+                or value.get("previous_event_id") != previous
+            ):
                 raise ContractError("receiver audit chain is discontinuous")
             if value.get("event_id") != _identity(value, "event_id"):
                 raise ContractError("receiver audit event identity mismatch")

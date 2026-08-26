@@ -10,6 +10,7 @@ from pathlib import Path
 import signal
 import socket
 import time
+from typing import Any, Mapping
 
 from iii_deployment.bundle import load_bundle_limits
 from iii_deployment.activation import ActivationTransactionStore
@@ -24,6 +25,7 @@ from iii_deployment.activation_runtime import (
 )
 from iii_deployment.contracts import ContractError, ContractRegistry
 from iii_deployment.log_lifecycle import LogInventory, LogTransferStore
+from iii_deployment.host_maintenance import HostMaintenanceController
 from iii_deployment.receiver.access import AccessManager
 from iii_deployment.receiver.config import (
     AUDIT_PATH,
@@ -88,6 +90,14 @@ def _operational_policy() -> dict:
     }:
         raise ContractError(
             "receiver operational policy changes the fixed activation deadlines"
+        )
+    if value.get("host_maintenance") != {
+        "target_acceptance_s": 1800,
+        "hard_deadline_s": 7200,
+        "rollback_target_s": 60,
+    }:
+        raise ContractError(
+            "receiver operational policy changes fixed host-maintenance deadlines"
         )
     return value
 
@@ -224,6 +234,17 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         ],
         deployment_audits=policy["logging"]["deployment_audits"],
     )
+    host_maintenance = HostMaintenanceController(
+        root=Path("/"),
+        registry=registry,
+        maintenance_safe=safety_provider.maintenance_safe_for_clock_recovery,
+        stop_runtime=control_plane.stop_all_units,
+        resume_runtime=lambda: control_plane.boot_profile(config.profile),
+        active_operator_count=lambda: sum(
+            1 for item in access.load()["clients"].values() if item["state"] == "active"
+        ),
+        recovery_validator=store.validate_protected_qualified_release,
+    )
     return ReceiverEngine(
         release_store=store,
         control=control,
@@ -243,6 +264,7 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         clock_controller=clock,
         log_inventory=log_inventory,
         log_transfer=log_transfer,
+        host_maintenance=host_maintenance,
     )
 
 
@@ -259,6 +281,17 @@ def _acquire_singleton() -> int:
     return descriptor
 
 
+def assert_reconciliation_boot_safe(result: Mapping[str, Any]) -> None:
+    """Refuse normal boot after a failed host-maintenance recovery check."""
+
+    maintenance = result.get("host_maintenance_recovery")
+    if isinstance(maintenance, Mapping) and maintenance.get("state") == "failed":
+        raise ContractError(
+            "host maintenance failed protected-release validation; "
+            "keep runtime stopped and recover or reprovision"
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="iii-deployment-receiver")
     parser.add_argument("--config", type=Path, default=CONFIG_PATH)
@@ -272,6 +305,7 @@ def main() -> int:
         engine = build_engine(config)
         result = engine.reconcile()
         if arguments.reconcile_only:
+            assert_reconciliation_boot_safe(result)
             print(json.dumps(result, sort_keys=True, separators=(",", ":")))
             os.close(singleton)
             return 0

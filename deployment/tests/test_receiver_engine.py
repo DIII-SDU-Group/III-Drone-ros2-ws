@@ -21,6 +21,7 @@ from iii_deployment.receiver.state import (
     OperationJournalStore,
     ReceiverControlStore,
 )
+from iii_deployment.receiver.server import assert_reconciliation_boot_safe
 from iii_deployment.staging import StageResult
 
 REGISTRY = ContractRegistry(Path(__file__).resolve().parents[1] / "schemas/v1")
@@ -161,6 +162,7 @@ def receiver(tmp_path: Path):
         clock_controller=None,
         log_inventory=None,
         log_transfer=None,
+        host_maintenance=None,
     ):
         return ReceiverEngine(
             release_store=store,
@@ -178,6 +180,7 @@ def receiver(tmp_path: Path):
             clock_controller=clock_controller,
             log_inventory=log_inventory,
             log_transfer=log_transfer,
+            host_maintenance=host_maintenance,
         )
 
     return SimpleNamespace(
@@ -194,6 +197,88 @@ def receiver(tmp_path: Path):
         build=build,
         root=tmp_path,
     )
+
+
+class FakeHostMaintenance:
+    def __init__(self) -> None:
+        self.phase = "reboot-required"
+        self.maintenance_id = "9" * 64
+        self.transaction_id = "8" * 64
+
+    def plan(self, *, operation_id, client_id, request, live_state):
+        value = {
+            "schema": "iii.host-maintenance-plan/v1",
+            "maintenance_id": "0" * 64,
+            "operation_id": operation_id,
+            "client_id": client_id,
+            "request": dict(request),
+            "before": {"snapshot_id": "7" * 64},
+            "installed_policy_id": "6" * 64,
+            "playbook_sha256": "5" * 64,
+            "executor_sha256": "4" * 64,
+            "expected_package_changes": [],
+            "trust_change": None,
+            "mutations": [],
+            "required_checks": ["fixed receiver lease"],
+            "declared_permissions": [],
+            "reboot_expected": False,
+            "no_change": True,
+        }
+        value["maintenance_id"] = hashlib.sha256(
+            canonical_json(
+                {key: item for key, item in value.items() if key != "maintenance_id"}
+            )
+        ).hexdigest()
+        self.maintenance_id = value["maintenance_id"]
+        return value
+
+    def plan_reboot(self, *, operation_id, client_id, maintenance_id):
+        if maintenance_id != self.maintenance_id:
+            raise ContractError("wrong maintenance")
+        return {"maintenance_id": maintenance_id}
+
+    def assert_mutation_allowed(self, _action):
+        return None
+
+    def apply(self, parameters):
+        self.maintenance_id = parameters["maintenance_id"]
+        return self.status()["transaction"]
+
+    def schedule_reboot(self, maintenance_id):
+        self.maintenance_id = maintenance_id
+        self.phase = "reboot-scheduled"
+        return self.status()["transaction"]
+
+    def reconcile(self):
+        return {
+            "schema": "iii.host-maintenance-reconcile/v1",
+            "maintenance_id": self.maintenance_id,
+            "state": self.phase,
+            "transaction_id": self.transaction_id,
+        }
+
+    def status(self):
+        return {
+            "schema": "iii.host-maintenance-status/v1",
+            "transaction": {
+                "maintenance_id": self.maintenance_id,
+                "transaction_id": self.transaction_id,
+                "phase": self.phase,
+                "reboot": {"required": True},
+                "commissioning": {"state": "unchanged", "reasons": []},
+                "failure": (
+                    {
+                        "code": "postboot-failed",
+                        "message": "failed",
+                        "recommendation": "reimage",
+                    }
+                    if self.phase == "failed"
+                    else None
+                ),
+            },
+            "mutation_blocked": self.phase not in {"completed", "failed"},
+            "recovery_recommendation": "reimage" if self.phase == "failed" else None,
+        }
 
 
 def stage_plan(receiver, operation_id: str = "operation-stage-0001"):
@@ -972,3 +1057,168 @@ def test_receiver_log_pull_receipt_and_exact_prune_flow(receiver) -> None:
         "var/log/iii/host.jsonl"
     ]
     assert not content.exists()
+
+
+def test_host_maintenance_uses_retained_plan_lease_and_extended_deadline(
+    receiver,
+) -> None:
+    host = FakeHostMaintenance()
+    engine = receiver.build(host_maintenance=host)
+    operation_id = "host-maintenance-0001"
+    planned = engine.handle(
+        request(
+            "plan-host-maintenance",
+            operation_id,
+            receiver.operator_id,
+            {
+                "request": {"schema": "fixture-host-request"},
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    REGISTRY.validate("receiver-mutation-plan", planned["plan"])
+
+    accepted = engine.handle(
+        request(
+            "host-maintenance",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"]},
+            planned["nonce"],
+        )
+    )
+
+    assert accepted["operation"]["deadlines"] == {
+        "target_acceptance_s": 1800,
+        "hard_deadline_s": 7200,
+        "rollback_target_s": 60,
+    }
+    assert receiver.control.load()["lease"]["operation_id"] == operation_id
+    competing = engine.handle(
+        request(
+            "plan-host-reboot",
+            "host-reboot-blocked",
+            receiver.operator_id,
+            {
+                "maintenance_id": host.maintenance_id,
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    with pytest.raises(ContractError, match="lease is held"):
+        engine.handle(
+            request(
+                "host-reboot",
+                "host-reboot-blocked",
+                receiver.operator_id,
+                {"plan": competing["plan"]},
+                competing["nonce"],
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "postboot_phase,expected_state", [("completed", "completed"), ("failed", "failed")]
+)
+def test_host_reboot_journal_reconciles_postboot_validation(
+    receiver, postboot_phase: str, expected_state: str
+) -> None:
+    host = FakeHostMaintenance()
+    engine = receiver.build(host_maintenance=host)
+    operation_id = "host-reboot-reconcile"
+    planned = engine.handle(
+        request(
+            "plan-host-reboot",
+            operation_id,
+            receiver.operator_id,
+            {
+                "maintenance_id": host.maintenance_id,
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    engine.handle(
+        request(
+            "host-reboot",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"]},
+            planned["nonce"],
+        )
+    )
+    assert receiver.journals.load(operation_id)["state"] == "accepted"
+
+    host.phase = postboot_phase
+    restarted = receiver.build(
+        selected_executor=QueuedExecutor(), host_maintenance=host
+    )
+    recovered = restarted.reconcile()
+
+    journal = receiver.journals.load(operation_id)
+    assert journal["state"] == expected_state
+    assert receiver.control.load()["lease"] is None
+    assert operation_id in recovered["recovered_operations"]
+    if postboot_phase == "completed":
+        assert journal["result"]["reconciled_after_boot"] is True
+    else:
+        assert journal["failure"]["code"] == "postboot-failed"
+
+
+def test_host_reboot_execution_remains_nonterminal_until_postboot_reconcile(
+    receiver,
+) -> None:
+    host = FakeHostMaintenance()
+    engine = receiver.build(
+        selected_executor=ImmediateExecutor(), host_maintenance=host
+    )
+    operation_id = "host-reboot-deferred"
+    planned = engine.handle(
+        request(
+            "plan-host-reboot",
+            operation_id,
+            receiver.operator_id,
+            {
+                "maintenance_id": host.maintenance_id,
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+
+    engine.handle(
+        request(
+            "host-reboot",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"]},
+            planned["nonce"],
+        )
+    )
+
+    journal = receiver.journals.load(operation_id)
+    assert journal["state"] == "running"
+    assert journal["result"] is None
+    assert receiver.control.load()["lease"]["operation_id"] == operation_id
+    assert host.phase == "reboot-scheduled"
+
+
+def test_failed_host_maintenance_reconciliation_blocks_normal_boot() -> None:
+    with pytest.raises(ContractError, match="keep runtime stopped"):
+        assert_reconciliation_boot_safe(
+            {
+                "schema": "iii.receiver-result/v1",
+                "host_maintenance_recovery": {
+                    "schema": "iii.host-maintenance-reconcile/v1",
+                    "state": "failed",
+                },
+            }
+        )
+
+    assert_reconciliation_boot_safe(
+        {
+            "schema": "iii.receiver-result/v1",
+            "host_maintenance_recovery": {
+                "schema": "iii.host-maintenance-reconcile/v1",
+                "state": "completed",
+            },
+        }
+    )

@@ -91,6 +91,10 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     Retained Ansible convergence, pinned host/ROS baseline, signed receiver
     bootstrap, zero-drift proof, and first-boot authority finalization.
 
+26. `host-maintenance.md`
+    Explicit package and trust maintenance, offline cache gates, retained
+    before/after evidence, reboot reconciliation, recovery, and recommissioning.
+
 Domain language and context ownership are indexed by the root
 `CONTEXT-MAP.md`.
 

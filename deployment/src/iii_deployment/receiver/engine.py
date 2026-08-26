@@ -85,6 +85,7 @@ class ReceiverEngine:
         clock_controller: ClockController | None = None,
         log_inventory: LogInventory | None = None,
         log_transfer: LogTransferStore | None = None,
+        host_maintenance: Any | None = None,
     ) -> None:
         if control.nonce_expiry_s != NONCE_EXPIRY_S:
             raise ContractError(
@@ -113,6 +114,7 @@ class ReceiverEngine:
         self.clock_controller = clock_controller
         self.log_inventory = log_inventory
         self.log_transfer = log_transfer
+        self.host_maintenance = host_maintenance
         if (log_inventory is None) != (log_transfer is None):
             raise ContractError(
                 "receiver log inventory and transfer must be configured together"
@@ -182,6 +184,11 @@ class ReceiverEngine:
                 target={"logical_id": self.logical_target, "profile": self.profile},
                 clients=self.access.list_clients(),
             )
+        if request.action == Action.HOST_MAINTENANCE_STATUS:
+            self.access.require_active(request.client_id)
+            if self.host_maintenance is None:
+                raise ContractError("receiver host maintenance is unavailable")
+            return self._result(request, maintenance=self.host_maintenance.status())
         if request.action == Action.LOG_EXPORT:
             self.access.require_active(request.client_id)
             if self.log_inventory is None:
@@ -212,6 +219,8 @@ class ReceiverEngine:
             Action.PLAN_CLOCK_SYNC,
             Action.PLAN_LOG_RECEIPT,
             Action.PLAN_LOG_PRUNE,
+            Action.PLAN_HOST_MAINTENANCE,
+            Action.PLAN_HOST_REBOOT,
         }:
             return self._plan(request)
         if request.action in {
@@ -223,6 +232,8 @@ class ReceiverEngine:
             Action.CLOCK_SYNC,
             Action.LOG_RECEIPT,
             Action.LOG_PRUNE,
+            Action.HOST_MAINTENANCE,
+            Action.HOST_REBOOT,
         }:
             return self._accept(request)
         if request.action == Action.CANCEL:
@@ -305,6 +316,23 @@ class ReceiverEngine:
                         request.payload["receipt_id"]
                     )
                 }
+        elif request.action == Action.PLAN_HOST_MAINTENANCE:
+            if self.host_maintenance is None:
+                raise ContractError("receiver host maintenance is unavailable")
+            parameter_override = self.host_maintenance.plan(
+                operation_id=request.operation_id,
+                client_id=request.client_id,
+                request=request.payload["request"],
+                live_state=self._live_state(),
+            )
+        elif request.action == Action.PLAN_HOST_REBOOT:
+            if self.host_maintenance is None:
+                raise ContractError("receiver host maintenance is unavailable")
+            parameter_override = self.host_maintenance.plan_reboot(
+                operation_id=request.operation_id,
+                client_id=request.client_id,
+                maintenance_id=request.payload["maintenance_id"],
+            )
         plan = create_mutation_plan(
             request,
             receiver_generation=self.control.receiver_generation,
@@ -377,6 +405,8 @@ class ReceiverEngine:
         self._authorize_plan_client(request, plan)
         if plan["expected_state"] != self._live_state():
             raise ContractError("receiver plan is stale against current target state")
+        if self.host_maintenance is not None:
+            self.host_maintenance.assert_mutation_allowed(request.action.value)
         if request.action == Action.STAGE:
             self._preflight_staging(plan)
         if request.action in {Action.ACTIVATE, Action.ROLLBACK}:
@@ -409,7 +439,18 @@ class ReceiverEngine:
         try:
             if request.action == Action.STAGE:
                 self._claim_staging_input(plan)
-            journal = self.journals.create(plan=plan)
+            journal = self.journals.create(
+                plan=plan,
+                **(
+                    {
+                        "target_acceptance_s": 1800,
+                        "hard_deadline_s": 7200,
+                        "rollback_target_s": 60,
+                    }
+                    if request.action == Action.HOST_MAINTENANCE
+                    else {}
+                ),
+            )
         except Exception:
             self.control.release(request.operation_id)
             raise
@@ -678,6 +719,20 @@ class ReceiverEngine:
                         event="privileged-mutation-started",
                     )
             result = self._execute(journal["plan"])
+            if journal["action"] == Action.HOST_REBOOT.value:
+                # A successful reboot request is deliberately nonterminal. The
+                # same durable journal and mutation lease survive shutdown; only
+                # startup reconciliation may complete it after the boot ID and
+                # protected qualified release have both been validated.
+                self.audit.append(
+                    event="operation",
+                    outcome="accepted",
+                    operation_id=operation_id,
+                    client_id=journal["client_id"],
+                    action=journal["action"],
+                    detail_code="reboot-scheduled-awaiting-postboot-validation",
+                )
+                return
             with self._mutex:
                 remaining = self.journals.remaining_budget(operation_id)
                 if remaining <= 0:
@@ -832,6 +887,31 @@ class ReceiverEngine:
                 **identity,
                 "state": state_name,
             }
+        if action == Action.HOST_MAINTENANCE.value:
+            if self.host_maintenance is None:
+                raise ContractError("receiver host maintenance is unavailable")
+            transaction = self.host_maintenance.apply(parameters)
+            return {
+                "kind": "host-maintenance",
+                "maintenance_id": transaction["maintenance_id"],
+                "phase": transaction["phase"],
+                "transaction_id": transaction["transaction_id"],
+                "reboot_required": transaction["reboot"]["required"],
+                "commissioning": transaction["commissioning"],
+            }
+        if action == Action.HOST_REBOOT.value:
+            if self.host_maintenance is None:
+                raise ContractError("receiver host maintenance is unavailable")
+            transaction = self.host_maintenance.schedule_reboot(
+                parameters["maintenance_id"]
+            )
+            return {
+                "kind": "host-reboot",
+                "maintenance_id": transaction["maintenance_id"],
+                "phase": transaction["phase"],
+                "transaction_id": transaction["transaction_id"],
+                "reboot_scheduled": True,
+            }
         if action == Action.LOG_RECEIPT.value:
             if self.log_transfer is None:
                 raise ContractError("receiver log transfer is unavailable")
@@ -864,6 +944,11 @@ class ReceiverEngine:
                 if self.activation_coordinator is not None
                 else None
             )
+            host_maintenance_recovery = (
+                self.host_maintenance.reconcile()
+                if self.host_maintenance is not None
+                else None
+            )
             control = self.control.load()
             lease = control["lease"]
             journals = {item["operation_id"]: item for item in self.journals.list()}
@@ -892,6 +977,59 @@ class ReceiverEngine:
                     )
             for operation_id, journal in journals.items():
                 if journal["state"] in TERMINAL_STATES:
+                    continue
+                if (
+                    journal["action"] == Action.HOST_REBOOT.value
+                    and host_maintenance_recovery is not None
+                    and host_maintenance_recovery.get("maintenance_id")
+                    == journal["plan"]["parameters"]["maintenance_id"]
+                    and host_maintenance_recovery.get("state")
+                    in {"completed", "failed"}
+                ):
+                    if journal["state"] == "accepted":
+                        journal = self.journals.transition(
+                            operation_id,
+                            state="running",
+                            checkpoint="reconciliation",
+                            cancellation_safe=False,
+                            event="host-reboot-reconciliation-started",
+                        )
+                    maintenance = self.host_maintenance.status()["transaction"]
+                    assert maintenance is not None
+                    if host_maintenance_recovery["state"] == "completed":
+                        result = {
+                            "kind": "host-reboot",
+                            "maintenance_id": maintenance["maintenance_id"],
+                            "phase": maintenance["phase"],
+                            "transaction_id": maintenance["transaction_id"],
+                            "reboot_scheduled": True,
+                            "reconciled_after_boot": True,
+                        }
+                        self.journals.transition(
+                            operation_id,
+                            state="completed",
+                            checkpoint="complete",
+                            cancellation_safe=False,
+                            event="host-reboot-validated",
+                            evidence_hash=content_identity(result),
+                            result=result,
+                        )
+                    else:
+                        self.journals.transition(
+                            operation_id,
+                            state="failed",
+                            checkpoint="reconciliation",
+                            cancellation_safe=False,
+                            event="host-reboot-validation-failed",
+                            failure={
+                                "code": maintenance["failure"]["code"],
+                                "message": maintenance["failure"]["message"],
+                            },
+                        )
+                    if lease is not None and lease["operation_id"] == operation_id:
+                        self.control.release(operation_id)
+                        lease = None
+                    recovered.append(operation_id)
                     continue
                 if journal["action"] in {
                     Action.ACTIVATE.value,
@@ -991,6 +1129,8 @@ class ReceiverEngine:
             }
             if activation_recovery is not None:
                 result["activation_recovery"] = activation_recovery
+            if host_maintenance_recovery is not None:
+                result["host_maintenance_recovery"] = host_maintenance_recovery
             return result
 
     def _status(self, operation_id: str) -> dict[str, Any]:
@@ -1012,6 +1152,14 @@ class ReceiverEngine:
                 self.clock_controller.status()
                 if self.clock_controller is not None
                 else {"schema": "iii.receiver-clock-status/v1", "gate": "UNAVAILABLE"}
+            ),
+            "host_maintenance": (
+                self.host_maintenance.status()
+                if self.host_maintenance is not None
+                else {
+                    "schema": "iii.host-maintenance-status/v1",
+                    "state": "unavailable",
+                }
             ),
             "autonomy_started": False,
         }

@@ -21,10 +21,13 @@
     - /etc/iii/firewall-policy.json
     - /etc/iii/hardware-baseline.json
     - /etc/iii/host-unit-contract.json
+    - /etc/iii/host-maintenance-policy.json
+    - /usr/share/iii/host-maintenance/aircraft-maintenance.yml
     - /etc/iii/runtime.env
     - /usr/libexec/iii/iii-release-launch
     - /etc/systemd/system/iii-system-daemon.service
     - /etc/systemd/system/iii-runtime-api.service
+    - /etc/systemd/system/iii-host-maintenance@.service
     - /etc/systemd/system/iii.target
   register: iii_health_paths
 

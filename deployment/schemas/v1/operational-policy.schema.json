@@ -3,11 +3,12 @@
   "$id": "https://iii-drone.invalid/schemas/v1/operational-policy.schema.json",
   "title": "III operational policy",
   "type": "object", "additionalProperties": false,
-  "required": ["schema_version", "safety", "activation", "receiver", "network", "storage", "logging", "signing", "transfer", "clock", "px4_mirror", "gc_cache", "backup", "authorization", "bundle", "status"],
+  "required": ["schema_version", "safety", "activation", "host_maintenance", "receiver", "network", "storage", "logging", "signing", "transfer", "clock", "px4_mirror", "gc_cache", "backup", "authorization", "bundle", "status"],
   "properties": {
     "schema_version": {"const": "1"},
     "safety": {"$ref": "#/definitions/safety"},
     "activation": {"$ref": "#/definitions/activation"},
+    "host_maintenance": {"type": "object", "additionalProperties": false, "required": ["target_acceptance_s", "hard_deadline_s", "rollback_target_s"], "properties": {"target_acceptance_s": {"const": 1800}, "hard_deadline_s": {"const": 7200}, "rollback_target_s": {"const": 60}}},
     "receiver": {"type": "object", "additionalProperties": false, "required": ["self_update_deadline_s"], "properties": {"self_update_deadline_s": {"type": "integer", "minimum": 30}}},
     "network": {"type": "object", "additionalProperties": false, "required": ["confirmation_deadline_s", "ethernet_dhcp_required"], "properties": {"confirmation_deadline_s": {"type": "integer", "minimum": 90}, "ethernet_dhcp_required": {"const": true}}},
     "storage": {"type": "object", "additionalProperties": false, "required": ["minimum_reserve_bytes", "minimum_reserve_percent"], "properties": {"minimum_reserve_bytes": {"type": "integer", "minimum": 2147483648}, "minimum_reserve_percent": {"type": "number", "minimum": 10, "maximum": 100}}},
@@ -30,4 +31,3 @@
     "bundle": {"type": "object", "additionalProperties": false, "required": ["maximum_unpacked_bytes", "maximum_entries", "maximum_path_bytes", "maximum_path_depth"], "properties": {"maximum_unpacked_bytes": {"const": 21474836480}, "maximum_entries": {"const": 200000}, "maximum_path_bytes": {"const": 255}, "maximum_path_depth": {"const": 32}}}
   }
 }
-
