@@ -4,7 +4,7 @@
     "kind": "unix-domain-socket",
     "path": "/run/iii/deployment-receiver.sock",
     "tcp_listener": false,
-    "ssh_forced_command": "/usr/bin/iii-deploymentctl"
+    "ssh_forced_command": "/usr/bin/iii-deployment-ssh-gateway"
   },
   "normal_release_mutable_paths": [
     "/opt/iii/releases",

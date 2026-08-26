@@ -14,7 +14,7 @@
         "kind": {"const": "unix-domain-socket"},
         "path": {"const": "/run/iii/deployment-receiver.sock"},
         "tcp_listener": {"const": false},
-        "ssh_forced_command": {"const": "/usr/bin/iii-deploymentctl"}
+        "ssh_forced_command": {"const": "/usr/bin/iii-deployment-ssh-gateway"}
       }
     },
     "normal_release_mutable_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^/"}},

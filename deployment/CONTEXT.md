@@ -146,10 +146,14 @@ _Avoid_: Removing old scripts first
 
 ### Receiver transaction boundary
 
-- SSH carries files only into the unprivileged, content-addressed incoming area.
-  A forced `iii-deploymentctl` command forwards one canonical request over the
-  permission-controlled Unix socket; the receiver exposes no TCP listener and no
-  arbitrary command, path, environment, or unit-name transport.
+- Key-only SSH to the fixed `iii@iii.local` endpoint carries files only into the
+  unprivileged, content-addressed incoming area. The initial local-network model
+  intentionally does not authenticate the server host key; the CLI reports that
+  accepted spoofing/MITM risk and never presents logical runtime identity as
+  physical-host authentication. A forced `iii-deployment-ssh-gateway` confines
+  SFTP writes to the incoming root and forwards receiver requests over the
+  permission-controlled Unix socket; it exposes no arbitrary shell, command,
+  path, environment, unit-name, or receiver TCP transport.
 - Every target mutation begins with a content-addressed plan bound to receiver
   generation, logical target/profile, active release, configuration,
   commissioning, access state, client, and operation. The receiver issues a

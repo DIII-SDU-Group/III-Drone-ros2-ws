@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-set -x
 
 usage() {
   cat <<'USAGE'
@@ -18,8 +17,8 @@ DESCRIPTION
   - source and persist `setup/setup_remote.bash`
   - install the editable III CLI
   - configure CLI argcomplete in `~/.bashrc`
-  - install `sshpass` and remote-development helper packages
-  - configure SSH agent forwarding for the target host
+  - install the OpenSSH key-only client and remote-development helper packages
+  - remove the obsolete III-managed SSH agent-forwarding stanza
 USAGE
 }
 
@@ -77,18 +76,13 @@ complete -o nospace -o default -F _iii_python_argcomplete iii
 EOF
 fi
 
-sudo apt install -y sshpass
+sudo apt install -y openssh-client
 
-# Setup ssh agent forwarding
-# If ~/.ssh/config does not exist, create it
-if [ ! -f ~/.ssh/config ]; then
-    touch ~/.ssh/config
-fi
-
-# If ~/.ssh/config does not contain the following lines, append them
-if ! grep -q "Host $III_SSH_HOST" ~/.ssh/config; then
-    echo "Host $III_SSH_HOST" >> ~/.ssh/config
-    echo "    ForwardAgent yes" >> ~/.ssh/config
+# Remove only the exact legacy two-line stanza previously managed by this script.
+# The deployment adapter passes its complete key-only policy on every invocation
+# and never relies on, rewrites, or forwards the user's SSH agent configuration.
+if [[ -f "$HOME/.ssh/config" ]]; then
+    sed -i "/^Host ${III_SSH_HOST}$/ {N; /\n[[:space:]]*ForwardAgent yes$/d;}" "$HOME/.ssh/config"
 fi
 
 # Install cross-compilation tools

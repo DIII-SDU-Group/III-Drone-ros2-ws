@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/bundle-upload-activity.schema.json",
+  "title": "III resumable upload inactivity evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "activity_id", "release_id", "upload_id", "client_id", "boot_id", "monotonic", "wall_time_ns", "wall_clock_trusted"],
+  "properties": {
+    "schema": {"const": "iii.bundle-upload-activity/v1"},
+    "activity_id": {"$ref": "#/definitions/hash"},
+    "release_id": {"$ref": "#/definitions/hash"},
+    "upload_id": {"$ref": "#/definitions/hash"},
+    "client_id": {"$ref": "#/definitions/hash"},
+    "boot_id": {"type": "string", "minLength": 1},
+    "monotonic": {"type": "number", "minimum": 0},
+    "wall_time_ns": {"type": "integer", "minimum": 0},
+    "wall_clock_trusted": {"type": "boolean"}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

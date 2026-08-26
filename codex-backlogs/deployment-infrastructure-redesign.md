@@ -3253,6 +3253,8 @@ Implementation notes (2026-08-26):
 
 #### P2.T5: Replace The SSH Deployment Adapter
 
+**Status: Completed (2026-08-26).**
+
 Description:
 Replace password files, `sshpass`, agent forwarding, and shell-interpolated
 commands with the settled shared client-authentication mechanism, explicit
@@ -3261,30 +3263,76 @@ transfer destinations, and least-privilege elevation.
 
 Acceptance:
 
-- [ ] The adapter consistently targets only `iii.local` and clearly reports the
+- [x] The adapter consistently targets only `iii.local` and clearly reports the
       accepted lack of server host-key authentication.
-- [ ] Complete bundles upload to release-ID-specific unprivileged partial paths,
+- [x] Complete bundles upload to release-ID-specific unprivileged partial paths,
       resume only after identity/size agreement, and are never privileged-staged
       before full signature/checksum verification.
-- [ ] Temporary disconnect preserves resumable state; stale partial cleanup is
+- [x] Temporary disconnect preserves resumable state; stale partial cleanup is
       limited to partials inactive for seven days, uses monotonic/boot evidence when
       target wall time is untrusted, and cannot remove an active upload.
-- [ ] Commissioning measures complete transfer against the 120-second field-WLAN
+- [x] Commissioning measures complete transfer against the 120-second field-WLAN
       target and records whether content-addressed optimization is justified.
-- [ ] Secrets are never printed, placed in release artifacts, or stored in world-readable files.
-- [ ] Key list/add/revoke operations never expose private key material and
+- [x] Secrets are never printed, placed in release artifacts, or stored in world-readable files.
+- [x] Key list/add/revoke operations never expose private key material and
       cannot remove the final usable SSH key in-band. Rotation must first enroll
       and verify a replacement; complete authority loss follows Q128 reimage and
       recommissioning, not an override.
-- [ ] The shared logical runtime identity is checked after connection, without
+- [x] The shared logical runtime identity is checked after connection, without
       claiming that it cryptographically authenticates the physical host.
-- [ ] User-controlled values cannot alter remote command structure.
+- [x] User-controlled values cannot alter remote command structure.
 
 Tests:
 
 - SSH adapter tests for `iii.local`, unreachable, unauthorized,
   interrupted/resumed/mismatched/stale-partial transfer, hostile argument,
   representative transfer budget, and unexpected logical-runtime cases.
+
+Implementation notes (2026-08-26):
+
+- Replaced the password-file, interactive-password, agent-forwarding, SCP, rsync,
+  and shell-interpolated adapter with argv-only key authentication to the fixed
+  unprivileged `iii@iii.local` endpoint. The adapter requires a current-user-owned
+  mode-0600 Ed25519 private key, derives the receiver client identity from its
+  canonical public key, redacts credential paths from failures, disables every
+  password and forwarding path, and explicitly reports that server host keys are
+  not authenticated under the accepted initial local-network risk.
+- Added a forced `iii-deployment-ssh-gateway` with only canonical receiver IPC,
+  exact upload-control verbs, and the configured OpenSSH SFTP subsystem. SFTP
+  starts in the fixed incoming root, denies link operations, holds the global
+  upload lock, and applies fail-closed Linux Landlock confinement so the shared
+  `iii` account cannot use SFTP to write sibling configuration or runtime state.
+  No user value is evaluated by a shell or incorporated into command structure.
+- Added content-bound upload manifests for the exact five-file drone component
+  plus optional signed status index. A release-specific `<release-id>.partial`
+  resumes only when the retained upload identity, complete-file hashes, and every
+  partial size agree. Finalization hashes the complete file set, checks the inner
+  release identity, fsyncs file directories, and atomically exposes the upload;
+  the root receiver still independently claims and verifies it before any
+  privileged staging or execution.
+- Added canonical inactivity evidence with boot ID, monotonic time, wall time,
+  and wall-trust state. Seven-day cleanup cannot acquire the SFTP session lock,
+  uses monotonic age only within one boot, uses wall age across boots only when
+  both observations trust wall time, retains malformed/uncertain entries, and
+  rejects linked, replaced, or otherwise unsafe incoming roots and trees.
+- Transfer results retain release/upload/transfer identity, expected logical
+  profile, exact byte totals, resumed bytes, elapsed time, the 120-second target,
+  host-authentication limitation, and whether the target was met. A single miss
+  records that repeated representative measurements are still required and does
+  not prematurely justify a content-addressed protocol change.
+- Extended receiver self-update compatibility to inventory and schema-validate
+  retained upload manifests/activity, preserved receiver-owned add/prove/revoke
+  sequencing and final-key denial, and documented the non-shell transport and
+  accepted physical-host-authentication limitation. The CLI transport commit is
+  `68b6752`; the workspace gitlink and governed lock were updated together.
+- Verification passed 60 focused receiver/upload/security/update cases, the full
+  332/332 deployment suite, 9 focused adapter cases, and the full 75/75 CLI suite.
+  Fatal Flake8, modified-file Black, Python compilation, shell syntax, every
+  Draft-07 schema, diff hygiene, dependency-lock verification, and both wheel
+  payload/entrypoint inspections passed. This workstation has neither a resolving
+  `iii.local` endpoint nor an enrolled deployment identity, so no live field-WLAN
+  timing is claimed; the measured commissioning record and target/miss behavior
+  are covered deterministically and remain ready for provisioned-host evidence.
 
 #### P2.T6: Rebuild The III CLI Deployment Surface
 

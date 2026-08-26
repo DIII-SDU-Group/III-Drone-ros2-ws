@@ -8,3 +8,5 @@ export III_DRONE_WORKSPACE_DIR_NAME="III-Drone-ros2-ws"
 
 export III_SSH_HOST="iii.local"
 export III_SSH_USER="iii"
+export III_SSH_IDENTITY_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/iii/credentials/ssh_ed25519"
+export III_SSH_PUBLIC_KEY_FILE="${III_SSH_IDENTITY_FILE}.pub"

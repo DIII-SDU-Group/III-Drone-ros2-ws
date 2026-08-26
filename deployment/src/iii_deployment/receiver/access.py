@@ -17,7 +17,9 @@ ACCESS_SCHEMA = "iii.receiver-access-state/v1"
 
 def client_id_for_public_key(public_key: str) -> str:
     if not PUBLIC_KEY.fullmatch(public_key):
-        raise ContractError("operator key must be canonical ssh-ed25519 public material")
+        raise ContractError(
+            "operator key must be canonical ssh-ed25519 public material"
+        )
     return hashlib.sha256(public_key.encode("ascii")).hexdigest()
 
 
@@ -27,10 +29,12 @@ class AccessManager:
         *,
         state_path: Path,
         authorized_keys_path: Path,
-        client_path: str = "/usr/bin/iii-deploymentctl",
+        client_path: str = "/usr/bin/iii-deployment-ssh-gateway",
     ) -> None:
-        if client_path != "/usr/bin/iii-deploymentctl":
-            raise ContractError("receiver access command path is not the fixed deployment client")
+        if client_path != "/usr/bin/iii-deployment-ssh-gateway":
+            raise ContractError(
+                "receiver access command path is not the fixed SSH gateway"
+            )
         self.state_path = state_path
         self.authorized_keys_path = authorized_keys_path
         self.client_path = client_path
@@ -89,7 +93,8 @@ class AccessManager:
             if record["state"] not in {"pending", "active", "revoked"}:
                 raise ContractError("receiver access client state is invalid")
             if not isinstance(record["added_by"], str) or (
-                record["proved_by"] is not None and not isinstance(record["proved_by"], str)
+                record["proved_by"] is not None
+                and not isinstance(record["proved_by"], str)
             ):
                 raise ContractError("receiver access client provenance is invalid")
         return value
@@ -101,7 +106,9 @@ class AccessManager:
         if value["clients"]:
             raise ContractError("receiver access bootstrap is already complete")
         if not public_keys:
-            raise ContractError("receiver access bootstrap needs at least one operator key")
+            raise ContractError(
+                "receiver access bootstrap needs at least one operator key"
+            )
         for public_key in public_keys:
             client_id = client_id_for_public_key(public_key)
             if client_id in value["clients"]:
@@ -120,7 +127,9 @@ class AccessManager:
             {
                 "client_id": client_id,
                 "state": record["state"],
-                "key_sha256": hashlib.sha256(record["public_key"].encode("ascii")).hexdigest(),
+                "key_sha256": hashlib.sha256(
+                    record["public_key"].encode("ascii")
+                ).hexdigest(),
             }
             for client_id, record in sorted(value["clients"].items())
         ]
@@ -138,14 +147,18 @@ class AccessManager:
         public_key: str,
     ) -> None:
         if requester != client_id:
-            raise ContractError("pending operator may only plan its own credential proof")
+            raise ContractError(
+                "pending operator may only plan its own credential proof"
+            )
         record = self.load()["clients"].get(client_id)
         if (
             record is None
             or record["state"] != "pending"
             or record["public_key"] != public_key
         ):
-            raise ContractError("pending operator proof does not match enrolled credential")
+            raise ContractError(
+                "pending operator proof does not match enrolled credential"
+            )
 
     def add_pending(
         self,
@@ -156,11 +169,16 @@ class AccessManager:
     ) -> dict[str, Any]:
         self.require_active(requester)
         if client_id_for_public_key(public_key) != client_id:
-            raise ContractError("new operator key differs from requested client identity")
+            raise ContractError(
+                "new operator key differs from requested client identity"
+            )
         value = self.load()
         existing = value["clients"].get(client_id)
         if existing is not None:
-            if existing["public_key"] == public_key and existing["state"] in {"pending", "active"}:
+            if existing["public_key"] == public_key and existing["state"] in {
+                "pending",
+                "active",
+            }:
                 self._write_authorized_keys(value)
                 return value
             raise ContractError("operator client identity is already used")
@@ -180,7 +198,9 @@ class AccessManager:
         public_key: str,
     ) -> dict[str, Any]:
         if requester != client_id:
-            raise ContractError("replacement credential must prove itself in a new authenticated session")
+            raise ContractError(
+                "replacement credential must prove itself in a new authenticated session"
+            )
         if client_id_for_public_key(public_key) != client_id:
             raise ContractError("replacement credential proof key identity mismatch")
         value = self.load()
@@ -188,7 +208,9 @@ class AccessManager:
         if record is None or record["public_key"] != public_key:
             raise ContractError("replacement credential was not enrolled")
         if record["state"] == "revoked":
-            raise ContractError("revoked operator credential cannot be reproved in-band")
+            raise ContractError(
+                "revoked operator credential cannot be reproved in-band"
+            )
         record["state"] = "active"
         record["proved_by"] = requester
         return self._commit(value)
@@ -199,7 +221,9 @@ class AccessManager:
         record = value["clients"].get(client_id)
         if record is None or record["state"] != "active":
             raise ContractError("operator credential is not active")
-        active = [key for key, item in value["clients"].items() if item["state"] == "active"]
+        active = [
+            key for key, item in value["clients"].items() if item["state"] == "active"
+        ]
         if len(active) <= 1:
             raise ContractError("cannot revoke the final usable SSH operator key")
         record["state"] = "revoked"
@@ -223,11 +247,6 @@ class AccessManager:
             if record["state"] not in {"pending", "active"}:
                 continue
             command = f"{self.client_path} --client-id {client_id}"
-            lines.append(
-                "restrict,command=\""
-                + command
-                + "\" "
-                + record["public_key"]
-            )
+            lines.append('restrict,command="' + command + '" ' + record["public_key"])
         raw = ("\n".join(lines) + ("\n" if lines else "")).encode("ascii")
         atomic_bytes(self.authorized_keys_path, raw, mode=0o600)

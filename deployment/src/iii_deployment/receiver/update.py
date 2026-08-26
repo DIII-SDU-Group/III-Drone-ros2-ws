@@ -148,6 +148,8 @@ class ReceiverCompatibilityInventory:
     activation_selector_schemas: tuple[str, ...]
     activation_health_transaction_schemas: tuple[str, ...]
     activation_health_evidence_schemas: tuple[str, ...]
+    upload_manifest_schemas: tuple[str, ...]
+    upload_activity_schemas: tuple[str, ...]
     configuration_checkpoint_schemas: tuple[str, ...]
 
     def normalized(self) -> "ReceiverCompatibilityInventory":
@@ -160,6 +162,8 @@ class ReceiverCompatibilityInventory:
             "activation_selector_schemas",
             "activation_health_transaction_schemas",
             "activation_health_evidence_schemas",
+            "upload_manifest_schemas",
+            "upload_activity_schemas",
             "configuration_checkpoint_schemas",
         ):
             values[field] = tuple(sorted(set(values[field])))
@@ -421,6 +425,8 @@ def _assert_compatible(
         "activation_selector_schemas": inventory.activation_selector_schemas,
         "activation_health_transaction_schemas": inventory.activation_health_transaction_schemas,
         "activation_health_evidence_schemas": inventory.activation_health_evidence_schemas,
+        "upload_manifest_schemas": inventory.upload_manifest_schemas,
+        "upload_activity_schemas": inventory.upload_activity_schemas,
         "configuration_checkpoint_schemas": inventory.configuration_checkpoint_schemas,
     }
     for field, installed_values in collection_fields.items():
@@ -539,6 +545,7 @@ class ReceiverSlotStore:
         )
         self.activation_selector_path = self.operation_root / "active-selector.json"
         self.activation_health_root = self.operation_root / "activation"
+        self.incoming_root = self.root / "var/lib/iii/incoming"
         self.configuration_checkpoint_root = (
             self.root / "var/lib/iii/configuration/checkpoints"
         )
@@ -662,6 +669,28 @@ class ReceiverSlotStore:
         )
         for value in activation_health_evidence:
             self.registry.validate("activation-health", value)
+        upload_manifests: list[dict[str, Any]] = []
+        upload_activities: list[dict[str, Any]] = []
+        if self.incoming_root.exists() or self.incoming_root.is_symlink():
+            if self.incoming_root.is_symlink() or not self.incoming_root.is_dir():
+                raise ContractError("incoming upload root is linked or invalid")
+            for partial in sorted(self.incoming_root.glob("*.partial")):
+                if partial.is_symlink() or not partial.is_dir():
+                    raise ContractError("incoming upload partial is linked or invalid")
+                manifest_path = partial / ".upload-manifest.json"
+                if manifest_path.exists() or manifest_path.is_symlink():
+                    value = _read_canonical(
+                        manifest_path, label="incoming upload manifest"
+                    )
+                    self.registry.validate("bundle-upload", value)
+                    upload_manifests.append(value)
+                activity_path = partial / ".upload-activity.json"
+                if activity_path.exists() or activity_path.is_symlink():
+                    value = _read_canonical(
+                        activity_path, label="incoming upload activity"
+                    )
+                    self.registry.validate("bundle-upload-activity", value)
+                    upload_activities.append(value)
         checkpoints = self._canonical_documents(
             self.configuration_checkpoint_root,
             label="configuration checkpoint",
@@ -692,6 +721,12 @@ class ReceiverSlotStore:
             ),
             activation_health_evidence_schemas=tuple(
                 str(value["schema"]) for value in activation_health_evidence
+            ),
+            upload_manifest_schemas=tuple(
+                str(value["schema"]) for value in upload_manifests
+            ),
+            upload_activity_schemas=tuple(
+                str(value["schema"]) for value in upload_activities
             ),
             configuration_checkpoint_schemas=tuple(
                 str(value.get("schema", "")) for value in checkpoints

@@ -35,9 +35,14 @@ The workspace defines explicit runtime modes via shell profiles:
 - Sources the installed ROS/workspace setup expected on the target OS
 
 3. `setup_remote.bash`
-- Remote tooling profile for deployment/SSH workflow. Remote runtime-control
-  commands use `iii-runtime-api` with `III_RUNTIME_API_URL` and
-  `III_RUNTIME_API_CLI_TOKEN`; SSH remains for deploy/sync/admin tasks.
+- Remote tooling profile for deployment. Remote runtime-control commands use
+  `iii-runtime-api` with `III_RUNTIME_API_URL` and the per-computer runtime
+  credential. Deployment uses a dedicated per-computer Ed25519 key with key-only
+  SSH to `iii@iii.local`; its forced gateway permits canonical receiver requests
+  and fixed-root resumable SFTP only. It is not a workspace synchronization or
+  administrative shell. Server host-key authentication is intentionally absent
+  in the initial local-network model and remains an explicitly reported
+  spoofing/MITM risk.
 
 Shared env and path conventions:
 - `CONFIG_BASE_DIR`

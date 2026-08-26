@@ -21,6 +21,7 @@ test = ["pytest==8.4.1"]
 [project.scripts]
 iii-deployment-verify = "iii_deployment.verification.cli:main"
 iii-deploymentctl = "iii_deployment.receiver.client:main"
+iii-deployment-ssh-gateway = "iii_deployment.receiver.ssh_gateway:main"
 iii-deployment-receiver = "iii_deployment.receiver.server:main"
 iii-receiver-bootstrap = "iii_deployment.receiver.bootstrap:main"
 

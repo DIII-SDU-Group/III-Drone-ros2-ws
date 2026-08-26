@@ -868,6 +868,10 @@ class ReceiverEngine:
         return {
             "schema": RESULT_SCHEMA,
             "receiver_generation": self.control.receiver_generation,
+            "target": {
+                "logical_id": self.logical_target,
+                "profile": self.profile,
+            },
             "operation": journal,
             "lease": control["lease"],
             "recovery": self.release_store.state()["recovery"],

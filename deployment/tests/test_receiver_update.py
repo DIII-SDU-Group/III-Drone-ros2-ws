@@ -28,6 +28,7 @@ from iii_deployment.receiver.update import (
     package_receiver_update,
     verify_receiver_update,
 )
+from iii_deployment.receiver.upload import UploadStore
 from iii_deployment.signers import generate_signer, sign
 
 SCHEMAS = Path(__file__).resolve().parents[1] / "schemas/v1"
@@ -141,6 +142,8 @@ def _bundle(
             "iii.activation-health-transaction/v1"
         ],
         "activation_health_evidence_schemas": ["iii.activation-health/v1"],
+        "upload_manifest_schemas": ["iii.bundle-upload/v1"],
+        "upload_activity_schemas": ["iii.bundle-upload-activity/v1"],
         "configuration_checkpoint_schemas": ["iii.configuration-checkpoint/v1"],
     }
     compatibility.update(compatibility_overrides or {})
@@ -212,6 +215,8 @@ def _inventory(**overrides):
             "iii.activation-health-transaction/v1",
         ),
         "activation_health_evidence_schemas": ("iii.activation-health/v1",),
+        "upload_manifest_schemas": ("iii.bundle-upload/v1",),
+        "upload_activity_schemas": ("iii.bundle-upload-activity/v1",),
         "configuration_checkpoint_schemas": ("iii.configuration-checkpoint/v1",),
     }
     values.update(overrides)
@@ -313,11 +318,42 @@ def test_installed_compatibility_inventory_uses_fixed_authenticated_protocols(tm
         store.cli_protocol_path,
         {"schema": "iii.receiver-cli-protocol/v1", "protocol": "1"},
     )
+    upload_manifest = {
+        "schema": "iii.bundle-upload/v1",
+        "upload_id": "0" * 64,
+        "release_id": "d" * 64,
+        "client_id": "e" * 64,
+        "files": [
+            {"path": f"drone/{name}", "size": 1, "sha256": "f" * 64}
+            for name in sorted(
+                {
+                    "bundle.manifest.json",
+                    "bundle.sha256",
+                    "bundle.sig.json",
+                    "bundle.tar.zst",
+                    "release-manifest.json",
+                }
+            )
+        ],
+    }
+    upload_manifest["upload_id"] = content_identity(
+        {key: value for key, value in upload_manifest.items() if key != "upload_id"}
+    )
+    UploadStore(
+        root / "var/lib/iii/incoming",
+        lock_path=tmp_path / "upload.lock",
+        monotonic=lambda: 10.0,
+        wall_time_ns=lambda: 20,
+        boot_id=lambda: "boot-a",
+        wall_clock_trusted=lambda: False,
+    ).begin(upload_manifest, release_id="d" * 64, client_id="e" * 64)
     inventory = store.inspect_compatibility_inventory()
     assert inventory.bootstrap_protocol == "1"
     assert inventory.cli_protocol == "1"
     assert inventory.request_protocol == "1"
     assert inventory.release_manifest_schema_versions == ()
+    assert inventory.upload_manifest_schemas == ("iii.bundle-upload/v1",)
+    assert inventory.upload_activity_schemas == ("iii.bundle-upload-activity/v1",)
     atomic_document(
         store.cli_protocol_path,
         {"schema": "iii.receiver-cli-protocol/v1", "protocol": "2"},
@@ -386,6 +422,8 @@ def test_signed_receiver_update_stages_only_inactive_slot_and_commits_handoff(tm
         "activation_selector_schemas",
         "activation_health_transaction_schemas",
         "activation_health_evidence_schemas",
+        "upload_manifest_schemas",
+        "upload_activity_schemas",
         "configuration_checkpoint_schemas",
     ],
 )

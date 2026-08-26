@@ -8,7 +8,11 @@ import pytest
 from iii_deployment.contracts import ContractError
 from iii_deployment.receiver.access import AccessManager, client_id_for_public_key
 from iii_deployment.receiver.protocol import Action
-from iii_deployment.receiver.state import AuditLog, OperationJournalStore, ReceiverControlStore
+from iii_deployment.receiver.state import (
+    AuditLog,
+    OperationJournalStore,
+    ReceiverControlStore,
+)
 
 
 class Clock:
@@ -53,11 +57,15 @@ def plan(operation_id: str = "operation-0001", client_id: str = "a" * 64) -> dic
             "access_state_id": "2" * 64,
         },
     }
-    value["plan_id"] = content_identity({k: v for k, v in value.items() if k != "plan_id"})
+    value["plan_id"] = content_identity(
+        {k: v for k, v in value.items() if k != "plan_id"}
+    )
     return value
 
 
-def test_nonce_is_state_bound_expiring_single_use_and_lease_is_global(tmp_path: Path) -> None:
+def test_nonce_is_state_bound_expiring_single_use_and_lease_is_global(
+    tmp_path: Path,
+) -> None:
     clock = Clock()
     store = ReceiverControlStore(tmp_path, 1, 300, clock.monotonic, clock.boot_id)
     retained = plan()
@@ -83,7 +91,9 @@ def test_nonce_is_state_bound_expiring_single_use_and_lease_is_global(tmp_path: 
     )
     other = plan("operation-0002")
     other_nonce, _ = store.issue_nonce(
-        operation_id=other["operation_id"], client_id=other["client_id"], plan_id=other["plan_id"]
+        operation_id=other["operation_id"],
+        client_id=other["client_id"],
+        plan_id=other["plan_id"],
     )
     with pytest.raises(ContractError, match="mutation lease"):
         store.consume_and_acquire(
@@ -113,12 +123,16 @@ def test_nonce_is_state_bound_expiring_single_use_and_lease_is_global(tmp_path: 
         )
 
 
-def test_nonce_expires_across_boot_and_journal_budget_pauses_while_powered_off(tmp_path: Path) -> None:
+def test_nonce_expires_across_boot_and_journal_budget_pauses_while_powered_off(
+    tmp_path: Path,
+) -> None:
     clock = Clock()
     control = ReceiverControlStore(tmp_path, 1, 300, clock.monotonic, clock.boot_id)
     retained = plan()
     nonce, _ = control.issue_nonce(
-        operation_id=retained["operation_id"], client_id=retained["client_id"], plan_id=retained["plan_id"]
+        operation_id=retained["operation_id"],
+        client_id=retained["client_id"],
+        plan_id=retained["plan_id"],
     )
     clock.boot = "boot-b"
     with pytest.raises(ContractError, match="expired"):
@@ -157,7 +171,9 @@ def test_access_add_prove_revoke_and_final_key_denial(tmp_path: Path) -> None:
     manager.bootstrap([old_key])
     manager.add_pending(requester=old_id, client_id=new_id, public_key=new_key)
     forced = (tmp_path / "authorized_keys").read_text(encoding="ascii")
-    assert "restrict,command=\"/usr/bin/iii-deploymentctl --client-id " in forced
+    assert (
+        'restrict,command="/usr/bin/iii-deployment-ssh-gateway --client-id ' in forced
+    )
     assert "pty" not in forced and "ssh-ed25519" in forced
     with pytest.raises(ContractError, match="prove itself"):
         manager.prove(requester=old_id, client_id=new_id, public_key=new_key)
@@ -169,7 +185,9 @@ def test_access_add_prove_revoke_and_final_key_denial(tmp_path: Path) -> None:
     assert all("public_key" not in item for item in manager.list_clients())
 
 
-def test_audit_is_hash_chained_and_never_contains_request_payload_or_key(tmp_path: Path) -> None:
+def test_audit_is_hash_chained_and_never_contains_request_payload_or_key(
+    tmp_path: Path,
+) -> None:
     clock = Clock()
     audit = AuditLog(tmp_path / "audit.jsonl", clock.monotonic, clock.boot_id)
     first = audit.append(
