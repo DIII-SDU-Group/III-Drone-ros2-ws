@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/trusted-signers.schema.json",
+  "title": "III trusted release signer store",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "store_type", "signers"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "store_type": {"const": "iii.trusted-signers"},
+    "signers": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["signer_id", "algorithm", "authority", "public_key", "state"],
+        "properties": {
+          "signer_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "algorithm": {"const": "Ed25519"},
+          "authority": {"enum": ["ci-qualified", "workstation-field"]},
+          "public_key": {"type": "string", "pattern": "^[A-Za-z0-9+/]{43}=$"},
+          "state": {"enum": ["active", "revoked"]}
+        }
+      }
+    }
+  }
+}

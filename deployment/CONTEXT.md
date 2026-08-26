@@ -24,6 +24,13 @@ Independently installable GC and drone component artifacts sharing one release
 identity and explicit API/schema compatibility ranges.
 _Avoid_: Monolithic image
 
+**Release Component Bundle**:
+One deterministic `tar.zst` drone or GC payload with canonical manifests, a
+checksum, and a detached Ed25519 signature. Its signed release record binds the
+other component's payload identity without making either component depend on the
+other archive for verification, installation, or rollback.
+_Avoid_: Tarball, installer script
+
 **Aircraft Configuration**:
 Persistent, writable, profile-scoped III parameter state reconciled against an
 immutable installed release manifest. It lives outside release slots and is

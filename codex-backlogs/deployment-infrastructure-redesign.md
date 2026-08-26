@@ -2631,6 +2631,8 @@ Implementation notes (2026-08-26):
 
 #### P1.T3: Package And Verify Release Bundles
 
+**Status: Completed (2026-08-26).**
+
 Description:
 Produce paired but independently installable drone and GC artifacts under one
 workspace release record. Package the native ARM64 install tree, installed runtime
@@ -2642,29 +2644,55 @@ outside Git.
 
 Acceptance:
 
-- [ ] Extraction recreates a complete release without source/build trees.
-- [ ] Corruption or manifest/content disagreement is detected.
-- [ ] Unsigned, unknown-signer, and invalid-signature bundles are rejected.
-- [ ] Signer add/list/revoke operations support key rotation without sharing
+- [x] Extraction recreates a complete release without source/build trees.
+- [x] Corruption or manifest/content disagreement is detected.
+- [x] Unsigned, unknown-signer, and invalid-signature bundles are rejected.
+- [x] Signer add/list/revoke operations support key rotation without sharing
       private material or accidentally removing the final trusted signer.
-- [ ] Qualified and field-development release classes share one artifact format.
-- [ ] Paired GC/drone artifacts share release identity and compatibility evidence
+- [x] Qualified and field-development release classes share one artifact format.
+- [x] Paired GC/drone artifacts share release identity and compatibility evidence
       while remaining independently verifiable, installable, and rollbackable.
-- [ ] Release records bind exact real/sim PX4 parameter-manifest and managed QGC-
+- [x] Release records bind exact real/sim PX4 parameter-manifest and managed QGC-
       settings hashes plus their compatible PX4/QGC versions.
-- [ ] Profile support is extensible release metadata rather than a hard-coded
+- [x] Profile support is extensible release metadata rather than a hard-coded
       sim-local/real-remote dichotomy; uncommissioned profiles fail closed.
-- [ ] Bundle contents and compressed size are inspectable before deployment.
-- [ ] Bundle serialization, detached verification, extraction limits, path/link/
+- [x] Bundle contents and compressed size are inspectable before deployment.
+- [x] Bundle serialization, detached verification, extraction limits, path/link/
       special-file rejection, and schema versioning follow the final Q116 format;
       filenames and archive hooks are never trusted.
-- [ ] Streaming extraction enforces both manifest-declared and host ceilings of
+- [x] Streaming extraction enforces both manifest-declared and host ceilings of
       20 GiB unpacked data, 200,000 entries, 255-byte paths, and depth 32 before
       privileged commit; limit violations leave no staged release.
 
 Tests:
 
 - Round-trip package/extract/verify and tampered-content rejection.
+
+Implementation notes (2026-08-26):
+
+- Added canonical v1 release-component, detached-signature, public-signer, and
+  trusted-signer schemas plus deterministic USTAR/Zstandard packaging with fixed
+  `META/` documents, normalized headers, SHA-256 content indexing, exact paired
+  payload/compatibility identities, and independently portable drone/GC component
+  directories.
+- Added streaming inspect/verify/extract transactions with detached Ed25519 trust
+  validation, canonical frame/header enforcement, revalidation on the opened
+  archive descriptor, signed/host ceilings, file-by-file hashing, link/special/
+  traversal/duplicate/extra-entry rejection, atomic commit, and failure cleanup.
+- Added proof-of-possession signer generation/add/list/revoke tooling with 0600
+  private/store permissions, symlink resistance, authority separation, and final-
+  active-signer protection. Canonical operator entrypoints refuse private keys and
+  generated bundle sets inside the workspace.
+- Extended release metadata with per-component targets, API/schema ranges, exact
+  real/sim PX4 manifests, managed QGC compatibility, and extensible commissioned
+  profile state. Documented the format and complete operator workflow.
+- Verification passed 175/175 deployment tests on both host Python and the Jazzy
+  devcontainer. The 34 bundle tests cover deterministic paired round trips,
+  field/qualified parity, operator entrypoints, signer rotation/revocation,
+  corruption and signed disagreement, unsafe archive forms, all four ceilings,
+  no-staging failure behavior, PX4/QGC compatibility binding, and post-inspection
+  replacement resistance. Schema loading, Python compilation, diff hygiene, and
+  the submodule lock also passed.
 
 #### P1.T4: Implement The Qualified Release CI/CD Pipeline
 

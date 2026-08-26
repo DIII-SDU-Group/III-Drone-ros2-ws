@@ -71,6 +71,10 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     Historical-data destination map and the evidence gate that must pass before
     the retired deployment repository can be archived.
 
+21. `release-bundle-format.md`
+    Deterministic paired artifact layout, signing and signer rotation, inspection,
+    verification, extraction limits, and operator commands.
+
 Domain language and context ownership are indexed by the root
 `CONTEXT-MAP.md`.
 
