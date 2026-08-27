@@ -107,3 +107,34 @@ def test_stack_plan_rejects_wrong_checked_out_feature(
             contract=CONTRACT,
             registry=REGISTRY,
         )
+
+
+def test_stack_plan_omits_submodule_without_feature_delta(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    workspace = _repository(tmp_path, "III-Drone-ros2-ws")
+    source_root = workspace / "src"
+    source_root.mkdir()
+    submodule = _repository(source_root, "III-Drone-Core")
+    subprocess.run(
+        ["git", "-C", str(submodule), "reset", "--hard", "develop"],
+        check=True,
+        capture_output=True,
+    )
+    _github_origin(monkeypatch)
+
+    plan = build_stack_plan(
+        root=workspace,
+        targets=("src/III-Drone-Core",),
+        base="develop",
+        feature="deployment-redesign",
+        operation_id="stack-deployment-redesign",
+        created_at="2026-08-27T00:00:00+00:00",
+        policy=POLICY,
+        contract=CONTRACT,
+        registry=REGISTRY,
+    )
+
+    assert len(plan["repositories"]) == 1
+    assert plan["repositories"][0]["ref"] == "refs/heads/deployment-redesign"
+    assert all(row["parameters"]["path"] == "." for row in plan["mutations"])

@@ -79,6 +79,12 @@ def build_stack_plan(
         base_sha = _remote_sha(repository_root, base)
         if base_sha is None:
             raise ContractError(f"{path} has no authenticated origin/{base}")
+        if kind == "submodule":
+            delta_count = _git(
+                repository_root, "rev-list", "--count", f"{base_sha}..{local_sha}"
+            )
+            if delta_count == "0":
+                continue
         remote_feature = _remote_sha(repository_root, feature)
         repository = _repository(repository_root)
         ref = f"refs/heads/{feature}"

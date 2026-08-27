@@ -213,6 +213,8 @@ def test_stack_pr_flow_pushes_exact_local_head_when_remote_feature_is_stale() ->
     assert 'remote_feature_sha="$(git -C "$p" ls-remote' in source
     assert '[[ "$remote_feature_sha" != "$local_feature_sha" ]]' in source
     assert '"$local_feature_sha:refs/heads/$feature_branch"' in source
+    assert "assert_remote_matches_plan" in source
+    assert "--force-with-lease=" in source
     assert "iii-pr-transport-v1" in source
     assert "Operation ID:" in source
     assert "create_stack_plan.py" in source

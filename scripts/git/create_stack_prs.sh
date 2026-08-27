@@ -293,6 +293,36 @@ echo "Retained plan ID: $plan_id"
 
 workspace_repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
 
+planned_expected_old_sha() {
+  python3 - "$plan_output" "$1" <<'PY'
+import json
+import sys
+
+plan = json.load(open(sys.argv[1], encoding="utf-8"))
+matches = [
+    row for row in plan["repositories"] if row["repository"] == sys.argv[2]
+]
+if len(matches) != 1:
+    raise SystemExit(f"retained plan does not contain exactly one repository row for {sys.argv[2]}")
+print(matches[0]["expected_old_sha"] or "__MISSING__")
+PY
+}
+
+assert_remote_matches_plan() {
+  local repo="$1"
+  local current_sha="$2"
+  local expected_sha
+  expected_sha="$(planned_expected_old_sha "$repo")"
+  if [[ -z "$current_sha" ]]; then
+    current_sha="__MISSING__"
+  fi
+  if [[ "$current_sha" != "$expected_sha" ]]; then
+    echo "ERROR: stale retained plan for $repo:$feature_branch; expected $expected_sha, observed $current_sha" >&2
+    echo "Re-run dry-run planning before any mutation." >&2
+    exit 1
+  fi
+}
+
 pr_rows=()
 pr_markers=()
 skipped_no_delta=()
@@ -372,6 +402,7 @@ for p in "${targets[@]}"; do
 
   local_feature_sha="$(git -C "$p" rev-parse "$feature_branch")"
   remote_feature_sha="$(git -C "$p" ls-remote --heads origin "refs/heads/$feature_branch" | awk 'NR == 1 {print $1}')"
+  assert_remote_matches_plan "$repo_slug" "$remote_feature_sha"
   has_remote_feature=0
   if [[ -n "$remote_feature_sha" ]]; then
     has_remote_feature=1
@@ -380,9 +411,11 @@ for p in "${targets[@]}"; do
   if (( has_remote_feature == 0 )); then
     if git -C "$p" rev-parse --verify --quiet "$feature_branch" >/dev/null; then
       if (( apply == 1 )); then
-        git -C "$p" push -u origin "$feature_branch"
+        git -C "$p" push -u \
+          --force-with-lease="refs/heads/$feature_branch:" \
+          origin "$local_feature_sha:refs/heads/$feature_branch"
       else
-        echo "DRY-RUN: would push $p:$feature_branch (remote branch missing)"
+        echo "DRY-RUN: would create $p:$feature_branch with an exact missing-ref lease"
       fi
     else
       echo "ERROR: $p has no remote branch '$feature_branch' and no local branch to push." >&2
@@ -390,10 +423,16 @@ for p in "${targets[@]}"; do
       exit 1
     fi
   elif [[ "$remote_feature_sha" != "$local_feature_sha" ]]; then
+    if ! git -C "$p" merge-base --is-ancestor "$remote_feature_sha" "$local_feature_sha"; then
+      echo "ERROR: $p remote feature head is not an ancestor of the retained local head; refusing rewrite." >&2
+      exit 1
+    fi
     if (( apply == 1 )); then
-      git -C "$p" push origin "$local_feature_sha:refs/heads/$feature_branch"
+      git -C "$p" push \
+        --force-with-lease="refs/heads/$feature_branch:$remote_feature_sha" \
+        origin "$local_feature_sha:refs/heads/$feature_branch"
     else
-      echo "DRY-RUN: would update $p:$feature_branch from $remote_feature_sha to $local_feature_sha"
+      echo "DRY-RUN: would update $p:$feature_branch from $remote_feature_sha to $local_feature_sha with an exact lease"
     fi
   else
     echo "Remote branch already matches $p:$feature_branch at $local_feature_sha"
@@ -484,8 +523,18 @@ trap 'rm -f "$audit_out" "$plan_output" "$workspace_body_file"' EXIT
   fi
 } > "$workspace_body_file"
 
-if (( apply == 1 )); then
-  git push -u origin "$feature_branch"
+workspace_local_sha="$(git rev-parse "$feature_branch")"
+workspace_remote_sha="$(git ls-remote --heads origin "refs/heads/$feature_branch" | awk 'NR == 1 {print $1}')"
+assert_remote_matches_plan "$workspace_repo" "$workspace_remote_sha"
+if [[ -n "$workspace_remote_sha" && "$workspace_remote_sha" != "$workspace_local_sha" ]] \
+  && ! git merge-base --is-ancestor "$workspace_remote_sha" "$workspace_local_sha"; then
+  echo "ERROR: workspace remote feature head is not an ancestor of the retained local head; refusing rewrite." >&2
+  exit 1
+fi
+if (( apply == 1 )) && [[ "$workspace_remote_sha" != "$workspace_local_sha" ]]; then
+  git push -u \
+    --force-with-lease="refs/heads/$feature_branch:$workspace_remote_sha" \
+    origin "$workspace_local_sha:refs/heads/$feature_branch"
 fi
 
 ws_title="[$feature_branch] workspace integration"
