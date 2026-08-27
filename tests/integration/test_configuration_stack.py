@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 
 import yaml
 from launch_ros.actions import Node
@@ -20,7 +21,12 @@ def _load_runtime_parameters(path: Path) -> dict[str, object]:
 
 
 def _active_parameter_set(profile_name: str) -> Path:
-    selector_data = yaml.safe_load((CONFIG_SOURCE_DIR / "profiles" / f"{profile_name}.yaml").read_text()) or {}
+    selector_data = (
+        yaml.safe_load(
+            (CONFIG_SOURCE_DIR / "profiles" / f"{profile_name}.yaml").read_text()
+        )
+        or {}
+    )
     active_reference = selector_data.get("active_parameter_set", "tracked/default.yaml")
     return CONFIG_SOURCE_DIR / "parameter_sets" / profile_name / active_reference
 
@@ -30,31 +36,60 @@ def _configuration_server_param_file(description) -> str:
     server = next(
         node
         for node in nodes
-        if node._Node__package == "iii_drone_core" and node._Node__node_executable == "configuration_server_node.py"
+        if node._Node__package == "iii_drone_core"
+        and node._Node__node_executable == "configuration_server_node.py"
     )
     parameter_file = server._Node__parameters[0]
     return parameter_file.param_file[0].text
 
 
 def test_production_runtime_parameter_files_cover_managed_schema():
-    managed_names = set(NativeConfiguratorCore(str(PARAMETER_MANIFEST)).schema_parameter_names())
+    managed_names = set(
+        NativeConfiguratorCore(str(PARAMETER_MANIFEST)).schema_parameter_names()
+    )
     real_params = _load_runtime_parameters(_active_parameter_set("real"))
     sim_params = _load_runtime_parameters(_active_parameter_set("sim"))
 
     missing_real = sorted(managed_names - set(real_params))
     missing_sim = sorted(managed_names - set(sim_params))
 
-    assert not missing_real, f"ros_params_real.yaml is missing managed keys: {missing_real[:10]}"
-    assert not missing_sim, f"ros_params_sim.yaml is missing managed keys: {missing_sim[:10]}"
+    assert (
+        not missing_real
+    ), f"ros_params_real.yaml is missing managed keys: {missing_real[:10]}"
+    assert (
+        not missing_sim
+    ), f"ros_params_sim.yaml is missing managed keys: {missing_sim[:10]}"
 
 
 def test_core_launch_selects_mode_specific_configuration_file(tmp_path, monkeypatch):
-    core_module = load_module_from_path(WORKSPACE_ROOT / "src/III-Drone-Core/launch/iii_drone.launch.py")
+    core_module = load_module_from_path(
+        WORKSPACE_ROOT / "src/III-Drone-Core/launch/iii_drone.launch.py"
+    )
     iii_config_dir = tmp_path / "iii_drone"
 
     monkeypatch.setenv("CONFIG_BASE_DIR", str(tmp_path))
+    monkeypatch.setenv("III_OPERATIONS_ROOT", str(tmp_path / "operations"))
     monkeypatch.setenv("WORKSPACE_DIR", str(WORKSPACE_ROOT))
-    monkeypatch.setattr(core_module.os, "popen", lambda _cmd: type("Reader", (), {"read": staticmethod(lambda: "")})())
+    monkeypatch.setattr(
+        core_module.os,
+        "popen",
+        lambda _cmd: type("Reader", (), {"read": staticmethod(lambda: "")})(),
+    )
+
+    real_selector = iii_config_dir / "profiles" / "real.yaml"
+    real_parameters = (
+        iii_config_dir / "parameter_sets" / "real" / "tracked" / "default.yaml"
+    )
+    real_state = iii_config_dir / "state" / "real" / "contract.json"
+    real_selector.parent.mkdir(parents=True)
+    real_parameters.parent.mkdir(parents=True)
+    real_state.parent.mkdir(parents=True)
+    shutil.copyfile(CONFIG_SOURCE_DIR / "profiles" / "real.yaml", real_selector)
+    shutil.copyfile(
+        CONFIG_SOURCE_DIR / "parameter_sets" / "real" / "tracked" / "default.yaml",
+        real_parameters,
+    )
+    real_state.write_text("{}\n", encoding="utf-8")
 
     monkeypatch.delenv("SIMULATION", raising=False)
     real_description = core_module.generate_launch_description()

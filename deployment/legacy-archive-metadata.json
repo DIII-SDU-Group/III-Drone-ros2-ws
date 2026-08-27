@@ -1,0 +1,14 @@
+{
+  "schema": "iii.legacy-archive-metadata/v1",
+  "repository": "DIII-SDU-Group/III-Drone-deployment",
+  "final_commit": "4ab4ae76013ba3ff904189777e7c97af107d94e1",
+  "final_branch": "v2.2-staging",
+  "last_legacy_version": "v2.2-staging@4ab4ae76013ba3ff904189777e7c97af107d94e1",
+  "state": "pending-q131",
+  "replacement_release_id": null,
+  "replacement_manual": "docs/deployment-and-field-operations.md",
+  "replacement_documentation_manifest_id": null,
+  "q131_retirement_evidence_id": null,
+  "history_recovery_location": "https://github.com/DIII-SDU-Group/III-Drone-deployment",
+  "archive_ruleset": "signed Q131 retirement scenario for one exact qualified candidate"
+}

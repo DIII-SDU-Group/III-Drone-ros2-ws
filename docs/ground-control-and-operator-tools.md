@@ -105,6 +105,7 @@ Use the process-local field defaults and explicit target/profile overrides:
 ```bash
 source setup/setup_field.bash
 iii field prepare v1.2.3 --dry-run
+iii field verify v1.2.3 --offline --json
 iii deploy plan --target real --json
 iii deploy field --bundle-set /operator/cache/<release>.iii-release-v1 \
   --configuration-checkpoint-id <sha256> --target real --dry-run
@@ -133,6 +134,13 @@ and manually entered endpoints never trigger it. While the receiver advertises
 `DEGRADED_CLOCK` or `CLOCK_FAULT_ACTIVE`, new runtime mutations fail closed while
 status, diagnostics, deployment, recovery, and authenticated clock sync remain
 available.
+
+`iii field prepare` is the only cache-populating step and may refresh trusted
+online release status. `iii field verify --offline` subsequently opens only the
+authenticated local cache and proves representative GC-only, drone-only, and
+paired component packaging. It retains a content-identified report whose every
+scenario states `network_access: false` and `target_mutation: false`; absence of
+either signed component or omission of explicit `--offline` is rejected.
 
 Service-scoped CLI commands control daemon-managed services:
 

@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "check_id": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "documents": {"minimum": 1, "type": "integer"},
+    "errors": {"items": {"type": "string"}, "type": "array"},
+    "generated": {"minimum": 0, "type": "integer"},
+    "maintained": {"minimum": 1, "type": "integer"},
+    "manifest_id": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "policy_id": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "schema": {"const": "iii.documentation-check/v1"}
+  },
+  "required": ["schema", "check_id", "manifest_id", "policy_id", "documents", "maintained", "generated", "errors"],
+  "title": "III documentation check",
+  "type": "object"
+}

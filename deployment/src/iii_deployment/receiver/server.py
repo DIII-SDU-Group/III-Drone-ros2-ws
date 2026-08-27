@@ -18,6 +18,9 @@ from iii_deployment.activation_health import (
     ActivationCoordinator,
     ActivationDiagnosticStore,
 )
+from iii_deployment.configuration_reconciliation import (
+    ReceiverConfigurationReconciler,
+)
 from iii_deployment.activation_runtime import (
     OnboardControlPlane,
     OnboardHealthProvider,
@@ -198,6 +201,14 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         boot_id=lambda: Path("/proc/sys/kernel/random/boot_id")
         .read_text(encoding="ascii")
         .strip(),
+        configuration_reconciler=ReceiverConfigurationReconciler(
+            releases_root=store.releases_root,
+            checkpoints_root=Path("/var/lib/iii/configuration/checkpoints"),
+            staging_root=Path("/var/lib/iii/configuration/staging"),
+            operations_root=STATE_ROOT / "operations",
+            target_id=config.logical_target,
+            runtime_profile=config.profile,
+        ),
     )
     clock = ClockController(
         CLOCK_STATE_PATH,

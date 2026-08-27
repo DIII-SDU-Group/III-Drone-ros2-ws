@@ -646,15 +646,19 @@ class FakeActivationCoordinator:
         configuration_checkpoint_id,
         px4_activation_evidence,
         operator_rollback=False,
+        configuration_reconciliation_decisions=None,
     ):
+        call = (
+            "preflight",
+            release_id,
+            configuration_checkpoint_id,
+            operator_rollback,
+            px4_activation_evidence["evidence_id"],
+        )
         self.calls.append(
-            (
-                "preflight",
-                release_id,
-                configuration_checkpoint_id,
-                operator_rollback,
-                px4_activation_evidence["evidence_id"],
-            )
+            call
+            if configuration_reconciliation_decisions is None
+            else (*call, dict(configuration_reconciliation_decisions))
         )
         return {
             "schema": "iii.activation-preflight/v1",
@@ -670,16 +674,20 @@ class FakeActivationCoordinator:
         configuration_checkpoint_id,
         explicit_qualified_action,
         px4_activation_evidence,
+        configuration_reconciliation_decisions=None,
     ):
+        call = (
+            "activate",
+            operation_id,
+            release_id,
+            configuration_checkpoint_id,
+            explicit_qualified_action,
+            px4_activation_evidence["evidence_id"],
+        )
         self.calls.append(
-            (
-                "activate",
-                operation_id,
-                release_id,
-                configuration_checkpoint_id,
-                explicit_qualified_action,
-                px4_activation_evidence["evidence_id"],
-            )
+            call
+            if configuration_reconciliation_decisions is None
+            else (*call, dict(configuration_reconciliation_decisions))
         )
         return {
             "kind": "activation",
@@ -778,6 +786,104 @@ def test_activation_is_planned_rechecked_durably_detached_and_runs_without_clien
             evidence["evidence_id"],
         ),
     ]
+
+
+def test_activation_plan_binds_and_forwards_configuration_review_decisions(
+    receiver,
+) -> None:
+    coordinator = FakeActivationCoordinator()
+    receiver.engine = receiver.build(receiver.executor, coordinator)
+    operation_id = "operation-activate-review-0001"
+    release_id = "a" * 64
+    checkpoint_id = "b" * 64
+    evidence = px4_evidence(release_id)
+    decisions = {"tracked/default.yaml:/review_fixture/gain": "use_old"}
+    planned = receiver.engine.handle(
+        request(
+            "plan-activate",
+            operation_id,
+            receiver.operator_id,
+            {
+                "activation": {
+                    "release_id": release_id,
+                    "configuration_checkpoint_id": checkpoint_id,
+                    "explicit_qualified_action": False,
+                    "px4_activation_evidence": evidence,
+                    "configuration_reconciliation_decisions": decisions,
+                },
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    assert (
+        planned["plan"]["parameters"]["configuration_reconciliation_decisions"]
+        == decisions
+    )
+    REGISTRY.validate("receiver-mutation-plan", planned["plan"])
+    receiver.engine.handle(
+        request(
+            "activate",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"]},
+            planned["nonce"],
+        )
+    )
+    receiver.executor.run_next()
+    assert coordinator.calls == [
+        (
+            "preflight",
+            release_id,
+            checkpoint_id,
+            False,
+            evidence["evidence_id"],
+            decisions,
+        ),
+        (
+            "preflight",
+            release_id,
+            checkpoint_id,
+            False,
+            evidence["evidence_id"],
+            decisions,
+        ),
+        (
+            "activate",
+            operation_id,
+            release_id,
+            checkpoint_id,
+            False,
+            evidence["evidence_id"],
+            decisions,
+        ),
+    ]
+
+
+def test_activation_plan_rejects_hostile_configuration_decision_keys(receiver) -> None:
+    coordinator = FakeActivationCoordinator()
+    receiver.engine = receiver.build(receiver.executor, coordinator)
+    release_id = "c" * 64
+    with pytest.raises(ContractError, match="decision key is invalid"):
+        receiver.engine.handle(
+            request(
+                "plan-activate",
+                "operation-hostile-review-0001",
+                receiver.operator_id,
+                {
+                    "activation": {
+                        "release_id": release_id,
+                        "configuration_checkpoint_id": "d" * 64,
+                        "explicit_qualified_action": False,
+                        "px4_activation_evidence": px4_evidence(release_id),
+                        "configuration_reconciliation_decisions": {
+                            "bad key:/bad": "use_old"
+                        },
+                    },
+                    "target": {"logical_id": "drone", "profile": "real"},
+                },
+            )
+        )
+    assert coordinator.calls == []
 
 
 def test_operator_rollback_is_planned_safety_rechecked_and_detached(receiver) -> None:

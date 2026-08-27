@@ -42,6 +42,8 @@ run_frontend_tests_with_npm() {
 
 if [[ -n "${ROS_DISTRO:-}" ]] && [[ -f "/opt/ros/${ROS_DISTRO}/setup.sh" ]]; then
   set +u
+  # The selected ROS distribution is resolved by the guarded path above.
+  # shellcheck disable=SC1090
   . "/opt/ros/${ROS_DISTRO}/setup.sh"
   set -u
 elif [[ -f "/opt/ros/jazzy/setup.sh" ]]; then
@@ -135,4 +137,5 @@ else
 fi
 
 python3 -m pytest tests
-python3 -m pytest tools/III-Drone-CLI/test
+PYTHONPATH="${workspace_root}/deployment/src:${workspace_root}/tools/III-Drone-CLI${PYTHONPATH:+:${PYTHONPATH}}" \
+  python3 -m pytest tools/III-Drone-CLI/test

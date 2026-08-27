@@ -6,7 +6,7 @@ After=iii-gc-discovery.service
 [Service]
 Type=simple
 EnvironmentFile={{ iii_gc_home }}/.config/iii/gc.env
-ExecStart={{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/iii-gc-companion --role mirror --interval 60
+ExecStart={{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/iii-gc-companion --role mirror --interval 5
 Restart=on-failure
 RestartSec=3
 

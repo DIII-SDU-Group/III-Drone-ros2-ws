@@ -507,6 +507,69 @@ def test_activation_accepts_only_after_stable_health_evidence_is_durable(
     )
 
 
+def test_activation_reconciles_current_checkpoint_before_atomic_tuple_switch(
+    tmp_path: Path,
+):
+    env = _environment(tmp_path)
+
+    class Reconciler:
+        def __init__(self):
+            self.preflight_calls = []
+            self.apply_calls = []
+
+        def preflight(self, **values):
+            self.preflight_calls.append(values)
+            return {
+                "ready": True,
+                "result_checkpoint_id": env["new_checkpoint_id"],
+                "rejection_reasons": [],
+            }
+
+        def apply(self, **values):
+            self.apply_calls.append(values)
+            return {
+                "schema": "iii.receiver-configuration-reconciliation-result/v1",
+                "result_checkpoint_id": env["new_checkpoint_id"],
+                "sets": [],
+            }
+
+    reconciler = Reconciler()
+    env["coordinator"].configuration_reconciler = reconciler
+    preflight = env["coordinator"].preflight(
+        release_id=NEW_RELEASE,
+        configuration_checkpoint_id=env["old"].configuration_checkpoint_id,
+        px4_activation_evidence=_px4_evidence(NEW_RELEASE),
+    )
+    assert preflight["ready"] is True
+    assert (
+        preflight["source_configuration_checkpoint_id"]
+        == env["old"].configuration_checkpoint_id
+    )
+    assert preflight["configuration_checkpoint_id"] == env["new_checkpoint_id"]
+
+    result = env["coordinator"].activate(
+        operation_id=OPERATION,
+        release_id=NEW_RELEASE,
+        configuration_checkpoint_id=env["old"].configuration_checkpoint_id,
+        explicit_qualified_action=False,
+        px4_activation_evidence=_px4_evidence(NEW_RELEASE),
+    )
+    assert (
+        result["source_configuration_checkpoint_id"]
+        == env["old"].configuration_checkpoint_id
+    )
+    assert result["configuration_checkpoint_id"] == env["new_checkpoint_id"]
+    assert result["configuration_reconciliation"]["sets"] == []
+    assert reconciler.apply_calls == [
+        {
+            "operation_id": OPERATION,
+            "release_id": NEW_RELEASE,
+            "source_checkpoint_id": env["old"].configuration_checkpoint_id,
+        }
+    ]
+    assert env["transactions"].current() == env["new"]
+
+
 def test_activation_rejects_identity_valid_px4_evidence_for_another_manifest(
     tmp_path: Path,
 ):

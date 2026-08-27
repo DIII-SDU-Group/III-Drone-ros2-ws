@@ -25,6 +25,12 @@ simulation launcher owns only PX4/Gazebo and never starts, stops, or embeds QGC.
 Connecting or disconnecting QGC affects PX4/operator telemetry, not III lifecycle
 bringup.
 
+Simulation uses the host/devcontainer clock directly and therefore skips the
+aircraft-to-GC clock-alignment gate. HIL remains a reserved, non-bootable
+selector scope; no maintained procedure treats it as an implemented simulation
+profile. OptiTrack is a separately commissioned real-aircraft profile and is not
+part of simulation acceptance.
+
 Start the two independent surfaces explicitly:
 
 ```bash

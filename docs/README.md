@@ -63,7 +63,7 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     Workspace-root commands for devcontainer, simulation, III CLI, tmux, and
     ground-control operation from the development host.
 
-19. `automation-ready-authoring-contract.md`
+19. [`automation-ready-authoring-contract.md`](automation-ready-authoring-contract.md)
     Required structure, authority, evidence, recovery, structured-output, and
     next-action contract for every executable operator or automation workflow.
 
@@ -113,8 +113,45 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     Receiver-coordinated portable state, external content-addressed backup,
     post-reimage reconciliation, and powered-off removed-media salvage.
 
+31. `deployment-verification-matrix.md`
+    Decision/acceptance traceability, Q121-selected execution layers, signed local
+    evidence, exact Q131 candidate binding, and canonical audit/JUnit commands.
+
+32. [`generated/iii-command-reference.md`](generated/iii-command-reference.md)
+    Source-generated command paths, help signatures, and mutation/terminal traits.
+
+33. [`generated/deployment-schema-reference.md`](generated/deployment-schema-reference.md)
+    Source-generated Draft-7 deployment contract and required-field index.
+
+34. [`deployment-and-field-operations.md`](deployment-and-field-operations.md)
+    Canonical lifecycle manual from stock GC and raw SD card through
+    commissioning, qualified/field deployment, tuning, offline work, recovery,
+    backup, and retirement stop conditions.
+
+35. [`historical-records.md`](historical-records.md)
+    Explicit index of immutable research, planning, and implementation records
+    that are retained as evidence but are not current operating instructions.
+
+## Editable Repository Entry Points
+
+Package-local documentation remains useful in its own repository. The governed
+entry points are:
+
+- [Configuration](../src/III-Drone-Configuration/README.md)
+- [Contracts](../src/III-Drone-Contracts/README.md)
+- [Core](../src/III-Drone-Core/README.md)
+- [Ground Control](../src/III-Drone-GC/README.md)
+- [Interfaces](../src/III-Drone-Interfaces/README.md)
+- [Mission](../src/III-Drone-Mission/README.md)
+- [Runtime](../src/III-Drone-Runtime/README.md)
+- [Simulation](../src/III-Drone-Simulation/README.md)
+- [Supervision](../src/III-Drone-Supervision/README.md)
+- [III CLI](../tools/III-Drone-CLI/README.md)
+
 Domain language and context ownership are indexed by the root
-`CONTEXT-MAP.md`.
+[`CONTEXT-MAP.md`](../CONTEXT-MAP.md). Architecture decisions are indexed in
+[`adr/README.md`](adr/README.md), and agent-facing repository conventions route
+through [`agents/README.md`](agents/README.md).
 
 Deployment domain terms live in [`../deployment/CONTEXT.md`](../deployment/CONTEXT.md).
 Deployment ADRs extend this index without reopening the existing Operations

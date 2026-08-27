@@ -1,17 +1,17 @@
 {
   "schema": "iii.documentation-policy/v1",
   "repositories": [
-    {"id": "workspace", "path": ".", "governed": true},
-    {"id": "configuration", "path": "src/III-Drone-Configuration", "governed": true},
-    {"id": "contracts", "path": "src/III-Drone-Contracts", "governed": true},
-    {"id": "core", "path": "src/III-Drone-Core", "governed": true},
-    {"id": "ground-control", "path": "src/III-Drone-GC", "governed": true},
-    {"id": "interfaces", "path": "src/III-Drone-Interfaces", "governed": true},
-    {"id": "mission", "path": "src/III-Drone-Mission", "governed": true},
-    {"id": "runtime", "path": "src/III-Drone-Runtime", "governed": true},
-    {"id": "simulation", "path": "src/III-Drone-Simulation", "governed": true},
-    {"id": "supervision", "path": "src/III-Drone-Supervision", "governed": true},
-    {"id": "cli", "path": "tools/III-Drone-CLI", "governed": true}
+    {"id": "workspace", "path": ".", "governed": true, "entrypoint": "README.md"},
+    {"id": "configuration", "path": "src/III-Drone-Configuration", "governed": true, "entrypoint": "README.md"},
+    {"id": "contracts", "path": "src/III-Drone-Contracts", "governed": true, "entrypoint": "README.md"},
+    {"id": "core", "path": "src/III-Drone-Core", "governed": true, "entrypoint": "README.md"},
+    {"id": "ground-control", "path": "src/III-Drone-GC", "governed": true, "entrypoint": "README.md"},
+    {"id": "interfaces", "path": "src/III-Drone-Interfaces", "governed": true, "entrypoint": "README.md"},
+    {"id": "mission", "path": "src/III-Drone-Mission", "governed": true, "entrypoint": "README.md"},
+    {"id": "runtime", "path": "src/III-Drone-Runtime", "governed": true, "entrypoint": "README.md"},
+    {"id": "simulation", "path": "src/III-Drone-Simulation", "governed": true, "entrypoint": "README.md"},
+    {"id": "supervision", "path": "src/III-Drone-Supervision", "governed": true, "entrypoint": "README.md"},
+    {"id": "cli", "path": "tools/III-Drone-CLI", "governed": true, "entrypoint": "README.md"}
   ],
   "exclusions": [
     {"pattern": ".agents/skills/**", "reason": "bundled agent-skill source, not operating-manual content"},
@@ -23,10 +23,68 @@
     {"pattern": "artifacts/**", "reason": "generated artifacts"}
   ],
   "canonical_roots": ["docs/README.md", "CONTEXT-MAP.md"],
+  "authoring_contract": "docs/automation-ready-authoring-contract.md",
+  "historical_index": "docs/historical-records.md",
+  "migration_review": "deployment/documentation-review.json",
+  "governed_lock": "deps/submodule-lock.txt",
+  "editable_repository_roots": [
+    "src/III-Drone-Configuration",
+    "src/III-Drone-Contracts",
+    "src/III-Drone-Core",
+    "src/III-Drone-GC",
+    "src/III-Drone-Interfaces",
+    "src/III-Drone-Mission",
+    "src/III-Drone-Runtime",
+    "src/III-Drone-Simulation",
+    "src/III-Drone-Supervision",
+    "tools/III-Drone-CLI"
+  ],
+  "canonical_authorities": [
+    {"id": "operator-manual-index", "path": "docs/README.md"},
+    {"id": "domain-context-map", "path": "CONTEXT-MAP.md"},
+    {"id": "agent-router", "path": "AGENTS.md"},
+    {"id": "agent-doc-index", "path": "docs/agents/README.md"},
+    {"id": "architecture-decision-index", "path": "docs/adr/README.md"},
+    {"id": "documentation-authoring", "path": "docs/automation-ready-authoring-contract.md"},
+    {"id": "branch-and-gitlink-governance", "path": "docs/dependency-governance.md"}
+  ],
+  "router_links": [
+    {"source": "README.md", "target": "docs/README.md"},
+    {"source": "README.md", "target": "CONTEXT-MAP.md"},
+    {"source": "AGENTS.md", "target": "docs/README.md"},
+    {"source": "AGENTS.md", "target": "CONTEXT-MAP.md"},
+    {"source": "AGENTS.md", "target": "docs/agents/README.md"},
+    {"source": "AGENTS.md", "target": "docs/automation-ready-authoring-contract.md"},
+    {"source": "docs/README.md", "target": "docs/agents/README.md"},
+    {"source": "docs/agents/README.md", "target": "docs/agents/editable-repositories.md"},
+    {"source": "docs/README.md", "target": "docs/adr/README.md"},
+    {"source": "docs/README.md", "target": "docs/historical-records.md"},
+    {"source": "docs/README.md", "target": "docs/automation-ready-authoring-contract.md"}
+  ],
+  "generated_references": [
+    {"generator": "deployment/scripts/update_documentation_references.py", "kind": "cli-help", "path": "docs/generated/iii-command-reference.md"},
+    {"generator": "deployment/scripts/update_documentation_references.py", "kind": "json-schema", "path": "docs/generated/deployment-schema-reference.md"}
+  ],
+  "development_workspace_path_allowlist": [
+    "ground-control:docs/gui-v2-sim-e2e-smoke.md",
+    "supervision:docs/operator-flows.md",
+    "workspace:AGENTS.md",
+    "workspace:docs/adr/0006-deployment-ownership-and-offboard-builds.md",
+    "workspace:docs/build-and-environments.md",
+    "workspace:docs/gui-operator-control-handoff.md",
+    "workspace:docs/host-development-commands.md",
+    "workspace:docs/perception-dataset-flight-suite.md",
+    "workspace:docs/perception-dataset-ground-truth.md"
+  ],
   "forbidden_current_terms": [
     "~/Workspace/repos/III-Drone-deployment",
     "rsync --delete",
     "sshpass"
+  ],
+  "forbidden_current_patterns": [
+    "(?i)origin/staging",
+    "(?i)--(?:base|head|target)\\s+staging",
+    "(?i)`staging`\\s+branch",
+    "(?i)branch\\s+`staging`"
   ]
 }
-

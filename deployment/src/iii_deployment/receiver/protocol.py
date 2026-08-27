@@ -95,6 +95,9 @@ RELEASE_ID = IDENTITY
 UPLOAD_ID = IDENTITY
 PROFILE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 TARGET_ID = re.compile(r"^[a-z][a-z0-9.-]{0,63}$")
+REINTRODUCTION_KEY = re.compile(
+    r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*:/[A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)*$"
+)
 # OpenSSH wire encoding: uint32(11), ``ssh-ed25519``, uint32(32), raw key.
 # Comments are deliberately excluded so a key has one stable client identity.
 PUBLIC_KEY = re.compile(r"^ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI[A-Za-z0-9+/]{43}$")
@@ -579,6 +582,16 @@ def _target(value: Any, *, label: str) -> None:
         raise ContractError(f"invalid {label} profile")
 
 
+def _configuration_reconciliation_decisions(value: Any) -> None:
+    if not isinstance(value, dict) or len(value) > 20_000:
+        raise ContractError("configuration reconciliation decisions are malformed")
+    for key, decision in value.items():
+        if not isinstance(key, str) or not REINTRODUCTION_KEY.fullmatch(key):
+            raise ContractError("configuration reconciliation decision key is invalid")
+        if decision not in {"use_old", "use_new_default"}:
+            raise ContractError("configuration reconciliation decision is invalid")
+
+
 def _verified_files(value: Any) -> None:
     if not isinstance(value, list):
         raise ContractError("verified log files must be an array")
@@ -730,6 +743,8 @@ def validate_mutation_plan(
         }
         if plan["action"] == Action.ACTIVATE.value:
             expected.add("explicit_qualified_action")
+            if "configuration_reconciliation_decisions" in parameters:
+                expected.add("configuration_reconciliation_decisions")
         _exact(
             parameters,
             expected,
@@ -745,6 +760,10 @@ def validate_mutation_plan(
             parameters["explicit_qualified_action"], bool
         ):
             raise ContractError("activation qualified authority must be boolean")
+        if "configuration_reconciliation_decisions" in parameters:
+            _configuration_reconciliation_decisions(
+                parameters["configuration_reconciliation_decisions"]
+            )
     elif plan["action"] == Action.CLOCK_SYNC.value:
         _exact(parameters, {"samples"}, label="receiver clock-sync parameters")
         _clock_samples(parameters["samples"])
@@ -1118,14 +1137,17 @@ def validate_request_payload(request: Request) -> None:
         target = payload["target"]
         if not isinstance(activation, dict) or not isinstance(target, dict):
             raise ContractError("plan-activate activation and target must be objects")
+        expected = {
+            "release_id",
+            "configuration_checkpoint_id",
+            "explicit_qualified_action",
+            "px4_activation_evidence",
+        }
+        if "configuration_reconciliation_decisions" in activation:
+            expected.add("configuration_reconciliation_decisions")
         _exact(
             activation,
-            {
-                "release_id",
-                "configuration_checkpoint_id",
-                "explicit_qualified_action",
-                "px4_activation_evidence",
-            },
+            expected,
             label="plan-activate parameters",
         )
         _identity(activation["release_id"], label="activation release")
@@ -1135,6 +1157,10 @@ def validate_request_payload(request: Request) -> None:
         )
         if not isinstance(activation["explicit_qualified_action"], bool):
             raise ContractError("activation qualified authority must be boolean")
+        if "configuration_reconciliation_decisions" in activation:
+            _configuration_reconciliation_decisions(
+                activation["configuration_reconciliation_decisions"]
+            )
         validate_px4_activation_evidence(activation["px4_activation_evidence"])
         _exact(target, {"logical_id", "profile"}, label="plan-activate target")
         if not isinstance(target["logical_id"], str) or not TARGET_ID.fullmatch(

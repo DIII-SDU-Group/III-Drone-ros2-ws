@@ -87,8 +87,15 @@
         "release_id": {"$ref": "#/definitions/identity"},
         "configuration_checkpoint_id": {"$ref": "#/definitions/identity"},
         "explicit_qualified_action": {"type": "boolean"},
-        "px4_activation_evidence": {"type": "object"}
+        "px4_activation_evidence": {"type": "object"},
+        "configuration_reconciliation_decisions": {"$ref": "#/definitions/configuration_reconciliation_decisions"}
       }
+    },
+    "configuration_reconciliation_decisions": {
+      "type": "object",
+      "maxProperties": 20000,
+      "propertyNames": {"pattern": "^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*:/[A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)*$"},
+      "additionalProperties": {"enum": ["use_old", "use_new_default"]}
     },
     "rollback_parameters": {
       "type": "object", "additionalProperties": false,

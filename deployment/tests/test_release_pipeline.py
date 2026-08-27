@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import base64
-from copy import deepcopy
 import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
+import tarfile
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import pytest
+import zstandard
 
 from iii_deployment.contracts import (
     ContractError,
@@ -18,10 +20,12 @@ from iii_deployment.contracts import (
     content_identity,
 )
 from iii_deployment.release_pipeline import (
+    DOCUMENTATION_ASSET,
     assemble_qualification_evidence,
     assemble_release_manifest,
     assemble_signed_release,
     create_qualification_check,
+    package_documentation,
 )
 from iii_deployment.signers import generate_signer
 
@@ -156,6 +160,32 @@ def _metadata(root: Path) -> Path:
         "qgc_managed_settings": ["inputs/qgc"],
     }
     return _canonical(root / "release-metadata.json", value)
+
+
+def _documentation(root: Path) -> tuple[Path, Path, Path]:
+    source_manifest = ROOT / "deployment/documentation-manifest.json"
+    source_policy = ROOT / "deployment/documentation-policy.json"
+    manifest = json.loads(source_manifest.read_text(encoding="utf-8"))
+    documentation_root = root / "documentation-source"
+    for row in manifest["documents"]:
+        if not row["qualified_release_inclusion"]:
+            continue
+        relative = (
+            Path(row["path"])
+            if row["repository_path"] == "."
+            else Path(row["repository_path"]) / row["path"]
+        )
+        target = documentation_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / relative, target)
+    manifest_path = documentation_root / "deployment/documentation-manifest.json"
+    policy_path = documentation_root / "deployment/documentation-policy.json"
+    review_path = documentation_root / "deployment/documentation-review.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source_manifest, manifest_path)
+    shutil.copyfile(source_policy, policy_path)
+    shutil.copyfile(ROOT / "deployment/documentation-review.json", review_path)
+    return documentation_root, manifest_path, policy_path
 
 
 def _mission_catalog(drone: Path) -> dict:
@@ -428,6 +458,9 @@ def pipeline_case(tmp_path: Path) -> dict:
     snapshot = json.loads(snapshot_path.read_text())
     provenance = _write(tmp_path / "source-provenance.md", b"# provenance\n")
     metadata = _metadata(tmp_path)
+    documentation_root, documentation_manifest, documentation_policy = _documentation(
+        tmp_path
+    )
     drone = _write(tmp_path / "payloads/drone/install/core", b"drone\n").parent.parent
     expected_catalog = _mission_catalog(drone)
     gc = tmp_path / "payloads/gc"
@@ -445,6 +478,9 @@ def pipeline_case(tmp_path: Path) -> dict:
         target_definition_path=ROOT
         / "deployment/targets/v1/raspberry-pi-5-noble-arm64.json",
         operational_policy_path=ROOT / "deployment/operational-policy.json",
+        documentation_root=documentation_root,
+        documentation_manifest_path=documentation_manifest,
+        documentation_policy_path=documentation_policy,
         component_roots={"drone": drone, "gc": gc},
         build_records=records,
         private_key_path=key_path,
@@ -463,6 +499,9 @@ def pipeline_case(tmp_path: Path) -> dict:
         "snapshot_value": snapshot,
         "provenance": provenance,
         "metadata": metadata,
+        "documentation_root": documentation_root,
+        "documentation_manifest": documentation_manifest,
+        "documentation_policy": documentation_policy,
         "drone": drone,
         "gc": gc,
         "records": records,
@@ -543,6 +582,20 @@ def test_manifest_is_derived_from_pinned_payload_policy_and_signer(
         manifest["px4"]["reference_snapshot_sha256"]
         == hashlib.sha256(canonical_json(reference) + b"\n").hexdigest()
     )
+    documentation = json.loads(
+        pipeline_case["documentation_manifest"].read_text(encoding="utf-8")
+    )
+    assert manifest["documentation"]["manifest_id"] == documentation["manifest_id"]
+    review = json.loads(
+        (
+            pipeline_case["documentation_root"] / "deployment/documentation-review.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert manifest["documentation"]["review_id"] == review["review_id"]
+    assert (
+        manifest["documentation"]["operator_manual"]
+        == "docs/deployment-and-field-operations.md"
+    )
     assert manifest["release_id"] == content_identity(
         {k: v for k, v in manifest.items() if k != "release_id"}
     )
@@ -564,6 +617,9 @@ def test_manifest_refuses_dirty_or_changed_candidate(pipeline_case: dict) -> Non
             target_definition_path=ROOT
             / "deployment/targets/v1/raspberry-pi-5-noble-arm64.json",
             operational_policy_path=ROOT / "deployment/operational-policy.json",
+            documentation_root=pipeline_case["documentation_root"],
+            documentation_manifest_path=pipeline_case["documentation_manifest"],
+            documentation_policy_path=pipeline_case["documentation_policy"],
             component_roots={
                 "drone": pipeline_case["drone"],
                 "gc": pipeline_case["gc"],
@@ -593,6 +649,9 @@ def test_manifest_refuses_tampered_build_record_or_payload(pipeline_case: dict) 
             target_definition_path=ROOT
             / "deployment/targets/v1/raspberry-pi-5-noble-arm64.json",
             operational_policy_path=ROOT / "deployment/operational-policy.json",
+            documentation_root=pipeline_case["documentation_root"],
+            documentation_manifest_path=pipeline_case["documentation_manifest"],
+            documentation_policy_path=pipeline_case["documentation_policy"],
             component_roots={
                 "drone": pipeline_case["drone"],
                 "gc": pipeline_case["gc"],
@@ -654,6 +713,9 @@ def test_full_signed_release_record_binds_every_published_asset(
         impact_policy=impact,
         metadata=metadata,
         change_summary=change_summary,
+        documentation_root=pipeline_case["documentation_root"],
+        documentation_manifest_path=pipeline_case["documentation_manifest"],
+        documentation_policy_path=pipeline_case["documentation_policy"],
         private_key_path=pipeline_case["key"],
         output=output,
         repository="DIII-SDU-Group/III-Drone-ros2-ws",
@@ -672,6 +734,69 @@ def test_full_signed_release_record_binds_every_published_asset(
         path.name for path in pipeline_case["checks"].values()
     }
     assert len([name for name in assets if name.endswith("bundle.tar.zst")]) == 2
+    assert DOCUMENTATION_ASSET in assets
+    assert DOCUMENTATION_ASSET in {item["name"] for item in record["artifacts"]}
+    with assets[DOCUMENTATION_ASSET].open("rb") as raw:
+        with zstandard.ZstdDecompressor().stream_reader(raw) as decoded:
+            with tarfile.open(fileobj=decoded, mode="r|") as archive:
+                names = {member.name for member in archive}
+    assert "docs/deployment-and-field-operations.md" in names
+    assert "docs/generated/iii-command-reference.md" in names
+    assert "docs/generated/deployment-schema-reference.md" in names
+    assert "deployment/documentation-manifest.json" in names
+    assert "deployment/documentation-review.json" in names
+
+
+def test_documentation_asset_refuses_changed_source(pipeline_case: dict) -> None:
+    manual = (
+        pipeline_case["documentation_root"] / "docs/deployment-and-field-operations.md"
+    )
+    manual.write_text("changed after manifest\n", encoding="utf-8")
+    with pytest.raises(ContractError, match="qualified documentation changed"):
+        package_documentation(
+            root=pipeline_case["documentation_root"],
+            manifest_path=pipeline_case["documentation_manifest"],
+            policy_path=pipeline_case["documentation_policy"],
+            documentation=pipeline_case["manifest"]["documentation"],
+            destination=pipeline_case["root"] / "tampered-docs.tar.zst",
+            source_date_epoch=1787745600,
+        )
+
+
+def test_documentation_asset_refuses_incomplete_migration_review(
+    pipeline_case: dict,
+) -> None:
+    path = pipeline_case["documentation_root"] / "deployment/documentation-review.json"
+    review = json.loads(path.read_text(encoding="utf-8"))
+    review["documents"].pop()
+    body = {key: value for key, value in review.items() if key != "review_id"}
+    review["review_id"] = content_identity(body)
+    path.write_text(json.dumps(review), encoding="utf-8")
+    with pytest.raises(ContractError, match="coverage is incomplete"):
+        package_documentation(
+            root=pipeline_case["documentation_root"],
+            manifest_path=pipeline_case["documentation_manifest"],
+            policy_path=pipeline_case["documentation_policy"],
+            documentation=pipeline_case["manifest"]["documentation"],
+            destination=pipeline_case["root"] / "incomplete-review.tar.zst",
+            source_date_epoch=1787745600,
+        )
+
+
+def test_documentation_asset_is_byte_deterministic(pipeline_case: dict) -> None:
+    paths = [
+        pipeline_case["root"] / f"documentation-{index}.tar.zst" for index in range(2)
+    ]
+    for path in paths:
+        package_documentation(
+            root=pipeline_case["documentation_root"],
+            manifest_path=pipeline_case["documentation_manifest"],
+            policy_path=pipeline_case["documentation_policy"],
+            documentation=pipeline_case["manifest"]["documentation"],
+            destination=path,
+            source_date_epoch=1787745600,
+        )
+    assert paths[0].read_bytes() == paths[1].read_bytes()
 
 
 def test_signing_failure_leaves_no_partial_release(pipeline_case: dict) -> None:
@@ -696,6 +821,9 @@ def test_signing_failure_leaves_no_partial_release(pipeline_case: dict) -> None:
             impact_policy={},
             metadata=json.loads(pipeline_case["metadata"].read_text()),
             change_summary={},
+            documentation_root=pipeline_case["documentation_root"],
+            documentation_manifest_path=pipeline_case["documentation_manifest"],
+            documentation_policy_path=pipeline_case["documentation_policy"],
             private_key_path=invalid_key,
             output=output,
             repository="DIII-SDU-Group/III-Drone-ros2-ws",

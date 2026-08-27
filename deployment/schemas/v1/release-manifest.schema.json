@@ -4,7 +4,7 @@
   "title": "III release manifest",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "manifest_type", "release_id", "release_class", "components", "component_targets", "compatibility", "source", "target", "toolchain", "dependency_lock", "packages", "checksums", "configuration", "px4", "qgc", "profiles", "mission_catalog", "qualification", "signing", "operational_policy", "build"],
+  "required": ["schema_version", "manifest_type", "release_id", "release_class", "components", "component_targets", "compatibility", "source", "target", "toolchain", "dependency_lock", "packages", "checksums", "configuration", "px4", "qgc", "profiles", "mission_catalog", "qualification", "signing", "operational_policy", "documentation", "build"],
   "properties": {
     "schema_version": {"const": "1"},
     "manifest_type": {"const": "release"},
@@ -69,6 +69,20 @@
     "qualification": {"type": "object", "additionalProperties": false, "required": ["explicit_action", "tag_on_release", "tests_complete", "evidence_sha256", "evidence_complete"], "properties": {"explicit_action": {"type": "boolean"}, "tag_on_release": {"type": "boolean"}, "tests_complete": {"type": "boolean"}, "evidence_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "evidence_complete": {"type": "boolean"}}},
     "signing": {"type": "object", "additionalProperties": false, "required": ["algorithm", "signer_id", "authority"], "properties": {"algorithm": {"const": "Ed25519"}, "signer_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "authority": {"enum": ["ci-qualified", "workstation-field"]}}},
     "operational_policy": {"type": "object", "additionalProperties": false, "required": ["schema_version", "sha256"], "properties": {"schema_version": {"const": "1"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+    "documentation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["manifest_id", "manifest_sha256", "policy_sha256", "review_id", "review_sha256", "operator_manual", "generated_references", "included_documents"],
+      "properties": {
+        "manifest_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "policy_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "review_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "review_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "operator_manual": {"const": "docs/deployment-and-field-operations.md"},
+        "generated_references": {"type": "array", "minItems": 2, "uniqueItems": true, "items": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"}},
+        "included_documents": {"type": "array", "minItems": 3, "items": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}}
+      }
+    },
     "build": {"type": "object", "additionalProperties": false, "required": ["builder_id", "built_at", "source_date_epoch"], "properties": {"builder_id": {"type": "string", "minLength": 1}, "built_at": {"type": "string", "format": "date-time"}, "source_date_epoch": {"type": "integer", "minimum": 0}}}
   },
   "definitions": {

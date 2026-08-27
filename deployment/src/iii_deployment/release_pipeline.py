@@ -5,16 +5,19 @@ from __future__ import annotations
 from datetime import datetime
 import base64
 import hashlib
+import io
 import json
 import os
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
+import tarfile
 from typing import Any, Mapping, Sequence
 
 from cryptography.hazmat.primitives import serialization
+import zstandard
 
-from .bundle import load_bundle_limits, package_bundle_set, verify_bundle
+from .bundle import load_bundle_limits, package_bundle_set
 from .contracts import (
     ContractError,
     ContractRegistry,
@@ -228,6 +231,171 @@ def _build_tree_identity(root: Path) -> str:
     return content_identity(entries)
 
 
+DOCUMENTATION_ASSET = "iii-offline-documentation.tar.zst"
+
+
+def _documentation_inventory(
+    *, root: Path, manifest_path: Path, policy_path: Path
+) -> dict[str, Any]:
+    manifest = _json(manifest_path)
+    policy = _json(policy_path)
+    if manifest.get("schema") != "iii.documentation-manifest/v1":
+        raise ContractError("documentation manifest schema is unsupported")
+    expected_id = content_identity(
+        {key: value for key, value in manifest.items() if key != "manifest_id"}
+    )
+    if manifest.get("manifest_id") != expected_id:
+        raise ContractError("documentation manifest identity mismatch")
+    if policy.get("schema") != "iii.documentation-policy/v1":
+        raise ContractError("documentation policy schema is unsupported")
+    review_relative = PurePosixPath(policy.get("migration_review", ""))
+    if (
+        not review_relative.parts
+        or review_relative.is_absolute()
+        or ".." in review_relative.parts
+    ):
+        raise ContractError("documentation migration review path is unsafe")
+    if review_relative != PurePosixPath("deployment/documentation-review.json"):
+        raise ContractError("documentation migration review path is non-canonical")
+    review_path = root.joinpath(*review_relative.parts)
+    review = _json(review_path)
+    if review.get("schema") != "iii.documentation-review/v1":
+        raise ContractError("documentation migration review schema is unsupported")
+    review_body = {key: value for key, value in review.items() if key != "review_id"}
+    if review.get("review_id") != content_identity(review_body):
+        raise ContractError("documentation migration review identity mismatch")
+    if review.get("manifest_id") != manifest["manifest_id"]:
+        raise ContractError("documentation migration review targets another manifest")
+    expected_review = {
+        (row["repository"], row["path"]): row["sha256"]
+        for row in manifest.get("documents", [])
+        if row.get("lifecycle") == "maintained"
+    }
+    reviewed = {
+        (row.get("repository"), row.get("path")): row
+        for row in review.get("documents", [])
+        if isinstance(row, dict)
+    }
+    if len(reviewed) != len(review.get("documents", [])) or set(reviewed) != set(
+        expected_review
+    ):
+        raise ContractError("documentation migration review coverage is incomplete")
+    expected_checks = [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift",
+    ]
+    for key, row in reviewed.items():
+        if (
+            row.get("sha256") != expected_review[key]
+            or row.get("status") != "passed"
+            or row.get("checks") != expected_checks
+        ):
+            raise ContractError("documentation migration review did not pass")
+    included: list[dict[str, str]] = []
+    for row in manifest.get("documents", []):
+        if not row.get("qualified_release_inclusion"):
+            continue
+        repository_path = PurePosixPath(row["repository_path"])
+        document_path = PurePosixPath(row["path"])
+        logical = (
+            document_path
+            if repository_path == PurePosixPath(".")
+            else repository_path / document_path
+        )
+        if logical.is_absolute() or ".." in logical.parts:
+            raise ContractError("documentation manifest contains an unsafe path")
+        source = root.joinpath(*logical.parts)
+        try:
+            relative = source.resolve(strict=True).relative_to(root.resolve())
+        except (OSError, ValueError) as exc:
+            raise ContractError(
+                f"qualified documentation is missing or escapes source: {logical}"
+            ) from exc
+        if (
+            source.is_symlink()
+            or not source.is_file()
+            or relative.as_posix() != logical.as_posix()
+        ):
+            raise ContractError(f"qualified documentation is unsafe: {logical}")
+        observed = _sha256(source)
+        if observed != row.get("sha256"):
+            raise ContractError(f"qualified documentation changed: {logical}")
+        included.append({"path": logical.as_posix(), "sha256": observed})
+    included.sort(key=lambda row: row["path"])
+    paths = {row["path"] for row in included}
+    operator_manual = "docs/deployment-and-field-operations.md"
+    generated = sorted(row["path"] for row in policy.get("generated_references", []))
+    missing = sorted({operator_manual, *generated} - paths)
+    if missing:
+        raise ContractError(
+            "offline documentation set is incomplete: " + ", ".join(missing)
+        )
+    return {
+        "manifest_id": manifest["manifest_id"],
+        "manifest_sha256": _sha256(manifest_path),
+        "policy_sha256": _sha256(policy_path),
+        "review_id": review["review_id"],
+        "review_sha256": _sha256(review_path),
+        "operator_manual": operator_manual,
+        "generated_references": generated,
+        "included_documents": included,
+    }
+
+
+def package_documentation(
+    *,
+    root: Path,
+    manifest_path: Path,
+    policy_path: Path,
+    documentation: Mapping[str, Any],
+    destination: Path,
+    source_date_epoch: int,
+) -> Path:
+    """Write the deterministic offline operator/documentation asset."""
+
+    observed = _documentation_inventory(
+        root=root, manifest_path=manifest_path, policy_path=policy_path
+    )
+    if dict(documentation) != observed:
+        raise ContractError("release documentation binding differs from source")
+    if destination.exists() or destination.is_symlink():
+        raise ContractError("documentation asset output already exists")
+    entries = [
+        ("deployment/documentation-manifest.json", manifest_path.read_bytes()),
+        ("deployment/documentation-policy.json", policy_path.read_bytes()),
+        (
+            "deployment/documentation-review.json",
+            (root / "deployment/documentation-review.json").read_bytes(),
+        ),
+        *[
+            (row["path"], (root / row["path"]).read_bytes())
+            for row in documentation["included_documents"]
+        ],
+    ]
+    with destination.open("xb") as raw:
+        compressor = zstandard.ZstdCompressor(
+            level=19, write_checksum=True, write_content_size=False, threads=0
+        )
+        with compressor.stream_writer(raw, closefd=False) as encoded:
+            with tarfile.open(
+                fileobj=encoded, mode="w|", format=tarfile.USTAR_FORMAT
+            ) as archive:
+                for name, data in entries:
+                    info = tarfile.TarInfo(name)
+                    info.mode = 0o644
+                    info.uid = 0
+                    info.gid = 0
+                    info.uname = ""
+                    info.gname = ""
+                    info.mtime = source_date_epoch
+                    info.size = len(data)
+                    archive.addfile(info, io.BytesIO(data))
+    return destination
+
+
 def _validate_build_records(
     *,
     root: Path,
@@ -414,6 +582,9 @@ def assemble_release_manifest(
     metadata_path: Path,
     target_definition_path: Path,
     operational_policy_path: Path,
+    documentation_root: Path,
+    documentation_manifest_path: Path,
+    documentation_policy_path: Path,
     component_roots: Mapping[str, Path],
     build_records: Mapping[str, Path],
     private_key_path: Path,
@@ -442,6 +613,11 @@ def assemble_release_manifest(
     target = load_target_definition(target_definition_path, registry)
     policy = _json(operational_policy_path)
     registry.validate("operational-policy", policy)
+    documentation = _documentation_inventory(
+        root=documentation_root,
+        manifest_path=documentation_manifest_path,
+        policy_path=documentation_policy_path,
+    )
     if set(component_roots) != {"drone", "gc"} or set(build_records) != {"drone", "gc"}:
         raise ContractError(
             "qualified release requires exact drone and GC build inputs"
@@ -640,6 +816,7 @@ def assemble_release_manifest(
             "schema_version": str(policy["schema_version"]),
             "sha256": content_identity(policy),
         },
+        "documentation": documentation,
         "build": {
             "builder_id": builder_id,
             "built_at": built_at,
@@ -667,6 +844,9 @@ def assemble_signed_release(
     impact_policy: Mapping[str, Any],
     metadata: Mapping[str, Any],
     change_summary: Mapping[str, Any],
+    documentation_root: Path,
+    documentation_manifest_path: Path,
+    documentation_policy_path: Path,
     private_key_path: Path,
     output: Path,
     repository: str,
@@ -703,6 +883,14 @@ def assemble_signed_release(
         )
         notes_path = output / NOTES_NAME
         write_canonical(notes_path, notes)
+        documentation_path = package_documentation(
+            root=documentation_root,
+            manifest_path=documentation_manifest_path,
+            policy_path=documentation_policy_path,
+            documentation=manifest["documentation"],
+            destination=output / DOCUMENTATION_ASSET,
+            source_date_epoch=manifest["build"]["source_date_epoch"],
+        )
         named_bundle_paths = {
             component_asset_name(manifest["release_id"], component, path.name): path
             for component, value in paths.items()
@@ -712,6 +900,7 @@ def assemble_signed_release(
             QUALIFICATION_NAME: qualification_evidence_path,
             PROMOTION_NAME: promotion_attestation_path,
             NOTES_NAME: notes_path,
+            DOCUMENTATION_ASSET: documentation_path,
             **named_bundle_paths,
         }
         key = load_private_key(private_key_path)

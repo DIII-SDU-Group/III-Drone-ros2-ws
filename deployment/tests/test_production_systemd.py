@@ -47,6 +47,11 @@ def test_production_units_are_real_profile_host_owned_and_independently_stoppabl
     assert "Requires=iii-system-daemon.service" not in api
     assert "StandardOutput=null" in daemon and "StandardOutput=null" in api
     assert "ProtectSystem=strict" in daemon and "ProtectSystem=strict" in api
+    assert "/var/lib/iii/tuning" in daemon
+    runtime_environment = (
+        ROOT / "deployment/ansible/roles/runtime_control_plane/templates/runtime.env.j2"
+    ).read_text(encoding="utf-8")
+    assert "III_TUNING_STATE_ROOT=/var/lib/iii/tuning" in runtime_environment
 
 
 def test_minimal_time_untrusted_clock_audit_has_host_retention_policy():

@@ -27,7 +27,7 @@ Use:
 
 ```bash
 iii host backup create --target real --dry-run
-iii host backup create --target real --apply <operation-id>
+iii host backup create --target real --operation-id <operation-id> --resume --confirm
 iii host backup verify
 iii host backup status --target real
 ```
@@ -61,7 +61,8 @@ compatible release:
 
 ```bash
 iii host backup restore <backup-id> --target real --dry-run
-iii host backup restore <backup-id> --target real --apply <operation-id>
+iii host backup restore <backup-id> --target real \
+  --operation-id <operation-id> --resume --confirm
 ```
 
 The CLI resumably uploads the exact archive to the confined incoming root. The

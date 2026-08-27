@@ -92,14 +92,18 @@ iii system attach
 
 ## Branching And Stability
 
-Recommended working model:
+Governed working model:
 
-- `main`: stable, deployable
-- `develop`: active integration
-- `release`: qualified workspace releases promoted only from `main`
-- feature branches: all development work
-- `promote/develop-to-main/*`: mechanical, evidence-gated promotion branches
-- `vX.Y.Z` tags: immutable qualified snapshots reachable from `release`
+- normal feature/work-sweep branches -> `develop` through coordinated PRs;
+- `develop` -> `promote/develop-to-main/<operation-id>` -> `main` through an
+  evidence-gated mechanical promotion stack;
+- workspace `main` -> workspace-only `release` through a direct protected PR;
+- workspace `release` -> immutable qualified `vX.Y.Z` tags; and
+- editable submodules stop at `main` and never have `release` branches.
+
+Run the exact dry-run/apply/resume commands in
+[dependency governance](docs/dependency-governance.md). Direct pushes to
+protected branches are unsupported.
 
 ## Dependency Governance
 
@@ -116,6 +120,8 @@ CI enforces lock consistency on PRs/pushes.
 Start here for detailed technical documentation:
 
 - [Workspace Docs Index](docs/README.md)
+- [Domain Context Map](CONTEXT-MAP.md)
+- [Agent Router](AGENTS.md)
 - [Workspace Overview](docs/workspace-overview.md)
 - [Runtime Launch And Node Graph](docs/runtime-launch-and-node-graph.md)
 - [Supervision And Process Management](docs/supervision-and-process-management.md)

@@ -1,0 +1,44 @@
+{
+  "schema": "iii.legacy-retirement-policy/v1",
+  "scan_roots": [
+    ".github/workflows",
+    "deployment/ansible",
+    "deployment/src",
+    "deployment/systemd",
+    "scripts",
+    "setup",
+    "tools/III-Drone-CLI/iii"
+  ],
+  "excluded_patterns": [
+    "**/__pycache__/**",
+    "**/build/**",
+    "**/test/**",
+    "**/tests/**"
+  ],
+  "required_absent": [
+    "setup/remote.bash",
+    "tools/III-Drone-CLI/iii/build.py",
+    "tools/III-Drone-CLI/iii/config.py"
+  ],
+  "forbidden_active_patterns": [
+    {"id": "legacy-repository-variable", "pattern": "III_DRONE_DEPLOYMENT_(?:BRANCH|URL|DIR_NAME)"},
+    {"id": "password-ssh", "pattern": "(?i)sshpass"},
+    {"id": "destructive-source-sync", "pattern": "(?i)rsync\\s+--delete"},
+    {"id": "mutable-latest-image", "pattern": "(?:iii_drone_base|iii_cc):latest"},
+    {"id": "retired-deploy-command", "pattern": "iii\\s+deploy\\s+(?:install|container|synchronize)"},
+    {"id": "retired-pull-command", "pattern": "(?i)pull_(?:src|rosbags)"},
+    {"id": "retired-remote-environment", "pattern": "setup/remote\\.bash"}
+  ],
+  "retired_entrypoints": [
+    {
+      "path": "scripts/remote/install_remote.bash",
+      "exit_code": 64,
+      "required_markers": [
+        "III_REMOTE_BOOTSTRAP_RETIRED",
+        "Next: iii gc provision --help",
+        "Development: source setup/setup_dev.bash"
+      ]
+    }
+  ],
+  "archive_metadata": "deployment/legacy-archive-metadata.json"
+}

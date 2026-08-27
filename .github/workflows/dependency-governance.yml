@@ -121,9 +121,15 @@ jobs:
           persist-credentials: false
           submodules: recursive
       - name: Install pinned deployment contract dependencies
-        run: python -m pip install --disable-pip-version-check ./tools/III-Drone-CLI ./deployment[test]
+        run: python -m pip install --disable-pip-version-check ./tools/III-Drone-CLI ./src/III-Drone-Configuration ./deployment[test]
       - name: Validate deployment contracts and traceability
-        run: python -m pytest deployment/tests
+        run: |
+          mkdir -p .ci
+          iii verify deployment --root . --audit-only \
+            --report .ci/deployment-verification.json \
+            --junit .ci/deployment-verification.xml
+          iii docs check --root . --output=json > .ci/documentation-check.json
+          python -m pytest deployment/tests
 
   verify-submodule-lock:
     runs-on: ubuntu-24.04

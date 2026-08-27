@@ -5,7 +5,8 @@ Status: historical inventory and cutover gate, not an operator runbook.
 The retired `DIII-SDU-Group/III-Drone-deployment` repository was inspected at
 commit `4ab4ae76013ba3ff904189777e7c97af107d94e1` on branch `v2.2-staging`. Its Git
 history is preserved. It is not the source of current deployment commands or
-runtime ownership.
+runtime ownership. No release tags exist in the retained clone, so the exact last
+legacy version is `v2.2-staging@4ab4ae76013ba3ff904189777e7c97af107d94e1`.
 
 ## Retained knowledge and destination
 
@@ -36,6 +37,25 @@ recovery, tuning/capture, offline operation, disaster recovery, documentation,
 and a clean-host run with the legacy clone absent. Archival must record this exact
 final commit and branch, the replacement qualified release and manual revision,
 and the history recovery location. History must never be deleted or rewritten.
+
+The machine-readable
+[`legacy-archive-metadata.json`](../deployment/legacy-archive-metadata.json)
+currently records `pending-q131` with null replacement/evidence identities. It
+cannot validate as `archived` until the exact qualified release, documentation
+manifest, and signed Q131 retirement evidence IDs are present. The reversible
+retirement audit is:
+
+```bash
+python3 deployment/scripts/audit_legacy_retirement.py --root .
+```
+
+Former `iii build container`, `iii build cross-compile`, bare `iii config`, and
+the branch/URL variables in `setup/remote.bash` have no parser or environment
+entry point. The retained `scripts/remote/install_remote.bash` compatibility path
+performs no mutation, exits 64, and directs operators to `iii gc provision
+--help` or `source setup/setup_dev.bash`. Current build, deployment, tuning, and
+recovery commands are indexed by the generated
+[`iii` command reference](generated/iii-command-reference.md).
 
 Current implementation and operator documentation begins at
 [`../deployment/CONTEXT.md`](../deployment/CONTEXT.md) and the

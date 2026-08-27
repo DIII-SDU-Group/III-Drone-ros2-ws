@@ -2,6 +2,18 @@
 
 This file defines how coding agents should work in this repository.
 
+Supporting agent-document ownership is indexed in
+[`docs/agents/README.md`](docs/agents/README.md); this file remains the concise
+workspace authority and does not duplicate the operating manuals.
+The safe standalone/editable-submodule workflow is
+[`docs/agents/editable-repositories.md`](docs/agents/editable-repositories.md).
+
+It is a concise router. The maintained operator and engineering manual begins at
+[`docs/README.md`](docs/README.md), bounded-context language is indexed by
+[`CONTEXT-MAP.md`](CONTEXT-MAP.md), and executable documentation must follow the
+[`automation-ready authoring contract`](docs/automation-ready-authoring-contract.md).
+Those sources, not repeated prose here, own operational detail.
+
 ## Agent skills
 
 ### Issue tracker
@@ -179,6 +191,8 @@ When implementing changes:
 2. Prefer minimal diffs and keep behavior consistent with CLI-first bringup.
 3. Validate with the smallest meaningful command set for the touched area.
 4. Report any observed inconsistencies instead of silently “fixing” architecture.
+5. Run focused tests after each backlog task and the full applicable regression
+   once at the end of each phase.
 
 ### 7.1 Deployment and repository automation
 
@@ -209,6 +223,9 @@ When implementing changes:
   markers as untrusted transport/display. Bind locators to trusted base policy and
   authenticate current state through Git/GitHub APIs; verify evidence schema,
   identity, policy binding, and signatures before it can authorize a result.
+- Solo maintenance does not weaken the gate: zero required approvals avoids
+  inventing a second reviewer, but PRs, required checks, resolved conversations,
+  immutable history, exact evidence, and explicit mutation authority still apply.
 
 ## 8) Validation Checklist
 

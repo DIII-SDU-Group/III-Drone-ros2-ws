@@ -748,6 +748,7 @@ class ActivationCoordinator:
         monotonic: Callable[[], float],
         sleep: Callable[[float], None],
         boot_id: Callable[[], str],
+        configuration_reconciler: Any | None = None,
         poll_interval_s: float = 0.25,
     ) -> None:
         if poll_interval_s <= 0 or poll_interval_s > STABLE_WINDOW_S:
@@ -767,6 +768,7 @@ class ActivationCoordinator:
         self.monotonic = monotonic
         self.sleep = sleep
         self.boot_id = boot_id
+        self.configuration_reconciler = configuration_reconciler
         self.poll_interval_s = poll_interval_s
 
     def _manifest(self, release_id: str) -> dict[str, Any]:
@@ -875,8 +877,35 @@ class ActivationCoordinator:
         status_index: Mapping[str, Any] | None = None,
         maintenance_override: MaintenanceOverride | None = None,
         operator_rollback: bool = False,
+        configuration_reconciliation_decisions: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         _require_operation(operation_id)
+        requested_checkpoint_id = configuration_checkpoint_id
+        previous = self.transaction_store.current()
+        if previous is None:
+            raise ContractError(
+                "field activation requires a known previous composite selector"
+            )
+        configuration_reconciliation = None
+        if not operator_rollback and self.configuration_reconciler is not None:
+            if requested_checkpoint_id != previous.configuration_checkpoint_id:
+                raise ContractError(
+                    "activation must reconcile from the currently selected configuration checkpoint"
+                )
+            decision_arguments = (
+                {"decisions": dict(configuration_reconciliation_decisions)}
+                if configuration_reconciliation_decisions is not None
+                else {}
+            )
+            configuration_reconciliation = self.configuration_reconciler.apply(
+                operation_id=operation_id,
+                release_id=release_id,
+                source_checkpoint_id=requested_checkpoint_id,
+                **decision_arguments,
+            )
+            configuration_checkpoint_id = configuration_reconciliation[
+                "result_checkpoint_id"
+            ]
         candidate, policy, runtime_range = self._candidate(
             release_id=release_id,
             configuration_checkpoint_id=configuration_checkpoint_id,
@@ -884,11 +913,6 @@ class ActivationCoordinator:
         px4_evidence = self.validate_px4_evidence(
             release_id=release_id, evidence=px4_activation_evidence
         )
-        previous = self.transaction_store.current()
-        if previous is None:
-            raise ContractError(
-                "field activation requires a known previous composite selector"
-            )
         safety = self.safety_provider()
         ActivationSafetyGate(
             logical_target=self.logical_target, profile=self.profile
@@ -1019,6 +1043,9 @@ class ActivationCoordinator:
                 "kind": "rollback" if operator_rollback else "activation",
                 "release_id": release_id,
                 "previous_release_id": previous.release_id,
+                "source_configuration_checkpoint_id": requested_checkpoint_id,
+                "configuration_checkpoint_id": candidate.configuration_checkpoint_id,
+                "configuration_reconciliation": configuration_reconciliation,
                 "accepted_state_id": accepted_state["state_id"],
                 "acceptance_evidence_id": evidence_id,
                 "activation_state_id": transaction["state_id"],
@@ -1075,9 +1102,42 @@ class ActivationCoordinator:
         configuration_checkpoint_id: str,
         px4_activation_evidence: Mapping[str, Any],
         operator_rollback: bool = False,
+        configuration_reconciliation_decisions: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         """Read-only activation inspection used before durable request acceptance."""
 
+        requested_checkpoint_id = configuration_checkpoint_id
+        previous = self.transaction_store.current()
+        configuration_reconciliation = None
+        reconciliation_reasons: list[str] = []
+        if not operator_rollback and self.configuration_reconciler is not None:
+            if previous is None:
+                reconciliation_reasons.append(
+                    "no selected configuration checkpoint is available for reconciliation"
+                )
+            elif requested_checkpoint_id != previous.configuration_checkpoint_id:
+                reconciliation_reasons.append(
+                    "requested source checkpoint is not the currently selected checkpoint"
+                )
+            else:
+                decision_arguments = (
+                    {"decisions": dict(configuration_reconciliation_decisions)}
+                    if configuration_reconciliation_decisions is not None
+                    else {}
+                )
+                configuration_reconciliation = self.configuration_reconciler.preflight(
+                    operation_id=f"preflight-{release_id[:16]}-{requested_checkpoint_id[:16]}",
+                    release_id=release_id,
+                    source_checkpoint_id=requested_checkpoint_id,
+                    **decision_arguments,
+                )
+                reconciliation_reasons.extend(
+                    configuration_reconciliation["rejection_reasons"]
+                )
+                if configuration_reconciliation["ready"]:
+                    configuration_checkpoint_id = configuration_reconciliation[
+                        "result_checkpoint_id"
+                    ]
         candidate, policy, runtime_range = self._candidate(
             release_id=release_id,
             configuration_checkpoint_id=configuration_checkpoint_id,
@@ -1085,9 +1145,8 @@ class ActivationCoordinator:
         px4_evidence = self.validate_px4_evidence(
             release_id=release_id, evidence=px4_activation_evidence
         )
-        previous = self.transaction_store.current()
         release_state = self.release_store.state()
-        reasons: list[str] = []
+        reasons: list[str] = list(reconciliation_reasons)
         if previous is None:
             reasons.append("no previous composite selector is available for rollback")
         expected_role = (
@@ -1109,6 +1168,8 @@ class ActivationCoordinator:
             "schema": "iii.activation-preflight/v1",
             "release_id": release_id,
             "configuration_checkpoint_id": configuration_checkpoint_id,
+            "source_configuration_checkpoint_id": requested_checkpoint_id,
+            "configuration_reconciliation": configuration_reconciliation,
             "previous_release_id": (
                 previous.release_id if previous is not None else None
             ),

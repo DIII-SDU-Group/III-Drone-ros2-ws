@@ -9,6 +9,7 @@ description = "ROS-independent deployment contracts and tooling for III-Drone"
 requires-python = ">=3.10"
 dependencies = [
   "iii==0.2.0",
+  "iii-drone-configuration==2.2.0",
   "cryptography==45.0.6",
   "jsonschema==4.25.1",
   "PyYAML==6.0.2",
@@ -47,8 +48,10 @@ iii_deployment = ["assets/**/*.json", "assets/**/*.yaml", "assets/**/*.j2"]
 
 [tool.setuptools.data-files]
 "share/iii-deployment/schemas/v1" = ["schemas/v1/*.json"]
-"share/iii-deployment/policy" = ["operational-policy.json", "documentation-policy.json", "receiver-policy.json", "runtime-targets.json", "middleware-policy.json", "gc-host-policy.json", "gc-application-policy.json", "portable-state-policy.json"]
-"share/iii-deployment/verification" = ["verification/clause-baseline.json"]
+"share/iii-deployment/policy" = ["operational-policy.json", "documentation-policy.json", "legacy-retirement-policy.json", "receiver-policy.json", "runtime-targets.json", "middleware-policy.json", "gc-host-policy.json", "gc-application-policy.json", "portable-state-policy.json"]
+"share/iii-deployment/documentation" = ["documentation-manifest.json", "documentation-review.json"]
+"share/iii-deployment/retirement" = ["legacy-archive-metadata.json"]
+"share/iii-deployment/verification" = ["verification/clause-baseline.json", "verification/clause-migrations.json", "verification/matrix.json", "verification/policy.json"]
 "share/iii-deployment/systemd" = ["systemd/*.service", "systemd/*.timer"]
 "share/iii-deployment/host" = ["host/*.json", "host/*.sudoers"]
 "share/iii-deployment/provisioning" = ["provisioning/*.json"]

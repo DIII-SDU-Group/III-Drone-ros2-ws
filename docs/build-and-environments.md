@@ -7,6 +7,14 @@ Container images remain useful for:
 - dependency/bootstrap reference (`Dockerfile`)
 - production ARM64 cross-compilation (`Dockerfile.cc`)
 
+| Environment | Purpose | Runtime/build boundary |
+|---|---|---|
+| Development host | VS Code, native pinned QGC, and devcontainer control | Does not run the ROS graph directly |
+| Jazzy devcontainer at `/home/iii/ws` | Builds, III-only tests, PX4 SITL, Gazebo, and the simulated III graph | Development and simulation only |
+| Pinned amd64 ARM64 builder | Produces native AArch64 release trees against the immutable target definition | Offboard build only; never contacts an aircraft |
+| Native aircraft | Runs the activated Jazzy/AArch64 release under systemd and the III daemon | No source checkout, Docker, compiler, or mutable sysroot |
+| Native GC/QGC host | Runs the host-managed frontend/proxy images and pinned QGC AppImage | No onboard runtime ownership |
+
 ## 1. Build System
 
 Primary build system: `colcon` with workspace defaults (`defaults.yaml`).
@@ -25,7 +33,7 @@ The workspace defines explicit runtime modes via shell profiles:
 1. `setup_dev.bash`
 - Sets `SIMULATION=true`
 - Sets `III_SYSTEM_PROFILE=sim`
-- Loads paths, remote settings, log levels, ROS middleware variables
+- Loads workspace paths, log levels, and ROS middleware variables
 - Sets `COLCON_HOME` to workspace
 
 2. `setup_real.bash`
@@ -35,7 +43,7 @@ The workspace defines explicit runtime modes via shell profiles:
 - Sources the installed ROS/workspace setup expected on the target OS
 
 3. `setup_remote.bash`
-- Remote tooling profile for deployment. Remote runtime-control commands use
+- Checkout-local operator profile for deployment. Remote runtime-control commands use
   `iii-runtime-api` with `III_RUNTIME_API_URL` and the per-computer runtime
   credential. Deployment uses a dedicated per-computer Ed25519 key with key-only
   SSH to `iii@iii.local`; its forced gateway permits canonical receiver requests
@@ -230,7 +238,7 @@ Dependency sources:
 
 Workspace scripts provide utility for:
 - package/executable discovery
-- remote install/setup
+- authenticated receiver and runtime-API control
 - devcontainer startup behavior
 - docker compose builds
 - GUI v2 full-suite and sim E2E smoke verification

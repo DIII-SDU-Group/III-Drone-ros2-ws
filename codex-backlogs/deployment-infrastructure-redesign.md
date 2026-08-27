@@ -4441,10 +4441,10 @@ Implementation notes:
 
 Phase acceptance:
 
-- [ ] GUI tuning survives runtime restart and release deployment as intended.
-- [ ] Every captured value can be traced to release, schema, baseline, session,
+- [x] GUI tuning survives runtime restart and release deployment as intended.
+- [x] Every captured value can be traced to release, schema, baseline, session,
       and operator action.
-- [ ] Promotion to tracked configuration is deliberate and reviewable.
+- [x] Promotion to tracked configuration is deliberate and reviewable.
 
 Delivery order:
 
@@ -4456,6 +4456,8 @@ Delivery order:
 
 #### P4.T0: Package Immutable Configuration And Compatibility Contracts
 
+**Status: Completed.**
+
 Description:
 Give `III-Drone-Configuration` explicit schema versions, supported upgrade/
 downgrade ranges, runtime-profile descriptors, exactly one tracked default each for
@@ -4466,21 +4468,21 @@ contract before any writable-state migration begins.
 
 Acceptance:
 
-- [ ] Compatibility can be evaluated from old/new installed manifests before
+- [x] Compatibility can be evaluated from old/new installed manifests before
       runtime shutdown or writable-state access.
-- [ ] Package build/install deterministically includes schemas, profile descriptors,
+- [x] Package build/install deterministically includes schemas, profile descriptors,
       migration metadata, and `real`/`sim` tracked defaults without reading or
       mutating a writable runtime root.
-- [ ] Runtime profile descriptors explicitly map `real -> real`, `sim -> sim`,
+- [x] Runtime profile descriptors explicitly map `real -> real`, `sim -> sim`,
       initial `opti_track -> real`, and reserved non-bootable `hil -> sim`; living
       selectors remain runtime-profile-scoped so aliases cannot overwrite each other.
-- [ ] Runtime package resolution uses the ament index and never silently selects a
+- [x] Runtime package resolution uses the ament index and never silently selects a
       workspace source tree; development edits become inputs only after normal
       colcon build/install.
-- [ ] The public Python API requires explicit immutable input and writable-state
+- [x] The public Python API requires explicit immutable input and writable-state
       roots, returns typed plans/results, and is shared by receiver, configuration
       service, CLI, simulation startup, and tests without duplicate policy logic.
-- [ ] Tracked-default/capture interfaces remain extensible to future non-default
+- [x] Tracked-default/capture interfaces remain extensible to future non-default
       tracked sets without implementing that deferred catalog now.
 
 Tests:
@@ -4489,7 +4491,34 @@ Tests:
   source-tree shadow rejection, profile mapping/alias isolation, compatibility
   range fixtures, malformed/unknown schema rejection, and API import tests.
 
+Implementation notes:
+
+- Added a schema-versioned, content-identified immutable package contract with
+  authenticated parameter schema, migration ranges, profile descriptors, and the
+  exact `real`/`sim` tracked defaults. The tracked-set list enforces exactly one
+  default per parameter profile while admitting future reviewed non-default sets.
+- CMake now captures every immutable input into the build tree before installation;
+  even `--symlink-install` points at build-captured bytes rather than editable
+  source. A clean non-symlink isolated install reproduced the same authenticated
+  bundle and loaded it through the ament index.
+- Added typed `load_installed_contract` and `plan_compatibility` APIs with explicit
+  absolute old/new immutable roots and writable-state root. Planning authenticates
+  all inputs, records but never opens writable state, returns a deterministic
+  no-mutation plan, and exposes isolated selectors for `real`, `sim`, `opti_track`,
+  and reserved non-bootable `hil`.
+- Removed Python and C++ workspace/writable-schema preference. Configuration
+  service, Supervision, and Simulation now reach the same installed contract via
+  the existing shared schema/seeding helpers; explicit `III_DRONE_SCHEMA_FILE`
+  remains test/debug-only. Receiver and CLI mutation consumers use this same public
+  plan/result surface in the following reconciliation and promotion tasks.
+- Task-specific verification passed all 97 Configuration package tests plus the
+  focused six-fixture contract rerun, Draft-07 schema/manifest validation, Python
+  compilation/format/diff checks, deterministic rebuild comparison, zero writable-
+  state build side effects, and a clean standard-install/API/hash drill.
+
 #### P4.T1: Implement Transactional Parameter Reconciliation And Legacy Shadow
+
+**Status: Completed.**
 
 Description:
 Implement the installed writable-state reconciliation API across every applicable
@@ -4501,31 +4530,31 @@ rollback. Remove the legacy shell/standalone mutation path after parity.
 
 Acceptance:
 
-- [ ] Development/simulation startup reconciles every writable sim set before
+- [x] Development/simulation startup reconciles every writable sim set before
       selecting/applying one; failure or unresolved reintroduction prevents launch.
-- [ ] Aircraft reconciliation is never a build/install/runtime-start side effect;
+- [x] Aircraft reconciliation is never a build/install/runtime-start side effect;
       only the receiver executes the preplanned transaction against a staged copy.
-- [ ] Migration never edits the only aircraft copy; activation/rollback either
+- [x] Migration never edits the only aircraft copy; activation/rollback either
       proves compatibility or atomically restores the paired checkpoint.
-- [ ] Existing valid values are never overwritten, every new key receives the
+- [x] Existing valid values are never overwritten, every new key receives the
       release default, and every applicable selected/unselected set is normalized.
-- [ ] Removed keys leave active files only after the selected active-at-retirement
+- [x] Removed keys leave active files only after the selected active-at-retirement
       value/provenance is durable in a release/schema/set-scoped shadow record;
       inactive/snapshot/scattered values never become restoration candidates.
-- [ ] Shadow data remains outside release/active trees, is never executed as current
+- [x] Shadow data remains outside release/active trees, is never executed as current
       configuration, is included in captures/backups, and supports deterministic
       compatible rollback rehydration.
-- [ ] Reintroduction produces the bound `.iii/operations/<operation-id>/` review
+- [x] Reintroduction produces the bound `.iii/operations/<operation-id>/` review
       showing old canonical value, new default, validation, provenance, and one
       unresolved `use_old|use_new_default` decision per key without mutation.
-- [ ] Invalid old values stay visible but cannot be selected; incomplete, stale,
+- [x] Invalid old values stay visible but cannot be selected; incomplete, stale,
       edited, cross-release, cross-manifest, cross-target, or cross-state reviews fail.
-- [ ] Reconciliation is idempotent, journaled, fsync/atomic-rename power-loss safe,
+- [x] Reconciliation is idempotent, journaled, fsync/atomic-rename power-loss safe,
       and emits a complete per-set plan/result consumed by deployment reporting.
-- [ ] `iii config sim inspect/checkpoint/reset` operates on the current clone's
+- [x] `iii config sim inspect/checkpoint/reset` operates on the current clone's
       Git-ignored living sim tree; reset is confirmed, first seals a recoverable
       capture, and never edits the tracked default.
-- [ ] Legacy `scripts/install.sh` and `update_installed_parameters.py` callers are
+- [x] Legacy `scripts/install.sh` and `update_installed_parameters.py` callers are
       migrated, then removed or fail with the canonical replacement next action.
 
 Tests:
@@ -4536,7 +4565,39 @@ Tests:
   reconciliation, automatic sim blocking/resume, receiver-only aircraft mutation,
   sim inspect/checkpoint/reset/capture, and legacy-entry-point retirement.
 
+Implementation notes:
+
+- Added one typed reconciliation planner/executor shared by installed runtime,
+  simulation, CLI, and receiver. It authenticates old/new immutable contracts,
+  normalizes every selected and unselected set, preserves valid values, inserts
+  defaults, and durably retires removed values before any active-tree rename.
+- Canonical legacy shadows are release/schema/profile/set/target bound and keep
+  only the selected value that was active at retirement as a restoration
+  candidate. Reintroduction produces an operation-bound review; exact complete
+  `use_old|use_new_default` decisions are authenticated before execution, while
+  invalid old values remain visible but nonselectable.
+- Simulation reconciles automatically before active-set selection. Aircraft
+  startup is verification-only: activation preflights from an immutable source
+  checkpoint, reconciles a receiver-private copy, seals a predicted content-
+  addressed checkpoint, and atomically switches the code/configuration/catalog
+  tuple. Rollback restores the exact paired checkpoint without re-migration.
+- Added `iii config sim inspect|checkpoint|reset|review` and receiver-backed
+  `iii deploy continue` review resumption. Reset always captures first, supports
+  exact checkpoint restore, is confirmation/plan gated, and never mutates tracked
+  defaults. Legacy standalone mutators now fail with the canonical next action.
+- Configuration state, checkpoints, retained contracts, journals, and shadows are
+  included by the portable-state configuration domain; a focused archive fixture
+  proves shadow material is sealed and verifiable.
+- Task-specific verification passed 22 Configuration reconciliation/contract
+  tests, 48 CLI configuration/deployment contract tests, 74 receiver/deployment
+  tests, the focused portable-shadow archive test, all 129 deployment schemas,
+  Python/shell compilation, format/diff checks, and an isolated wheel dependency
+  and import drill. Full Phase 4 regression is intentionally deferred through
+  P4.T4.
+
 #### P4.T2: Implement Tuning Sessions And Change Journaling
+
+**Status: Completed.**
 
 Description:
 Implement one profile-parameterized session and transaction engine for simulation
@@ -4553,26 +4614,26 @@ checkpoints/selectors rather than direct YAML writes and process-memory cleanup.
 
 Acceptance:
 
-- [ ] Session baseline cannot be confused with current mutable state.
-- [ ] Constant/restart-required values and pending boot state are represented.
-- [ ] Pending values become active after whole-graph `system stop`/`system start`
+- [x] Session baseline cannot be confused with current mutable state.
+- [x] Constant/restart-required values and pending boot state are represented.
+- [x] Pending values become active after whole-graph `system stop`/`system start`
       at the configuration lifecycle boundary or `system restart --cold`; daemon
       shutdown/boot, OS reboot, and power cycling are unnecessary.
-- [ ] Pending indications clear only after the freshly configured runtime reports
+- [x] Pending indications clear only after the freshly configured runtime reports
       matching active readbacks; warm or unrelated-node restarts do not clear them.
-- [ ] A test may restore its baseline without changing code release.
-- [ ] The GUI receives success only after both journal and active-set mutation
+- [x] A test may restore its baseline without changing code release.
+- [x] The GUI receives success only after both journal and active-set mutation
       are durable; failure leaves neither a partial multi-parameter transaction
       nor an unreported value change.
-- [ ] Request IDs and expected revisions make retries idempotent and reject stale
+- [x] Request IDs and expected revisions make retries idempotent and reject stale
       concurrent edits.
-- [ ] A failed distributed node update compensates already-applied nodes; failed
+- [x] A failed distributed node update compensates already-applied nodes; failed
       compensation enters an explicit configuration-divergent fault with exact
       observed values and blocks further writes pending reconciliation.
-- [ ] Restart and power-loss recovery deterministically complete or abort every
+- [x] Restart and power-loss recovery deterministically complete or abort every
       prepared transaction without inventing an accepted revision.
-- [ ] Journal compaction retains checkpoints and the complete current session.
-- [ ] The same conformance suite passes against `sim` and `real` profiles; only
+- [x] Journal compaction retains checkpoints and the complete current session.
+- [x] The same conformance suite passes against `sim` and `real` profiles; only
       target adapters and profile data may differ.
 
 Tests:
@@ -4580,7 +4641,45 @@ Tests:
 - Runtime, constant, rejected, repeated, concurrent, restart, rollback, and
   power-loss journal tests.
 
+Implementation notes:
+
+- Added one profile-parameterized, content-identified tuning engine with a
+  separately authenticated immutable baseline and mutable state, monotonic
+  revisions, target/profile/release/workspace/manifest binding, canonical
+  checksummed JSONL WAL, fsynced atomic checkpoints/selectors, idempotent request
+  replay, prepared-transaction recovery, baseline restore, and lossless active-
+  session compaction.
+- Replaced Runtime's per-key Apply loop and legacy snapshot-load mutation with one
+  validate-all transaction. The server durably prepares, applies and freshly reads
+  every live node, atomically persists the complete active set, then durably
+  commits. Failure compensates every prior key/node. Failed compensation records
+  exact observations, blocks all parameter/snapshot writes, and is cleared only
+  after a later full-graph pass proves exact prior active, persisted, and pending
+  state; interrupted reconciliation is WAL-replayable.
+- Restart-required values stay distinct as persisted/pending state. A full managed
+  stop/start or parameter cold restart starts nodes before confirmation, requires
+  fresh matching whole-graph readback, and stops fail-closed on mismatch. Partial
+  or warm node starts never confirm pending state.
+- Runtime rejects noncanonical or extended session/transaction transport, requires
+  both pending-state services to agree, exposes revision/session/baseline/pending/
+  divergent status through ROS-free Contracts, and disables divergent writes. GC
+  retains its existing edit/Apply workflow, sends expected revision, shows active
+  to pending-next-cold-restart values, and adds only a compact divergence warning;
+  no session start/end concepts were introduced.
+- Real provisioning now owns `/var/lib/iii/tuning`, exports
+  `III_TUNING_STATE_ROOT`, and grants only the system-daemon cgroup write access;
+  simulation uses the clone-local Git-ignored `.iii/tuning` root. Portable-state
+  policy already seals the tuning domain.
+- Task-specific verification passed 45 Configuration durability/install tests,
+  28 Runtime API/lifecycle tests, five Contracts tests, eight Interfaces manifest
+  tests, 11 GC configuration-page tests plus typecheck/generated-contract check,
+  20 production-systemd/portable-state tests, targeted four-package Jazzy colcon
+  build, wheel-content inspection, Black, Pyflakes, compilation, and diff checks.
+  The full Phase 4 regression remains intentionally deferred through P4.T4.
+
 #### P4.T3: Export Provenance-Rich Tuning Captures
+
+**Status: Completed.**
 
 Description:
 Publish committed revisions on the existing runtime event stream and add a host-
@@ -4601,35 +4700,35 @@ mirror loss and automatically backfills after reconnection.
 
 Acceptance:
 
-- [ ] Capture integrity and release/schema correlation are verifiable offline.
-- [ ] Repeating capture does not overwrite prior evidence.
-- [ ] Any saved set, active or inactive, can be downloaded independently or as
+- [x] Capture integrity and release/schema correlation are verifiable offline.
+- [x] Repeating capture does not overwrite prior evidence.
+- [x] Any saved set, active or inactive, can be downloaded independently or as
       part of a multi-selection without first loading or making it default.
-- [ ] Each downloaded set receives a short name and description without changing
+- [x] Each downloaded set receives a short name and description without changing
       its immutable source identity or onboard snapshot.
-- [ ] Deployment, restart, journal compaction, and generic storage cleanup never
+- [x] Deployment, restart, journal compaction, and generic storage cleanup never
       prune operator-named sets.
-- [ ] Deletion is blocked for active/default/pending sets and normally requires a
+- [x] Deletion is blocked for active/default/pending sets and normally requires a
       verified local capture receipt; force deletion is separate and confirmed.
-- [ ] System-generated checkpoints compact only when no retained state, named set,
+- [x] System-generated checkpoints compact only when no retained state, named set,
       or unexported capture references them.
-- [ ] Partial or interrupted captures are distinguishable from complete captures.
-- [ ] Drone and simulation use the same capture format and promotion input contract.
-- [ ] GUI close, mirror restart, network loss, and target reboot preserve session
+- [x] Partial or interrupted captures are distinguishable from complete captures.
+- [x] Drone and simulation use the same capture format and promotion input contract.
+- [x] GUI close, mirror restart, network loss, and target reboot preserve session
       resumability and never silently lose or duplicate accepted revisions.
-- [ ] Mirror loss is visibly degraded but does not block target-durable tuning;
+- [x] Mirror loss is visibly degraded but does not block target-durable tuning;
       detailed mirror/capture state remains CLI-facing rather than becoming a GUI
       tuning-session workflow.
-- [ ] The GUI exposes no tuning-session start/end vocabulary or controls and
+- [x] The GUI exposes no tuning-session start/end vocabulary or controls and
       clearly distinguishes edited/unsaved values from values pending application
       on the next cold restart.
-- [ ] Snapshot list and parameter state update immediately from authoritative
+- [x] Snapshot list and parameter state update immediately from authoritative
       revisions, with gap detection and full rehydration fallback.
-- [ ] GUI download either exports a real sealed capture or is replaced by the
+- [x] GUI download either exports a real sealed capture or is replaced by the
       local mirrored-capture action; it never reports discarded YAML as downloaded.
-- [ ] Captures are content-addressed under Git-ignored `.iii/captures/`; display
+- [x] Captures are content-addressed under Git-ignored `.iii/captures/`; display
       metadata is separate from immutable identity.
-- [ ] CLI list/show/diff/verify/export/import supports portable checksummed
+- [x] CLI list/show/diff/verify/export/import supports portable checksummed
       archives, verified deduplication, duplicate display names, and no secrets,
       Git mutation, or parameter-default mutation.
 
@@ -4640,7 +4739,49 @@ Tests:
   capture/export/verify round trip, collision handling, interrupted transfer,
   stale UI prevention, and tampered capture rejection.
 
+Implementation notes (2026-08-27):
+
+- Contracts seal one strict `iii.configuration-capture/v1` content identity over
+  exact values, raw snapshot checksum, real/sim logical identity, release,
+  workspace and manifest identities, baseline, pending boot values, and the
+  checksum-bound current WAL head. Profile/target, timestamp, revision, schema,
+  and transaction provenance mismatches fail closed offline.
+- Configuration exposes authenticated arbitrary snapshot reads, retained current
+  and historical journal batches, implicit session creation, and receipt-bound
+  named-snapshot deletion. Saving or reading a named set is non-destructive;
+  active/default/persistence-pending references remain protected even under the
+  separately confirmed force path. Runtime-snapshot cleanup cannot match named
+  operator sets, and active-session compaction remains a validated evidence-
+  retaining no-op.
+- Runtime emits one authoritative revision event plus full configuration domain
+  state after each newly accepted transaction, rejects stale mirror heads, and
+  exposes CLI-token-scoped state/journal/capture/delete/ack routes. The GC mirror
+  checkpoints every entry, backfills prior sessions and gaps, survives companion/
+  target restart and mid-batch loss, and acknowledges only an exact complete head.
+  Real provisioning uses `iii.local`; both simulation Compose workflows use the
+  identical contract against `localhost`.
+- `iii config capture` supplies pull/list/show/diff/verify/export/import/delete.
+  Captures and receipts are immutable; display metadata has an independent content
+  identity and permits duplicate names. Archives are deterministic, bounded,
+  path-safe, unencrypted, checksummed, fully validated before mutation, crash-safe
+  on publication, and resumable through verified deduplication. Pull/import
+  interruptions retain canonical markers, and secret-bearing parameter names fail
+  before publication.
+- GC retains the existing edit/Apply and pending-next-cold-restart interaction,
+  shows mirror degradation without blocking target-durable work, rehydrates a
+  detected revision gap from the full authoritative patch, and replaces the fake
+  discarded-YAML download result with an exact local capture command.
+- Task-specific verification passed 41 Configuration durability/server tests,
+  14 Contracts capture/configuration tests, eight Interfaces manifest tests,
+  26 Runtime configuration API tests, nine CLI capture/transport tests, 17 GC
+  companion/Compose tests, 18 frontend configuration/state tests, frontend
+  typecheck and generated-contract verification, the targeted five-package Jazzy
+  build, 30 deployment/systemd/portable-state tests with three environment skips,
+  plus Black and diff checks. Phase 4 full regression remains deferred until P4.T4.
+
 #### P4.T4: Implement Configuration Comparison And Promotion
+
+**Status: Completed (2026-08-27).**
 
 Description:
 Compare a capture with its recorded baseline and current tracked configuration.
@@ -4654,17 +4795,17 @@ silently overwriting files. Keep capture/export separate from source mutation.
 
 Acceptance:
 
-- [ ] Promotion produces a reviewable minimal change.
-- [ ] Experimental tuning cannot silently become the shared tracked default.
-- [ ] Wrong schema, baseline, logical target, or release provenance fails closed.
-- [ ] Promotion has plan/apply modes, supports both `real` and `sim`, and never
+- [x] Promotion produces a reviewable minimal change.
+- [x] Experimental tuning cannot silently become the shared tracked default.
+- [x] Wrong schema, baseline, logical target, or release provenance fails closed.
+- [x] Promotion has plan/apply modes, supports both `real` and `sim`, and never
       commits directly to protected `develop`, `main`, or `release`.
-- [ ] This deployment-scope promotion updates the selected profile's release
+- [x] This deployment-scope promotion updates the selected profile's release
       default. Its capture and comparison interfaces remain extensible to future
       tracked non-default sets, whose catalog semantics are deferred.
-- [ ] Git commit identity and the eventual qualified release tag provide the
+- [x] Git commit identity and the eventual qualified release tag provide the
       version history and release binding for both defaults.
-- [ ] Successful promotion can create the coordinated configuration-submodule
+- [x] Successful promotion can create the coordinated configuration-submodule
       and workspace commits/PR metadata needed for inclusion in a later release.
 
 Tests:
@@ -4672,6 +4813,36 @@ Tests:
 - Clean promotion, concurrent source change, schema mismatch, logical target/profile mismatch,
   simulation capture, real/sim default promotion, partial selection,
   stacked-PR integration, deprecated-key policy, and rejection fixtures.
+
+Implementation notes (2026-08-27):
+
+- Added `iii config promotion plan|apply` on the shared result and retained-
+  operation-plan surfaces. Planning is side-effect free and requires one verified
+  immutable capture, explicit `real|sim` profile, exact release and workspace
+  ancestry, source-manifest identity, and per-key
+  `shared-tracked-default` classification. Unknown, unchanged, removed,
+  deprecated, unselected, cross-profile, and stale-source inputs fail closed.
+- Apply performs a line-minimal scalar rewrite of only the selected profile's
+  tracked default, preserving comments and all node-specific YAML sections, then
+  reseals exactly the affected default identities and contract manifest. It
+  refuses protected and non-governed branch names and never changes capture
+  evidence or invokes a remote mutation.
+- Optional commit mode creates the exact Configuration commit, updates and
+  verifies the workspace gitlink lock, creates the coordinated workspace commit,
+  and emits authenticated PR metadata for the repository-owned
+  `create_stack_prs.sh --base develop --feature deployment-infrastructure-redesign`
+  flow. It does not infer push or PR authorization.
+- Thirteen focused promotion fixtures passed, covering real and simulation plans,
+  read-only planning, partial selection, minimal resealing, real Git commits and
+  stack metadata, provenance mismatches, deprecated keys, concurrent source
+  reconciliation, schema mismatch, and protected branches. Production-format
+  read-only probes for both profiles also passed.
+- The final Phase 4 regression passed 754 Jazzy colcon tests across Interfaces,
+  Contracts, Configuration, Runtime, and GC; 209 CLI tests; 592 deployment tests
+  with five explicit environment/privilege skips; and all 128 frontend tests plus
+  typecheck, lint (zero errors, three existing fast-refresh warnings), generated-
+  contract verification, and production build. A discovered asynchronous logout
+  assertion race was corrected and passed ten consecutive focused runs.
 
 ### P5: Validate, Document, Commission, And Retire Legacy Paths
 
@@ -4714,41 +4885,41 @@ OptiTrack, PX4 hardware, or aircraft tests it cannot host.
 
 Acceptance:
 
-- [ ] A repository-owned parser materializes every independent normative clause
+- [x] A repository-owned parser materializes every independent normative clause
       in Q1–Q132 as a stable `Q<question>.c<clause>` identifier; changing clause
       text, splitting/merging clauses, or renumbering a question requires an
       explicit reviewed mapping so traceability cannot silently drift.
-- [ ] The coverage-index audit resolves every focused-owner reference to exactly
+- [x] The coverage-index audit resolves every focused-owner reference to exactly
       one extant backlog task, rejects duplicate/missing question rows and stale
       task identifiers, and rejects any clause whose owner task has no matching
       acceptance criterion and test/evidence path.
-- [ ] Every Q1–Q132 load-bearing contract and every backlog acceptance criterion
+- [x] Every Q1–Q132 load-bearing contract and every backlog acceptance criterion
       maps to at least one automated check, scripted local check, or explicit
       signed physical acceptance step; uncovered rows fail the matrix audit.
-- [ ] CI runs all hardware-independent tests.
-- [ ] Simulation and hardware-required tests are scripted locally, selected by
+- [x] CI runs all hardware-independent tests.
+- [x] Simulation and hardware-required tests are scripted locally, selected by
       Q121 change-impact policy, and produce P2.T8-retained signed evidence that CI
       verifies by source/policy identity without replaying the test.
-- [ ] Upgrade and rollback cover clean and dirty releases plus tuned configuration.
-- [ ] `iii field prepare` populates every declared offline dependency and `iii
+- [x] Upgrade and rollback cover clean and dirty releases plus tuned configuration.
+- [x] `iii field prepare` populates every declared offline dependency and `iii
       field verify --offline` proves representative GC-only, drone-only, and paired
       build/package verification without network or target mutation.
 - [ ] A scripted pre-field matrix can cold-switch one deployed release through a
       commissioned OptiTrack profile, collect profile-tagged evidence, return to
       default `real`, and revalidate field readiness without reinstalling artifacts.
-- [ ] `iii field check` implements the final Q125 connected GC/drone readiness
+- [x] `iii field check` implements the final Q125 connected GC/drone readiness
       contract, seals a non-mutating readiness record, and emits exact next actions
       for every warning/failure.
-- [ ] Readiness fixtures enforce Q126 stable finding IDs, pass/warn/fail exit
+- [x] Readiness fixtures enforce Q126 stable finding IDs, pass/warn/fail exit
       statuses, signed warning acknowledgement without severity mutation, stale-
       record non-authorization, and unwaivable failure behavior.
-- [ ] Release-status tests cover Q127 withdrawal/unsafe propagation online and
+- [x] Release-status tests cover Q127 withdrawal/unsafe propagation online and
       offline, no automatic in-operation switch, blocked flight, retained evidence,
       last-resort maintenance recovery, and qualified replacement.
-- [ ] Credential tests cover Q128 surviving-computer enrollment, signing-only loss,
+- [x] Credential tests cover Q128 surviving-computer enrollment, signing-only loss,
       complete SSH-authority loss, mandatory reimage, state restore, and
       recommissioning with no hidden bypass.
-- [ ] P2.T8 record/archive tests prove a clean replacement GC can recover all
+- [x] P2.T8 record/archive tests prove a clean replacement GC can recover all
       declared non-secret local state from a verified external archive while
       generating new identity and keys.
 - [ ] Q131 has a versioned cutover matrix row for every factory, release, field,
@@ -4762,7 +4933,49 @@ Tests:
   and Q112 next actions. Unit fixtures validate matrix completeness; a signed local
   acceptance run validates the final physical matrix.
 
+Implementation notes (software boundary, 2026-08-27):
+
+- The deterministic matrix now contains 1,197 reviewed definitions: every parsed
+  Q1-Q132 clause, every task acceptance criterion, and nine explicit Q131 factory,
+  release, field, failure, configuration, evidence, offline, documentation, and
+  retirement scenarios. Each row binds exact owner acceptance/test references,
+  execution level, argv-safe owner command, evidence class, CI eligibility, and
+  Q121 category. The current split is 923 host-independent, 155 target-equivalent,
+  and 119 physical rows.
+- Clause digests remain stable through a separately reviewed old/new migration
+  map; coverage parsing rejects duplicate/missing questions, duplicate owners,
+  unknown tasks, and tasks without acceptance/tests. Matrix and verification
+  policy identities make definition drift fail closed, including drift in the
+  bound Q121 change-impact policy.
+- Added canonical `iii verify deployment` audit/evidence evaluation with human and
+  `iii.command-result/v1` output, a versioned result payload, atomic JSON/JUnit,
+  explicit not-run/skipped rows, required-level/complete gates, and contextual
+  next actions. CI audits the exact definitions before its hardware-independent
+  suites; audit-only success never upgrades missing execution to pass.
+- Target-equivalent and physical recorders bind one clean candidate set, Q121
+  selection, canonical result rows, Ed25519 `workstation-field` authority, and
+  path-safe hashed artifacts. Host-independent evidence uses `ci-qualified`
+  authority and JUnit. Evidence from stale policy/matrix, mixed candidates,
+  wrong levels/categories, unknown rows, missing signatures, symlink escapes, or
+  altered artifacts is rejected.
+- Added `iii field verify --offline` after `iii field prepare`; it proves GC-only,
+  drone-only, and paired cached packaging without network or target mutation.
+  Added a read-only-plan/apply pre-field runner for the same deployed release's
+  `real -> opti_track -> real` cold cycle. Any intermediate failure retains logs
+  and forces a real-profile recovery attempt without converting the run to pass.
+- Focused P5.T0 verification passed 60 deployment matrix, field, governance,
+  release, portable-state, credential, and pre-field tests plus 71 CLI result,
+  verification, field, access, records, and release tests. The two remaining
+  unchecked criteria require the actual commissioned OptiTrack cycle and all nine
+  signed Q131 scenarios against one clean qualified physical candidate; no such
+  evidence is available in this environment, so P5.T0 remains In-Progress.
+
 #### P5.T1: Commission The First Aircraft From Raw Image
+
+**Status: In-Progress.** The complete fail-closed software, runbook, matrix, and
+signed-evidence boundary is ready; execution requires the intended Raspberry Pi,
+attached flight hardware, native GC/QGC, controlled power interruption, and one
+exact qualified physical candidate.
 
 Description:
 Exercise the complete factory path on the intended Raspberry Pi and hardware:
@@ -4793,10 +5006,30 @@ Tests:
   captured structured command output, power-cycle evidence, and external P2.T8
   archive receipt.
 
+Implementation notes (software boundary, 2026-08-27):
+
+- Raw imaging and provisioned-state finalization, hardware-role inspection,
+  commissioning evaluation, release/field/readiness operations, receiver A/B and
+  power-loss reconciliation, clock recovery, portable backup/restore, and the
+  fail-safe real/OptiTrack/real cycle all have canonical scripts and immutable
+  signed evidence contracts. A field-development bundle is structurally unable
+  to produce release-commissioning evidence.
+- `deployment/scripts/commission_aircraft.py` accepts only physical matrix rows,
+  exact Q121 impact categories, artifact hashes below the evidence root, one
+  exact candidate set, and a workstation-field Ed25519 signature. Final
+  `iii verify deployment --require-level physical --require-complete` refuses
+  partial or mixed-candidate evidence.
+- Focused commissioning-support verification passed 113 hardware-role, field,
+  pre-field profile, receiver transaction/clock, portable recovery, imaging,
+  verification-matrix, and CLI tests. No physical target is reachable in this
+  environment, so none of the eight physical acceptance items is marked complete
+  and no commissioning/Q131 evidence has been fabricated.
+
 #### P5.T2: Establish Automation-Ready Documentation Architecture And Validation
 
-**Status: In-Progress.** Documentation ownership inventory and offline validation
-framework started on 2026-08-25; maintained-document migration remains active.
+**Status: Completed (2026-08-27).** The governed inventory, hierarchy, generated
+references, and offline documentation gate are implemented. P5.T3-P5.T5 own the
+content migration through this completed contract.
 
 Description:
 Inventory every maintained Markdown/reStructuredText document in the workspace and
@@ -4811,30 +5044,30 @@ build/PR/release property rather than a manual cleanup exercise.
 
 Acceptance:
 
-- [ ] A versioned documentation manifest lists every maintained document's owner,
+- [x] A versioned documentation manifest lists every maintained document's owner,
       context, audience, authority/canonical status, lifecycle, source-of-truth,
       generated status, and qualified-release inclusion policy.
-- [ ] Generated, vendored, third-party, dependency-cache, build/install/log,
+- [x] Generated, vendored, third-party, dependency-cache, build/install/log,
       dataset/artifact, and sealed historical-evidence trees are excluded by
       explicit rules and cannot accidentally become migration targets.
-- [ ] One authoring contract requires executable workflows to state purpose,
+- [x] One authoring contract requires executable workflows to state purpose,
       scope/authority, prerequisites, supported host/profile, safety state,
       plan/dry-run, exact mutation, human and structured results, stable exit
       statuses, evidence, interruption/resume, rollback/recovery, and Q112 next
       commands. Non-runnable architecture docs link to owning contracts instead
       of duplicating operational steps.
-- [ ] `AGENTS.md`, `docs/agents/*`, `CONTEXT-MAP.md`, ADR indexes, root docs, and
+- [x] `AGENTS.md`, `docs/agents/*`, `CONTEXT-MAP.md`, ADR indexes, root docs, and
       package docs form a non-cyclic discoverable hierarchy with one canonical
       location per rule. Agent instructions are concise routers, not a divergent
       copy of the operating manual.
-- [ ] The editable III repository inventory is generated or validated against the
+- [x] The editable III repository inventory is generated or validated against the
       governed submodule policy and includes Contracts, Runtime, GC, CLI, and all
       other workspace-owned III repositories while excluding forks/third parties.
-- [ ] `iii docs check` validates manifest coverage, internal links/anchors, command
+- [x] `iii docs check` validates manifest coverage, internal links/anchors, command
       existence and help signatures, JSON-schema references, file ownership,
       duplicate canonical rules, forbidden legacy terms/paths, and generated-
       reference freshness with deterministic human/JSON output.
-- [ ] Documentation validation runs in local preflight and required CI without
+- [x] Documentation validation runs in local preflight and required CI without
       network or aircraft access and is included in qualified-release evidence.
 
 Tests:
@@ -4844,7 +5077,28 @@ Tests:
   repository, forbidden legacy path/branch term, deterministic regeneration, and
   clean offline validation.
 
+Implementation notes (2026-08-27):
+
+- Added `iii.documentation-policy/v1` and a content-bound
+  `iii.documentation-manifest/v1` covering all tracked Markdown/reStructuredText
+  in the workspace and ten editable III repositories. Each row carries ownership,
+  context, audience, classification, lifecycle, source-of-truth, release
+  inclusion, and exact SHA-256; the manifest identity changes with any document.
+- Added non-cyclic root, agent, and ADR indexes; exact editable-repository/lock
+  reconciliation; explicit exclusions; unique authority/router validation; local
+  links/anchors; parser-derived command existence/help; forbidden current paths
+  and branch patterns; and deterministic generated CLI/schema references.
+- Added read-only `iii docs check` with canonical human/JSON results and stable
+  exit status. Dependency-governance CI stores its report and qualified-release
+  CI retains it as qualification evidence, both fully offline.
+- Focused verification passed 42 deployment/CLI documentation and result-contract
+  tests. A real workspace invocation returned `III_DOCS_OK` for 140 governed
+  documents, 89 maintained documents, and two generated references.
+
 #### P5.T3: Migrate Deployment, Field, Recovery, And Operator Documentation
+
+**Status: In-Progress.** The software and documentation acceptance boundary is
+complete; the independent clean-computer and physical Q131 walkthrough remains.
 
 Description:
 Rewrite the canonical operator manual and affected package runbooks around the III
@@ -4857,26 +5111,26 @@ implementation details.
 
 Acceptance:
 
-- [ ] Canonical runbooks cover builder/GC provisioning, SD imaging, first boot,
+- [x] Canonical runbooks cover builder/GC provisioning, SD imaging, first boot,
       Ansible convergence, provisioned/commissioned states, qualified release
       fetch/deploy, dirty/untracked field deploy, component selection, profile/
       mission selection, field prepare/check, clock sync, and offline operation.
-- [ ] Configuration runbooks cover live GUI edit/unsaved/apply semantics, pending
+- [x] Configuration runbooks cover live GUI edit/unsaved/apply semantics, pending
       cold restart, sim/real reconciliation, removed/reintroduced values, named
       parameter-set capture, compare/promotion, PX4 parameter capture/apply, and
       QGC managed-setting capture without inventing a separate “GUI tuning” mode.
-- [ ] Recovery runbooks cover activation/receiver/network failure, client loss and
+- [x] Recovery runbooks cover activation/receiver/network failure, client loss and
       reattachment, onboard automatic rollback, low disk, log pull/prune, unsafe
       release withdrawal, host maintenance, backup/reimage/restore, surviving-key
       enrollment, total credential loss, replacement GC, and physical SD recovery.
-- [ ] Every command block is executable from its declared environment, matches
+- [x] Every command block is executable from its declared environment, matches
       tested CLI help, identifies whether source checkout is required, and shows
       representative result/next-action structure without embedding volatile IDs,
       secrets, machine paths, or stale screenshots as normative truth.
-- [ ] Safety-critical procedures state exact stop conditions and never normalize
+- [x] Safety-critical procedures state exact stop conditions and never normalize
       maintenance overrides, credential bypasses, direct filesystem mutation,
       onboard compilation, or flight while readiness/clock/commissioning is failed.
-- [ ] The offline operator subset and matching generated command/schema reference
+- [x] The offline operator subset and matching generated command/schema reference
       ship with qualified GC assets/GitHub Release so field use does not depend on
       internet access; release manifests identify the documentation revision.
 
@@ -4886,7 +5140,33 @@ Tests:
   provisioning through Q131 cutover; documentation command extraction/help checks;
   offline rendering/search; and deliberate failure-recovery exercises.
 
+Implementation notes (software boundary, 2026-08-27):
+
+- Added the canonical deployment/field operations manual with native GC and raw
+  SD paths, provisioned-versus-commissioned state, qualified and dirty field
+  deployment, component/mission/profile choice, configuration/PX4/QGC capture,
+  offline preparation, diagnostics, rollback, backup, credential-loss, and exact
+  safety stop/recovery boundaries. Detailed runbooks remain linked authorities.
+- Documentation validation now checks every fenced `iii` option against the
+  selected parser help in addition to command paths. That review found and fixed
+  stale backup `--apply` syntax and a retired shutdown option. CLI wrapper help is
+  now side-effect free; focused regression proves `gc provision --help` never
+  bootstraps the controller.
+- Qualified manifests bind the exact documentation manifest/policy, operator
+  manual, generated references, and included-document hashes. The signed release
+  publishes a deterministic `iii-offline-documentation.tar.zst`; the signed
+  release record and publication bind the asset. Tampered source is rejected.
+- Focused P5.T3 verification passed 75 documentation, CLI wrapper, release
+  pipeline, bundle, and qualified-publication tests; `iii docs check` returned
+  `III_DOCS_OK` for 141 documents and 90 maintained documents. The independent
+  clean-computer and physical Q131 walkthrough still requires intended hardware,
+  so P5.T3 remains In-Progress rather than claiming production evidence.
+
 #### P5.T4: Migrate CI, Branch Hygiene, Release, And AI-Agent Instructions
+
+**Status: Completed (2026-08-27).** Branch, CI, release, agent, PR-template, and
+stacked-operation instructions now share the enforced policy and retained-plan
+boundary; the declared live GitHub rulesets have been reconciled and audited.
 
 Description:
 Replace current `staging`, ambiguous temporary “release branch,” manual pointer
@@ -4899,25 +5179,25 @@ structured outputs, resumable operation IDs, and evidence-bearing handoffs.
 
 Acceptance:
 
-- [ ] A canonical branch matrix defines allowed source/base pairs and exact chain:
+- [x] A canonical branch matrix defines allowed source/base pairs and exact chain:
       feature/work-sweep -> `develop` -> `promote/develop-to-main/*` -> `main` ->
       workspace-only `release` -> immutable `vX.Y.Z`; editable submodules stop at
       `main`, and no maintained instruction refers to `staging` as a live branch.
-- [ ] Docs explain strict gitlink/lock governance, linked submodule PR markers,
+- [x] Docs explain strict gitlink/lock governance, linked submodule PR markers,
       post-merge gitlink refresh, content-identity equivalence, Q118 local evidence,
       Q121 impact categories, Q122 waiver limits, Q120 evidence reuse, SemVer,
       release notes, signed status withdrawal, and protected tag/publication flow.
-- [ ] Root and editable-repository `AGENTS.md`/agent docs state safe read-only work,
+- [x] Root and editable-repository `AGENTS.md`/agent docs state safe read-only work,
       allowed edit boundaries, dirty-worktree preservation, no-touch forks/third
       parties, required checks, plan/apply authority, external mutation rules, and
       how to resume partial PR/release/deploy operations through stable operation IDs.
-- [ ] PR templates, generated summaries, and workflow docs use machine-readable
+- [x] PR templates, generated summaries, and workflow docs use machine-readable
       markers only as untrusted transport; signatures, refs, schemas, and queried
       GitHub state remain authoritative.
-- [ ] Human and agent workflows invoke the same P0.T11 primitives; no documentation
+- [x] Human and agent workflows invoke the same P0.T11 primitives; no documentation
       instructs an AI to parse decorative output, bypass confirmation, push directly
       to protected branches, fabricate evidence, or assume a second reviewer.
-- [ ] Current `README.md`, `docs/dependency-governance.md`,
+- [x] Current `README.md`, `docs/dependency-governance.md`,
       `docs/repo-boundary-map.md`, `scripts/README.md`, workflow descriptions,
       promotion helper help, and agent-routing docs are reconciled in coordinated
       workspace/submodule PRs.
@@ -4929,7 +5209,31 @@ Tests:
   develop promotion, release publication, partial retry, stale ref, dirty tree, and
   permission denial; and live read-only ruleset audit comparison.
 
+Implementation notes (2026-08-27):
+
+- Reconciled root, dependency-governance, repository-boundary, scripts, agent,
+  and PR-template documentation around the exact feature -> `develop` ->
+  `promote/develop-to-main/*` -> `main` -> workspace-only `release` -> immutable
+  SemVer chain. The solo-maintainer policy retains PRs/checks/evidence while
+  correctly requiring zero invented second-party approvals.
+- Added a shared editable-repository agent contract for safe reads, owned edit
+  boundaries, dirty-tree preservation, fork/third-party exclusion, task/phase
+  test cadence, explicit external mutation, and evidence-bearing handoff.
+- Hardened `create_stack_prs.sh`: it compares exact local/remote feature SHAs,
+  pushes a stale remote head instead of trusting branch existence, carries a
+  stable operation ID, treats PR markers as untrusted transport, and retains an
+  `iii.automation-plan/v1`. Apply refuses a missing or stale dry-run plan.
+- The live ruleset audit initially found the workspace's declared immutable
+  release-record tag ruleset missing. The retained reconciliation contained one
+  create and 24 no-ops; apply created ruleset `21646100`. The post-apply audit
+  `affc732f08e42bf98471880b091ae91269e0ee4a81a9f20a809ba0e56281dd84`
+  passed all 25 rulesets across 11 repositories with no findings.
+
 #### P5.T5: Reconcile Remaining Maintained III Documentation And Release References
+
+**Status: Completed (2026-08-27).** Every maintained document is bound to an
+explicit passed migration review; historical records, standalone package links,
+environment boundaries, generated references, and release bindings are enforced.
 
 Description:
 Migrate all other maintained workspace and editable-III documentation through the
@@ -4942,25 +5246,25 @@ rewriting their past commands into present recommendations.
 
 Acceptance:
 
-- [ ] Every document classified as maintained passes its assigned migration review;
+- [x] Every document classified as maintained passes its assigned migration review;
       every intentionally historical document is visibly labeled/indexed and cannot
       be mistaken for current instructions.
-- [ ] Build/environment docs distinguish host, devcontainer simulation, pinned ARM64
+- [x] Build/environment docs distinguish host, devcontainer simulation, pinned ARM64
       builder, native aircraft, and native GC/QGC paths; production instructions do
       not source `/home/iii/ws`, Humble, mutable sysroots, or onboard Docker.
-- [ ] Runtime/mission/configuration docs use installed ament resources, catalog IDs,
+- [x] Runtime/mission/configuration docs use installed ament resources, catalog IDs,
       explicit profile composition, durable parameter state, and daemon/runtime API
       ownership without duplicating the canonical supervision graph.
-- [ ] Simulation docs retain `/home/iii/ws` only where it is explicitly the
+- [x] Simulation docs retain `/home/iii/ws` only where it is explicitly the
       devcontainer workspace, launch QGC natively on the host, skip clock alignment,
       and do not imply that deferred HIL or profile-specific OptiTrack work exists.
-- [ ] Generated CLI command reference and structured-output/schema reference are
+- [x] Generated CLI command reference and structured-output/schema reference are
       reproducible from source and included in docs/release checks; handwritten docs
       link to them rather than copy option lists that can drift.
-- [ ] Cross-repository links resolve at the governed source revision or use stable
+- [x] Cross-repository links resolve at the governed source revision or use stable
       repository-relative locations; package docs remain useful when read from their
       own repository and from the composed workspace.
-- [ ] A qualified release records the exact documentation manifest/revision and
+- [x] A qualified release records the exact documentation manifest/revision and
       publishes the offline operator manual plus generated references beside its
       artifacts and release notes.
 
@@ -4970,7 +5274,32 @@ Tests:
   diff; forbidden production-path scan; maintained/historical classification audit;
   package-standalone link checks; and qualified-release documentation assembly.
 
+Implementation notes (2026-08-27):
+
+- Added a content-bound `iii.documentation-review/v1` ledger with an explicit
+  approval switch and exact coverage of all 92 maintained documents. The audit
+  rejects missing, stale, duplicate, unapproved, or incomplete review rows.
+- Added the historical-record index for all 23 immutable backlogs, plans, and
+  evidence logs. The checker requires every historical record to remain indexed
+  and keeps those past commands outside current-instruction validation.
+- Package-local relative links may no longer escape their repository. Ground
+  Control and Runtime references now use stable governed repository URLs, so the
+  docs resolve both standalone and in the composed workspace.
+- Production-path validation allows `/home/iii/ws` only in an exact reviewed
+  development/simulation allowlist. The environment matrix now distinguishes the
+  host, Jazzy devcontainer, pinned ARM64 builder, native aircraft, and native
+  GC/QGC; simulation explicitly skips clock alignment and keeps HIL non-bootable.
+- Qualified release manifests bind the review identity/hash and ship the review
+  beside the policy, manifest, manual, and generated references. Focused tests
+  passed 24 documentation/release cases; `iii docs check` returned
+  `III_DOCS_OK` for 144 documents and 92 maintained documents; generated
+  references regenerated byte-identically.
+
 #### P5.T6: Remove Legacy CLI And Deployment Behavior
+
+**Status: In-Progress.** Reversible removal and fail-closed retirement checks are
+in progress. Repository archival and clean physical no-legacy acceptance remain
+gated by the signed Q131 candidate.
 
 Description:
 After replacement acceptance, remove branch-based remote install, onboard
@@ -4986,10 +5315,10 @@ containers and are not a legacy path.
 
 Acceptance:
 
-- [ ] No supported CLI path can perform the retired destructive workflow.
-- [ ] Dependency and documentation searches find no accidental old entry point.
-- [ ] Historical migration notes identify the last legacy version and replacement commands.
-- [ ] `setup/remote.bash`, old deployment variables, password SSH, mutable branch
+- [x] No supported CLI path can perform the retired destructive workflow.
+- [x] Dependency and documentation searches find no accidental old entry point.
+- [x] Historical migration notes identify the last legacy version and replacement commands.
+- [x] `setup/remote.bash`, old deployment variables, password SSH, mutable branch
       checkout, `latest` image publication, `rsync --delete`, onboard build/image
       commands, onboard production containers, and devcontainer-owned QGroundControl
       entry points are removed or fail with exact replacement next actions. The
@@ -5005,6 +5334,39 @@ Tests:
 - CLI regression tests; repository/documentation retired-pattern audit; clean-host
   run with the legacy repository absent; archived-repository link verification; and
   final signed Q131 no-legacy-dependency rerun.
+
+Implementation notes (reversible boundary, 2026-08-27):
+
+- Removed `setup/remote.bash`, its legacy repository URL/branch/directory
+  variables, `iii build container`, `iii build cross-compile`, and bare
+  `iii config`. The retired CLI paths included mutable `latest` publication,
+  rsync-built emulation trees, privileged build containers, and arbitrary SSH;
+  current release/configuration commands remain parser-inventoried.
+- `scripts/remote/install_remote.bash` is retained solely as a no-mutation
+  compatibility tombstone. It exits 64 with `iii gc provision --help` and
+  `source setup/setup_dev.bash` next actions; a temporary-HOME test proves it
+  writes nothing. Host-managed GC frontend/proxy Compose remains present and
+  covered separately.
+- Added a repository-owned active-tree retirement policy/audit and typed archive
+  metadata. The audit rejects reintroduced repository variables, password SSH,
+  destructive synchronization, mutable image tags, retired deploy/pull commands,
+  and removed paths. The archive schema refuses `archived` until exact qualified
+  release, documentation manifest, and signed Q131 retirement evidence IDs exist.
+- Live read-only GitHub inspection confirmed the legacy repository is still
+  unarchived, as required. Focused legacy, parser/result, SSH, GC application,
+  target-definition, documentation/release, and policy tests passed 110 cases;
+  the retirement audit passed with no findings. Stacked promotion wrappers now
+  retain and revalidate exact automation plans before PR mutation.
+- The Phase 5 software regression passed 754 Jazzy colcon tests, all 128 frontend
+  tests plus generated-contract, lint, typecheck, and production-build gates, all
+  three workspace integration tests, 221 CLI tests, and 626 deployment tests with
+  five explicit environment/privilege skips. The gate found and corrected stale
+  launch fixtures that had shared operation journals or expected runtime seeding
+  of receiver-owned real configuration; targeted reruns and the phase suites pass.
+- Repository archival, the clean-workstation/commissioned-target run with legacy
+  clones and caches absent, and the final signed Q131 no-legacy rerun remain
+  physical gates. The last two acceptance items stay unchecked and the task
+  remains In-Progress.
 
 ## In-Progress
 

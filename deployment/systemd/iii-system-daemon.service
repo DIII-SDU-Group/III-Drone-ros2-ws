@@ -29,7 +29,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/run/iii /var/lib/iii/configuration /var/log/iii
+ReadWritePaths=/run/iii /var/lib/iii/configuration /var/lib/iii/tuning /var/log/iii
 RestrictSUIDSGID=yes
 
 [Install]

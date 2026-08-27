@@ -41,6 +41,14 @@ def _state(root: Path) -> None:
         {"schema": "iii.configuration-checkpoint/v1", "gain": 1.5},
     )
     _json(
+        root / "var/lib/iii/configuration/shadows/real/retired-gain.json",
+        {
+            "schema": "iii.configuration-legacy-shadow/v1",
+            "parameter": "/control/retired_gain",
+            "value": 0.75,
+        },
+    )
+    _json(
         root / "var/lib/iii/tuning/journals/session.json",
         {"schema": "iii.tuning-journal/v1", "operator_action": "accepted"},
     )
@@ -126,6 +134,14 @@ def test_quiesced_seal_is_deterministic_verified_and_resumed_before_transfer(
         "deployment-audits",
         "diagnostics",
     }
+    configuration_files = next(
+        item["files"]
+        for item in verification["manifest"]["domains"]
+        if item["name"] == "configuration"
+    )
+    assert any(
+        item["path"] == "shadows/real/retired-gain.json" for item in configuration_files
+    )
     assert controller.status()["backup_fresh"] is True
     duplicate = controller.seal(operation_id="backup-operation-2")
     assert duplicate["backup_id"] == receipt["backup_id"]

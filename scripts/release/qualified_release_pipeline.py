@@ -14,37 +14,51 @@ import subprocess
 import sys
 from typing import Any
 
-
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "deployment/src"))
 
-from iii_deployment.contracts import ContractError, ContractRegistry, canonical_json  # noqa: E402
+from iii_deployment.contracts import (
+    ContractError,
+    ContractRegistry,
+)  # noqa: E402
 from iii_deployment.github_publication import (  # noqa: E402
-    GhReleasePublisher, publish_failed_attempt, publish_qualified_release,
+    GhReleasePublisher,
+    publish_failed_attempt,
+    publish_qualified_release,
 )
 from iii_deployment.governance import (  # noqa: E402
-    governed_source_identity, required_evidence, validate_attestation_binding,
-    validate_waivers, verify_attestation,
+    governed_source_identity,
+    required_evidence,
+    validate_attestation_binding,
+    validate_waivers,
+    verify_attestation,
 )
 from iii_deployment.qualification import inspect_qualification  # noqa: E402
 from iii_deployment.qualified_release import (  # noqa: E402
-    create_qualification_attempt, write_canonical,
+    create_qualification_attempt,
+    write_canonical,
 )
 from iii_deployment.release_pipeline import (  # noqa: E402
-    assemble_qualification_evidence, assemble_release_manifest,
-    assemble_signed_release, create_qualification_check, git_change_summary,
+    assemble_qualification_evidence,
+    assemble_release_manifest,
+    assemble_signed_release,
+    create_qualification_check,
+    git_change_summary,
 )
 from iii_deployment.signers import load_trusted_signers  # noqa: E402
 from iii_deployment.source import (  # noqa: E402
-    capture_source_snapshot, load_source_policy, provenance_markdown,
+    capture_source_snapshot,
+    load_source_policy,
+    provenance_markdown,
 )
-
 
 REGISTRY = ContractRegistry(ROOT / "deployment/schemas/v1")
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return (
+        datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    )
 
 
 def _json(path: Path) -> dict[str, Any]:
@@ -68,7 +82,9 @@ def _mapping(values: list[str] | None, *, label: str) -> dict[str, Path]:
 
 
 def _run_json(command: list[str]) -> Any:
-    process = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, check=False)
+    process = subprocess.run(
+        command, cwd=ROOT, capture_output=True, text=True, check=False
+    )
     if process.returncode:
         raise ContractError(process.stderr.strip() or f"{' '.join(command)} failed")
     try:
@@ -79,7 +95,9 @@ def _run_json(command: list[str]) -> Any:
 
 def eligibility(args: argparse.Namespace) -> dict[str, Any]:
     if args.event_ref != f"refs/tags/{args.version}":
-        raise ContractError("qualification workflow ref is not the exact requested version tag")
+        raise ContractError(
+            "qualification workflow ref is not the exact requested version tag"
+        )
     report = inspect_qualification(
         ROOT,
         version=args.version,
@@ -91,7 +109,9 @@ def eligibility(args: argparse.Namespace) -> dict[str, Any]:
     policy = load_source_policy(ROOT / "deployment/source-policy.json", REGISTRY)
     snapshot = capture_source_snapshot(ROOT, policy, REGISTRY)
     if not snapshot["clean"] or snapshot["workspace_commit"] != report.source_commit:
-        raise ContractError("captured source differs from the clean qualified tag preflight")
+        raise ContractError(
+            "captured source differs from the clean qualified tag preflight"
+        )
     args.output.mkdir(parents=True, exist_ok=False)
     write_canonical(args.output / "source-snapshot.json", snapshot)
     (args.output / "source-provenance.md").write_text(
@@ -109,13 +129,20 @@ def eligibility(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def fetch_promotion(args: argparse.Namespace) -> dict[str, Any]:
-    pulls = _run_json([
-        "gh", "api", "--method", "GET",
-        f"repos/{args.repository}/commits/{args.source_commit}/pulls",
-        "-H", "Accept: application/vnd.github+json",
-    ])
+    pulls = _run_json(
+        [
+            "gh",
+            "api",
+            "--method",
+            "GET",
+            f"repos/{args.repository}/commits/{args.source_commit}/pulls",
+            "-H",
+            "Accept: application/vnd.github+json",
+        ]
+    )
     matches = [
-        item for item in pulls
+        item
+        for item in pulls
         if item.get("base", {}).get("ref") == "release"
         and item.get("head", {}).get("ref") == "main"
         and item.get("merged_at")
@@ -126,16 +153,23 @@ def fetch_promotion(args: argparse.Namespace) -> dict[str, Any]:
             f"expected one authenticated merged main -> release PR for tag commit; found {len(matches)}"
         )
     number = int(matches[0]["number"])
-    comments = _run_json([
-        "gh", "api", "--paginate", "--slurp",
-        f"repos/{args.repository}/issues/{number}/comments?per_page=100",
-    ])
+    comments = _run_json(
+        [
+            "gh",
+            "api",
+            "--paginate",
+            "--slurp",
+            f"repos/{args.repository}/issues/{number}/comments?per_page=100",
+        ]
+    )
     if comments and isinstance(comments[0], list):
         comments = [item for page in comments for item in page]
     marker = "<!-- iii-promotion-evidence-v1 -->"
     candidates = [item for item in comments if marker in (item.get("body") or "")]
     if len(candidates) != 1:
-        raise ContractError(f"expected exactly one promotion evidence comment; found {len(candidates)}")
+        raise ContractError(
+            f"expected exactly one promotion evidence comment; found {len(candidates)}"
+        )
     fenced = re.search(r"```json\s*([\s\S]*?)```", candidates[0]["body"])
     if fenced is None:
         raise ContractError("promotion evidence comment has no JSON object")
@@ -151,20 +185,24 @@ def fetch_promotion(args: argparse.Namespace) -> dict[str, Any]:
 
 def promotion_check(args: argparse.Namespace) -> dict[str, Any]:
     attestation = _json(args.attestation)
-    snapshot = _json(args.source_snapshot)
     impact = _json(ROOT / "deployment/governance/change-impact-policy.json")
     trusted = _json(args.trusted_signers).get("signers", {})
     if not isinstance(trusted, dict):
         raise ContractError("promotion signer trust must contain a signer mapping")
     verify_attestation(attestation, registry=REGISTRY, trusted_signers=trusted)
     validate_attestation_binding(
-        attestation, source_identity=governed_source_identity(ROOT), impact_policy=impact
+        attestation,
+        source_identity=governed_source_identity(ROOT),
+        impact_policy=impact,
     )
     changes = _json(args.change_summary)
     reasons = required_evidence(impact, changes["changed_paths"])
     category_status = {item["id"]: item["status"] for item in attestation["categories"]}
     validate_waivers(impact, reasons, category_status, attestation["waivers"])
-    return {"attestation_id": attestation["attestation_id"], "required_categories": reasons}
+    return {
+        "attestation_id": attestation["attestation_id"],
+        "required_categories": reasons,
+    }
 
 
 def check_record(args: argparse.Namespace) -> dict[str, Any]:
@@ -172,7 +210,9 @@ def check_record(args: argparse.Namespace) -> dict[str, Any]:
         command = json.loads(args.command_json)
     except json.JSONDecodeError as exc:
         raise ContractError("check command JSON is invalid") from exc
-    if not isinstance(command, list) or any(not isinstance(value, str) for value in command):
+    if not isinstance(command, list) or any(
+        not isinstance(value, str) for value in command
+    ):
         raise ContractError("check command JSON must be an argv string array")
     record = create_qualification_check(
         check_id=args.check_id,
@@ -211,6 +251,9 @@ def manifest(args: argparse.Namespace) -> dict[str, Any]:
         metadata_path=args.metadata,
         target_definition_path=args.target_definition,
         operational_policy_path=args.policy,
+        documentation_root=ROOT,
+        documentation_manifest_path=ROOT / "deployment/documentation-manifest.json",
+        documentation_policy_path=ROOT / "deployment/documentation-policy.json",
         component_roots=_mapping(args.component, label="component"),
         build_records=_mapping(args.build_record, label="build record"),
         private_key_path=args.private_key,
@@ -243,6 +286,9 @@ def sign_release(args: argparse.Namespace) -> dict[str, Any]:
         impact_policy=_json(ROOT / "deployment/governance/change-impact-policy.json"),
         metadata=metadata_value,
         change_summary=_json(args.change_summary),
+        documentation_root=ROOT,
+        documentation_manifest_path=ROOT / "deployment/documentation-manifest.json",
+        documentation_policy_path=ROOT / "deployment/documentation-policy.json",
         private_key_path=args.private_key,
         output=args.output,
         repository=args.repository,
@@ -260,7 +306,10 @@ def sign_release(args: argparse.Namespace) -> dict[str, Any]:
         except OSError:
             shutil.copyfile(path, target)
     asset_map = {name: name for name in sorted(paths)}
-    write_canonical(args.asset_map, {"schema": "iii.qualified-release-assets/v1", "assets": asset_map})
+    write_canonical(
+        args.asset_map,
+        {"schema": "iii.qualified-release-assets/v1", "assets": asset_map},
+    )
     return {"release_id": manifest_value["release_id"], "assets": len(paths)}
 
 
@@ -355,9 +404,17 @@ def build_parser() -> argparse.ArgumentParser:
     item.add_argument("--source-snapshot", type=Path, required=True)
     item.add_argument("--provenance", type=Path, required=True)
     item.add_argument("--qualification-evidence", type=Path, required=True)
-    item.add_argument("--metadata", type=Path, default=ROOT / "deployment/release-metadata.json")
-    item.add_argument("--target-definition", type=Path, default=ROOT / "deployment/targets/v1/raspberry-pi-5-noble-arm64.json")
-    item.add_argument("--policy", type=Path, default=ROOT / "deployment/operational-policy.json")
+    item.add_argument(
+        "--metadata", type=Path, default=ROOT / "deployment/release-metadata.json"
+    )
+    item.add_argument(
+        "--target-definition",
+        type=Path,
+        default=ROOT / "deployment/targets/v1/raspberry-pi-5-noble-arm64.json",
+    )
+    item.add_argument(
+        "--policy", type=Path, default=ROOT / "deployment/operational-policy.json"
+    )
     item.add_argument("--component", action="append", required=True)
     item.add_argument("--build-record", action="append", required=True)
     item.add_argument("--private-key", type=Path, required=True)
@@ -369,7 +426,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     item = sub.add_parser("sign")
     item.add_argument("--manifest", type=Path, required=True)
-    item.add_argument("--metadata", type=Path, default=ROOT / "deployment/release-metadata.json")
+    item.add_argument(
+        "--metadata", type=Path, default=ROOT / "deployment/release-metadata.json"
+    )
     item.add_argument("--component", action="append", required=True)
     item.add_argument("--build-record", action="append", required=True)
     item.add_argument("--check", action="append", required=True)
@@ -417,10 +476,29 @@ def main() -> int:
     args = build_parser().parse_args()
     try:
         result = args.handler(args)
-        print(json.dumps({"schema": "iii.qualified-release-pipeline-result/v1", "outcome": "passed", **result}, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "schema": "iii.qualified-release-pipeline-result/v1",
+                    "outcome": "passed",
+                    **result,
+                },
+                sort_keys=True,
+            )
+        )
         return 0
     except (ContractError, OSError, ValueError, subprocess.SubprocessError) as exc:
-        print(json.dumps({"schema": "iii.qualified-release-pipeline-result/v1", "outcome": "rejected", "error": str(exc)}, sort_keys=True), file=sys.stderr)
+        print(
+            json.dumps(
+                {
+                    "schema": "iii.qualified-release-pipeline-result/v1",
+                    "outcome": "rejected",
+                    "error": str(exc),
+                },
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
         return 20
 
 

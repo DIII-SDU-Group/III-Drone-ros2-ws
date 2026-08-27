@@ -1,0 +1,1204 @@
+{
+  "documents": [
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "README.md",
+      "repository": "cli",
+      "sha256": "becf09b3a6f41f633f40f4e73edd7837e6eb2dc76f5edc7b6d656103aca91b45",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "README.md",
+      "repository": "configuration",
+      "sha256": "f33051bacf1a83a8c4e93381e84ab18c23dde3c70436f1e3f28fe2bdf6e687ba",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/api.md",
+      "repository": "configuration",
+      "sha256": "81e5269fd4cdd1b788d9aaab60bb02ecb228f68b8a03f264a3259f4e2b139085",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/architecture.md",
+      "repository": "configuration",
+      "sha256": "e07efc616e056d2b292c0f57fb052d5368e0e7b95b5d503ee1569ee5f3d97865",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/development.md",
+      "repository": "configuration",
+      "sha256": "6146c3e2fc7152ab8760b0c5f2c441370cee3ded40a699e40ae23d64795ea8dd",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/files_and_operations.md",
+      "repository": "configuration",
+      "sha256": "8ac516ce3936908119feecebce531c410d821c5d693773209f13686f8c26dd89",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "README.md",
+      "repository": "contracts",
+      "sha256": "1dc2d1ca363f869825b68dedf6b49ca3cbbf8627a49df28a91f7aa80c34f14e5",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "README.md",
+      "repository": "core",
+      "sha256": "546d5c680389384edaa778f1151879737e0fa59e8583691f06fee3d3d7483bb9",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "README.md",
+      "repository": "ground-control",
+      "sha256": "f367a419510cc5ef78c46cc65bb4ef6b36bbaae5904246e93b33775ad9e4eb66",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/gui-v2-deployment.md",
+      "repository": "ground-control",
+      "sha256": "f42c6e07d17ec5eabba91885ec092b5529083640da78f9ccdbb53587ba556f39",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/gui-v2-parity.md",
+      "repository": "ground-control",
+      "sha256": "f6d6a8029cb2c98f2a4cab8a48e99956631ed079915c7e1ab91fe3901be5e769",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/gui-v2-real-profile-acceptance.md",
+      "repository": "ground-control",
+      "sha256": "32d026c39b1b1caff98035218a33d3cf08d60f00505213051745fec47c290397",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/gui-v2-risk-register.md",
+      "repository": "ground-control",
+      "sha256": "ae854d698b6d1779a62471c0bcb730aa3fee0d97e0495d32e19da3bd8c3282fb",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/gui-v2-security-checklist.md",
+      "repository": "ground-control",
+      "sha256": "2b0885f178e11b53d7127d36d75aaf06c273a17b99f28cda551739bc80968a16",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/gui-v2-sim-e2e-smoke.md",
+      "repository": "ground-control",
+      "sha256": "b966dd6a41609226b5df3fca6f6b566e9594495d70dacf13fe30d4f267915d53",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/gui-v2-spec.md",
+      "repository": "ground-control",
+      "sha256": "9e8f5adecca85d2f6eb2381e544ae5f4728abf5cb6e3aa4d8371a5d953497534",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "README.md",
+      "repository": "interfaces",
+      "sha256": "25297131619d528b0eabd3d95c77ff605d19838089237cce4f19297872370673",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "README.md",
+      "repository": "mission",
+      "sha256": "746c385e56178950db207f8bc06451f74d3c83c6f20f48de0a1abeeea14c69d8",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "README.md",
+      "repository": "runtime",
+      "sha256": "417134d36953f97a4de7c496fa60e597c03270ace7a03bb1b086e87ff79ffe37",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/runtime-api-configuration.md",
+      "repository": "runtime",
+      "sha256": "b43c901a38c6618b3143b853e564b24fdf0dd35298118168925210f8bb156b6e",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "README.md",
+      "repository": "simulation",
+      "sha256": "f8ad89a5e25e52e43b48a784c78594d43a8213ffcae294a668ae0b8820bcee01",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "README.md",
+      "repository": "supervision",
+      "sha256": "dff58952f0090667d770203ba7cef113f0bc251f539f04269b365ae24a95a8c5",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/architecture.md",
+      "repository": "supervision",
+      "sha256": "bd4543747bd16d9f939bb5ec96ef00f26496923415416b9c42be785645fc8ca3",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/operator-flows.md",
+      "repository": "supervision",
+      "sha256": "bda15ef41a493d304bf5f345904e2e5892f01b7822f13dc3dae9141778d4c60a",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": ".github/pull_request_template.md",
+      "repository": "workspace",
+      "sha256": "f85413afd031df0952ed962846f3d33971d8e06f4e1a6b218a852ccb1db82281",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "AGENTS.md",
+      "repository": "workspace",
+      "sha256": "9eed6de5c89188b2499da6287aa5bb655f0162e205449721c29c122967f54940",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "CONTEXT-MAP.md",
+      "repository": "workspace",
+      "sha256": "feaf94e34779e49fc7196833a4d7eb1ee42479934e67ea66a46dff3266d9b890",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "CONTEXT.md",
+      "repository": "workspace",
+      "sha256": "c7e6d6c772b2cbea7e4a73b2dc8425d0577304844d25de9b2c7dac250a7a2a4d",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "README.md",
+      "repository": "workspace",
+      "sha256": "0e02ee50f95021576205fb61ce6815af820db8c3994768c4e6c2f3844f3bd8de",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "deployment/CONTEXT.md",
+      "repository": "workspace",
+      "sha256": "5057c52678b4d78b80eb12dec4f6f2a7b20e613c3964798af192aaf11909bb23",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/README.md",
+      "repository": "workspace",
+      "sha256": "560bb2a193d2aa64fd68bda6b088d6a8bf61d4b9a4b8ae633e56d9a40e34ba32",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/adr/0001-ros-native-operations-interface.md",
+      "repository": "workspace",
+      "sha256": "d74e7d0a5b31908c838c9461c2af834401f15f6c104545812b66c27b8ac3d9d7",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/adr/0002-standalone-custom-operation-mode.md",
+      "repository": "workspace",
+      "sha256": "88b20668c7e29a12b41aebcac5192ef039dc3d84efd23364350f09553908ad84",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/adr/0003-cable-aware-flight-in-core.md",
+      "repository": "workspace",
+      "sha256": "7ba3a4827dc44bde11e53082d7ba3009c9c7a169fd7d981aa3f276bb6722cf13",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/adr/0004-mavsdk-for-qgroundcontrol-equivalent-tooling.md",
+      "repository": "workspace",
+      "sha256": "a9b37359441f0d23aac09a8bf19ee367731704d6592781acbe160eabf9c00575",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/adr/0005-simulation-control-in-simulation-package.md",
+      "repository": "workspace",
+      "sha256": "17b1aea274b15b4595b43f2e468761070091585c57d65917f50576bf943d93fe",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/adr/0006-deployment-ownership-and-offboard-builds.md",
+      "repository": "workspace",
+      "sha256": "63460408c728f405f21863093322306a798b51f7fa5ab15f0ddd0f713bee8cfe",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/adr/0007-immutable-release-and-persistent-state-separation.md",
+      "repository": "workspace",
+      "sha256": "af2fb45cc9321e653a94db5802cd97c01ba94776a2ffb0644b354fe242d53160",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/adr/0008-release-status-readiness-and-disaster-recovery.md",
+      "repository": "workspace",
+      "sha256": "57d01d5a49f5ad4f22cd73a5b0043285806eb19b61a4f84aff0114369ded9ee2",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/adr/0009-evidence-gated-deployment-cutover.md",
+      "repository": "workspace",
+      "sha256": "5bcf8d886bbd159e9d3d190d4614dd7827b3068c8aa2e5badc50a82e8691f7b2",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/adr/README.md",
+      "repository": "workspace",
+      "sha256": "3c10935da31f3c363a78aecc2c10c55ef37308a0614c4519d5b557e10ba93b68",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/agents/README.md",
+      "repository": "workspace",
+      "sha256": "71a40877569ceda845cbb67c268177f39e8437f2c5d70bd4100184af09ac2528",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/agents/domain.md",
+      "repository": "workspace",
+      "sha256": "ab824991240ea4bcbf489069931dd52a60548458fec608ce51abde5198657de8",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/agents/editable-repositories.md",
+      "repository": "workspace",
+      "sha256": "54855b7f3eb1810d875f595a865f50bd7cb6e87a8f0e80229d95ece5e1818dcd",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/agents/issue-tracker.md",
+      "repository": "workspace",
+      "sha256": "1413e3935c3fd7490fd475921994e152e99bfabcf6da5605b720cf19a0331c86",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/agents/triage-labels.md",
+      "repository": "workspace",
+      "sha256": "4f53c9b40ce2651e3611aa090eaedbd6dbc9b71ef8c5f7e65eac0d8263190d0d",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/automation-ready-authoring-contract.md",
+      "repository": "workspace",
+      "sha256": "a466da08573c63b3fe4b44f544066b9336c7675e14caa66509a242ef43f703ca",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/build-and-environments.md",
+      "repository": "workspace",
+      "sha256": "b2bed2e3ac6ec5f1083272b4bfe7e369ab9dde60a4fb07796ff1424e0c634454",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/configuration-system.md",
+      "repository": "workspace",
+      "sha256": "874dbbf8fac7387a4f4469b53d36b21fb7587afb778998c40a2a3f2530e0ab9f",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/core-control-perception.md",
+      "repository": "workspace",
+      "sha256": "9c122a4dcd598cf1bf8c3977ec86642f9c77b5dc4d0e9379203583eb402fc2b6",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/dependency-governance.md",
+      "repository": "workspace",
+      "sha256": "304039e9cc122bcc2f47cacbe352651c6b446d6a7debbdfd1434408100e6f754",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/deployment-and-field-operations.md",
+      "repository": "workspace",
+      "sha256": "c8e0f5724a675d785108f69cf007252996295c5764966a14517fef566ef726f4",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/deployment-automation-contract.md",
+      "repository": "workspace",
+      "sha256": "38977e774f05a8e9d7dd6e1e457720311deab6e7fe5fa54f03d184e6685d5053",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/deployment-hardware-roles.md",
+      "repository": "workspace",
+      "sha256": "1d11bfb0f6fd15b08a182e05c07cb1555513d6a64efc5a120fd8bdf449bc34fd",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/deployment-verification-matrix.md",
+      "repository": "workspace",
+      "sha256": "0b70f72677e285205c8cd33ed5036447b1925dd55fb57fdd1df040b96a785720",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/field-inspection-operations.md",
+      "repository": "workspace",
+      "sha256": "c30fdd2afeeef07ce296c3e4371d5151394be9289220845bd0c0cad0f81de95e",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/findings-risks-and-clarifications.md",
+      "repository": "workspace",
+      "sha256": "d5c8c881fbefde19c21030054102e5d946e2bd24dfcef2f3bda697dd1ecad1cb",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/gc-host-provisioning.md",
+      "repository": "workspace",
+      "sha256": "971de7ccfe071bea3f24fa18b87166b14ee14829662835fc35166e3254b44fbe",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/generated/deployment-schema-reference.md",
+      "repository": "workspace",
+      "sha256": "d8d728f3de4e5b26996cc1a1321a71cc51eebb55173ae2a17147e458045e15a1",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/generated/iii-command-reference.md",
+      "repository": "workspace",
+      "sha256": "5c293ae48c5b5cf8f45965326870356eba61be7bda6038b8c1bb3dc62df0c4a9",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/ground-control-and-operator-tools.md",
+      "repository": "workspace",
+      "sha256": "485c1838ff9a7e36b1987ea29c1fb878ec6d4558d0c643373882c24d44e321cd",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/gui-operator-control-handoff.md",
+      "repository": "workspace",
+      "sha256": "59ca1f057dba89b204130b87f29ab06d1d5584c9e88acd849d3e46348fc7a015",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/historical-records.md",
+      "repository": "workspace",
+      "sha256": "f1f7034f70f0247a9e965055a5c44fbd057034754533aed619318daa98ed74c5",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/host-development-commands.md",
+      "repository": "workspace",
+      "sha256": "5f76b90a0acde20f72e87a69c8758f8d65168d7ae0d47ab7a4f38786674d230b",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/host-imaging-and-first-boot.md",
+      "repository": "workspace",
+      "sha256": "fa4b25019dd33845521d8d51be1f71d5b67453716a9582393b54df214ad44ce1",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/host-maintenance.md",
+      "repository": "workspace",
+      "sha256": "5339c7551f21935b920c2311f9f0a53387e1139865dff67db0e38c6cb011da00",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/host-provisioning.md",
+      "repository": "workspace",
+      "sha256": "c4ef00bbea5b77bed9ab9323dd4a44c42c59ffb23c3ca90141cbca36bc789977",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/inspection-demo-mission-spec.md",
+      "repository": "workspace",
+      "sha256": "55df26148d6efc47c59c5135c0268f2b1479eb4f80723cd638eb9c638b0a0bbe",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/interfaces-reference.md",
+      "repository": "workspace",
+      "sha256": "d17f8e2c6e2c44b0927108a810cd274ab7d09f6b69d145ad903eadfc7f90093e",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/legacy-deployment-retirement.md",
+      "repository": "workspace",
+      "sha256": "f2b415d4e6b96fd0270b5d40f1ed27ee78c74bb9dca7fcbcee27dfe2ba609c3a",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/local-record-registry.md",
+      "repository": "workspace",
+      "sha256": "fd1cf437dd2b37cd1108ad0f0b5d1962273112b6a170f4a121701812cc265a5f",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/maneuver-action-lifecycle-contract.md",
+      "repository": "workspace",
+      "sha256": "36187000a5a2da61cf233b7dc1bbe3c39114feaddf0a89d11fa7aad06670f577",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/mcp-end-to-end-approach.md",
+      "repository": "workspace",
+      "sha256": "856fbe0a67aabed6ff95cf9485ca5db2077fb38addad65954937de0043c29287",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/mcp-implementation.md",
+      "repository": "workspace",
+      "sha256": "dd9d00547e07f77ea4505331780127c888d45b512cbf0e5b676acd1f6d33f60b",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/mission-and-behavior-layer.md",
+      "repository": "workspace",
+      "sha256": "97f29b00dcd04f77d105e2f661023dc3a83131bb64f0f36f16595c4eca2f70b5",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/perception-dataset-flight-suite.md",
+      "repository": "workspace",
+      "sha256": "be3d7c240d64fa65e17eed37cac582d71c9a27128e1b228f07d952c6dd57ec46",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/perception-dataset-ground-truth.md",
+      "repository": "workspace",
+      "sha256": "a9d9416a23b9ba6914fe4fdfb0b4b66d343d293de251d9aecfba6e3f6273fa09",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/portable-host-backup-and-restore.md",
+      "repository": "workspace",
+      "sha256": "31a15d7b0fe9b1d96f43084928a019926388f8c789dcd38a0acd460a9a9ce181",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/qualified-release-pipeline.md",
+      "repository": "workspace",
+      "sha256": "662923c75cf716f53b6949ece16461ec568deeaa4ec4162384a786559d550f54",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/raspberry-pi-boot-baseline.md",
+      "repository": "workspace",
+      "sha256": "dac157a42f2ad319f00db6aa1c561d9c954a79f68c06f0647644d25dafe1d599",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/reference-stream-contract.md",
+      "repository": "workspace",
+      "sha256": "3e33edff2d5642675afc8112979bc9b6935827857c89b62afd66e44d86e8ba7f",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/release-bundle-format.md",
+      "repository": "workspace",
+      "sha256": "4a1436f32c878fbcf6f8f25f67b6478ff1c400119f0a3ff91647009a1520ad65",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/repo-boundary-map.md",
+      "repository": "workspace",
+      "sha256": "4479dfc7b37ae34fecff49f27d0934c2467a30e5ba9d7f48240c2acbbbb4d8e1",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/runtime-launch-and-node-graph.md",
+      "repository": "workspace",
+      "sha256": "4223fa945f9ffb05eb0a4d83b10b4264b408bf6e9cdbac42b551080b8003f5b3",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/simulation-and-px4-integration.md",
+      "repository": "workspace",
+      "sha256": "674713d4df36469168976f119a0a7fb21d09f84e2580ecebe07cdbad6d86a964",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/submodules-and-packages.md",
+      "repository": "workspace",
+      "sha256": "3559911baf6b2541324a01620032be5056136d80c4d18170375bac305ed5fe01",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/supervision-and-process-management.md",
+      "repository": "workspace",
+      "sha256": "8a2cafa796bf977b74f5e5bf8586085bdb9f3042cbf5613398d053b43e4e9b1b",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/testing.md",
+      "repository": "workspace",
+      "sha256": "c667b4509606cbbc8ba2e9538cc26f1c7f59dedb617ec7c0d514f5e0ee145e64",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "docs/workspace-overview.md",
+      "repository": "workspace",
+      "sha256": "4f7fd196b071df458883f22c700ffd57b8e2b7d03ec0cebfce487f074b25ecc9",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "scripts/README.md",
+      "repository": "workspace",
+      "sha256": "cbf1573a040aa1b18555cf4e58f200dd937ca5706f645e08de2b7c29a32cbecf",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "tools.md",
+      "repository": "workspace",
+      "sha256": "7ab085e92429b75e11ab996b6b2a0dad4c3e56345292fc0fb8b631f253a7332b",
+      "status": "passed"
+    },
+    {
+      "checks": [
+        "current-architecture",
+        "environment-boundary",
+        "operator-safety",
+        "standalone-links",
+        "generated-reference-drift"
+      ],
+      "path": "tools/III-Drone-MCP/README.md",
+      "repository": "workspace",
+      "sha256": "fcd0019cf5ad9063926fc74654beb15a922e07cd90e970bf70e7b8008f8f07fc",
+      "status": "passed"
+    }
+  ],
+  "manifest_id": "95080a71cea91c5606f9e1dd971ec6ecea74586a548c158fe9f9090e93fddaa6",
+  "review_id": "0b4387163514083addf28366313a8e34744d3f92b295b57d0cd5449c6a778b28",
+  "reviewer": "codex-deployment-redesign",
+  "schema": "iii.documentation-review/v1"
+}

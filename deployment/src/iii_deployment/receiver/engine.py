@@ -589,11 +589,21 @@ class ReceiverEngine:
             if self.activation_coordinator is None:
                 raise ContractError("receiver activation coordinator is unavailable")
             parameters = plan["parameters"]
+            reconciliation_arguments = (
+                {
+                    "configuration_reconciliation_decisions": parameters[
+                        "configuration_reconciliation_decisions"
+                    ]
+                }
+                if "configuration_reconciliation_decisions" in parameters
+                else {}
+            )
             fields["preflight"] = self.activation_coordinator.preflight(
                 release_id=parameters["release_id"],
                 configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
                 px4_activation_evidence=parameters["px4_activation_evidence"],
                 operator_rollback=request.action == Action.PLAN_ROLLBACK,
+                **reconciliation_arguments,
             )
         if request.action == Action.PLAN_CLOCK_SYNC:
             if self.clock_controller is None:
@@ -650,11 +660,21 @@ class ReceiverEngine:
             if self.activation_coordinator is None:
                 raise ContractError("receiver activation coordinator is unavailable")
             parameters = plan["parameters"]
+            reconciliation_arguments = (
+                {
+                    "configuration_reconciliation_decisions": parameters[
+                        "configuration_reconciliation_decisions"
+                    ]
+                }
+                if "configuration_reconciliation_decisions" in parameters
+                else {}
+            )
             preflight = self.activation_coordinator.preflight(
                 release_id=parameters["release_id"],
                 configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
                 px4_activation_evidence=parameters["px4_activation_evidence"],
                 operator_rollback=request.action == Action.ROLLBACK,
+                **reconciliation_arguments,
             )
             if not preflight["ready"]:
                 raise ContractError(
@@ -1145,12 +1165,22 @@ class ReceiverEngine:
         if action == Action.ACTIVATE.value:
             if self.activation_coordinator is None:
                 raise ContractError("receiver activation coordinator is unavailable")
+            reconciliation_arguments = (
+                {
+                    "configuration_reconciliation_decisions": parameters[
+                        "configuration_reconciliation_decisions"
+                    ]
+                }
+                if "configuration_reconciliation_decisions" in parameters
+                else {}
+            )
             return self.activation_coordinator.activate(
                 operation_id=plan["operation_id"],
                 release_id=parameters["release_id"],
                 configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
                 explicit_qualified_action=parameters["explicit_qualified_action"],
                 px4_activation_evidence=parameters["px4_activation_evidence"],
+                **reconciliation_arguments,
             )
         if action == Action.ROLLBACK.value:
             if self.activation_coordinator is None:
