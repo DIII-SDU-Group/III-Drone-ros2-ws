@@ -4115,6 +4115,19 @@ Implementation notes and verification:
   attempt returned `III_SSH_IDENTITY_UNAVAILABLE`. Therefore an actual
   repair/reprovision rehearsal and resulting physical evidence are not claimed.
   This task remains In-Progress while later software tasks continue.
+- Physical execution began on 2026-08-27 against a 116.2 GiB removable Kingston
+  card. The prior `/home/iii` tree was mounted read-only with journal replay
+  disabled and preserved as a numerically owned tar archive before the separately
+  acknowledged destructive write. Operation `iii-image-aircraft-20260827-r3`
+  wrote and read back all 4,139,719,168 image bytes at raw SHA-256
+  `3a19cadaefbdbe7bbe7f51a9db74acd87cccbe57685fb398b563522e50eca1f0`,
+  verified the three NoCloud seed files, flushed block buffers, and powered off
+  the reader. Immutable local record
+  `.iii/imaging-records/2972842eeadee150984be04ec124ef9cebed26a06fcdce0a92df74457fe6a413.json`
+  has outcome `verified` and file SHA-256
+  `942351d911b4dc366c5634f0f5abd9a89dd95f3dff8ce674f8f41d961c3a3a0c`.
+  First boot, repair/reprovision completion, and recommissioning evidence remain
+  open, so the acceptance item and task remain In-Progress.
 
 #### P3.T7: Provision Transactional Operator Networking
 
@@ -5062,6 +5075,13 @@ Implementation notes (software boundary, 2026-08-27):
   verification-matrix, and CLI tests. No physical target is reachable in this
   environment, so none of the eight physical acceptance items is marked complete
   and no commissioning/Q131 evidence has been fabricated.
+- The physical factory walkthrough started on 2026-08-27. The source card's
+  legacy `/home/iii` was preserved before erasure and raw-image operation
+  `iii-image-aircraft-20260827-r3` completed full stream/readback identity,
+  deterministic NoCloud seeding, flush, and hardware eject. This establishes the
+  wiped-media starting point only; none of the eight acceptance items is checked
+  until first boot, convergence, hardware acceptance, interruption/recovery, GC,
+  and signed commissioning evidence pass on the same candidate.
 
 #### P5.T2: Establish Automation-Ready Documentation Architecture And Validation
 
