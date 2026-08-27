@@ -28,6 +28,8 @@ iii-receiver-initial-install = "iii_deployment.receiver.install:main"
 iii-receiver-access-bootstrap = "iii_deployment.receiver.access_bootstrap:main"
 iii-host-bootstrap-finalize = "iii_deployment.receiver.host_finalize:main"
 iii-log-maintenance = "iii_deployment.log_maintenance:main"
+iii-network-revert = "iii_deployment.networking:revert_main"
+iii-network-apply = "iii_deployment.networking:apply_main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

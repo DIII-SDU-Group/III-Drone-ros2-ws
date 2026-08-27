@@ -93,7 +93,7 @@
         "shared_target_profile_id": {"const": "a14f199fd5a75f0b60f17f35eb52a69405ef1de89a0b6983224edf52b959cf33"},
         "owner": {"const": "ansible"},
         "converged_by": {"const": "Q93 aircraft host baseline"},
-        "owns": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["ubuntu", "kernel-firmware", "glibc-loader", "ros-jazzy", "systemd", "udev-hardware", "platform-libraries", "system-python"]}},
+        "owns": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["ubuntu", "kernel-firmware", "glibc-loader", "ros-jazzy", "systemd", "udev-hardware", "platform-libraries", "system-python", "operator-networking"]}},
         "package_constraints": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/package_constraint"}}
       }
     },

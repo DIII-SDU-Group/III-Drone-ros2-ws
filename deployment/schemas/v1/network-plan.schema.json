@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/network-plan.schema.json",
+  "title": "III redacted transactional network plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "network_id", "operation_id", "client_id", "candidate_sha256", "desired_netplan_sha256", "previous_netplan_sha256", "profile", "connectivity_impacting", "confirmation_deadline_s", "no_change", "declared_permissions", "required_checks"],
+  "properties": {
+    "schema": {"const": "iii.network-plan/v1"},
+    "network_id": {"$ref": "#/definitions/identity"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "client_id": {"$ref": "#/definitions/identity"},
+    "candidate_sha256": {"$ref": "#/definitions/identity"},
+    "desired_netplan_sha256": {"$ref": "#/definitions/identity"},
+    "previous_netplan_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ethernet_dhcp4", "wifi_profile_ids", "wifi_profile_count", "onboard_access_point"],
+      "properties": {
+        "ethernet_dhcp4": {"const": true},
+        "wifi_profile_ids": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/definitions/identity"}},
+        "wifi_profile_count": {"type": "integer", "minimum": 0, "maximum": 16},
+        "onboard_access_point": {"const": false}
+      }
+    },
+    "connectivity_impacting": {"type": "boolean"},
+    "confirmation_deadline_s": {"const": 90},
+    "no_change": {"type": "boolean"},
+    "declared_permissions": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "required_checks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}
+  },
+  "definitions": {"identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

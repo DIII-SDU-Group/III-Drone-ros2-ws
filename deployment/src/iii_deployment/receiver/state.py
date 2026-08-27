@@ -315,6 +315,46 @@ class ReceiverControlStore:
         value["lease"] = None
         return self._save(value)
 
+    def consume_for_existing_lease(
+        self,
+        *,
+        nonce: str,
+        operation_id: str,
+        client_id: str,
+        plan_id: str,
+        leased_operation_id: str,
+        leased_action: Action,
+    ) -> dict[str, Any]:
+        """Consume a bound nonce without acquiring a second target-wide lease."""
+
+        if not IDENTITY.fullmatch(nonce):
+            raise ContractError("receiver nonce is malformed")
+        value = self.load()
+        lease = value["lease"]
+        if (
+            lease is None
+            or lease["operation_id"] != leased_operation_id
+            or lease["client_id"] != client_id
+            or lease["action"] != leased_action.value
+        ):
+            raise ContractError("receiver confirmation does not match the active network lease")
+        nonce_hash = hashlib.sha256(bytes.fromhex(nonce)).hexdigest()
+        record = value["nonces"].get(nonce_hash)
+        now = self.monotonic()
+        boot = self.boot_id()
+        if record is None or record["consumed"]:
+            raise ContractError("receiver nonce is unknown, expired, or consumed")
+        if record["issued_boot_id"] != boot or now > record["expires_monotonic"]:
+            raise ContractError("receiver nonce expired before network confirmation")
+        if (
+            record["operation_id"],
+            record["client_id"],
+            record["plan_id"],
+        ) != (operation_id, client_id, plan_id):
+            raise ContractError("receiver nonce is bound to another confirmation")
+        record["consumed"] = True
+        return self._save(value)
+
     def recover_stale_lease(self, operation_id: str) -> dict[str, Any]:
         """Release only a lease whose owning journal is terminal or absent."""
 

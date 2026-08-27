@@ -185,6 +185,54 @@ def test_owner_only_bootstrap_input_renders_recovery_ethernet_and_diagnosable_se
     assert parsed_user_data["package_update"] is False
 
 
+def test_ethernet_only_and_multiple_wifi_bootstrap_profiles(tmp_path: Path) -> None:
+    profile = load_contract(
+        PROFILE, schema_name="cloud-init-profile", registry=REGISTRY, label="profile"
+    )
+    ethernet = render_nocloud_seed(
+        profile=profile,
+        bootstrap=load_bootstrap_input(
+            _bootstrap(tmp_path / "ethernet.json", wifi=False), REGISTRY
+        ),
+    )
+    ethernet_network = yaml.safe_load(ethernet["files"]["network-config"])
+    assert "wifis" not in ethernet_network
+    assert ethernet["contains_network_secret"] is False
+
+    path = _bootstrap(tmp_path / "multiple.json", wifi=False)
+    value = json.loads(path.read_text())
+    value["network"]["wifi"] = [
+        {"ssid": "field-a", "password": "field-secret-a"},
+        {"ssid": "field-b", "password": "field-secret-b", "hidden": True},
+    ]
+    path.write_text(json.dumps(value))
+    multiple = render_nocloud_seed(
+        profile=profile, bootstrap=load_bootstrap_input(path, REGISTRY)
+    )
+    network = yaml.safe_load(multiple["files"]["network-config"])
+    assert set(network["wifis"]["wlan0"]["access-points"]) == {
+        "field-a",
+        "field-b",
+    }
+    assert network["ethernets"]["ethernet-recovery"]["dhcp4"] is True
+    assert all(
+        "field-secret" not in json.dumps(row)
+        for row in multiple["file_evidence"]
+    )
+
+
+def test_bootstrap_duplicate_wifi_ssids_fail_closed(tmp_path: Path) -> None:
+    path = _bootstrap(tmp_path / "duplicates.json", wifi=False)
+    value = json.loads(path.read_text())
+    value["network"]["wifi"] = [
+        {"ssid": "same", "password": "first-secret"},
+        {"ssid": "same", "password": "second-secret"},
+    ]
+    path.write_text(json.dumps(value))
+    with pytest.raises(BootstrapInputError, match="duplicate"):
+        load_bootstrap_input(path, REGISTRY)
+
+
 def test_bootstrap_input_permissions_and_private_material_fail_closed(
     tmp_path: Path,
 ) -> None:

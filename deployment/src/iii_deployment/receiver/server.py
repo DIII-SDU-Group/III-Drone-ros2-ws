@@ -29,6 +29,7 @@ from iii_deployment.host_maintenance import HostMaintenanceController
 from iii_deployment.hardware_roles import HardwareInspector
 from iii_deployment.boot_baseline import BootInspector
 from iii_deployment.host_inspection import HostInspector
+from iii_deployment.networking import NetworkController
 from iii_deployment.receiver.access import AccessManager
 from iii_deployment.receiver.config import (
     AUDIT_PATH,
@@ -103,6 +104,13 @@ def _operational_policy() -> dict:
     }:
         raise ContractError(
             "receiver operational policy changes fixed host-maintenance deadlines"
+        )
+    if value.get("network") != {
+        "confirmation_deadline_s": 90,
+        "ethernet_dhcp_required": True,
+    }:
+        raise ContractError(
+            "receiver operational policy changes fixed network recovery policy"
         )
     return value
 
@@ -267,6 +275,12 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         ),
         recovery_validator=store.validate_protected_qualified_release,
     )
+    network_controller = NetworkController(
+        monotonic_ns=time.monotonic_ns,
+        maintenance_safe=safety_provider.maintenance_safe_for_clock_recovery,
+        stop_runtime=control_plane.stop_all_units,
+        resume_runtime=lambda: control_plane.boot_profile(config.profile),
+    )
     return ReceiverEngine(
         release_store=store,
         control=control,
@@ -289,6 +303,7 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         host_maintenance=host_maintenance,
         hardware_inspector=hardware_inspector,
         host_inspector=host_inspector,
+        network_controller=network_controller,
     )
 
 

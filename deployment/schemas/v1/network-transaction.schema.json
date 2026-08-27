@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/network-transaction.schema.json",
+  "title": "III durable network transaction",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "operation_id", "network_id", "client_id", "state", "accepted_boot_id", "accepted_monotonic_ns", "deadline_monotonic_ns", "previous_present", "previous_mode", "failure", "plan"],
+  "properties": {
+    "schema": {"const": "iii.network-transaction/v1"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "network_id": {"$ref": "#/definitions/identity"},
+    "client_id": {"$ref": "#/definitions/identity"},
+    "state": {"enum": ["claimed", "applying", "pending-confirmation", "confirmed", "reverted"]},
+    "accepted_boot_id": {"type": "string", "minLength": 1},
+    "accepted_monotonic_ns": {"type": "integer", "minimum": 0},
+    "deadline_monotonic_ns": {"type": ["integer", "null"], "minimum": 0},
+    "previous_present": {"type": ["boolean", "null"]},
+    "previous_mode": {"type": ["integer", "null"], "minimum": 0, "maximum": 511},
+    "failure": {"type": ["object", "null"]},
+    "plan": {"type": "object"}
+  },
+  "definitions": {"identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

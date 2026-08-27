@@ -10,7 +10,7 @@
     "activation": {"$ref": "#/definitions/activation"},
     "host_maintenance": {"type": "object", "additionalProperties": false, "required": ["target_acceptance_s", "hard_deadline_s", "rollback_target_s"], "properties": {"target_acceptance_s": {"const": 1800}, "hard_deadline_s": {"const": 7200}, "rollback_target_s": {"const": 60}}},
     "receiver": {"type": "object", "additionalProperties": false, "required": ["self_update_deadline_s"], "properties": {"self_update_deadline_s": {"type": "integer", "minimum": 30}}},
-    "network": {"type": "object", "additionalProperties": false, "required": ["confirmation_deadline_s", "ethernet_dhcp_required"], "properties": {"confirmation_deadline_s": {"type": "integer", "minimum": 90}, "ethernet_dhcp_required": {"const": true}}},
+    "network": {"type": "object", "additionalProperties": false, "required": ["confirmation_deadline_s", "ethernet_dhcp_required"], "properties": {"confirmation_deadline_s": {"const": 90}, "ethernet_dhcp_required": {"const": true}}},
     "storage": {"type": "object", "additionalProperties": false, "required": ["minimum_reserve_bytes", "minimum_reserve_percent"], "properties": {"minimum_reserve_bytes": {"type": "integer", "minimum": 2147483648}, "minimum_reserve_percent": {"type": "number", "minimum": 10, "maximum": 100}}},
     "logging": {"$ref": "#/definitions/logging"},
     "signing": {"type": "object", "additionalProperties": false, "required": ["agent_timeout_h", "agent_max_timeout_h"], "properties": {"agent_timeout_h": {"type": "integer", "minimum": 8, "maximum": 24}, "agent_max_timeout_h": {"const": 24}}},

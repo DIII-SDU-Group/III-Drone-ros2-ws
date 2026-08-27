@@ -4075,6 +4075,8 @@ Implementation notes and verification:
 
 #### P3.T7: Provision Transactional Operator Networking
 
+Status: In-Progress
+
 Description:
 Generate first-boot Ethernet/Wi-Fi configuration from safe committed templates
 and untracked secret inputs, advertise `iii.local` through mDNS, and provide
@@ -4084,23 +4086,49 @@ recovery and do not initially provision an onboard access point.
 
 Acceptance:
 
-- [ ] SD preparation supports Ethernet-only and one-or-more Wi-Fi profiles
+- [x] SD preparation supports Ethernet-only and one-or-more Wi-Fi profiles
       without writing credentials to Git, logs, artifacts, or review files.
-- [ ] Installed network secrets are root-readable and survive application
+- [x] Installed network secrets are root-readable and survive application
       releases independently from release directories.
 - [ ] `iii.local` resolves on supported operator networks without a fixed IP.
-- [ ] Network plan/apply reports connectivity-impacting changes before mutation
+- [x] Network plan/apply reports connectivity-impacting changes before mutation
       and uses the settled 90-second monotonic onboard confirmation deadline
       independent of the CLI process.
-- [ ] Failure to reconnect/confirm restores the previous working configuration;
+- [x] Failure to reconnect/confirm restores the previous working configuration;
       successful confirmation commits the new profile set durably.
-- [ ] Ethernet DHCP remains usable after broken Wi-Fi configuration.
+- [x] Ethernet DHCP remains usable after broken Wi-Fi configuration.
 
 Tests:
 
 - Cloud-init rendering with redaction, Ethernet-only boot, multiple Wi-Fi
   profiles, mDNS resolution, successful profile switch, CLI/network loss with
   automatic reversion, reboot persistence, and Ethernet recovery.
+
+Notes:
+
+- Implemented root-only, redacted `network-plan -> network-apply ->
+  network-confirm` receiver contracts. Connectivity-changing apply requires
+  maintenance-safe state, stops runtime, invokes only fixed privileged helpers,
+  and holds the receiver lease until confirmation or rollback. The private-
+  network receiver cannot write Netplan directly.
+- Added exact prior-file backup/restore, fixed 90-second monotonic systemd timer,
+  restart/reboot reconciliation, durable confirmation metadata, Ethernet-only
+  and multi-Wi-Fi input, duplicate-SSID rejection, and mandatory wildcard
+  Ethernet DHCP. SSIDs/passphrases are absent from retained CLI plans/results,
+  receiver journals/audits, and imaging evidence; plaintext exists only in
+  owner-only local input, root-only claimed state/backups, and the installed
+  root-only Netplan file.
+- Added the Avahi-owned `iii.local` baseline without a fixed IP, IPv6 claim, or
+  onboard AP. Production Ansible lint and four playbook syntax checks pass. The
+  privileged Noble/systemd target-equivalent rehearsal passed first convergence,
+  zero-drift second pass, injected-drift repair, final zero drift, receiver/Avahi
+  host health, and bootstrap finalization in 562.27 seconds. Focused network,
+  imaging, receiver, policy, systemd, host-baseline, target-definition, and CLI
+  coverage passed (165 tests in 2.81 seconds after the final harness adjustment).
+- No physical Raspberry Pi or operator LAN is available, so an external
+  workstation lookup of `iii.local` and a physical Ethernet/Wi-Fi switch/revert
+  rehearsal are not claimed. The mDNS acceptance item remains open and this task
+  remains In-Progress while later software tasks continue.
 
 #### P3.T8: Provision The Ground-Control Host Baseline
 

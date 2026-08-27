@@ -144,6 +144,65 @@ Continue with the authenticated [aircraft host provisioning](host-provisioning.m
 runbook. Do not narrow bootstrap authority by hand; the retained provisioning
 transaction does so only after permanent receiver access and recovery proofs pass.
 
+## Transactional Operator Network Changes
+
+After provisioning, do not edit Netplan over SSH. Create a separate owner-only,
+Git-ignored input. It contains no bootstrap credential or hostname:
+
+```json
+{
+  "schema": "iii.operator-network-input/v1",
+  "ethernet_dhcp4": true,
+  "wifi": [
+    {"ssid": "REPLACE_WITH_SSID", "password": "REPLACE_WITH_PASSPHRASE"},
+    {"ssid": "REPLACE_WITH_SECOND_SSID", "password": "REPLACE_WITH_PASSPHRASE", "hidden": true}
+  ]
+}
+```
+
+An empty `wifi` list is the supported Ethernet-only profile. Duplicate SSIDs,
+disabled Ethernet DHCP, extra fields, non-owner permissions, tracked inputs, and
+an onboard access-point configuration are rejected. Plan, review, and apply:
+
+```bash
+chmod 0600 .iii/operator-network.json
+iii host network apply \
+  --input .iii/operator-network.json \
+  --target real \
+  --dry-run --operation-id iii-network-REPLACE_ME
+# Run the exact resume command emitted by the plan.
+```
+
+The retained plan and result expose only content hashes, hashed Wi-Fi profile
+identities, profile count, declared host paths, and whether connectivity changes.
+They never contain SSIDs or passphrases. Apply copies the candidate into a
+root-only receiver transaction, preserves the exact prior Netplan file, runs the
+fixed privileged apply helper, and arms `iii-network-revert@.timer` for exactly
+90 monotonic seconds. The timer and rollback live onboard and do not depend on
+the CLI or SSH session remaining alive. A connectivity-changing apply is allowed
+only while landed, disarmed, and maintenance-safe; the runtime graph remains
+stopped until confirmation or restoration completes.
+
+Reconnect through Ethernet or the candidate Wi-Fi and immediately plan and run
+the emitted `iii host network confirm` command. Confirmation is authenticated,
+nonce-bound to the original pending operation, stops the timer, and records the
+current profile identity durably. Timeout, link loss, receiver restart after the
+timeout, or reboot before confirmation restores the prior file and reapplies it.
+Every candidate and restored profile retains wildcard Ethernet DHCP as the
+physical recovery path. Inspect the durable outcome with:
+
+```bash
+iii host network status \
+  --network-operation-id iii-network-REPLACE_ME \
+  --target real --json
+```
+
+Host convergence installs `avahi-daemon`, fixes the host name to `iii`, and
+publishes its active interface addresses as `iii.local` on mDNS. It assigns no
+fixed address and provisions no onboard AP. Test `getent hosts iii.local` from a
+supported operator LAN; if multicast is filtered, use Ethernet and correct the
+LAN rather than adding an unmanaged static address.
+
 The upstream Raspberry Pi boot partition and auto-expanded ext4 root filesystem
 remain unchanged. This design intentionally adds no data partition, LVM,
 encryption, or A/B root filesystem in this sweep.

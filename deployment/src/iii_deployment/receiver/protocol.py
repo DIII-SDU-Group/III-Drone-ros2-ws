@@ -46,6 +46,9 @@ class Action(str, Enum):
     HOST_INSPECT = "host-inspect"
     NETWORK_PLAN = "network-plan"
     NETWORK_APPLY = "network-apply"
+    NETWORK_CONFIRM_PLAN = "network-confirm-plan"
+    NETWORK_CONFIRM = "network-confirm"
+    NETWORK_STATUS = "network-status"
     BACKUP_SEAL = "backup-seal"
 
 
@@ -68,6 +71,8 @@ READ_ONLY_ACTIONS = frozenset(
         Action.HARDWARE_INSPECT,
         Action.HOST_INSPECT,
         Action.NETWORK_PLAN,
+        Action.NETWORK_CONFIRM_PLAN,
+        Action.NETWORK_STATUS,
         Action.CANCEL,
     }
 )
@@ -222,6 +227,96 @@ def _identity(value: Any, *, label: str) -> str:
     if not isinstance(value, str) or not IDENTITY.fullmatch(value):
         raise ContractError(f"invalid {label}")
     return value
+
+
+def _network_plan(value: Any, *, operation_id: str, client_id: str) -> None:
+    if not isinstance(value, dict):
+        raise ContractError("network plan must be an object")
+    fields = {
+        "schema",
+        "network_id",
+        "operation_id",
+        "client_id",
+        "candidate_sha256",
+        "desired_netplan_sha256",
+        "previous_netplan_sha256",
+        "profile",
+        "connectivity_impacting",
+        "confirmation_deadline_s",
+        "no_change",
+        "declared_permissions",
+        "required_checks",
+    }
+    _exact(value, fields, label="network plan")
+    if value["schema"] != "iii.network-plan/v1":
+        raise ContractError("unsupported network plan")
+    for field in ("network_id", "candidate_sha256", "desired_netplan_sha256"):
+        _identity(value[field], label=f"network plan {field}")
+    if value["previous_netplan_sha256"] is not None:
+        _identity(value["previous_netplan_sha256"], label="previous Netplan")
+    if value["operation_id"] != operation_id or value["client_id"] != client_id:
+        raise ContractError("network plan binding mismatch")
+    if value["network_id"] != content_identity(
+        {key: item for key, item in value.items() if key != "network_id"}
+    ):
+        raise ContractError("network plan identity mismatch")
+    profile = value["profile"]
+    if not isinstance(profile, dict):
+        raise ContractError("redacted network profile is malformed")
+    _exact(
+        profile,
+        {"ethernet_dhcp4", "wifi_profile_ids", "wifi_profile_count", "onboard_access_point"},
+        label="redacted network profile",
+    )
+    if profile["ethernet_dhcp4"] is not True or profile["onboard_access_point"] is not False:
+        raise ContractError("network plan weakens the Ethernet/no-access-point policy")
+    if (
+        not isinstance(profile["wifi_profile_ids"], list)
+        or len(profile["wifi_profile_ids"]) != profile["wifi_profile_count"]
+        or len(set(profile["wifi_profile_ids"])) != len(profile["wifi_profile_ids"])
+    ):
+        raise ContractError("redacted Wi-Fi profile identities are malformed")
+    for profile_id in profile["wifi_profile_ids"]:
+        _identity(profile_id, label="Wi-Fi profile")
+    if value["confirmation_deadline_s"] != 90:
+        raise ContractError("network plan changes the fixed confirmation deadline")
+    for field in ("connectivity_impacting", "no_change"):
+        if not isinstance(value[field], bool):
+            raise ContractError(f"network plan {field} must be boolean")
+    if value["no_change"] == value["connectivity_impacting"]:
+        raise ContractError("network plan impact and no-change flags disagree")
+    for field in ("declared_permissions", "required_checks"):
+        if not isinstance(value[field], list) or not all(isinstance(item, str) for item in value[field]):
+            raise ContractError(f"network plan {field} is malformed")
+
+
+def _network_input(value: Any) -> None:
+    from iii_deployment.networking import validate_network_input
+
+    if not isinstance(value, dict):
+        raise ContractError("network input must be an object")
+    validate_network_input(value)
+
+
+def _network_confirmation(value: Any, *, operation_id: str, client_id: str) -> None:
+    if not isinstance(value, dict):
+        raise ContractError("network confirmation must be an object")
+    _exact(
+        value,
+        {"schema", "confirmation_id", "operation_id", "client_id", "target_operation_id", "network_id"},
+        label="network confirmation",
+    )
+    if value["schema"] != "iii.network-confirmation-plan/v1":
+        raise ContractError("unsupported network confirmation")
+    if value["operation_id"] != operation_id or value["client_id"] != client_id:
+        raise ContractError("network confirmation binding mismatch")
+    _identity(value["network_id"], label="network confirmation profile")
+    if not isinstance(value["target_operation_id"], str) or not OPERATION_ID.fullmatch(value["target_operation_id"]):
+        raise ContractError("network confirmation target operation is invalid")
+    if value["confirmation_id"] != content_identity(
+        {key: item for key, item in value.items() if key != "confirmation_id"}
+    ):
+        raise ContractError("network confirmation identity mismatch")
 
 
 def _clock_samples(value: Any) -> None:
@@ -383,6 +478,7 @@ def validate_mutation_plan(
         Action.LOG_PRUNE.value,
         Action.HOST_MAINTENANCE.value,
         Action.HOST_REBOOT.value,
+        Action.NETWORK_APPLY.value,
     }:
         raise ContractError("unsupported receiver mutation plan")
     _identity(plan["plan_id"], label="receiver plan identity")
@@ -464,6 +560,12 @@ def validate_mutation_plan(
         _machine_enrollment(parameters["enrollment"])
     elif plan["action"] == Action.ACCESS_REVOKE.value:
         _access_revoke_parameters(parameters, label="receiver access-revoke parameters")
+    elif plan["action"] == Action.NETWORK_APPLY.value:
+        _network_plan(
+            parameters,
+            operation_id=plan["operation_id"],
+            client_id=plan["client_id"],
+        )
     elif plan["action"] == Action.HOST_MAINTENANCE.value:
         required = {
             "schema",
@@ -557,6 +659,7 @@ def create_mutation_plan(
         Action.PLAN_LOG_PRUNE,
         Action.PLAN_HOST_MAINTENANCE,
         Action.PLAN_HOST_REBOOT,
+        Action.NETWORK_PLAN,
     }:
         raise ContractError(
             "only fixed receiver planning actions can create mutation plans"
@@ -572,6 +675,8 @@ def create_mutation_plan(
             action = Action.HOST_MAINTENANCE.value
         elif request.action == Action.PLAN_HOST_REBOOT:
             action = Action.HOST_REBOOT.value
+        elif request.action == Action.NETWORK_PLAN:
+            action = Action.NETWORK_APPLY.value
         else:
             raise ContractError(
                 "receiver parameter override is not allowed for this plan"
@@ -628,6 +733,22 @@ def validate_request_payload(request: Request) -> None:
         Action.HOST_INSPECT,
     }:
         _exact(payload, set(), label=f"{request.action.value} payload")
+        return
+    if request.action == Action.NETWORK_STATUS:
+        _exact(payload, {"target_operation_id"}, label="network-status payload")
+        if not isinstance(payload["target_operation_id"], str) or not OPERATION_ID.fullmatch(payload["target_operation_id"]):
+            raise ContractError("network status operation ID is invalid")
+        return
+    if request.action == Action.NETWORK_PLAN:
+        _exact(payload, {"profile", "target"}, label="network-plan payload")
+        _network_input(payload["profile"])
+        _target(payload["target"], label="network-plan target")
+        return
+    if request.action == Action.NETWORK_CONFIRM_PLAN:
+        _exact(payload, {"target_operation_id", "target"}, label="network-confirm-plan payload")
+        if not isinstance(payload["target_operation_id"], str) or not OPERATION_ID.fullmatch(payload["target_operation_id"]):
+            raise ContractError("network confirmation target operation is invalid")
+        _target(payload["target"], label="network-confirm-plan target")
         return
     if request.action == Action.LOG_EXPORT:
         _exact(payload, {"domain"}, label="log-export payload")
@@ -925,6 +1046,27 @@ def validate_request_payload(request: Request) -> None:
             raise ContractError(
                 f"{request.action.value} request carries a different mutation plan"
             )
+        return
+    if request.action == Action.NETWORK_APPLY:
+        _exact(payload, {"plan", "profile"}, label="network-apply payload")
+        if not isinstance(payload["plan"], dict):
+            raise ContractError("network-apply plan must be an object")
+        validate_mutation_plan(
+            payload["plan"],
+            operation_id=request.operation_id,
+            client_id=request.client_id,
+        )
+        if payload["plan"]["action"] != Action.NETWORK_APPLY.value:
+            raise ContractError("network-apply request carries a different mutation plan")
+        _network_input(payload["profile"])
+        return
+    if request.action == Action.NETWORK_CONFIRM:
+        _exact(payload, {"confirmation"}, label="network-confirm payload")
+        _network_confirmation(
+            payload["confirmation"],
+            operation_id=request.operation_id,
+            client_id=request.client_id,
+        )
         return
     # Later task owners retain fixed action names but cannot smuggle arbitrary
     # paths, commands, environment, or units through an unimplemented surface.

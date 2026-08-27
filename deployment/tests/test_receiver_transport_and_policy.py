@@ -200,6 +200,7 @@ def test_stable_units_run_receiver_outside_release_tree_and_allow_only_declared_
     allowed = (
         set(policy["normal_release_mutable_paths"])
         | set(policy["self_update_receiver_mutable_paths"])
+        | set(policy["host_control_mutable_paths"])
         | {"/var/lib/iii/incoming", "/run/iii"}
     )
     for name in (
@@ -228,7 +229,9 @@ def test_stable_units_run_receiver_outside_release_tree_and_allow_only_declared_
             if path.startswith("/opt/iii/receiver/")
         )
         assert not any(
-            path in write_line for path in policy["normal_release_forbidden_paths"]
+            path in write_line
+            for path in policy["normal_release_forbidden_paths"]
+            if path not in policy["host_control_mutable_paths"]
         )
 
     for name in (

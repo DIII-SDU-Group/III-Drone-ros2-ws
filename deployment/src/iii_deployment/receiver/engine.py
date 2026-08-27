@@ -88,6 +88,7 @@ class ReceiverEngine:
         host_maintenance: Any | None = None,
         hardware_inspector: Any | None = None,
         host_inspector: Any | None = None,
+        network_controller: Any | None = None,
     ) -> None:
         if control.nonce_expiry_s != NONCE_EXPIRY_S:
             raise ContractError(
@@ -119,6 +120,7 @@ class ReceiverEngine:
         self.host_maintenance = host_maintenance
         self.hardware_inspector = hardware_inspector
         self.host_inspector = host_inspector
+        self.network_controller = network_controller
         if (log_inventory is None) != (log_transfer is None):
             raise ContractError(
                 "receiver log inventory and transfer must be configured together"
@@ -203,6 +205,20 @@ class ReceiverEngine:
             if self.host_inspector is None:
                 raise ContractError("receiver host inspection is unavailable")
             return self._result(request, inspection=self.host_inspector.inspect())
+        if request.action == Action.NETWORK_STATUS:
+            self.access.require_active(request.client_id)
+            if self.network_controller is None:
+                raise ContractError("receiver network controller is unavailable")
+            return self._result(
+                request,
+                network=self.network_controller.status(
+                    request.payload["target_operation_id"]
+                ),
+            )
+        if request.action == Action.NETWORK_CONFIRM_PLAN:
+            return self._plan_network_confirmation(request)
+        if request.action == Action.NETWORK_CONFIRM:
+            return self._confirm_network(request)
         if request.action == Action.LOG_EXPORT:
             self.access.require_active(request.client_id)
             if self.log_inventory is None:
@@ -221,7 +237,16 @@ class ReceiverEngine:
         if (
             self.clock_controller is not None
             and request.action
-            not in {Action.PLAN_CLOCK_SYNC, Action.CLOCK_SYNC, Action.CANCEL}
+            not in {
+                Action.PLAN_CLOCK_SYNC,
+                Action.CLOCK_SYNC,
+                Action.CANCEL,
+                Action.NETWORK_PLAN,
+                Action.NETWORK_APPLY,
+                Action.NETWORK_CONFIRM_PLAN,
+                Action.NETWORK_CONFIRM,
+                Action.NETWORK_STATUS,
+            }
             and self.clock_controller.status()["gate"] == "CLOCK_FAULT_ACTIVE"
         ):
             raise ContractError("CLOCK_FAULT_ACTIVE blocks every new receiver mutation")
@@ -235,6 +260,7 @@ class ReceiverEngine:
             Action.PLAN_LOG_PRUNE,
             Action.PLAN_HOST_MAINTENANCE,
             Action.PLAN_HOST_REBOOT,
+            Action.NETWORK_PLAN,
         }:
             return self._plan(request)
         if request.action in {
@@ -248,6 +274,7 @@ class ReceiverEngine:
             Action.LOG_PRUNE,
             Action.HOST_MAINTENANCE,
             Action.HOST_REBOOT,
+            Action.NETWORK_APPLY,
         }:
             return self._accept(request)
         if request.action == Action.CANCEL:
@@ -271,6 +298,101 @@ class ReceiverEngine:
             )
             return self._result(request, operation=journal)
         raise ContractError("receiver action is not implemented by this generation")
+
+    def _plan_network_confirmation(self, request: Request) -> dict[str, Any]:
+        self.access.require_active(request.client_id)
+        if self.network_controller is None:
+            raise ContractError("receiver network controller is unavailable")
+        target = request.payload["target"]
+        if target != {"logical_id": self.logical_target, "profile": self.profile}:
+            raise ContractError("network confirmation targets another host or profile")
+        target_operation_id = request.payload["target_operation_id"]
+        journal = self.journals.load(target_operation_id)
+        if (
+            journal is None
+            or journal["action"] != Action.NETWORK_APPLY.value
+            or journal["client_id"] != request.client_id
+            or journal["state"] != "running"
+        ):
+            raise ContractError("network confirmation target is not an owned pending operation")
+        network = self.network_controller.status(target_operation_id)
+        if network["state"] != "pending-confirmation":
+            raise ContractError("network transaction is not awaiting confirmation")
+        confirmation: dict[str, Any] = {
+            "schema": "iii.network-confirmation-plan/v1",
+            "confirmation_id": "0" * 64,
+            "operation_id": request.operation_id,
+            "client_id": request.client_id,
+            "target_operation_id": target_operation_id,
+            "network_id": journal["plan"]["parameters"]["network_id"],
+        }
+        confirmation["confirmation_id"] = content_identity(
+            {key: item for key, item in confirmation.items() if key != "confirmation_id"}
+        )
+        nonce, _ = self.control.issue_nonce(
+            operation_id=request.operation_id,
+            client_id=request.client_id,
+            plan_id=confirmation["confirmation_id"],
+        )
+        return self._result(
+            request,
+            confirmation=confirmation,
+            nonce=nonce,
+            nonce_expires_in_s=NONCE_EXPIRY_S,
+            deadline_monotonic_ns=network["deadline_monotonic_ns"],
+        )
+
+    def _confirm_network(self, request: Request) -> dict[str, Any]:
+        self.access.require_active(request.client_id)
+        if self.network_controller is None:
+            raise ContractError("receiver network controller is unavailable")
+        confirmation = request.payload["confirmation"]
+        target_operation_id = confirmation["target_operation_id"]
+        journal = self.journals.load(target_operation_id)
+        if journal is None or journal["state"] != "running":
+            raise ContractError("network confirmation target is not running")
+        self.control.consume_for_existing_lease(
+            nonce=request.nonce or "",
+            operation_id=request.operation_id,
+            client_id=request.client_id,
+            plan_id=confirmation["confirmation_id"],
+            leased_operation_id=target_operation_id,
+            leased_action=Action.NETWORK_APPLY,
+        )
+        try:
+            result = self.network_controller.confirm(
+                target_operation_id,
+                client_id=request.client_id,
+                network_id=confirmation["network_id"],
+            )
+        except Exception:
+            network = self.network_controller.status(target_operation_id)
+            if network["state"] == "reverted":
+                self.journals.transition(
+                    target_operation_id,
+                    state="failed",
+                    checkpoint="automatic-network-rollback",
+                    cancellation_safe=False,
+                    event="network-confirmation-expired",
+                    failure={
+                        "code": "network-not-confirmed",
+                        "message": "the prior network profile was restored",
+                    },
+                )
+                self.control.release(target_operation_id)
+            raise
+        evidence_hash = content_identity(result)
+        self.journals.transition(
+            target_operation_id,
+            state="completed",
+            checkpoint="network-confirmed",
+            cancellation_safe=False,
+            event="network-confirmed",
+            evidence_hash=evidence_hash,
+            result=result,
+        )
+        self.control.release(target_operation_id)
+        return self._result(request, network=result, target_operation_id=target_operation_id)
 
     def _live_state(self) -> dict[str, Any]:
         supplied = dict(self.live_state_provider())
@@ -346,6 +468,14 @@ class ReceiverEngine:
                 operation_id=request.operation_id,
                 client_id=request.client_id,
                 maintenance_id=request.payload["maintenance_id"],
+            )
+        elif request.action == Action.NETWORK_PLAN:
+            if self.network_controller is None:
+                raise ContractError("receiver network controller is unavailable")
+            parameter_override = self.network_controller.plan(
+                operation_id=request.operation_id,
+                client_id=request.client_id,
+                profile=request.payload["profile"],
             )
         plan = create_mutation_plan(
             request,
@@ -443,6 +573,8 @@ class ReceiverEngine:
             self.log_inventory is None or self.log_transfer is None
         ):
             raise ContractError("receiver log lifecycle is unavailable")
+        if request.action == Action.NETWORK_APPLY and self.network_controller is None:
+            raise ContractError("receiver network controller is unavailable")
         self.control.consume_and_acquire(
             nonce=request.nonce or "",
             operation_id=request.operation_id,
@@ -453,6 +585,8 @@ class ReceiverEngine:
         try:
             if request.action == Action.STAGE:
                 self._claim_staging_input(plan)
+            if request.action == Action.NETWORK_APPLY:
+                self.network_controller.claim(plan["parameters"], request.payload["profile"])
             journal = self.journals.create(
                 plan=plan,
                 **(
@@ -747,6 +881,20 @@ class ReceiverEngine:
                     detail_code="reboot-scheduled-awaiting-postboot-validation",
                 )
                 return
+            if (
+                journal["action"] == Action.NETWORK_APPLY.value
+                and result.get("state") == "pending-confirmation"
+            ):
+                self.audit.append(
+                    event="operation",
+                    outcome="accepted",
+                    operation_id=operation_id,
+                    client_id=journal["client_id"],
+                    action=journal["action"],
+                    detail_code="network-applied-awaiting-onboard-confirmation",
+                    evidence_hash=content_identity(result),
+                )
+                return
             with self._mutex:
                 remaining = self.journals.remaining_budget(operation_id)
                 if remaining <= 0:
@@ -926,6 +1074,10 @@ class ReceiverEngine:
                 "transaction_id": transaction["transaction_id"],
                 "reboot_scheduled": True,
             }
+        if action == Action.NETWORK_APPLY.value:
+            if self.network_controller is None:
+                raise ContractError("receiver network controller is unavailable")
+            return self.network_controller.apply(parameters)
         if action == Action.LOG_RECEIPT.value:
             if self.log_transfer is None:
                 raise ContractError("receiver log transfer is unavailable")
@@ -963,6 +1115,11 @@ class ReceiverEngine:
                 if self.host_maintenance is not None
                 else None
             )
+            network_recovery = (
+                self.network_controller.reconcile()
+                if self.network_controller is not None
+                else None
+            )
             control = self.control.load()
             lease = control["lease"]
             journals = {item["operation_id"]: item for item in self.journals.list()}
@@ -992,6 +1149,56 @@ class ReceiverEngine:
             for operation_id, journal in journals.items():
                 if journal["state"] in TERMINAL_STATES:
                     continue
+                if journal["action"] == Action.NETWORK_APPLY.value:
+                    if self.network_controller is None:
+                        raise ContractError("receiver network controller is unavailable")
+                    network = self.network_controller.status(operation_id)
+                    if network["state"] in {"confirmed", "reverted"}:
+                        self.network_controller.resume_after_transaction()
+                        if journal["state"] == "accepted":
+                            journal = self.journals.transition(
+                                operation_id,
+                                state="running",
+                                checkpoint="network-reconciliation",
+                                cancellation_safe=False,
+                                event="network-reconciliation-started",
+                            )
+                        if network["state"] == "confirmed":
+                            result = {
+                                "kind": "network-confirm",
+                                "network_id": network["network_id"],
+                                "state": "confirmed",
+                                "reconciled_after_restart": True,
+                            }
+                            self.journals.transition(
+                                operation_id,
+                                state="completed",
+                                checkpoint="network-confirmed",
+                                cancellation_safe=False,
+                                event="network-confirmation-reconciled",
+                                evidence_hash=content_identity(result),
+                                result=result,
+                            )
+                        else:
+                            self.journals.transition(
+                                operation_id,
+                                state="failed",
+                                checkpoint="automatic-network-rollback",
+                                cancellation_safe=False,
+                                event="network-rollback-reconciled",
+                                failure={
+                                    "code": "network-not-confirmed",
+                                    "message": "the prior network profile was restored",
+                                },
+                            )
+                        if lease is not None and lease["operation_id"] == operation_id:
+                            self.control.release(operation_id)
+                            lease = None
+                        recovered.append(operation_id)
+                        continue
+                    if network["state"] == "pending-confirmation":
+                        recovered.append(operation_id)
+                        continue
                 if (
                     journal["action"] == Action.HOST_REBOOT.value
                     and host_maintenance_recovery is not None
@@ -1145,6 +1352,8 @@ class ReceiverEngine:
                 result["activation_recovery"] = activation_recovery
             if host_maintenance_recovery is not None:
                 result["host_maintenance_recovery"] = host_maintenance_recovery
+            if network_recovery is not None:
+                result["network_recovery"] = network_recovery
             return result
 
     def _status(self, operation_id: str) -> dict[str, Any]:

@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/operator-network-input.schema.json",
+  "title": "III untracked operator network input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "ethernet_dhcp4", "wifi"],
+  "properties": {
+    "schema": {"const": "iii.operator-network-input/v1"},
+    "ethernet_dhcp4": {"const": true},
+    "wifi": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ssid", "password"],
+        "properties": {
+          "ssid": {"type": "string", "minLength": 1, "maxLength": 32},
+          "password": {"type": "string", "minLength": 8, "maxLength": 63, "pattern": "^[^\\r\\n]+$"},
+          "hidden": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

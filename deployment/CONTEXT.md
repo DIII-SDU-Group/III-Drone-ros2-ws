@@ -223,6 +223,14 @@ _Avoid_: Removing old scripts first
   backup-bound host-maintenance transaction that records setting/file deltas,
   requires an explicit reboot, validates the new boot, and invalidates the
   affected commissioning evidence.
+- `network-plan` accepts owner-only operator input but returns only content hashes,
+  hashed Wi-Fi identities, counts, and declared host impact. `network-apply`
+  claims the plaintext into root-only state and invokes a fixed privileged helper;
+  the private-network receiver never writes Netplan directly. A systemd monotonic
+  timer restores the exact prior profile after 90 seconds unless a separately
+  nonce-bound confirmation commits it. Every candidate retains Ethernet DHCP,
+  application/receiver-update payloads cannot modify host network policy, and
+  Avahi publishes `iii.local` without a fixed IP or onboard access point.
 - Normal activation requires a content-identified runtime observation proving the
   configured logical target/profile, fresh runtime and PX4 state, three continuous
   seconds landed/disarmed/failsafe-clear in a maintenance-safe navigation state,

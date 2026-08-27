@@ -1,8 +1,8 @@
 ---
 iii_baseline_schema: iii.ansible-host-baseline/v1
-iii_baseline_id: 9e8ccc20434cb6cf43508bf93bd70b238b009a54fa7427f29a2bb96d8890a1f6
+iii_baseline_id: 98a97d7971c84fb1f96a1ee77bad9610e8d49a8bad121ca33116c3f349fab27d
 iii_unit_contract_id: a44b9176c01344aaa3f4e105ccb14eafd6cca67f423a4c43a31d4cde534236fe
-iii_target_definition_id: 529afb40ba8854deaa14b63d55b5ba507905bac5d7504907673cc924b6ccdbff
+iii_target_definition_id: 5d8d216a38ac182f80cfe9926bf4ba96ff9f83a36787368f8c971611d0876975
 iii_expected_distribution: Ubuntu
 iii_expected_release: "24.04"
 iii_expected_codename: noble
@@ -15,6 +15,7 @@ iii_runtime_owner_effective: "{{ (iii_runtime_uid | string) if ansible_check_mod
 iii_runtime_group_effective: "{{ (iii_runtime_gid | string) if ansible_check_mode else iii_runtime_group }}"
 iii_runtime_api_port: 8765
 iii_mdns_port: 5353
+iii_hostname_manage: true
 iii_shared_target_profile_id: a14f199fd5a75f0b60f17f35eb52a69405ef1de89a0b6983224edf52b959cf33
 iii_boot_profile_id: 3a2147e380558975eb301c2af6a425919fac6be6b2312570cbb70f03032b5f31
 iii_boot_files_required: true
@@ -28,6 +29,7 @@ iii_ros_key_sha256: 6d2ff4af9d56b304213de7664551f6986174a68bae76476b7ad21469b27a
 iii_ros_key_fingerprint: 4B63CF8FDE49746E98FA01DDAD19BAB3CBF125EA
 iii_host_packages:
   - ansible-core
+  - avahi-daemon
   - ca-certificates
   - chrony
   - curl

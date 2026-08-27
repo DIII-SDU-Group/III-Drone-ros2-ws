@@ -7,7 +7,7 @@
   "required": ["schema", "hostname", "ssh_public_key", "bootstrap_credential", "network"],
   "properties": {
     "schema": {"const": "iii.cloud-init-bootstrap-input/v1"},
-    "hostname": {"type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"},
+    "hostname": {"const": "iii"},
     "ssh_public_key": {"type": "string", "pattern": "^ssh-(ed25519|rsa) [A-Za-z0-9+/]+={0,3}(?: [^\\r\\n]+)?$", "maxLength": 8192},
     "bootstrap_credential": {"type": "string", "pattern": "^[A-Za-z0-9_-]{32,128}$"},
     "network": {

@@ -1,6 +1,6 @@
 {
   "schema": "iii.target-definition/v1",
-  "definition_id": "529afb40ba8854deaa14b63d55b5ba507905bac5d7504907673cc924b6ccdbff",
+  "definition_id": "5d8d216a38ac182f80cfe9926bf4ba96ff9f83a36787368f8c971611d0876975",
   "target": {
     "target_id": "raspberry-pi-5-noble-arm64",
     "board": "raspberry-pi-5",
@@ -80,12 +80,12 @@
     "mutable_host_paths_forbidden": ["/home", "/var/lib/iii", "/var/log/iii", "/run/iii", "/etc/iii"]
   },
   "host_baseline": {
-    "contract_id": "9e8ccc20434cb6cf43508bf93bd70b238b009a54fa7427f29a2bb96d8890a1f6",
+    "contract_id": "98a97d7971c84fb1f96a1ee77bad9610e8d49a8bad121ca33116c3f349fab27d",
     "unit_contract_id": "a44b9176c01344aaa3f4e105ccb14eafd6cca67f423a4c43a31d4cde534236fe",
     "shared_target_profile_id": "a14f199fd5a75f0b60f17f35eb52a69405ef1de89a0b6983224edf52b959cf33",
     "owner": "ansible",
     "converged_by": "Q93 aircraft host baseline",
-    "owns": ["ubuntu", "kernel-firmware", "glibc-loader", "ros-jazzy", "systemd", "udev-hardware", "platform-libraries", "system-python"],
+    "owns": ["glibc-loader", "kernel-firmware", "operator-networking", "platform-libraries", "ros-jazzy", "system-python", "systemd", "ubuntu", "udev-hardware"],
     "package_constraints": [
       {"name": "libarmadillo12", "constraint": ">=1:12.6.7+dfsg-1build2,<1:13", "abi_role": "platform"},
       {"name": "libc6", "constraint": ">=2.39,<2.40", "abi_role": "platform"},

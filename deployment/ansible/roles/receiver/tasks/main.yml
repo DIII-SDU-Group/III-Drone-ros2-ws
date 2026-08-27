@@ -200,7 +200,19 @@
     - iii-deployment-receiver.service
     - iii-log-maintenance.service
     - iii-log-maintenance.timer
+    - iii-network-apply@.service
+    - iii-network-revert@.service
+    - iii-network-timeout@.service
+    - iii-network-revert@.timer
   notify: Reload systemd
+
+- name: Create the root-only transactional network state root
+  ansible.builtin.file:
+    path: /var/lib/iii/deployment/network
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
 
 - name: Flush unit and SSH handlers before receiver verification
   ansible.builtin.meta: flush_handlers

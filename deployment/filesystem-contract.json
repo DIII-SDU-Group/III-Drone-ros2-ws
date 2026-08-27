@@ -19,12 +19,14 @@
     {"path": "/var/lib/iii/deployment", "owner": "root", "group": "iii", "mode": "0750", "kind": "receiver-owned-state", "persistence": "receiver-reconciled"},
     {"path": "/var/lib/iii/deployment/activation-transactions", "owner": "root", "group": "iii", "mode": "0750", "kind": "receiver-journal", "persistence": "receiver-reconciled"},
     {"path": "/var/lib/iii/deployment/activation", "owner": "root", "group": "iii", "mode": "0750", "kind": "activation-health-evidence", "persistence": "portable-backup"},
+    {"path": "/var/lib/iii/deployment/network", "owner": "root", "group": "root", "mode": "0700", "kind": "network-transaction-state", "persistence": "receiver-reconciled"},
+    {"path": "/etc/netplan/90-iii-operator.yaml", "owner": "root", "group": "root", "mode": "0600", "kind": "operator-network-secrets", "persistence": "host-maintenance-owned"},
     {"path": "/var/lib/iii/incoming", "owner": "iii", "group": "iii", "mode": "0750", "kind": "unprivileged-upload", "persistence": "bounded-partial"},
     {"path": "/var/log/iii", "owner": "iii", "group": "iii", "mode": "0750", "kind": "bounded-logs", "persistence": "retention-policy"},
     {"path": "/var/log/iii/deployment", "owner": "root", "group": "iii", "mode": "0750", "kind": "receiver-audit", "persistence": "retention-policy"},
     {"path": "/run/iii", "owner": "iii", "group": "iii", "mode": "0750", "kind": "transient", "persistence": "recreated-on-boot"}
   ],
   "protected_release_subpaths": ["manifest.json", "bundle-manifest.json", "release-manifest.json", "install", "python", "lib", "missions", "environment.bash"],
-  "host_systemd_units": ["iii-receiver-bootstrap-apply.service", "iii-receiver-bootstrap-reconcile.service", "iii-deployment-receiver-reconcile.service", "iii-deployment-receiver.service", "iii-log-maintenance.service", "iii-log-maintenance.timer", "iii-system-daemon.service", "iii-runtime-api.service", "iii.target"],
+  "host_systemd_units": ["iii-receiver-bootstrap-apply.service", "iii-receiver-bootstrap-reconcile.service", "iii-deployment-receiver-reconcile.service", "iii-deployment-receiver.service", "iii-log-maintenance.service", "iii-log-maintenance.timer", "iii-network-apply@.service", "iii-network-revert@.service", "iii-network-timeout@.service", "iii-network-revert@.timer", "iii-system-daemon.service", "iii-runtime-api.service", "iii.target"],
   "minimum_storage_reserve": {"bytes": 2147483648, "percent": 10}
 }

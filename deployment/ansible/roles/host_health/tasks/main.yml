@@ -26,12 +26,18 @@
     - /etc/udev/rules.d/90-iii-hardware-roles.rules
     - /etc/iii/host-unit-contract.json
     - /etc/iii/host-maintenance-policy.json
+    - /etc/iii/network-policy.json
+    - /etc/avahi/avahi-daemon.conf
     - /usr/share/iii/host-maintenance/aircraft-maintenance.yml
     - /etc/iii/runtime.env
     - /usr/libexec/iii/iii-release-launch
     - /etc/systemd/system/iii-system-daemon.service
     - /etc/systemd/system/iii-runtime-api.service
     - /etc/systemd/system/iii-host-maintenance@.service
+    - /etc/systemd/system/iii-network-apply@.service
+    - /etc/systemd/system/iii-network-revert@.service
+    - /etc/systemd/system/iii-network-timeout@.service
+    - /etc/systemd/system/iii-network-revert@.timer
     - /etc/systemd/system/iii.target
   register: iii_health_paths
 
@@ -95,6 +101,31 @@
   when:
     - not ansible_check_mode
     - item.active_required
+
+- name: Verify mDNS hostname publication is enabled and active
+  ansible.builtin.command:
+    argv: [/usr/bin/systemctl, "{{ item }}", avahi-daemon.service]
+  changed_when: false
+  loop: [is-enabled, is-active]
+  when: not ansible_check_mode
+
+- name: Inspect the effective aircraft hostname
+  ansible.builtin.command:
+    argv: [/usr/bin/hostname]
+  register: iii_effective_hostname
+  changed_when: false
+  check_mode: false
+
+- name: Require the stable iii.local host label
+  ansible.builtin.assert:
+    that:
+      - iii_effective_hostname.stdout == 'iii'
+
+- name: Verify Avahi reports a running daemon
+  ansible.builtin.command:
+    argv: [/usr/sbin/avahi-daemon, --check]
+  changed_when: false
+  when: not ansible_check_mode
 
 - name: Verify completed receiver recovery oneshots did not fail
   ansible.builtin.command:

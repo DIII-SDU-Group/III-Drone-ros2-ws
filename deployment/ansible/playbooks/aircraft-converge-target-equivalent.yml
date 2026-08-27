@@ -23,6 +23,8 @@
       tags: [boot]
     - role: time
       tags: [time]
+    - role: network_baseline
+      tags: [network]
     - role: firewall
       tags: [firewall]
     - role: receiver

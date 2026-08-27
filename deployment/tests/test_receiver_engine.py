@@ -165,6 +165,7 @@ def receiver(tmp_path: Path):
         host_maintenance=None,
         hardware_inspector=None,
         host_inspector=None,
+        network_controller=None,
     ):
         return ReceiverEngine(
             release_store=store,
@@ -185,6 +186,7 @@ def receiver(tmp_path: Path):
             host_maintenance=host_maintenance,
             hardware_inspector=hardware_inspector,
             host_inspector=host_inspector,
+            network_controller=network_controller,
         )
 
     return SimpleNamespace(
@@ -284,6 +286,90 @@ class FakeHostMaintenance:
             "mutation_blocked": self.phase not in {"completed", "failed"},
             "recovery_recommendation": "reimage" if self.phase == "failed" else None,
         }
+
+
+class FakeNetworkController:
+    def __init__(self) -> None:
+        self.transactions: dict[str, dict] = {}
+
+    def plan(self, *, operation_id, client_id, profile):
+        redacted = {
+            "ethernet_dhcp4": True,
+            "wifi_profile_ids": [
+                hashlib.sha256(row["ssid"].encode()).hexdigest()
+                for row in profile["wifi"]
+            ],
+            "wifi_profile_count": len(profile["wifi"]),
+            "onboard_access_point": False,
+        }
+        value = {
+            "schema": "iii.network-plan/v1",
+            "network_id": "0" * 64,
+            "operation_id": operation_id,
+            "client_id": client_id,
+            "candidate_sha256": hashlib.sha256(canonical_json(profile)).hexdigest(),
+            "desired_netplan_sha256": "1" * 64,
+            "previous_netplan_sha256": "2" * 64,
+            "profile": redacted,
+            "connectivity_impacting": True,
+            "confirmation_deadline_s": 90,
+            "no_change": False,
+            "declared_permissions": ["/etc/netplan/90-iii-operator.yaml"],
+            "required_checks": ["Ethernet DHCP remains enabled"],
+        }
+        value["network_id"] = hashlib.sha256(
+            canonical_json(
+                {key: item for key, item in value.items() if key != "network_id"}
+            )
+        ).hexdigest()
+        return value
+
+    def resume_after_transaction(self):
+        return None
+
+    def claim(self, plan, profile):
+        assert plan == self.plan(
+            operation_id=plan["operation_id"],
+            client_id=plan["client_id"],
+            profile=profile,
+        )
+        self.transactions[plan["operation_id"]] = {
+            "operation_id": plan["operation_id"],
+            "network_id": plan["network_id"],
+            "client_id": plan["client_id"],
+            "state": "claimed",
+            "deadline_monotonic_ns": None,
+        }
+
+    def apply(self, plan):
+        transaction = self.transactions[plan["operation_id"]]
+        transaction["state"] = "pending-confirmation"
+        transaction["deadline_monotonic_ns"] = 100_000_000_000
+        return {
+            "kind": "network",
+            "network_id": plan["network_id"],
+            "state": "pending-confirmation",
+            "confirmation_required": True,
+            "confirmation_deadline_s": 90,
+            "deadline_monotonic_ns": transaction["deadline_monotonic_ns"],
+        }
+
+    def status(self, operation_id):
+        return {"schema": "iii.network-status/v1", **self.transactions[operation_id]}
+
+    def confirm(self, operation_id, *, client_id, network_id):
+        transaction = self.transactions[operation_id]
+        assert transaction["client_id"] == client_id
+        assert transaction["network_id"] == network_id
+        transaction["state"] = "confirmed"
+        return {
+            "kind": "network-confirm",
+            "network_id": network_id,
+            "state": "confirmed",
+        }
+
+    def reconcile(self):
+        return {"schema": "iii.network-status/v1", "recovered": []}
 
 
 def stage_plan(receiver, operation_id: str = "operation-stage-0001"):
@@ -1227,6 +1313,119 @@ def test_failed_host_maintenance_reconciliation_blocks_normal_boot() -> None:
             },
         }
     )
+
+
+def test_network_apply_is_redacted_nonterminal_and_bound_confirmation_completes(
+    receiver,
+) -> None:
+    network = FakeNetworkController()
+    engine = receiver.build(network_controller=network)
+    operation_id = "network-operation-0001"
+    profile = {
+        "schema": "iii.operator-network-input/v1",
+        "ethernet_dhcp4": True,
+        "wifi": [{"ssid": "private-field", "password": "private-password"}],
+    }
+    planned = engine.handle(
+        request(
+            "network-plan",
+            operation_id,
+            receiver.operator_id,
+            {
+                "profile": profile,
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    assert "private-field" not in str(planned["plan"])
+    assert "private-password" not in str(planned["plan"])
+    REGISTRY.validate("network-plan", planned["plan"]["parameters"])
+    REGISTRY.validate("receiver-mutation-plan", planned["plan"])
+    engine.handle(
+        request(
+            "network-apply",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"], "profile": profile},
+            planned["nonce"],
+        )
+    )
+    receiver.executor.run_next()
+    pending_journal = receiver.journals.load(operation_id)
+    assert pending_journal["state"] == "running"
+    assert "private-field" not in str(pending_journal)
+    assert "private-password" not in str(pending_journal)
+    assert receiver.control.load()["lease"]["operation_id"] == operation_id
+
+    confirmation_operation = "network-confirm-0001"
+    confirmation = engine.handle(
+        request(
+            "network-confirm-plan",
+            confirmation_operation,
+            receiver.operator_id,
+            {
+                "target_operation_id": operation_id,
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    REGISTRY.validate("network-confirmation-plan", confirmation["confirmation"])
+    engine.handle(
+        request(
+            "network-confirm",
+            confirmation_operation,
+            receiver.operator_id,
+            {"confirmation": confirmation["confirmation"]},
+            confirmation["nonce"],
+        )
+    )
+    journal = receiver.journals.load(operation_id)
+    assert journal["state"] == "completed"
+    assert journal["result"]["state"] == "confirmed"
+    assert receiver.control.load()["lease"] is None
+
+
+def test_network_automatic_reversion_is_terminalized_on_receiver_restart(
+    receiver,
+) -> None:
+    network = FakeNetworkController()
+    engine = receiver.build(network_controller=network)
+    operation_id = "network-operation-0002"
+    profile = {
+        "schema": "iii.operator-network-input/v1",
+        "ethernet_dhcp4": True,
+        "wifi": [{"ssid": "lost-link", "password": "lost-password"}],
+    }
+    planned = engine.handle(
+        request(
+            "network-plan",
+            operation_id,
+            receiver.operator_id,
+            {
+                "profile": profile,
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    engine.handle(
+        request(
+            "network-apply",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"], "profile": profile},
+            planned["nonce"],
+        )
+    )
+    receiver.executor.run_next()
+    network.transactions[operation_id]["state"] = "reverted"
+    restarted = receiver.build(
+        selected_executor=QueuedExecutor(), network_controller=network
+    )
+    result = restarted.reconcile()
+    assert operation_id in result["recovered_operations"]
+    assert receiver.journals.load(operation_id)["state"] == "failed"
+    assert receiver.journals.load(operation_id)["failure"]["code"] == "network-not-confirmed"
+    assert receiver.control.load()["lease"] is None
 
 
 def test_authenticated_hardware_inspection_is_read_only_and_receiver_owned(receiver):

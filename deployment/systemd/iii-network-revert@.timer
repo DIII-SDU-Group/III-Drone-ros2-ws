@@ -1,0 +1,11 @@
+[Unit]
+Description=III network confirmation deadline for %i
+
+[Timer]
+OnActiveSec=90s
+AccuracySec=1s
+Unit=iii-network-timeout@%i.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

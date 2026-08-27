@@ -1,0 +1,6 @@
+---
+- name: Restart Avahi for III hostname
+  ansible.builtin.systemd_service:
+    name: avahi-daemon.service
+    state: restarted
+  when: not ansible_check_mode

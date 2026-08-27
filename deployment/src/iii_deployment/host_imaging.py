@@ -166,6 +166,9 @@ def load_bootstrap_input(path: Path, registry: ContractRegistry) -> dict[str, An
         raise BootstrapInputError(
             "bootstrap credential must contain at least 16 distinct characters"
         )
+    ssids = [str(row["ssid"]) for row in value["network"]["wifi"]]
+    if len(ssids) != len(set(ssids)):
+        raise BootstrapInputError("bootstrap input contains duplicate Wi-Fi SSIDs")
     return value
 
 
@@ -187,6 +190,8 @@ def render_nocloud_seed(
         raise BootstrapInputError("unsupported bootstrap input")
 
     hostname = str(bootstrap["hostname"])
+    if hostname != "iii":
+        raise BootstrapInputError("aircraft bootstrap hostname must be iii for iii.local mDNS")
     instance_material = {
         "profile_id": profile["profile_id"],
         "hostname": hostname,
@@ -914,9 +919,9 @@ def apply_image_plan(
         registry=registry,
         label="cloud-init profile",
     )
-    bootstrap = load_bootstrap_input(input_path, registry)
     if _sha256_file(input_path) != plan["bootstrap_input_sha256"]:
         raise DeviceChangedError("bootstrap input changed after retained preflight")
+    bootstrap = load_bootstrap_input(input_path, registry)
     image_path = Path(str(plan["image"]["path"]))
     observed_image = inspect_image(image_path, source)
     for field in ("source_id", "compressed_sha256", "raw_sha256", "raw_bytes"):
