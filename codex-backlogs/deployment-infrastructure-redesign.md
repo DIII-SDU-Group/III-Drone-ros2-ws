@@ -2454,11 +2454,17 @@ gate, and the live 11-repository audit with 24/24 rulesets and zero findings.
 
 Phase acceptance:
 
-- [ ] Neither qualified nor field-development release construction executes on an aircraft.
-- [ ] The same target contract drives laptop and CI builders.
-- [ ] Built output is immutable, complete, attributable, and target-compatible.
-- [ ] Once required caches exist, field-development releases can be built and
+- [x] Neither qualified nor field-development release construction executes on an aircraft.
+- [x] The same target contract drives laptop and CI builders.
+- [x] Built output is immutable, complete, attributable, and target-compatible.
+- [x] Once required caches exist, field-development releases can be built and
       packaged without internet access.
+
+Phase verification (2026-08-27): P1.T0-P1.T5 are complete. Their retained tests
+cover the canonical target/ABI contract in laptop and CI builders, dirty-source
+capture, cached offboard ARM64 construction, immutable bundle verification,
+qualified promotion without rebuilding, offline field construction, and installed
+mission-catalog closure. Aircraft-side construction remains structurally absent.
 
 Delivery order:
 
@@ -4879,9 +4885,9 @@ Phase acceptance:
       qualified release deployment, rollback, and recovery pass end to end.
 - [ ] Operators can perform normal workflows through the III CLI without source
       knowledge or direct filesystem mutation on the aircraft.
-- [ ] Every maintained III document routes humans and AI agents through tested,
+- [x] Every maintained III document routes humans and AI agents through tested,
       automation-ready canonical commands and the settled branch/CI policy.
-- [ ] Legacy deployment paths are removed or clearly blocked.
+- [x] Legacy deployment paths are removed or clearly blocked.
 
 Delivery order:
 

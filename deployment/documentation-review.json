@@ -1197,8 +1197,8 @@
       "status": "passed"
     }
   ],
-  "manifest_id": "219f266396022997397af048eee0fe46df542e8279ee8dbdfae438c7b8a78aa7",
-  "review_id": "31021268e7ff4cf6258a648ca3d88c7f2e1efad47a8bd8ffa600b8d253140ab8",
+  "manifest_id": "e0980b92e5c8f03d8d62e22a350264b821e05eec936a0695c09555127e32eb0b",
+  "review_id": "34ab94e0cd06e6b54f2acafdc3da48f8686a4c95f47dff5a0eaefb57c49e0c95",
   "reviewer": "codex-deployment-redesign",
   "schema": "iii.documentation-review/v1"
 }
