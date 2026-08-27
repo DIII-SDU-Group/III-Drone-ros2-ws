@@ -9,6 +9,27 @@ import yaml
 
 from iii_deployment.configuration_reconciliation import ReceiverConfigurationReconciler
 
+ROOT = Path(__file__).resolve().parents[2]
+CONFIGURATION_SOURCE = ROOT / "src/III-Drone-Configuration/config"
+
+
+def _materialize_contract(destination: Path) -> Path:
+    shutil.copytree(CONFIGURATION_SOURCE / "configuration_contract", destination)
+    schema = destination / "schema/parameter_manifest.yaml"
+    real = destination / "tracked_defaults/real/default.yaml"
+    sim = destination / "tracked_defaults/sim/default.yaml"
+    schema.parent.mkdir()
+    real.parent.mkdir(parents=True)
+    sim.parent.mkdir(parents=True)
+    shutil.copyfile(CONFIGURATION_SOURCE / "parameters/parameter_manifest.yaml", schema)
+    shutil.copyfile(
+        CONFIGURATION_SOURCE / "parameter_sets/real/tracked/default.yaml", real
+    )
+    shutil.copyfile(
+        CONFIGURATION_SOURCE / "parameter_sets/sim/tracked/default.yaml", sim
+    )
+    return destination
+
 
 def _canonical_identity(value: dict) -> str:
     unsigned = {key: item for key, item in value.items() if key != "manifest_id"}
@@ -20,10 +41,7 @@ def _canonical_identity(value: dict) -> str:
 def _contract_variant(
     tmp_path: Path, name: str, *, extra_default: float | None
 ) -> Path:
-    from iii_drone_configuration import resolve_installed_contract_root
-
-    root = tmp_path / name
-    shutil.copytree(resolve_installed_contract_root(), root, symlinks=False)
+    root = _materialize_contract(tmp_path / name)
     schema_path = root / "schema/parameter_manifest.yaml"
     schema = yaml.safe_load(schema_path.read_text())
     if extra_default is None:
@@ -123,12 +141,9 @@ def _source_checkpoint(
 
 
 def test_receiver_plans_read_only_then_reconciles_only_a_private_stage(tmp_path: Path):
-    from iii_drone_configuration import (
-        resolve_installed_contract_root,
-        verify_configuration_checkpoint,
-    )
+    from iii_drone_configuration import verify_configuration_checkpoint
 
-    contract = resolve_installed_contract_root()
+    contract = _materialize_contract(tmp_path / "contract-current")
     releases = tmp_path / "releases"
     checkpoints = tmp_path / "checkpoints"
     old_release = "a" * 64
@@ -203,9 +218,7 @@ def test_receiver_plans_read_only_then_reconciles_only_a_private_stage(tmp_path:
 
 
 def test_receiver_retries_discard_only_its_authenticated_private_stage(tmp_path: Path):
-    from iii_drone_configuration import resolve_installed_contract_root
-
-    contract = resolve_installed_contract_root()
+    contract = _materialize_contract(tmp_path / "contract-current")
     releases = tmp_path / "releases"
     checkpoints = tmp_path / "checkpoints"
     old_release = "c" * 64
