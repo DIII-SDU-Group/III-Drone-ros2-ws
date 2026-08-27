@@ -48,7 +48,30 @@ def test_policy_pins_both_supported_platforms_and_ros_free_boundaries():
         ".local/state/iii/captures",
         ".local/state/iii/logs",
         ".local/state/iii/registry",
+        ".local/share/iii/gc-applications",
+        ".config/QGroundControl.org",
+        ".local/share/QGroundControl",
+        "Documents/QGroundControl",
     }.issubset({item["path"] for item in policy["managed_user_paths"]})
+    assert "skopeo" in policy["operational_packages"]
+    assert {
+        "gstreamer1.0-gl",
+        "gstreamer1.0-libav",
+        "gstreamer1.0-plugins-bad",
+        "libegl1",
+        "libfontconfig1",
+        "libgl1",
+        "libopengl0",
+        "libxcb-cursor0",
+        "libxcb-xinerama0",
+        "libxkbcommon-x11-0",
+    }.issubset(policy["operational_packages"])
+    assert set(policy["manual_units"]) == {
+        "iii-gc-browser.service",
+        "iii-qgc.service",
+    }
+    assert "iii-gc-px4-parameters.service" in policy["login_units"]
+    assert policy["recovery_units"] == ["iii-gc-application-reconcile.service"]
     assert policy["builder"]["definition_sha256"] == (
         __import__("hashlib").sha256((ROOT / "Dockerfile.cc").read_bytes()).hexdigest()
     )
@@ -256,7 +279,7 @@ def test_source_manifest_rejects_symlinks_and_ignores_generated_cache(tmp_path):
         _tree_manifest(tree)
 
 
-def test_user_units_start_companions_but_never_browser_qgc_or_drone():
+def test_user_units_autostart_companions_but_never_browser_qgc_or_drone():
     templates = DEPLOYMENT / "ansible/roles/gc_operational/templates"
     target = (templates / "iii-gc.target.j2").read_text()
     combined = "\n".join(
@@ -274,6 +297,13 @@ def test_user_units_start_companions_but_never_browser_qgc_or_drone():
         assert unit in target
     assert "iii-gc-browser.service" not in target
     assert "qgroundcontrol" not in target.lower()
+    qgc = (templates / "iii-qgc.service.j2").read_text()
+    assert "WantedBy=" not in qgc
+    assert "iii-gc.target" not in qgc
+    assert "gc-applications/qgc/current/QGroundControl.AppImage" in qgc
+    reconcile = (templates / "iii-gc-application-reconcile.service.j2").read_text()
+    assert "Before=iii-gc.target" in reconcile
+    assert "gc application reconcile" in reconcile
     assert "iii system stop" not in combined
     assert "Restart=on-failure" in combined
 
@@ -307,15 +337,17 @@ def test_development_role_keeps_authority_in_host_paths_and_strict_git_state():
     assert "/home/iii" not in role
 
 
-def test_container_images_are_bound_to_source_and_builder_identities():
+def test_host_baseline_cannot_build_or_load_release_container_images():
     compose = (ROOT / "src/III-Drone-GC/docker-compose.prod.yml").read_text()
     application = (
         DEPLOYMENT / "ansible/roles/gc_application/tasks/main.yml"
     ).read_text()
 
     assert compose.count("io.iii-drone.application-id") == 2
-    assert 'III_GC_IMAGE_TAG: "{{ iii_gc_application_id }}"' in application
-    assert "III_EXPECTED_APPLICATION_ID" in application
+    assert "docker compose" not in application
+    assert "docker load" not in application
+    assert "gc-container-images" not in application
+    assert "GC runtime" in application
     assert "iii-drone-gc-proxy:workspace" not in application
 
 

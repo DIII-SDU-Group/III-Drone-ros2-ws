@@ -11,7 +11,12 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import pytest
 
-from iii_deployment.contracts import ContractError, ContractRegistry, canonical_json, content_identity
+from iii_deployment.contracts import (
+    ContractError,
+    ContractRegistry,
+    canonical_json,
+    content_identity,
+)
 from iii_deployment.release_pipeline import (
     assemble_qualification_evidence,
     assemble_release_manifest,
@@ -19,7 +24,6 @@ from iii_deployment.release_pipeline import (
     create_qualification_check,
 )
 from iii_deployment.signers import generate_signer
-
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ContractRegistry(ROOT / "deployment/schemas/v1")
@@ -44,14 +48,21 @@ def _tree_identity(root: Path) -> str:
         if path.is_symlink():
             entries.append((relative, "symlink", os.readlink(path)))
         elif path.is_file():
-            entries.append((relative, "file", hashlib.sha256(path.read_bytes()).hexdigest()))
+            entries.append(
+                (relative, "file", hashlib.sha256(path.read_bytes()).hexdigest())
+            )
     return content_identity(entries)
 
 
 def _snapshot(path: Path) -> Path:
     repository = {
-        "path": ".", "commit": COMMIT, "state": "clean", "content_identity": "2" * 64,
-        "tracked_patch_sha256": None, "entries": [], "untracked": [],
+        "path": ".",
+        "commit": COMMIT,
+        "state": "clean",
+        "content_identity": "2" * 64,
+        "tracked_patch_sha256": None,
+        "entries": [],
+        "untracked": [],
     }
     value = {
         "schema": "iii.source-snapshot/v1",
@@ -66,19 +77,29 @@ def _snapshot(path: Path) -> Path:
         "changed_paths": [],
         "impact": {"components": [], "causes": {}},
     }
-    value["content_identity"] = content_identity({
-        "policy_sha256": value["policy_sha256"],
-        "dependency_lock_sha256": value["dependency_lock_sha256"],
-        "repositories": [{"path": ".", "content_identity": repository["content_identity"]}],
-    })
+    value["content_identity"] = content_identity(
+        {
+            "policy_sha256": value["policy_sha256"],
+            "dependency_lock_sha256": value["dependency_lock_sha256"],
+            "repositories": [
+                {"path": ".", "content_identity": repository["content_identity"]}
+            ],
+        }
+    )
     return _canonical(path, value)
 
 
 def _checks(tmp_path: Path, lock: Path) -> tuple[dict[str, Path], Path]:
     check_paths = {}
     for check_id in (
-        "arm64-build", "arm64-tests", "dependency-lock", "deployment-contracts",
-        "gc-build", "gc-tests", "governance-audit", "promotion-evidence",
+        "arm64-build",
+        "arm64-tests",
+        "dependency-lock",
+        "deployment-contracts",
+        "gc-build",
+        "gc-tests",
+        "governance-audit",
+        "promotion-evidence",
     ):
         log = _write(tmp_path / f"{check_id}.log", f"PASS {check_id}\n".encode())
         output = _write(tmp_path / f"{check_id}.output", b"evidence\n")
@@ -105,13 +126,32 @@ def _checks(tmp_path: Path, lock: Path) -> tuple[dict[str, Path], Path]:
 
 
 def _metadata(root: Path) -> Path:
-    for name in ("configuration", "px4-real", "px4-sim", "px4-interface", "qgc", "mission"):
-        _write(root / "inputs" / name, (name + "\n").encode())
+    for name in (
+        "configuration",
+        "px4-real",
+        "px4-sim",
+        "px4-reference",
+        "px4-interface",
+        "qgc",
+        "mission",
+    ):
+        if name in {"px4-real", "px4-sim"}:
+            payload = (
+                ROOT / f"deployment/px4/{name.removeprefix('px4-')}.json"
+            ).read_bytes()
+        elif name == "px4-reference":
+            payload = (
+                ROOT / "deployment/px4/reference-sitl-snapshot.json"
+            ).read_bytes()
+        else:
+            payload = (name + "\n").encode()
+        _write(root / "inputs" / name, payload)
     value = json.loads((ROOT / "deployment/release-metadata.json").read_text())
     value["input_paths"] = {
         "configuration": ["inputs/configuration"],
         "px4_real": ["inputs/px4-real"],
         "px4_sim": ["inputs/px4-sim"],
+        "px4_reference": ["inputs/px4-reference"],
         "px4_interface": ["inputs/px4-interface"],
         "qgc_managed_settings": ["inputs/qgc"],
     }
@@ -119,7 +159,9 @@ def _metadata(root: Path) -> Path:
 
 
 def _mission_catalog(drone: Path) -> dict:
-    directory = drone / "install/iii_drone_mission/share/iii_drone_mission/mission_catalog"
+    directory = (
+        drone / "install/iii_drone_mission/share/iii_drone_mission/mission_catalog"
+    )
     assets = directory / "assets/sha256"
     assets.mkdir(parents=True)
     asset_raw = b"executor_owned_mode: inspection_demo\nentries: []\n"
@@ -129,13 +171,17 @@ def _mission_catalog(drone: Path) -> dict:
     state = {
         "schema": "iii.mission-source-state/v1",
         "state_hash": "",
-        "source_files": {"mission_specification/mission_specification.yaml": asset_hash},
+        "source_files": {
+            "mission_specification/mission_specification.yaml": asset_hash
+        },
         "interface_contracts": {"MissionModeStatus.msg": "sha256:" + "1" * 64},
         "registration_manifest_sha256": "sha256:" + "2" * 64,
         "behavior_node_contract_sha256": "sha256:" + "3" * 64,
         "models_xml_sha256": "sha256:" + hashlib.sha256(models_raw).hexdigest(),
     }
-    state["state_hash"] = "sha256:" + content_identity({k: v for k, v in state.items() if k != "state_hash"})
+    state["state_hash"] = "sha256:" + content_identity(
+        {k: v for k, v in state.items() if k != "state_hash"}
+    )
     entry = {
         "schema": "iii.mission-catalog-entry/v1",
         "id": "inspection-production",
@@ -146,11 +192,24 @@ def _mission_catalog(drone: Path) -> dict:
         "default_for": ["opti_track", "real"],
         "experimental_warning": None,
         "compatibility": {"source_state_sha256": state["state_hash"]},
-        "specification": {"executor_owned_mode": "inspection_demo", "entries": [], "intent_services": []},
-        "assets": [{"kind": "mission_specification", "logical_name": "mission_specification/mission_specification.yaml", "content_hash": asset_hash, "asset_id": asset_hash}],
+        "specification": {
+            "executor_owned_mode": "inspection_demo",
+            "entries": [],
+            "intent_services": [],
+        },
+        "assets": [
+            {
+                "kind": "mission_specification",
+                "logical_name": "mission_specification/mission_specification.yaml",
+                "content_hash": asset_hash,
+                "asset_id": asset_hash,
+            }
+        ],
         "dependencies": [asset_hash],
     }
-    entry["entry_hash"] = "sha256:" + content_identity({k: v for k, v in entry.items() if k != "entry_hash"})
+    entry["entry_hash"] = "sha256:" + content_identity(
+        {k: v for k, v in entry.items() if k != "entry_hash"}
+    )
     catalog = {
         "schema": "iii.mission-catalog/v1",
         "catalog_hash": "",
@@ -158,16 +217,28 @@ def _mission_catalog(drone: Path) -> dict:
         "compatibility": {"source_state_sha256": state["state_hash"]},
         "profiles": {
             "hil": {"commissioned": False, "onboard": True, "default_entry_id": None},
-            "opti_track": {"commissioned": True, "onboard": True, "default_entry_id": "inspection-production"},
-            "real": {"commissioned": True, "onboard": True, "default_entry_id": "inspection-production"},
+            "opti_track": {
+                "commissioned": True,
+                "onboard": True,
+                "default_entry_id": "inspection-production",
+            },
+            "real": {
+                "commissioned": True,
+                "onboard": True,
+                "default_entry_id": "inspection-production",
+            },
         },
         "entries": [entry],
         "assets": entry["assets"],
     }
-    catalog["catalog_hash"] = "sha256:" + content_identity({k: v for k, v in catalog.items() if k != "catalog_hash"})
+    catalog["catalog_hash"] = "sha256:" + content_identity(
+        {k: v for k, v in catalog.items() if k != "catalog_hash"}
+    )
     catalog_raw = canonical_json(catalog) + b"\n"
     (directory / "catalog.json").write_bytes(catalog_raw)
-    (directory / "catalog.sha256").write_text(hashlib.sha256(catalog_raw).hexdigest() + "  catalog.json\n")
+    (directory / "catalog.sha256").write_text(
+        hashlib.sha256(catalog_raw).hexdigest() + "  catalog.json\n"
+    )
     (directory / "source-state.json").write_bytes(canonical_json(state) + b"\n")
     (directory / "models.xml").write_bytes(models_raw)
     project = {
@@ -224,6 +295,10 @@ def _build_records(
     }
     drone_record = {"build_id": content_identity(drone_body), **drone_body}
     gc_inputs = (
+        "deployment/gc-application-policy.json",
+        "deployment/gc/compose.release.yml",
+        "deployment/qgc/key-policy.json",
+        "deployment/qgc/managed-settings.json",
         "src/III-Drone-GC/docker/proxy.Dockerfile",
         "src/III-Drone-GC/docker/proxy-requirements.lock",
         "src/III-Drone-GC/frontend/Dockerfile",
@@ -231,20 +306,38 @@ def _build_records(
     )
     input_hashes = {}
     for relative in gc_inputs:
-        path = _write(root / relative, (relative + "\n").encode())
+        if relative.startswith("deployment/qgc/"):
+            path = _write(root / relative, (ROOT / relative).read_bytes())
+        else:
+            path = _write(root / relative, (relative + "\n").encode())
         input_hashes[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
     images = []
     for name in ("frontend", "proxy"):
         archive = _write(gc / "images" / f"{name}.oci", f"{name}\n".encode())
-        images.append({
-            "name": name,
-            "archive": archive.name,
-            "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
-            "bytes": archive.stat().st_size,
-            "manifest_digest": "sha256:" + ("c" if name == "frontend" else "d") * 64,
-            "base_images": [f"example.invalid/{name}@sha256:" + "e" * 64],
-            "smoke_test": "passed",
-        })
+        images.append(
+            {
+                "name": name,
+                "archive": archive.name,
+                "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+                "bytes": archive.stat().st_size,
+                "manifest_digest": "sha256:"
+                + ("c" if name == "frontend" else "d") * 64,
+                "base_images": [f"example.invalid/{name}@sha256:" + "e" * 64],
+                "smoke_test": "passed",
+            }
+        )
+    appimage = _write(gc / "qgc/QGroundControl.AppImage", b"qgc-appimage\n")
+    qgc_policy_path = _write(
+        gc / "qgc/config/key-policy.json",
+        (root / "deployment/qgc/key-policy.json").read_bytes(),
+    )
+    qgc_baseline_path = _write(
+        gc / "qgc/config/managed-settings.json",
+        (root / "deployment/qgc/managed-settings.json").read_bytes(),
+    )
+    qgc_policy = json.loads(qgc_policy_path.read_text())
+    qgc_baseline = json.loads(qgc_baseline_path.read_text())
+    compose = _write(gc / "compose.yml", b"services: {}\n")
     gc_body = {
         "schema": "iii.gc-build-record/v1",
         "source_identity": snapshot["content_identity"],
@@ -252,8 +345,37 @@ def _build_records(
         "version": VERSION,
         "platform": {"os": "linux", "architecture": "amd64"},
         "inputs_sha256": content_identity(input_hashes),
-        "test_record_sha256": hashlib.sha256(checks["gc-tests"].read_bytes()).hexdigest(),
+        "test_record_sha256": hashlib.sha256(
+            checks["gc-tests"].read_bytes()
+        ).hexdigest(),
         "images": images,
+        "qgroundcontrol": {
+            "version": "5.0.8",
+            "appimage": "QGroundControl.AppImage",
+            "source_url": "https://github.com/mavlink/qgroundcontrol/releases/download/v5.0.8/QGroundControl-x86_64.AppImage",
+            "sha256": hashlib.sha256(appimage.read_bytes()).hexdigest(),
+            "bytes": appimage.stat().st_size,
+            "appimage_update_information": "",
+            "update_owner": "iii-gc-release",
+            "runtime_self_check": "passed",
+            "configuration": {
+                "policy": "qgc/config/key-policy.json",
+                "policy_sha256": hashlib.sha256(
+                    qgc_policy_path.read_bytes()
+                ).hexdigest(),
+                "policy_id": qgc_policy["policy_id"],
+                "baseline": "qgc/config/managed-settings.json",
+                "baseline_sha256": hashlib.sha256(
+                    qgc_baseline_path.read_bytes()
+                ).hexdigest(),
+                "settings_id": qgc_baseline["settings_id"],
+            },
+        },
+        "application": {
+            "compose": "compose.yml",
+            "compose_sha256": hashlib.sha256(compose.read_bytes()).hexdigest(),
+            "environment": "application.env",
+        },
         "complete": True,
     }
     gc_record = {"build_id": content_identity(gc_body), **gc_body}
@@ -263,19 +385,36 @@ def _build_records(
     }
 
 
-def _promotion(key: Ed25519PrivateKey, source_identity: str, tmp_path: Path) -> tuple[Path, dict[str, str]]:
-    public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+def _promotion(
+    key: Ed25519PrivateKey, source_identity: str, tmp_path: Path
+) -> tuple[Path, dict[str, str]]:
+    public = key.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    )
     signer_id = hashlib.sha256(public).hexdigest()
-    impact = json.loads((ROOT / "deployment/governance/change-impact-policy.json").read_text())
+    impact = json.loads(
+        (ROOT / "deployment/governance/change-impact-policy.json").read_text()
+    )
     value = {
-        "schema_version": "1", "attestation_id": "0" * 64,
-        "workspace_commit": COMMIT, "source_content_identity": source_identity,
-        "dependency_lock_sha256": "4" * 64, "policy_sha256": content_identity(impact),
-        "categories": [{"id": "static-unit", "status": "passed", "summary_sha256": "5" * 64}],
-        "waivers": [], "artifacts": [], "signer_id": signer_id,
+        "schema_version": "1",
+        "attestation_id": "0" * 64,
+        "workspace_commit": COMMIT,
+        "source_content_identity": source_identity,
+        "dependency_lock_sha256": "4" * 64,
+        "policy_sha256": content_identity(impact),
+        "categories": [
+            {"id": "static-unit", "status": "passed", "summary_sha256": "5" * 64}
+        ],
+        "waivers": [],
+        "artifacts": [],
+        "signer_id": signer_id,
     }
-    value["attestation_id"] = content_identity({k: v for k, v in value.items() if k != "attestation_id"})
-    value["signature"] = base64.urlsafe_b64encode(key.sign(canonical_json(value))).decode().rstrip("=")
+    value["attestation_id"] = content_identity(
+        {k: v for k, v in value.items() if k != "attestation_id"}
+    )
+    value["signature"] = (
+        base64.urlsafe_b64encode(key.sign(canonical_json(value))).decode().rstrip("=")
+    )
     return _canonical(tmp_path / "promotion-attestation.json", value), {
         signer_id: base64.urlsafe_b64encode(public).decode().rstrip("=")
     }
@@ -303,7 +442,8 @@ def pipeline_case(tmp_path: Path) -> dict:
         provenance_path=provenance,
         qualification_evidence_path=evidence,
         metadata_path=metadata,
-        target_definition_path=ROOT / "deployment/targets/v1/raspberry-pi-5-noble-arm64.json",
+        target_definition_path=ROOT
+        / "deployment/targets/v1/raspberry-pi-5-noble-arm64.json",
         operational_policy_path=ROOT / "deployment/operational-policy.json",
         component_roots={"drone": drone, "gc": gc},
         build_records=records,
@@ -315,24 +455,42 @@ def pipeline_case(tmp_path: Path) -> dict:
         registry=REGISTRY,
     )
     return {
-        "root": tmp_path, "lock": lock, "checks": check_paths, "evidence": evidence,
-        "snapshot": snapshot_path, "snapshot_value": snapshot, "provenance": provenance,
-        "metadata": metadata, "drone": drone, "gc": gc, "records": records,
-        "key": key_path, "manifest": manifest, "catalog": expected_catalog,
+        "root": tmp_path,
+        "lock": lock,
+        "checks": check_paths,
+        "evidence": evidence,
+        "snapshot": snapshot_path,
+        "snapshot_value": snapshot,
+        "provenance": provenance,
+        "metadata": metadata,
+        "drone": drone,
+        "gc": gc,
+        "records": records,
+        "key": key_path,
+        "manifest": manifest,
+        "catalog": expected_catalog,
     }
 
 
-def test_check_records_are_source_bound_and_evidence_requires_complete_set(tmp_path: Path) -> None:
+def test_check_records_are_source_bound_and_evidence_requires_complete_set(
+    tmp_path: Path,
+) -> None:
     lock = _write(tmp_path / "lock", b"lock\n")
     checks, evidence = _checks(tmp_path, lock)
     value = json.loads(evidence.read_text())
     assert {item["id"] for item in value["required_checks"]} >= {
-        "arm64-build", "arm64-tests", "promotion-evidence"
+        "arm64-build",
+        "arm64-tests",
+        "promotion-evidence",
     }
     with pytest.raises(ContractError, match="incomplete"):
         assemble_qualification_evidence(
-            version=VERSION, source_commit=COMMIT, dependency_lock_path=lock,
-            check_paths={key: path for key, path in checks.items() if key != "arm64-tests"},
+            version=VERSION,
+            source_commit=COMMIT,
+            dependency_lock_path=lock,
+            check_paths={
+                key: path for key, path in checks.items() if key != "arm64-tests"
+            },
             registry=REGISTRY,
         )
     tampered = json.loads(checks["arm64-build"].read_text())
@@ -340,26 +498,54 @@ def test_check_records_are_source_bound_and_evidence_requires_complete_set(tmp_p
     _canonical(checks["arm64-build"], tampered)
     with pytest.raises(ContractError, match="another source"):
         assemble_qualification_evidence(
-            version=VERSION, source_commit=COMMIT, dependency_lock_path=lock,
-            check_paths=checks, registry=REGISTRY,
+            version=VERSION,
+            source_commit=COMMIT,
+            dependency_lock_path=lock,
+            check_paths=checks,
+            registry=REGISTRY,
         )
 
 
-def test_manifest_is_derived_from_pinned_payload_policy_and_signer(pipeline_case: dict) -> None:
+def test_manifest_is_derived_from_pinned_payload_policy_and_signer(
+    pipeline_case: dict,
+) -> None:
     manifest = pipeline_case["manifest"]
     REGISTRY.validate("release-manifest", manifest)
     assert manifest["release_class"] == "qualified"
     assert manifest["components"] == ["drone", "gc"]
     assert manifest["source"]["branch"] == "release"
-    assert manifest["source"]["snapshot_content_identity"] == pipeline_case["snapshot_value"]["content_identity"]
-    assert manifest["source"]["content_identity"] != manifest["source"]["snapshot_content_identity"]
-    assert manifest["packages"][0]["content_sha256"] != manifest["packages"][1]["content_sha256"]
-    assert manifest["mission_catalog"]["catalog_hash"] == pipeline_case["catalog"]["catalog_hash"]
-    assert manifest["mission_catalog"]["catalog_sha256"] == hashlib.sha256(
-        canonical_json(pipeline_case["catalog"]) + b"\n"
-    ).hexdigest()
+    assert (
+        manifest["source"]["snapshot_content_identity"]
+        == pipeline_case["snapshot_value"]["content_identity"]
+    )
+    assert (
+        manifest["source"]["content_identity"]
+        != manifest["source"]["snapshot_content_identity"]
+    )
+    assert (
+        manifest["packages"][0]["content_sha256"]
+        != manifest["packages"][1]["content_sha256"]
+    )
+    assert (
+        manifest["mission_catalog"]["catalog_hash"]
+        == pipeline_case["catalog"]["catalog_hash"]
+    )
+    assert (
+        manifest["mission_catalog"]["catalog_sha256"]
+        == hashlib.sha256(canonical_json(pipeline_case["catalog"]) + b"\n").hexdigest()
+    )
     assert manifest["mission_catalog"]["scope"] == "qualified"
-    assert manifest["release_id"] == content_identity({k: v for k, v in manifest.items() if k != "release_id"})
+    reference = json.loads(
+        (pipeline_case["root"] / "inputs/px4-reference").read_text(encoding="utf-8")
+    )
+    assert manifest["px4"]["reference_snapshot_id"] == reference["snapshot_id"]
+    assert (
+        manifest["px4"]["reference_snapshot_sha256"]
+        == hashlib.sha256(canonical_json(reference) + b"\n").hexdigest()
+    )
+    assert manifest["release_id"] == content_identity(
+        {k: v for k, v in manifest.items() if k != "release_id"}
+    )
 
 
 def test_manifest_refuses_dirty_or_changed_candidate(pipeline_case: dict) -> None:
@@ -369,15 +555,25 @@ def test_manifest_refuses_dirty_or_changed_candidate(pipeline_case: dict) -> Non
     _canonical(pipeline_case["snapshot"], snapshot)
     with pytest.raises(ContractError, match="not clean"):
         assemble_release_manifest(
-            root=pipeline_case["root"], version=VERSION,
-            source_snapshot_path=pipeline_case["snapshot"], provenance_path=pipeline_case["provenance"],
-            qualification_evidence_path=pipeline_case["evidence"], metadata_path=pipeline_case["metadata"],
-            target_definition_path=ROOT / "deployment/targets/v1/raspberry-pi-5-noble-arm64.json",
+            root=pipeline_case["root"],
+            version=VERSION,
+            source_snapshot_path=pipeline_case["snapshot"],
+            provenance_path=pipeline_case["provenance"],
+            qualification_evidence_path=pipeline_case["evidence"],
+            metadata_path=pipeline_case["metadata"],
+            target_definition_path=ROOT
+            / "deployment/targets/v1/raspberry-pi-5-noble-arm64.json",
             operational_policy_path=ROOT / "deployment/operational-policy.json",
-            component_roots={"drone": pipeline_case["drone"], "gc": pipeline_case["gc"]},
-            build_records=pipeline_case["records"], private_key_path=pipeline_case["key"],
-            builder_id="github-actions-qualified", built_at="2026-08-26T12:00:00Z",
-            source_date_epoch=1787745600, registry=REGISTRY,
+            component_roots={
+                "drone": pipeline_case["drone"],
+                "gc": pipeline_case["gc"],
+            },
+            build_records=pipeline_case["records"],
+            private_key_path=pipeline_case["key"],
+            builder_id="github-actions-qualified",
+            built_at="2026-08-26T12:00:00Z",
+            source_date_epoch=1787745600,
+            registry=REGISTRY,
             source_content_identity="6" * 64,
         )
 
@@ -388,33 +584,59 @@ def test_manifest_refuses_tampered_build_record_or_payload(pipeline_case: dict) 
     _canonical(pipeline_case["records"]["gc"], gc_record)
     with pytest.raises(ContractError, match="build-record identity mismatch"):
         assemble_release_manifest(
-            root=pipeline_case["root"], version=VERSION,
-            source_snapshot_path=pipeline_case["snapshot"], provenance_path=pipeline_case["provenance"],
-            qualification_evidence_path=pipeline_case["evidence"], metadata_path=pipeline_case["metadata"],
-            target_definition_path=ROOT / "deployment/targets/v1/raspberry-pi-5-noble-arm64.json",
+            root=pipeline_case["root"],
+            version=VERSION,
+            source_snapshot_path=pipeline_case["snapshot"],
+            provenance_path=pipeline_case["provenance"],
+            qualification_evidence_path=pipeline_case["evidence"],
+            metadata_path=pipeline_case["metadata"],
+            target_definition_path=ROOT
+            / "deployment/targets/v1/raspberry-pi-5-noble-arm64.json",
             operational_policy_path=ROOT / "deployment/operational-policy.json",
-            component_roots={"drone": pipeline_case["drone"], "gc": pipeline_case["gc"]},
-            build_records=pipeline_case["records"], private_key_path=pipeline_case["key"],
-            builder_id="github-actions-qualified", built_at="2026-08-26T12:00:00Z",
-            source_date_epoch=1787745600, registry=REGISTRY,
+            component_roots={
+                "drone": pipeline_case["drone"],
+                "gc": pipeline_case["gc"],
+            },
+            build_records=pipeline_case["records"],
+            private_key_path=pipeline_case["key"],
+            builder_id="github-actions-qualified",
+            built_at="2026-08-26T12:00:00Z",
+            source_date_epoch=1787745600,
+            registry=REGISTRY,
             source_content_identity="6" * 64,
         )
 
 
-def test_full_signed_release_record_binds_every_published_asset(pipeline_case: dict) -> None:
+def test_full_signed_release_record_binds_every_published_asset(
+    pipeline_case: dict,
+) -> None:
     promotion_path, promotion_trust = _promotion(
-        Ed25519PrivateKey.generate(), pipeline_case["manifest"]["source"]["content_identity"],
+        Ed25519PrivateKey.generate(),
+        pipeline_case["manifest"]["source"]["content_identity"],
         pipeline_case["root"],
     )
-    impact = json.loads((ROOT / "deployment/governance/change-impact-policy.json").read_text())
+    impact = json.loads(
+        (ROOT / "deployment/governance/change-impact-policy.json").read_text()
+    )
     metadata = json.loads(pipeline_case["metadata"].read_text())
     change_summary = {
-        "schema_version": "1", "summary_type": "iii.release-change-summary", "version": VERSION,
-        "base_version": "v1.2.2", "base_commit": "0" * 40, "source_commit": COMMIT,
-        "commits": [], "changed_paths": ["deployment/release_pipeline.py"],
+        "schema_version": "1",
+        "summary_type": "iii.release-change-summary",
+        "version": VERSION,
+        "base_version": "v1.2.2",
+        "base_commit": "0" * 40,
+        "source_commit": COMMIT,
+        "commits": [],
+        "changed_paths": ["deployment/release_pipeline.py"],
         "categories": {
-            "drone": [], "gc": [], "missions": [], "configuration": [], "px4": [], "qgc": [],
-            "host_provisioning": ["deployment/release_pipeline.py"], "documentation": [],
+            "drone": [],
+            "gc": [],
+            "missions": [],
+            "configuration": [],
+            "px4": [],
+            "qgc": [],
+            "host_provisioning": ["deployment/release_pipeline.py"],
+            "documentation": [],
         },
         "operator_changes": ["Qualified release pipeline changed"],
     }
@@ -424,19 +646,31 @@ def test_full_signed_release_record_binds_every_published_asset(pipeline_case: d
         manifest=pipeline_case["manifest"],
         manifest_path=pipeline_case["root"] / "release-manifest.json",
         component_roots={"drone": pipeline_case["drone"], "gc": pipeline_case["gc"]},
-        build_records=pipeline_case["records"], check_paths={path.name: path for path in pipeline_case["checks"].values()},
+        build_records=pipeline_case["records"],
+        check_paths={path.name: path for path in pipeline_case["checks"].values()},
         qualification_evidence_path=pipeline_case["evidence"],
         promotion_attestation_path=promotion_path,
         promotion_trusted_signers=promotion_trust,
-        impact_policy=impact, metadata=metadata, change_summary=change_summary,
-        private_key_path=pipeline_case["key"], output=output,
-        repository="DIII-SDU-Group/III-Drone-ros2-ws", run_id="12345", run_attempt=1,
-        created_at="2026-08-26T12:00:00Z", registry=REGISTRY,
+        impact_policy=impact,
+        metadata=metadata,
+        change_summary=change_summary,
+        private_key_path=pipeline_case["key"],
+        output=output,
+        repository="DIII-SDU-Group/III-Drone-ros2-ws",
+        run_id="12345",
+        run_attempt=1,
+        created_at="2026-08-26T12:00:00Z",
+        registry=REGISTRY,
     )
     publication = json.loads(assets["release-publication.json"].read_text())
     record = json.loads(assets["release-record.json"].read_text())
-    assert publication["release_record_sha256"] == hashlib.sha256(assets["release-record.json"].read_bytes()).hexdigest()
-    assert {item["name"] for item in record["checks"]} == {path.name for path in pipeline_case["checks"].values()}
+    assert (
+        publication["release_record_sha256"]
+        == hashlib.sha256(assets["release-record.json"].read_bytes()).hexdigest()
+    )
+    assert {item["name"] for item in record["checks"]} == {
+        path.name for path in pipeline_case["checks"].values()
+    }
     assert len([name for name in assets if name.endswith("bundle.tar.zst")]) == 2
 
 
@@ -447,15 +681,27 @@ def test_signing_failure_leaves_no_partial_release(pipeline_case: dict) -> None:
     output = pipeline_case["root"] / "failed-signing"
     with pytest.raises(ContractError, match="private signer key"):
         assemble_signed_release(
-            root=ROOT, manifest=pipeline_case["manifest"],
+            root=ROOT,
+            manifest=pipeline_case["manifest"],
             manifest_path=pipeline_case["root"] / "failed-manifest.json",
-            component_roots={"drone": pipeline_case["drone"], "gc": pipeline_case["gc"]},
-            build_records=pipeline_case["records"], check_paths={},
+            component_roots={
+                "drone": pipeline_case["drone"],
+                "gc": pipeline_case["gc"],
+            },
+            build_records=pipeline_case["records"],
+            check_paths={},
             qualification_evidence_path=pipeline_case["evidence"],
-            promotion_attestation_path=pipeline_case["evidence"], promotion_trusted_signers={},
-            impact_policy={}, metadata=json.loads(pipeline_case["metadata"].read_text()),
-            change_summary={}, private_key_path=invalid_key, output=output,
-            repository="DIII-SDU-Group/III-Drone-ros2-ws", run_id="1", run_attempt=1,
-            created_at="2026-08-26T12:00:00Z", registry=REGISTRY,
+            promotion_attestation_path=pipeline_case["evidence"],
+            promotion_trusted_signers={},
+            impact_policy={},
+            metadata=json.loads(pipeline_case["metadata"].read_text()),
+            change_summary={},
+            private_key_path=invalid_key,
+            output=output,
+            repository="DIII-SDU-Group/III-Drone-ros2-ws",
+            run_id="1",
+            run_attempt=1,
+            created_at="2026-08-26T12:00:00Z",
+            registry=REGISTRY,
         )
     assert not output.exists()

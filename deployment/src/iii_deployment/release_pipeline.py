@@ -15,7 +15,13 @@ from typing import Any, Mapping, Sequence
 from cryptography.hazmat.primitives import serialization
 
 from .bundle import load_bundle_limits, package_bundle_set, verify_bundle
-from .contracts import ContractError, ContractRegistry, SEMVER, canonical_json, content_identity
+from .contracts import (
+    ContractError,
+    ContractRegistry,
+    SEMVER,
+    canonical_json,
+    content_identity,
+)
 from .qualified_release import (
     NOTES_NAME,
     PROMOTION_NAME,
@@ -88,7 +94,9 @@ def create_qualification_check(
         path = outputs[name]
         if not path.is_file() or path.is_symlink():
             raise ContractError(f"qualification output is missing or unsafe: {name}")
-        retained.append({"name": name, "sha256": _sha256(path), "bytes": path.stat().st_size})
+        retained.append(
+            {"name": name, "sha256": _sha256(path), "bytes": path.stat().st_size}
+        )
     value = {
         "schema_version": "1",
         "check_type": "iii.qualification-check",
@@ -121,15 +129,21 @@ def assemble_qualification_evidence(
         check = _json(path, canonical=True)
         registry.validate("qualification-check", check)
         if check["check_id"] != declared_id:
-            raise ContractError(f"qualification check filename binding differs for {declared_id}")
+            raise ContractError(
+                f"qualification check filename binding differs for {declared_id}"
+            )
         if check["source_commit"] != source_commit or check["version"] != version:
-            raise ContractError(f"qualification check {declared_id} is bound to another source/version")
+            raise ContractError(
+                f"qualification check {declared_id} is bound to another source/version"
+            )
         if declared_id in observed:
             raise ContractError(f"duplicate qualification check {declared_id}")
         observed[declared_id] = check
     missing = sorted(REQUIRED_QUALIFICATION_CHECKS - set(observed))
     if missing:
-        raise ContractError("qualification checks are incomplete: " + ", ".join(missing))
+        raise ContractError(
+            "qualification checks are incomplete: " + ", ".join(missing)
+        )
     value = {
         "schema_version": "1",
         "schema": "iii.qualification-evidence/v1",
@@ -139,7 +153,11 @@ def assemble_qualification_evidence(
         "dependency_lock_sha256": _sha256(dependency_lock_path),
         "governance_verified": True,
         "required_checks": [
-            {"id": identifier, "status": "passed", "evidence_sha256": _sha256(check_paths[identifier])}
+            {
+                "id": identifier,
+                "status": "passed",
+                "evidence_sha256": _sha256(check_paths[identifier]),
+            }
             for identifier in sorted(observed)
         ],
         "evidence_complete": True,
@@ -161,14 +179,18 @@ def _hash_inputs(root: Path, paths: Sequence[str]) -> str:
         selected = [candidate] if candidate.is_file() else sorted(candidate.rglob("*"))
         for path in selected:
             if path.is_symlink():
-                raise ContractError(f"release metadata input contains a symlink: {path}")
+                raise ContractError(
+                    f"release metadata input contains a symlink: {path}"
+                )
             name = path.relative_to(root).as_posix()
             if path.is_dir():
                 entries.append((name, "directory", None))
             elif path.is_file():
                 entries.append((name, "file", _sha256(path)))
             else:
-                raise ContractError(f"release metadata input contains a special file: {path}")
+                raise ContractError(
+                    f"release metadata input contains a special file: {path}"
+                )
     if not entries:
         raise ContractError("release metadata input set is empty")
     return content_identity(entries)
@@ -230,16 +252,25 @@ def _validate_build_records(
     ):
         raise ContractError("GC build-record identity mismatch")
     source_identity = snapshot["content_identity"]
-    if drone["source_identity"] != source_identity or gc["source_identity"] != source_identity:
+    if (
+        drone["source_identity"] != source_identity
+        or gc["source_identity"] != source_identity
+    ):
         raise ContractError("build records differ from the qualified source snapshot")
     if drone["components"] != ["drone"]:
-        raise ContractError("qualified ARM64 build record must contain only the drone component")
+        raise ContractError(
+            "qualified ARM64 build record must contain only the drone component"
+        )
     if drone["target_definition_id"] != target["definition_id"]:
-        raise ContractError("ARM64 build record differs from the qualified target definition")
+        raise ContractError(
+            "ARM64 build record differs from the qualified target definition"
+        )
     build_policy = _json(root / "deployment/build-policy.json")
     registry.validate("build-policy", build_policy)
     if drone["policy_sha256"] != content_identity(build_policy):
-        raise ContractError("ARM64 build record differs from the qualified build policy")
+        raise ContractError(
+            "ARM64 build record differs from the qualified build policy"
+        )
     install = component_roots["drone"] / build_policy["release_install"]
     if not install.is_dir() or _build_tree_identity(install) != drone["install_sha256"]:
         raise ContractError("ARM64 payload differs from its retained build record")
@@ -252,6 +283,10 @@ def _validate_build_records(
     input_hashes = {
         path: _sha256(root / path)
         for path in (
+            "deployment/gc-application-policy.json",
+            "deployment/gc/compose.release.yml",
+            "deployment/qgc/key-policy.json",
+            "deployment/qgc/managed-settings.json",
             "src/III-Drone-GC/docker/proxy.Dockerfile",
             "src/III-Drone-GC/docker/proxy-requirements.lock",
             "src/III-Drone-GC/frontend/Dockerfile",
@@ -265,9 +300,13 @@ def _validate_build_records(
         for item in qualification_evidence["required_checks"]
     }
     if gc["test_record_sha256"] != evidence_hashes.get("gc-tests"):
-        raise ContractError("GC build record differs from the retained GC test evidence")
+        raise ContractError(
+            "GC build record differs from the retained GC test evidence"
+        )
     if {image["name"] for image in gc["images"]} != {"frontend", "proxy"}:
-        raise ContractError("GC build record must contain exactly the frontend and proxy images")
+        raise ContractError(
+            "GC build record must contain exactly the frontend and proxy images"
+        )
     for image in gc["images"]:
         archive = component_roots["gc"] / "images" / image["archive"]
         if (
@@ -276,20 +315,70 @@ def _validate_build_records(
             or archive.stat().st_size != image["bytes"]
             or _sha256(archive) != image["sha256"]
         ):
-            raise ContractError(f"GC {image['name']} archive differs from its build record")
+            raise ContractError(
+                f"GC {image['name']} archive differs from its build record"
+            )
+    qgc = gc["qgroundcontrol"]
+    qgc_path = component_roots["gc"] / "qgc" / qgc["appimage"]
+    if (
+        qgc_path.is_symlink()
+        or not qgc_path.is_file()
+        or qgc_path.stat().st_size != qgc["bytes"]
+        or _sha256(qgc_path) != qgc["sha256"]
+        or qgc["appimage_update_information"] != ""
+        or qgc["update_owner"] != "iii-gc-release"
+    ):
+        raise ContractError("QGroundControl AppImage differs from its GC build record")
+    configuration = qgc["configuration"]
+    for name, hash_name in (
+        ("policy", "policy_sha256"),
+        ("baseline", "baseline_sha256"),
+    ):
+        path = component_roots["gc"] / configuration[name]
+        if (
+            path.is_symlink()
+            or not path.is_file()
+            or _sha256(path) != configuration[hash_name]
+        ):
+            raise ContractError(
+                "QGroundControl release configuration differs from its build record"
+            )
+    key_policy = _json(component_roots["gc"] / configuration["policy"], canonical=True)
+    baseline = _json(component_roots["gc"] / configuration["baseline"], canonical=True)
+    registry.validate("qgc-key-policy", key_policy)
+    registry.validate("qgc-managed-settings", baseline)
+    if (
+        key_policy["policy_id"] != configuration["policy_id"]
+        or baseline["settings_id"] != configuration["settings_id"]
+        or baseline["policy_id"] != configuration["policy_id"]
+    ):
+        raise ContractError("QGroundControl release configuration identity differs")
+    compose = component_roots["gc"] / gc["application"]["compose"]
+    if (
+        compose.is_symlink()
+        or not compose.is_file()
+        or _sha256(compose) != gc["application"]["compose_sha256"]
+    ):
+        raise ContractError("GC release compose contract differs from its build record")
     return {"drone": drone, "gc": gc}
 
 
 def _source_manifest(
-    snapshot: Mapping[str, Any], snapshot_path: Path, provenance_path: Path,
+    snapshot: Mapping[str, Any],
+    snapshot_path: Path,
+    provenance_path: Path,
     source_content_identity: str,
 ) -> dict[str, Any]:
     workspace = snapshot["repositories"][0]
     if workspace["path"] != "." or not snapshot["clean"]:
         raise ContractError("qualified release source snapshot is not clean")
-    dirty = [item["path"] for item in snapshot["repositories"] if item["state"] != "clean"]
+    dirty = [
+        item["path"] for item in snapshot["repositories"] if item["state"] != "clean"
+    ]
     if dirty:
-        raise ContractError("qualified release has dirty governed repositories: " + ", ".join(dirty))
+        raise ContractError(
+            "qualified release has dirty governed repositories: " + ", ".join(dirty)
+        )
     return {
         "workspace_commit": snapshot["workspace_commit"],
         "branch": "release",
@@ -343,7 +432,10 @@ def assemble_release_manifest(
     verify_source_snapshot(snapshot, registry)
     evidence = _json(qualification_evidence_path, canonical=True)
     registry.validate("qualification-evidence", evidence)
-    if evidence["source_commit"] != snapshot["workspace_commit"] or evidence["version"] != version:
+    if (
+        evidence["source_commit"] != snapshot["workspace_commit"]
+        or evidence["version"] != version
+    ):
         raise ContractError("qualification evidence differs from release candidate")
     metadata = _json(metadata_path)
     registry.validate("release-metadata", metadata)
@@ -351,8 +443,10 @@ def assemble_release_manifest(
     policy = _json(operational_policy_path)
     registry.validate("operational-policy", policy)
     if set(component_roots) != {"drone", "gc"} or set(build_records) != {"drone", "gc"}:
-        raise ContractError("qualified release requires exact drone and GC build inputs")
-    _validate_build_records(
+        raise ContractError(
+            "qualified release requires exact drone and GC build inputs"
+        )
+    retained_builds = _validate_build_records(
         root=root,
         version=version,
         snapshot=snapshot,
@@ -365,12 +459,67 @@ def assemble_release_manifest(
     payload_identities: dict[str, str] = {}
     payload_entries: list[tuple[str, str]] = []
     for component in ("drone", "gc"):
-        payload_identities[component], entries = _tree_inventory(component_roots[component], component)
+        payload_identities[component], entries = _tree_inventory(
+            component_roots[component], component
+        )
         payload_entries.extend(entries)
-        if build_records[component].is_symlink() or not build_records[component].is_file():
+        if (
+            build_records[component].is_symlink()
+            or not build_records[component].is_file()
+        ):
             raise ContractError(f"{component} build record is missing or unsafe")
-    signer_id = signer_id_for_public_key(load_private_key(private_key_path).public_key())
+    signer_id = signer_id_for_public_key(
+        load_private_key(private_key_path).public_key()
+    )
     inputs = metadata["input_paths"]
+    for profile in ("real", "sim"):
+        if len(inputs[f"px4_{profile}"]) != 1:
+            raise ContractError(
+                f"PX4 {profile} release input must contain exactly one manifest"
+            )
+    if len(inputs["px4_reference"]) != 1:
+        raise ContractError(
+            "PX4 release input must contain exactly one reference snapshot"
+        )
+    reference_path = root / inputs["px4_reference"][0]
+    px4_reference = _json(reference_path, canonical=True)
+    registry.validate("px4-parameter-snapshot", px4_reference)
+    expected_reference_id = content_identity(
+        {
+            "profile": px4_reference["profile"],
+            "target": px4_reference["target"],
+            "parameter_count": px4_reference["parameter_count"],
+            "parameters": px4_reference["parameters"],
+        }
+    )
+    if (
+        px4_reference["profile"] != "sim"
+        or px4_reference["complete"] is not True
+        or px4_reference["snapshot_id"] != expected_reference_id
+    ):
+        raise ContractError("PX4 reference snapshot is incomplete or has changed")
+    px4_manifests: dict[str, dict[str, Any]] = {}
+    for profile in ("real", "sim"):
+        document = _json(root / inputs[f"px4_{profile}"][0], canonical=True)
+        registry.validate("px4-parameter-manifest", document)
+        expected_manifest_id = content_identity(
+            {key: value for key, value in document.items() if key != "manifest_id"}
+        )
+        if (
+            document["profile"] != profile
+            or document["manifest_id"] != expected_manifest_id
+            or document["firmware"]["reference_version"]
+            != px4_reference["target"]["firmware_version"]
+            or not document["firmware"]["reference_commit"].startswith(
+                px4_reference["target"]["firmware_commit"]
+            )
+            or document["firmware"]["compatible_range"]
+            != metadata["px4"]["firmware_range"]
+        ):
+            raise ContractError(
+                f"PX4 {profile} manifest is not bound to the reference snapshot"
+            )
+        px4_manifests[profile] = document
     if not re.fullmatch(r"[a-f0-9]{64}", source_content_identity):
         raise ContractError("governed source-content identity is invalid")
     source = _source_manifest(
@@ -385,9 +534,16 @@ def assemble_release_manifest(
     for profile in metadata["profiles"]:
         descriptor = mission_catalog["profiles"].get(profile["id"])
         if descriptor is None:
-            raise ContractError(f"release profile is absent from the qualified mission catalog: {profile['id']}")
-        if profile["status"] == "commissioned" and descriptor.get("default_entry_id") != profile["default_mission"]:
-            raise ContractError(f"release profile default differs from the qualified mission catalog: {profile['id']}")
+            raise ContractError(
+                f"release profile is absent from the qualified mission catalog: {profile['id']}"
+            )
+        if (
+            profile["status"] == "commissioned"
+            and descriptor.get("default_entry_id") != profile["default_mission"]
+        ):
+            raise ContractError(
+                f"release profile default differs from the qualified mission catalog: {profile['id']}"
+            )
     manifest: dict[str, Any] = {
         "schema_version": "1",
         "manifest_type": "release",
@@ -414,14 +570,24 @@ def assemble_release_manifest(
             "compiler": f"{target['toolchain']['target_triple']}-g++ {target['toolchain']['compiler_version']}",
             "sysroot_sha256": target["sysroot"]["content_id"],
         },
-        "dependency_lock": {"sha256": snapshot["dependency_lock_sha256"], "verified": True},
+        "dependency_lock": {
+            "sha256": snapshot["dependency_lock_sha256"],
+            "verified": True,
+        },
         "packages": [
-            {"name": f"iii_{component}_release", "version": version.removeprefix("v"), "content_sha256": payload_identities[component]}
+            {
+                "name": f"iii_{component}_release",
+                "version": version.removeprefix("v"),
+                "content_sha256": payload_identities[component],
+            }
             for component in ("drone", "gc")
         ],
         "checksums": {
             **{name: digest for name, digest in payload_entries},
-            **{f"records/{component}.json": _sha256(build_records[component]) for component in ("drone", "gc")},
+            **{
+                f"records/{component}.json": _sha256(build_records[component])
+                for component in ("drone", "gc")
+            },
         },
         "configuration": {
             **metadata["configuration"],
@@ -432,12 +598,23 @@ def assemble_release_manifest(
                 "real": _hash_inputs(root, inputs["px4_real"]),
                 "sim": _hash_inputs(root, inputs["px4_sim"]),
             },
+            "manifest_ids": {
+                profile: px4_manifests[profile]["manifest_id"]
+                for profile in ("real", "sim")
+            },
+            "reference_snapshot_id": px4_reference["snapshot_id"],
+            "reference_snapshot_sha256": _sha256(reference_path),
             "firmware_range": metadata["px4"]["firmware_range"],
             "interface_sha256": _hash_inputs(root, inputs["px4_interface"]),
         },
         "qgc": {
-            "managed_settings_sha256": _hash_inputs(root, inputs["qgc_managed_settings"]),
+            "managed_settings_sha256": _hash_inputs(
+                root, inputs["qgc_managed_settings"]
+            ),
             "compatible_versions": metadata["qgc"]["compatible_versions"],
+            "selected_version": retained_builds["gc"]["qgroundcontrol"]["version"],
+            "appimage_sha256": retained_builds["gc"]["qgroundcontrol"]["sha256"],
+            "update_owner": retained_builds["gc"]["qgroundcontrol"]["update_owner"],
         },
         "profiles": metadata["profiles"],
         "mission_catalog": {
@@ -454,9 +631,20 @@ def assemble_release_manifest(
             "evidence_sha256": _sha256(qualification_evidence_path),
             "evidence_complete": True,
         },
-        "signing": {"algorithm": "Ed25519", "signer_id": signer_id, "authority": "ci-qualified"},
-        "operational_policy": {"schema_version": str(policy["schema_version"]), "sha256": content_identity(policy)},
-        "build": {"builder_id": builder_id, "built_at": built_at, "source_date_epoch": source_date_epoch},
+        "signing": {
+            "algorithm": "Ed25519",
+            "signer_id": signer_id,
+            "authority": "ci-qualified",
+        },
+        "operational_policy": {
+            "schema_version": str(policy["schema_version"]),
+            "sha256": content_identity(policy),
+        },
+        "build": {
+            "builder_id": builder_id,
+            "built_at": built_at,
+            "source_date_epoch": source_date_epoch,
+        },
     }
     manifest["release_id"] = content_identity(
         {key: item for key, item in manifest.items() if key != "release_id"}
@@ -535,8 +723,13 @@ def assemble_signed_release(
             run_id=run_id,
             run_attempt=run_attempt,
             build_inputs={
-                "manifest": hashlib.sha256(canonical_json(manifest) + b"\n").hexdigest(),
-                **{f"{component}_build_record": _sha256(path) for component, path in build_records.items()},
+                "manifest": hashlib.sha256(
+                    canonical_json(manifest) + b"\n"
+                ).hexdigest(),
+                **{
+                    f"{component}_build_record": _sha256(path)
+                    for component, path in build_records.items()
+                },
             },
             check_paths=check_paths,
             artifact_paths=artifact_paths,
@@ -551,29 +744,34 @@ def assemble_signed_release(
         trust = {
             "schema_version": "1",
             "store_type": "iii.trusted-signers",
-            "signers": [{
-                "signer_id": signer_id,
-                "authority": "ci-qualified",
-                "algorithm": "Ed25519",
-                "public_key": base64.b64encode(
-                    public.public_bytes(
-                        encoding=serialization.Encoding.Raw,
-                        format=serialization.PublicFormat.Raw,
-                    )
-                ).decode("ascii"),
-                "state": "active",
-            }],
+            "signers": [
+                {
+                    "signer_id": signer_id,
+                    "authority": "ci-qualified",
+                    "algorithm": "Ed25519",
+                    "public_key": base64.b64encode(
+                        public.public_bytes(
+                            encoding=serialization.Encoding.Raw,
+                            format=serialization.PublicFormat.Raw,
+                        )
+                    ).decode("ascii"),
+                    "state": "active",
+                }
+            ],
         }
         # Bundle verification is performed with the caller-provisioned trust in
         # the workflow; inspection here supplies the verified structural inputs
         # needed for the signed publication without inventing another trust root.
         from .bundle import inspect_bundle
+
         verified = {
             component: inspect_bundle(
                 value.directory,
                 trust,
                 registry=registry,
-                host_limits=load_bundle_limits(root / "deployment/operational-policy.json"),
+                host_limits=load_bundle_limits(
+                    root / "deployment/operational-policy.json"
+                ),
             )
             for component, value in paths.items()
         }
@@ -592,51 +790,98 @@ def assemble_signed_release(
         )
         publication_path = output / PUBLICATION_NAME
         write_canonical(publication_path, publication)
-        return {PUBLICATION_NAME: publication_path, RECORD_NAME: record_path, **artifact_paths}
+        return {
+            PUBLICATION_NAME: publication_path,
+            RECORD_NAME: record_path,
+            **artifact_paths,
+        }
     except Exception:
         import shutil
+
         shutil.rmtree(output, ignore_errors=True)
         raise
 
 
-def git_change_summary(root: Path, version: str, registry: ContractRegistry) -> dict[str, Any]:
+def git_change_summary(
+    root: Path, version: str, registry: ContractRegistry
+) -> dict[str, Any]:
     if not SEMVER.fullmatch(version):
         raise ContractError("change summary version is not strict SemVer")
     tags = subprocess.run(
         ["git", "tag", "--merged", "HEAD", "--list", "v*", "--sort=-version:refname"],
-        cwd=root, capture_output=True, text=True, check=False,
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if tags.returncode:
-        raise ContractError(tags.stderr.strip() or "cannot enumerate prior release tags")
-    candidates = [tag for tag in tags.stdout.splitlines() if SEMVER.fullmatch(tag) and tag != version]
+        raise ContractError(
+            tags.stderr.strip() or "cannot enumerate prior release tags"
+        )
+    candidates = [
+        tag
+        for tag in tags.stdout.splitlines()
+        if SEMVER.fullmatch(tag) and tag != version
+    ]
     base_version = candidates[0] if candidates else None
-    base = base_version or subprocess.run(
-        ["git", "rev-list", "--max-parents=0", "HEAD"], cwd=root,
-        capture_output=True, text=True, check=True,
-    ).stdout.splitlines()[0]
+    base = (
+        base_version
+        or subprocess.run(
+            ["git", "rev-list", "--max-parents=0", "HEAD"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()[0]
+    )
     base_commit = subprocess.run(
-        ["git", "rev-parse", f"{base}^{{commit}}"], cwd=root,
-        capture_output=True, text=True, check=True,
+        ["git", "rev-parse", f"{base}^{{commit}}"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.strip()
     source_commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=True,
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.strip()
     log = subprocess.run(
-        ["git", "log", "--format=%H%x09%s", f"{base_commit}..{source_commit}"], cwd=root,
-        capture_output=True, text=True, check=True,
+        ["git", "log", "--format=%H%x09%s", f"{base_commit}..{source_commit}"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.splitlines()
     commits = [
         {"sha": line.split("\t", 1)[0], "subject": line.split("\t", 1)[1]}
-        for line in log if "\t" in line
+        for line in log
+        if "\t" in line
     ]
     changed = subprocess.run(
-        ["git", "diff", "--name-only", f"{base_commit}..{source_commit}"], cwd=root,
-        capture_output=True, text=True, check=True,
+        ["git", "diff", "--name-only", f"{base_commit}..{source_commit}"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.splitlines()
     patterns = {
-        "drone": ("src/III-Drone-Core/", "src/III-Drone-Configuration/", "src/III-Drone-Interfaces/", "src/III-Drone-Mission/", "src/III-Drone-Runtime/", "src/III-Drone-Supervision/", "src/iwr6843aop-ROS2-pkg/"),
+        "drone": (
+            "src/III-Drone-Core/",
+            "src/III-Drone-Configuration/",
+            "src/III-Drone-Interfaces/",
+            "src/III-Drone-Mission/",
+            "src/III-Drone-Runtime/",
+            "src/III-Drone-Supervision/",
+            "src/iwr6843aop-ROS2-pkg/",
+        ),
         "gc": ("src/III-Drone-GC/", "tools/III-Drone-CLI/"),
-        "missions": ("src/III-Drone-Mission/mission_specification/", "src/III-Drone-Mission/behavior_trees/"),
+        "missions": (
+            "src/III-Drone-Mission/mission_specification/",
+            "src/III-Drone-Mission/behavior_trees/",
+        ),
         "configuration": ("src/III-Drone-Configuration/config/",),
         "px4": ("PX4-Autopilot/", "deployment/px4/"),
         "qgc": ("deployment/qgc/", "src/III-Drone-GC/config/"),
@@ -644,12 +889,18 @@ def git_change_summary(root: Path, version: str, registry: ContractRegistry) -> 
         "documentation": ("docs/", "README.md", "AGENTS.md"),
     }
     categories = {
-        name: sorted(path for path in changed if any(path == prefix or path.startswith(prefix) for prefix in prefixes))
+        name: sorted(
+            path
+            for path in changed
+            if any(path == prefix or path.startswith(prefix) for prefix in prefixes)
+        )
         for name, prefixes in patterns.items()
     }
     changes = [f"{item['sha'][:12]} {item['subject']}" for item in commits]
     if not changes:
-        changes = ["No commits after the baseline tag; the root baseline itself is being qualified."]
+        changes = [
+            "No commits after the baseline tag; the root baseline itself is being qualified."
+        ]
     value = {
         "schema_version": "1",
         "summary_type": "iii.release-change-summary",

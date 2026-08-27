@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/portable-backup-upload.schema.json",
+  "title": "III resumable portable backup upload manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "upload_id", "backup_id", "client_id", "archive"],
+  "properties": {
+    "schema": {"const": "iii.portable-backup-upload/v1"},
+    "upload_id": {"$ref": "#/definitions/hash"},
+    "backup_id": {"$ref": "#/definitions/hash"},
+    "client_id": {"$ref": "#/definitions/hash"},
+    "archive": {"type": "object", "additionalProperties": false, "required": ["size", "sha256"], "properties": {"size": {"type": "integer", "minimum": 1}, "sha256": {"$ref": "#/definitions/hash"}}}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

@@ -10,7 +10,7 @@
   },
   "configuration": {"schema_version": 1, "compatible_from": [1], "capture_contract": "iii.capture/v1"},
   "px4": {"firmware_range": ">=1.16.1,<1.17.0"},
-  "qgc": {"compatible_versions": ["5.0.6"]},
+  "qgc": {"compatible_versions": ["5.0.8"]},
   "profiles": [
     {"id": "real", "status": "commissioned", "bootable": true, "parameter_profile": "real", "capabilities": ["flight"], "default_mission": "inspection-production", "health": {"schema": "iii.activation-health-policy/v1", "required_hardware_roles": ["cable_camera", "charger_gripper", "fmu", "mmwave_cli", "mmwave_data"], "optional_hardware_roles": [], "required_services": ["micro_ros_agent"], "optional_services": [], "required_managed_nodes": {"cable_camera": "active", "charger_gripper": "active", "configuration_server": "active", "custom_operation": "active", "hough_transformer": "active", "maneuver_controller": "active", "mission_executor": "active", "mmwave": "active", "pl_dir_computer": "active", "pl_mapper": "active", "powerline_overview_provider": "active", "pylon_overview_provider": "active", "rosbag_recorder": "active", "tf": "active", "trajectory_generator": "active"}, "optional_managed_nodes": {}, "required_systemd_units": ["iii-runtime-api.service", "iii-system-daemon.service"]}},
     {"id": "opti_track", "status": "commissioned", "bootable": true, "parameter_profile": "real", "capabilities": ["flight", "mocap"], "default_mission": "inspection-production", "health": {"schema": "iii.activation-health-policy/v1", "required_hardware_roles": ["cable_camera", "charger_gripper", "fmu", "mmwave_cli", "mmwave_data"], "optional_hardware_roles": [], "required_services": ["micro_ros_agent"], "optional_services": [], "required_managed_nodes": {"cable_camera": "active", "charger_gripper": "active", "configuration_server": "active", "custom_operation": "active", "hough_transformer": "active", "maneuver_controller": "active", "mission_executor": "active", "mmwave": "active", "pl_dir_computer": "active", "pl_mapper": "active", "powerline_overview_provider": "active", "pylon_overview_provider": "active", "rosbag_recorder": "active", "tf": "active", "trajectory_generator": "active"}, "optional_managed_nodes": {}, "required_systemd_units": ["iii-runtime-api.service", "iii-system-daemon.service"]}},
@@ -24,9 +24,10 @@
   },
   "input_paths": {
     "configuration": ["src/III-Drone-Configuration/config"],
-    "px4_real": ["src/III-Drone-Configuration/config/parameter_sets/real/tracked/default.yaml"],
-    "px4_sim": ["src/III-Drone-Configuration/config/parameter_sets/sim/tracked/default.yaml"],
+    "px4_real": ["deployment/px4/real.json"],
+    "px4_sim": ["deployment/px4/sim.json"],
+    "px4_reference": ["deployment/px4/reference-sitl-snapshot.json"],
     "px4_interface": ["PX4-Autopilot/src/modules/uxrce_dds_client/dds_topics.yaml", "src/III-Drone-Interfaces"],
-    "qgc_managed_settings": ["src/III-Drone-GC/config/params.yaml"]
+    "qgc_managed_settings": ["deployment/qgc/key-policy.json", "deployment/qgc/managed-settings.json"]
   }
 }

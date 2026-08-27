@@ -16,7 +16,7 @@ from iii_deployment.receiver.client import main as receiver_client_main
 from iii_deployment.receiver.config import INCOMING_ROOT
 from iii_deployment.receiver.protocol import IDENTITY
 from iii_deployment.receiver.transport import MAXIMUM_REQUEST_BYTES
-from iii_deployment.receiver.upload import LOCK_PATH, UploadStore
+from iii_deployment.receiver.upload import BackupUploadStore, LOCK_PATH, UploadStore
 
 
 SFTP_SERVER = Path("/usr/lib/openssh/sftp-server")
@@ -173,6 +173,20 @@ def dispatch(
         raise ContractError("fixed SFTP server unexpectedly returned")
 
     fields = original_command.split(" ")
+    if fields and fields[0] == "iii-backup-upload":
+        if len(fields) != 3 or fields[1] not in {"begin", "inspect", "finalize"}:
+            raise ContractError("SSH portable backup upload command is unsupported")
+        action, backup_id = fields[1:]
+        backups = BackupUploadStore(incoming_root, lock_path=lock_path)
+        if action == "begin":
+            result = backups.begin(
+                _request_document(), backup_id=backup_id, client_id=client_id
+            )
+        elif action == "inspect":
+            result = backups.inspect(backup_id=backup_id, client_id=client_id)
+        else:
+            result = backups.finalize(backup_id=backup_id, client_id=client_id)
+        return _emit(result)
     if not fields or fields[0] != "iii-upload":
         raise ContractError("SSH command is outside the fixed deployment gateway")
     store = UploadStore(incoming_root, lock_path=lock_path)

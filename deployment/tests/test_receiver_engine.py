@@ -9,7 +9,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from iii_deployment.contracts import ContractError, ContractRegistry, canonical_json
+from iii_deployment.contracts import (
+    ContractError,
+    ContractRegistry,
+    canonical_json,
+    content_identity,
+)
 from iii_deployment.log_lifecycle import LogInventory, LogTransferStore
 from iii_deployment.identity import create_machine_enrollment
 from iii_deployment.receiver.access import AccessManager, client_id_for_public_key
@@ -25,6 +30,65 @@ from iii_deployment.receiver.server import assert_reconciliation_boot_safe
 from iii_deployment.staging import StageResult
 
 REGISTRY = ContractRegistry(Path(__file__).resolve().parents[1] / "schemas/v1")
+
+
+def px4_evidence(release_id: str, manifest_id: str = "d" * 64) -> dict:
+    target = {
+        "system_id": 1,
+        "component_id": 1,
+        "armed": False,
+        "firmware_version": "1.16.0",
+        "firmware_commit": "0123456789",
+    }
+    parameters = [
+        {"name": "SYS_AUTOSTART", "mav_type": "UINT32", "value": 4001, "index": 0}
+    ]
+    snapshot = {
+        "schema": "iii.px4-parameter-snapshot/v1",
+        "snapshot_id": content_identity(
+            {
+                "profile": "real",
+                "target": target,
+                "parameter_count": 1,
+                "parameters": parameters,
+            }
+        ),
+        "captured_at": "2026-08-27T12:00:00Z",
+        "profile": "real",
+        "provenance": "qgc-forwarded-mavlink-observation",
+        "target": target,
+        "complete": True,
+        "parameter_count": 1,
+        "parameters": parameters,
+    }
+    comparison = {
+        "schema": "iii.px4-parameter-comparison/v1",
+        "profile": "real",
+        "manifest_id": manifest_id,
+        "snapshot_id": snapshot["snapshot_id"],
+        "inventory_complete": True,
+        "missing": [],
+        "unexpected": [],
+        "drift": {"release-required": [], "operator-tunable": []},
+        "preserved_calibration_identity": [],
+        "required_match": True,
+    }
+    evidence = {
+        "schema": "iii.px4-activation-evidence/v1",
+        "evidence_id": "0" * 64,
+        "captured_at": "2026-08-27T12:00:00Z",
+        "release_id": release_id,
+        "profile": "real",
+        "manifest_id": manifest_id,
+        "snapshot": snapshot,
+        "comparison": comparison,
+        "healthy": True,
+        "writes_performed": 0,
+    }
+    evidence["evidence_id"] = content_identity(
+        {key: value for key, value in evidence.items() if key != "evidence_id"}
+    )
+    return evidence
 
 
 class Clock:
@@ -166,6 +230,7 @@ def receiver(tmp_path: Path):
         hardware_inspector=None,
         host_inspector=None,
         network_controller=None,
+        backup_controller=None,
     ):
         return ReceiverEngine(
             release_store=store,
@@ -187,6 +252,7 @@ def receiver(tmp_path: Path):
             hardware_inspector=hardware_inspector,
             host_inspector=host_inspector,
             network_controller=network_controller,
+            backup_controller=backup_controller,
         )
 
     return SimpleNamespace(
@@ -487,6 +553,43 @@ def test_clock_fault_blocks_new_receiver_mutations_but_keeps_status(
         stage_plan(receiver, "operation-stage-fault")
 
 
+def test_status_exposes_authenticated_active_manifest_and_activation_safety(receiver):
+    manifest = {
+        "schema_version": "1",
+        "release_id": "a" * 64,
+        "compatibility": {
+            "api_ranges": {"runtime_api": ">=2.0.0,<3.0.0"},
+            "schema_ranges": {"configuration": ">=1.0.0,<2.0.0"},
+        },
+    }
+    safety = {
+        "schema": "iii.activation-safety/v1",
+        "profile": "real",
+        "armed": False,
+        "in_air": False,
+        "continuously_safe_for_s": 3.5,
+    }
+    receiver.store.active_release_manifest = lambda: manifest
+
+    class Observation:
+        def validate(self):
+            return None
+
+        def as_document(self):
+            return safety
+
+    engine = receiver.build(
+        activation_coordinator=SimpleNamespace(safety_provider=lambda: Observation())
+    )
+
+    result = engine.handle(
+        request("status", "status-paired-update", receiver.operator_id, {})
+    )
+
+    assert result["active_release_manifest"] == manifest
+    assert result["activation_safety"] == safety
+
+
 def test_accepted_stage_detaches_survives_client_loss_and_reattaches(receiver) -> None:
     planned = stage_plan(receiver)
     accepted = apply_stage(receiver, planned)
@@ -541,6 +644,7 @@ class FakeActivationCoordinator:
         *,
         release_id,
         configuration_checkpoint_id,
+        px4_activation_evidence,
         operator_rollback=False,
     ):
         self.calls.append(
@@ -549,6 +653,7 @@ class FakeActivationCoordinator:
                 release_id,
                 configuration_checkpoint_id,
                 operator_rollback,
+                px4_activation_evidence["evidence_id"],
             )
         )
         return {
@@ -564,6 +669,7 @@ class FakeActivationCoordinator:
         release_id,
         configuration_checkpoint_id,
         explicit_qualified_action,
+        px4_activation_evidence,
     ):
         self.calls.append(
             (
@@ -572,6 +678,7 @@ class FakeActivationCoordinator:
                 release_id,
                 configuration_checkpoint_id,
                 explicit_qualified_action,
+                px4_activation_evidence["evidence_id"],
             )
         )
         return {
@@ -587,6 +694,7 @@ class FakeActivationCoordinator:
         operation_id,
         release_id,
         configuration_checkpoint_id,
+        px4_activation_evidence,
     ):
         self.calls.append(
             (
@@ -594,6 +702,7 @@ class FakeActivationCoordinator:
                 operation_id,
                 release_id,
                 configuration_checkpoint_id,
+                px4_activation_evidence["evidence_id"],
             )
         )
         return {
@@ -622,6 +731,7 @@ def test_activation_is_planned_rechecked_durably_detached_and_runs_without_clien
     operation_id = "operation-activate-0001"
     release_id = "4" * 64
     checkpoint_id = "5" * 64
+    evidence = px4_evidence(release_id)
     planned = receiver.engine.handle(
         request(
             "plan-activate",
@@ -632,6 +742,7 @@ def test_activation_is_planned_rechecked_durably_detached_and_runs_without_clien
                     "release_id": release_id,
                     "configuration_checkpoint_id": checkpoint_id,
                     "explicit_qualified_action": False,
+                    "px4_activation_evidence": evidence,
                 },
                 "target": {"logical_id": "drone", "profile": "real"},
             },
@@ -656,9 +767,16 @@ def test_activation_is_planned_rechecked_durably_detached_and_runs_without_clien
     assert completed["state"] == "completed"
     assert completed["result"]["autonomy_started"] is False
     assert coordinator.calls == [
-        ("preflight", release_id, checkpoint_id, False),
-        ("preflight", release_id, checkpoint_id, False),
-        ("activate", operation_id, release_id, checkpoint_id, False),
+        ("preflight", release_id, checkpoint_id, False, evidence["evidence_id"]),
+        ("preflight", release_id, checkpoint_id, False, evidence["evidence_id"]),
+        (
+            "activate",
+            operation_id,
+            release_id,
+            checkpoint_id,
+            False,
+            evidence["evidence_id"],
+        ),
     ]
 
 
@@ -668,6 +786,7 @@ def test_operator_rollback_is_planned_safety_rechecked_and_detached(receiver) ->
     operation_id = "operation-rollback-0001"
     release_id = "6" * 64
     checkpoint_id = "7" * 64
+    evidence = px4_evidence(release_id)
     planned = receiver.engine.handle(
         request(
             "plan-rollback",
@@ -677,6 +796,7 @@ def test_operator_rollback_is_planned_safety_rechecked_and_detached(receiver) ->
                 "rollback": {
                     "release_id": release_id,
                     "configuration_checkpoint_id": checkpoint_id,
+                    "px4_activation_evidence": evidence,
                 },
                 "target": {"logical_id": "drone", "profile": "real"},
             },
@@ -702,9 +822,15 @@ def test_operator_rollback_is_planned_safety_rechecked_and_detached(receiver) ->
     assert completed["result"]["kind"] == "rollback"
     assert completed["result"]["automatic_rollback_permitted"] is False
     assert coordinator.calls == [
-        ("preflight", release_id, checkpoint_id, True),
-        ("preflight", release_id, checkpoint_id, True),
-        ("rollback", operation_id, release_id, checkpoint_id),
+        ("preflight", release_id, checkpoint_id, True, evidence["evidence_id"]),
+        ("preflight", release_id, checkpoint_id, True, evidence["evidence_id"]),
+        (
+            "rollback",
+            operation_id,
+            release_id,
+            checkpoint_id,
+            evidence["evidence_id"],
+        ),
     ]
 
 
@@ -714,6 +840,7 @@ def test_reboot_reconciles_durably_accepted_operator_rollback_journal(receiver) 
     operation_id = "operation-rollback-0002"
     release_id = "8" * 64
     checkpoint_id = "9" * 64
+    evidence = px4_evidence(release_id)
     planned = receiver.engine.handle(
         request(
             "plan-rollback",
@@ -723,6 +850,7 @@ def test_reboot_reconciles_durably_accepted_operator_rollback_journal(receiver) 
                 "rollback": {
                     "release_id": release_id,
                     "configuration_checkpoint_id": checkpoint_id,
+                    "px4_activation_evidence": evidence,
                 },
                 "target": {"logical_id": "drone", "profile": "real"},
             },
@@ -1424,7 +1552,10 @@ def test_network_automatic_reversion_is_terminalized_on_receiver_restart(
     result = restarted.reconcile()
     assert operation_id in result["recovered_operations"]
     assert receiver.journals.load(operation_id)["state"] == "failed"
-    assert receiver.journals.load(operation_id)["failure"]["code"] == "network-not-confirmed"
+    assert (
+        receiver.journals.load(operation_id)["failure"]["code"]
+        == "network-not-confirmed"
+    )
     assert receiver.control.load()["lease"] is None
 
 
@@ -1489,3 +1620,130 @@ def test_authenticated_composite_host_inspection_is_read_only(receiver):
     assert result["inspection"] is report
     assert result["action"] == "host-inspect"
     assert receiver.control.load()["lease"] is None
+
+
+class FakeBackupController:
+    def __init__(self, root: Path) -> None:
+        self.paths = SimpleNamespace(backup_root=root / "backups")
+        self.paths.backup_root.mkdir()
+        self.sealed: list[str] = []
+        self.restored: list[str] = []
+        self.backup_id = "d" * 64
+        archive_root = self.paths.backup_root / self.backup_id
+        archive_root.mkdir()
+        (archive_root / "portable-state.tar").write_bytes(b"portable")
+
+    def status(self):
+        return {
+            "schema": "iii.portable-backup-status/v1",
+            "backup_fresh": bool(self.sealed),
+            "backup_count": len(self.sealed),
+        }
+
+    def list(self):
+        return [{"schema": "iii.host-backup-receipt/v1", "backup_id": self.backup_id}]
+
+    def show(self, backup_id):
+        assert backup_id == self.backup_id
+        return {"receipt": self.list()[0], "verification": {"verified": True}}
+
+    def chunk(self, backup_id, *, offset, length):
+        assert backup_id == self.backup_id
+        return {"backup_id": backup_id, "offset": offset, "bytes": length}
+
+    def seal(self, *, operation_id, source):
+        assert source == "receiver"
+        self.sealed.append(operation_id)
+        return {"backup_id": self.backup_id, "verified": True}
+
+    def plan_restore(self, archive_path, *, operation_id):
+        archive_sha256 = hashlib.sha256(Path(archive_path).read_bytes()).hexdigest()
+        value = {
+            "schema": "iii.portable-restore-plan/v1",
+            "plan_id": "0" * 64,
+            "operation_id": operation_id,
+            "backup_id": self.backup_id,
+            "archive_path": str(archive_path),
+            "archive_sha256": archive_sha256,
+            "policy_id": "f" * 64,
+            "portable_schema_version": 1,
+            "active_release_id": None,
+            "clean_converged_host": True,
+            "mutations": ["atomic-portable-root-selector"],
+        }
+        value["plan_id"] = hashlib.sha256(
+            canonical_json(
+                {key: item for key, item in value.items() if key != "plan_id"}
+            )
+        ).hexdigest()
+        return value
+
+    def restore(self, plan, *, archive_path=None):
+        assert archive_path is not None and archive_path.is_file()
+        self.restored.append(plan["operation_id"])
+        return {"backup_id": self.backup_id, "verified": True}
+
+
+def test_portable_backup_uses_receiver_plan_lease_and_read_only_export(receiver):
+    backup = FakeBackupController(receiver.root)
+    engine = receiver.build(backup_controller=backup)
+    target = {"logical_id": "drone", "profile": "real"}
+
+    listed = engine.handle(
+        request("backup-list", "backup-list-test", receiver.operator_id, {})
+    )
+    assert listed["backups"][0]["backup_id"] == backup.backup_id
+    chunk = engine.handle(
+        request(
+            "backup-chunk",
+            "backup-chunk-test",
+            receiver.operator_id,
+            {"backup_id": backup.backup_id, "offset": 0, "length": 8},
+        )
+    )
+    assert chunk["chunk"]["bytes"] == 8
+    assert receiver.control.load()["lease"] is None
+
+    operation_id = "backup-seal-test"
+    planned = engine.handle(
+        request(
+            "plan-backup-seal",
+            operation_id,
+            receiver.operator_id,
+            {"target": target},
+        )
+    )
+    engine.handle(
+        request(
+            "backup-seal",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"]},
+            planned["nonce"],
+        )
+    )
+    receiver.executor.run_next()
+    assert backup.sealed == [operation_id]
+    assert receiver.journals.load(operation_id)["state"] == "completed"
+    assert receiver.control.load()["lease"] is None
+
+    restore_id = "backup-restore-test"
+    restore_plan = engine.handle(
+        request(
+            "plan-backup-restore",
+            restore_id,
+            receiver.operator_id,
+            {"backup_id": backup.backup_id, "target": target},
+        )
+    )
+    engine.handle(
+        request(
+            "backup-restore",
+            restore_id,
+            receiver.operator_id,
+            {"plan": restore_plan["plan"]},
+            restore_plan["nonce"],
+        )
+    )
+    receiver.executor.run_next()
+    assert backup.restored == [restore_id]

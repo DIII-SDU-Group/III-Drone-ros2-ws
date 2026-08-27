@@ -15,7 +15,7 @@ DEFAULT_PX4_COMMAND="source ${WORKSPACE_ROOT}/setup/setup_dev.bash && cd ${PX4_R
 PX4_COMMAND="${III_SIM_TOOLS_PX4_COMMAND:-${DEFAULT_PX4_COMMAND}}"
 DEFAULT_GZ_GUI_COMMAND="source ${WORKSPACE_ROOT}/setup/setup_dev.bash && ready=0; for attempt in {1..60}; do if gz service -i --service /world/${GZ_WORLD}/scene/info 2>&1 | grep -q 'Service providers'; then ready=1; break; fi; sleep 1; done; if [ \"\${ready}\" != 1 ]; then echo 'Timed out waiting for Gazebo world ${GZ_WORLD}' >&2; exit 1; fi; exec gz sim -g"
 GZ_GUI_COMMAND="${III_SIM_TOOLS_GZ_GUI_COMMAND:-${DEFAULT_GZ_GUI_COMMAND}}"
-QGC_COMMAND="${III_SIM_TOOLS_QGC_COMMAND:-cd /home/iii && HOME=/home/iii ./QGroundControl.AppImage}"
+HOST_QGC_UDP_PORT="${III_SIM_TOOLS_HOST_QGC_UDP_PORT:-14550}"
 ATTACH=1
 ATTACH_ONLY=0
 NO_ATTACH=0
@@ -58,7 +58,7 @@ while (($# > 0)); do
 Usage: $(basename "$0") [--headless] [--no-attach] [--attach] [--recreate] [--status] [--stop]
 
 Options:
-  --headless   Start only the PX4/Gazebo backend pane; skip Gazebo GUI and QGroundControl.
+  --headless   Start only the PX4/Gazebo backend pane; skip the Gazebo GUI.
   --no-attach  Start or recreate the tmux session without attaching.
   --attach     Attach to an existing simulation session without creating one.
   --recreate   Recreate the simulation tmux session and clean stale PX4 SITL state.
@@ -301,11 +301,12 @@ print_simulation_status() {
         echo "gazebo_transport: unavailable"
     fi
 
-    if pgrep -af "QGroundControl.AppImage" >/dev/null; then
-        echo "qgroundcontrol: running"
+    if command -v ss >/dev/null 2>&1 && ss -H -u -l -n "sport = :${HOST_QGC_UDP_PORT}" 2>/dev/null | grep -q .; then
+        echo "host_qgc_udp_listener: available"
     else
-        echo "qgroundcontrol: stopped"
+        echo "host_qgc_udp_listener: unavailable"
     fi
+    echo "host_qgc_transport: host-network udp/${HOST_QGC_UDP_PORT} (lifecycle owned by iii qgc)"
 
     if [[ -e "/tmp/px4_lock-${PX4_INSTANCE}" || -e "/tmp/px4-sock-${PX4_INSTANCE}" ]]; then
         echo "px4_instance_state: lock_or_socket_present"
@@ -360,10 +361,7 @@ if ! session_exists; then
     tmux_command select-pane -t "${SESSION_NAME}:simulation.0" -T "PX4 / Gazebo"
     if ((HEADLESS == 0)); then
         tmux_command split-window -t "${SESSION_NAME}:simulation" -v "$(tmux_shell_command "${GZ_GUI_COMMAND}")"
-        tmux_command split-window -t "${SESSION_NAME}:simulation" -h "$(tmux_shell_command "${QGC_COMMAND}")"
-        tmux_command select-layout -t "${SESSION_NAME}:simulation" tiled
         tmux_command select-pane -t "${SESSION_NAME}:simulation.1" -T "Gazebo GUI"
-        tmux_command select-pane -t "${SESSION_NAME}:simulation.2" -T "QGroundControl"
     fi
 fi
 

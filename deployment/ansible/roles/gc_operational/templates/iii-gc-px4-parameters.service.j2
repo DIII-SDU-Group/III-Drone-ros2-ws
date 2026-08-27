@@ -1,0 +1,16 @@
+[Unit]
+Description=III disarmed PX4 parameter mirror companion
+PartOf=iii-gc.target graphical-session.target
+After=iii-gc-discovery.service iii-qgc.service
+
+[Service]
+Type=simple
+EnvironmentFile={{ iii_gc_home }}/.config/iii/gc.env
+EnvironmentFile={{ iii_gc_home }}/.config/iii/gc-profile.env
+ExecCondition=/usr/bin/grep -Eq ^III_GC_EXPECTED_PROFILE=(real|sim)$ {{ iii_gc_home }}/.config/iii/gc-profile.env
+ExecStart={{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/iii-px4-parameter-companion --profile ${III_GC_EXPECTED_PROFILE}
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=iii-gc.target

@@ -1,0 +1,39 @@
+services:
+  proxy:
+    image: "iii-drone-gc-proxy:${III_GC_RELEASE_ID:?III_GC_RELEASE_ID is required}"
+    network_mode: host
+    environment:
+      III_GC_PROXY_HOST: 127.0.0.1
+      III_GC_PROXY_PORT: "${III_GC_PROXY_PORT:-8780}"
+      III_GC_PROXY_CORS_ORIGINS: "${III_GC_PROXY_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}"
+      III_GC_EXPECTED_RUNTIME_ID: "${III_GC_EXPECTED_RUNTIME_ID:-}"
+      III_GC_EXPECTED_SYSTEM_ID: "${III_GC_EXPECTED_SYSTEM_ID:-}"
+      III_GC_EXPECTED_PROFILE: "${III_GC_EXPECTED_PROFILE:-}"
+      III_GC_MAINTENANCE_DRAIN_FILE: /run/iii-gc/control/drain.json
+    volumes:
+      - "${III_GC_CONTROL_DIR:?III_GC_CONTROL_DIR is required}:/run/iii-gc/control:ro"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    restart: "no"
+
+  frontend:
+    image: "iii-drone-gc-frontend:${III_GC_RELEASE_ID:?III_GC_RELEASE_ID is required}"
+    ports:
+      - "127.0.0.1:${III_GC_FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - proxy
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /var/cache/nginx:size=16m,mode=0755
+      - /var/run:size=1m,mode=0755
+      - /tmp:size=16m,mode=1777
+    restart: "no"

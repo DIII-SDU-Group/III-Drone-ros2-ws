@@ -216,8 +216,7 @@ def test_ethernet_only_and_multiple_wifi_bootstrap_profiles(tmp_path: Path) -> N
     }
     assert network["ethernets"]["ethernet-recovery"]["dhcp4"] is True
     assert all(
-        "field-secret" not in json.dumps(row)
-        for row in multiple["file_evidence"]
+        "field-secret" not in json.dumps(row) for row in multiple["file_evidence"]
     )
 
 
@@ -419,15 +418,25 @@ def test_plan_accepts_only_verified_host_backup_or_salvage_evidence(
     evidence_directory.mkdir()
     evidence_directory.chmod(0o700)
     backup = tmp_path / "backup.json"
-    backup.write_text(
+    backup_value = {
+        "schema": "iii.host-backup-receipt/v1",
+        "backup_id": "a" * 64,
+        "receipt_id": "0" * 64,
+        "verified": True,
+        "external_verified": True,
+        "fresh": True,
+        "target_state_hash": "b" * 64,
+        "state_marker": "c" * 64,
+        "archive_sha256": "d" * 64,
+    }
+    backup_value["receipt_id"] = hashlib.sha256(
         json.dumps(
-            {
-                "schema": "iii.host-backup-receipt/v1",
-                "verified": True,
-                "record_id": "b" * 64,
-            }
-        )
-    )
+            {key: value for key, value in backup_value.items() if key != "receipt_id"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    backup.write_text(json.dumps(backup_value))
     plan = build_image_plan(
         operation_id="iii-host-image-backup",
         image_path=image,
@@ -462,6 +471,89 @@ def test_plan_accepts_only_verified_host_backup_or_salvage_evidence(
             schema_root=SCHEMAS,
             evidence_directory=evidence_directory,
             backup_record=backup,
+            accept_data_loss=False,
+            lsblk=_lsblk(),
+            running_sources=["/dev/nvme0n1p2"],
+            by_id_root=Path("/missing"),
+        )
+
+
+def test_verified_salvage_authorizes_reimage_but_retains_recommissioning_boundary(
+    tmp_path: Path,
+) -> None:
+    image, source = _image_fixture(tmp_path)
+    bootstrap = _bootstrap(tmp_path / "bootstrap.json")
+    evidence_directory = tmp_path / "evidence"
+    evidence_directory.mkdir()
+    evidence_directory.chmod(0o700)
+    salvage = {
+        "schema": "iii.host-salvage-record/v1",
+        "salvage_id": "0" * 64,
+        "backup_id": "a" * 64,
+        "outcome": "verified",
+        "verified": True,
+        "recorded_at": "2026-08-27T12:00:00Z",
+        "source_device": {
+            "stable_path": "/dev/disk/by-id/usb-source",
+            "resolved_path": "/dev/sdz",
+            "fingerprint": "b" * 64,
+            "root_partition": "/dev/sdz2",
+            "layout": "ubuntu-raspi-single-ext4-root",
+        },
+        "filesystem": {
+            "type": "ext4",
+            "mount_enforcement": "kernel-read-only-ro-noload-nodev-nosuid-noexec",
+            "transaction_consistency": "e2fsck-read-only-clean",
+            "source_modified": False,
+        },
+        "recoverable_domains": ["configuration"],
+        "omissions": ["credentials"],
+        "target_state_hash": "c" * 64,
+        "archive_sha256": "d" * 64,
+        "credentials_recovered": False,
+        "recommissioning_required": True,
+        "operator_notice": "Fresh credentials, a clean reimage, and full recommissioning remain mandatory; this salvage is not bootable media.",
+    }
+    salvage["salvage_id"] = hashlib.sha256(
+        json.dumps(
+            {key: value for key, value in salvage.items() if key != "salvage_id"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    salvage_path = tmp_path / "salvage.json"
+    salvage_path.write_text(json.dumps(salvage), encoding="utf-8")
+    plan = build_image_plan(
+        operation_id="iii-host-image-salvage",
+        image_path=image,
+        source_path=source,
+        profile_path=PROFILE,
+        bootstrap_input_path=bootstrap,
+        device_path="/dev/disk/by-id/usb-TEST_SERIAL-1234",
+        schema_root=SCHEMAS,
+        evidence_directory=evidence_directory,
+        backup_record=salvage_path,
+        accept_data_loss=False,
+        lsblk=_lsblk(),
+        running_sources=["/dev/nvme0n1p2"],
+        by_id_root=Path("/missing"),
+    )
+    assert plan["destructive_authority"]["accepted_data_loss"] is False
+    assert salvage["credentials_recovered"] is False
+    assert salvage["recommissioning_required"] is True
+    salvage["credentials_recovered"] = True
+    salvage_path.write_text(json.dumps(salvage), encoding="utf-8")
+    with pytest.raises(ImagingError, match="incomplete or unsafe"):
+        build_image_plan(
+            operation_id="iii-host-image-salvage-bad",
+            image_path=image,
+            source_path=source,
+            profile_path=PROFILE,
+            bootstrap_input_path=bootstrap,
+            device_path="/dev/disk/by-id/usb-TEST_SERIAL-1234",
+            schema_root=SCHEMAS,
+            evidence_directory=evidence_directory,
+            backup_record=salvage_path,
             accept_data_loss=False,
             lsblk=_lsblk(),
             running_sources=["/dev/nvme0n1p2"],

@@ -3,7 +3,7 @@
   "$id": "https://iii-drone.invalid/schemas/v1/gc-build-record.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "build_id", "source_identity", "source_commit", "version", "platform", "inputs_sha256", "test_record_sha256", "images", "complete"],
+  "required": ["schema", "build_id", "source_identity", "source_commit", "version", "platform", "inputs_sha256", "test_record_sha256", "images", "qgroundcontrol", "application", "complete"],
   "properties": {
     "schema": {"const": "iii.gc-build-record/v1"},
     "build_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
@@ -31,6 +31,41 @@
           "base_images": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[^@]+@sha256:[a-f0-9]{64}$"}},
           "smoke_test": {"const": "passed"}
         }
+      }
+    },
+    "qgroundcontrol": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "appimage", "source_url", "sha256", "bytes", "appimage_update_information", "update_owner", "runtime_self_check", "configuration"],
+      "properties": {
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "appimage": {"const": "QGroundControl.AppImage"},
+        "source_url": {"type": "string", "pattern": "^https://github\\.com/mavlink/qgroundcontrol/releases/download/v[0-9]+\\.[0-9]+\\.[0-9]+/QGroundControl-x86_64\\.AppImage$"},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "bytes": {"type": "integer", "minimum": 1},
+        "appimage_update_information": {"const": ""},
+        "update_owner": {"const": "iii-gc-release"},
+        "runtime_self_check": {"const": "passed"},
+        "configuration": {
+          "type": "object", "additionalProperties": false,
+          "required": ["policy", "policy_sha256", "policy_id", "baseline", "baseline_sha256", "settings_id"],
+          "properties": {
+            "policy": {"const": "qgc/config/key-policy.json"},
+            "policy_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "policy_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "baseline": {"const": "qgc/config/managed-settings.json"},
+            "baseline_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "settings_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+          }
+        }
+      }
+    },
+    "application": {
+      "type": "object", "additionalProperties": false,
+      "required": ["compose", "compose_sha256", "environment"],
+      "properties": {
+        "compose": {"const": "compose.yml"},
+        "compose_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "environment": {"const": "application.env"}
       }
     },
     "complete": {"const": true}

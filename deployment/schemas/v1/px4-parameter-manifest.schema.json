@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/px4-parameter-manifest.schema.json",
+  "title": "Release-owned PX4 parameter manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "manifest_id", "profile", "firmware", "inventory", "parameters"],
+  "properties": {
+    "schema": {"const": "iii.px4-parameter-manifest/v1"},
+    "manifest_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "profile": {"enum": ["real", "sim"]},
+    "firmware": {"type": "object", "additionalProperties": false, "required": ["family", "compatible_range", "reference_version", "reference_commit"], "properties": {"family": {"const": "PX4"}, "compatible_range": {"type": "string", "minLength": 1}, "reference_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}, "reference_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"}}},
+    "inventory": {"type": "object", "additionalProperties": false, "required": ["complete", "parameter_count", "source", "source_sha256"], "properties": {"complete": {"const": true}, "parameter_count": {"type": "integer", "minimum": 1}, "source": {"enum": ["px4-sitl-reference", "commissioned-fmu"]}, "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+    "parameters": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/parameter"}}
+  },
+  "definitions": {
+    "parameter": {"type": "object", "additionalProperties": false, "required": ["name", "mav_type", "value", "classification", "enforcement", "tolerance"], "properties": {"name": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,15}$"}, "mav_type": {"enum": ["UINT32", "INT32", "REAL32"]}, "value": {"type": ["integer", "number", "null"]}, "classification": {"enum": ["release-required", "operator-tunable", "calibration-identity"]}, "enforcement": {"enum": ["exact", "preserve"]}, "tolerance": {"type": "number", "minimum": 0}}}
+  }
+}

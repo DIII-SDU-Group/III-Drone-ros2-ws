@@ -80,6 +80,8 @@
           'user': iii_gc_user,
           'automatic_hostname': 'iii.local',
           'login_units': iii_gc_policy_value.login_units,
+          'manual_units': iii_gc_policy_value.manual_units,
+          'recovery_units': iii_gc_policy_value.recovery_units,
           'unmanaged_user_state': 'preserved'} | to_json }}
     dest: "{{ iii_gc_home }}/.local/state/iii/gc/host-baseline.json"
     owner: "{{ iii_gc_user }}"

@@ -663,6 +663,9 @@ def test_operator_rollback_authorization_is_state_bound_and_swaps_release_roles(
     )
     store.stage(first.paths.directory, status_index=None, staged_at=NOW)
     _accept(store, first, None, qualified=False)
+    active_manifest = store.active_release_manifest()
+    assert active_manifest is not None
+    assert active_manifest["release_id"] == first.release_id
     store.stage(second.paths.directory, status_index=None, staged_at=NOW)
     _accept(store, second, None, qualified=False)
 

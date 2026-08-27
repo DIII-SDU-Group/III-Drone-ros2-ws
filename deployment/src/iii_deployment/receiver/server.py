@@ -30,6 +30,7 @@ from iii_deployment.hardware_roles import HardwareInspector
 from iii_deployment.boot_baseline import BootInspector
 from iii_deployment.host_inspection import HostInspector
 from iii_deployment.networking import NetworkController
+from iii_deployment.portable_state import PortableBackupController
 from iii_deployment.receiver.access import AccessManager
 from iii_deployment.receiver.config import (
     AUDIT_PATH,
@@ -281,6 +282,48 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         stop_runtime=control_plane.stop_all_units,
         resume_runtime=lambda: control_plane.boot_profile(config.profile),
     )
+
+    def backup_resume() -> dict[str, Any]:
+        runtime = control_plane.boot_profile(config.profile)
+        return {"standby_resumed": True, "runtime": runtime}
+
+    def restore_host_clean() -> bool:
+        return (
+            not host_maintenance.status()["mutation_blocked"]
+            and store.state().get("active_release_id") is not None
+        )
+
+    def restore_health() -> dict[str, Any]:
+        protected = store.validate_protected_qualified_release()
+        return {
+            "healthy": True,
+            "protected_release_id": protected["release_id"],
+            "runtime_started": False,
+        }
+
+    backup_controller = PortableBackupController(
+        source_root=Path("/"),
+        policy_path=Path(
+            "/opt/iii/receiver/selectors/current/share/iii-deployment/policy/portable-state-policy.json"
+        ),
+        logical_target=config.logical_target,
+        profile=config.profile,
+        active_release_id=lambda: store.state().get("active_release_id"),
+        maintenance_safe=safety_provider.maintenance_safe_for_clock_recovery,
+        quiesce_writers=lambda: {
+            "writers_stopped": True,
+            "flushed": True,
+            "stopped_units": list(control_plane.stop_all_units()),
+        },
+        resume_standby=backup_resume,
+        clean_converged_host=restore_host_clean,
+        reconcile_restore=lambda path, manifest: {
+            "compatible": manifest["portable_schema_version"] == 1,
+            "staged_root": str(path),
+            "schema_actions": [],
+        },
+        validate_health=restore_health,
+    )
     return ReceiverEngine(
         release_store=store,
         control=control,
@@ -304,6 +347,7 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         hardware_inspector=hardware_inspector,
         host_inspector=host_inspector,
         network_controller=network_controller,
+        backup_controller=backup_controller,
     )
 
 

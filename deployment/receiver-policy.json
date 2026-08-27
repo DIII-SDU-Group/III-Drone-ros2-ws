@@ -12,6 +12,9 @@
     "/opt/iii/current",
     "/var/lib/iii/configuration",
     "/var/lib/iii/deployment",
+    "/var/lib/iii/backups",
+    "/var/lib/iii/portable-generations",
+    "/var/lib/iii/portable-selector",
     "/var/log/iii",
     "/home/iii/.ssh",
     "/home/iii/.ssh/authorized_keys"

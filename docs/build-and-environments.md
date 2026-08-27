@@ -83,7 +83,7 @@ Post hooks:
 - rewrites Ubuntu archive/security apt sources to HTTPS while leaving ROS package sources on HTTP
 - installs stable OS, ROS, and development tooling in an early apt layer using `--no-install-recommends`
 - installs Python requirements
-- installs QGroundControl AppImage + dev tools
+- installs PX4/Gazebo development tools; QGroundControl is host-native and release-managed
 - installs GUI/simulation operator packages, the runtime API service
   dependencies, and workspace ROS/runtime package dependencies in late apt
   layers so package additions do not invalidate the expensive stable layers
@@ -255,7 +255,8 @@ Runtime ownership is:
   control plane
 - the GC proxy/frontend run on the ground-control computer and do not require
   ROS, DDS, MAVSDK, or runtime Python packages
-- PX4 hardware, PX4 SITL/Gazebo, and QGroundControl are external to III supervision
+- PX4 hardware and PX4 SITL/Gazebo are external to III supervision; host QGroundControl is independently operated through `iii qgc`
+- release-owned PX4/QGC policy is shipped with `iii-deployment`; `iii px4 params` and `iii qgc config` provide backup-first retained-plan workflows while activation itself remains read-only toward the FMU
 
 GUI v2 compose entrypoints:
 

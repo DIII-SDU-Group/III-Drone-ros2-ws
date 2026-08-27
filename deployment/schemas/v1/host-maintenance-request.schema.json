@@ -17,12 +17,15 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["schema", "backup_id", "target_state_hash", "verified", "record_sha256"],
+          "required": ["schema", "backup_id", "target_state_hash", "state_marker", "verified", "external_verified", "fresh", "record_sha256"],
           "properties": {
             "schema": {"const": "iii.host-backup-receipt/v1"},
             "backup_id": {"$ref": "#/definitions/hash"},
             "target_state_hash": {"$ref": "#/definitions/hash"},
+            "state_marker": {"$ref": "#/definitions/hash"},
             "verified": {"const": true},
+            "external_verified": {"const": true},
+            "fresh": {"const": true},
             "record_sha256": {"$ref": "#/definitions/hash"}
           }
         }

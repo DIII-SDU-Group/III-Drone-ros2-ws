@@ -13,8 +13,9 @@ The host baseline has three independently reported managed categories:
 - `operational`: Docker/Compose prerequisites, private host-user paths, the
   graphical-session units, mDNS tools, discovery, mirror, clock companion, and
   browser launcher;
-- `application`: the pinned ROS-free GC proxy/static-frontend containers and the
-  host-native companion/CLI environment; and
+- `application`: the ROS-free host-native companion/CLI environment and the
+  transactional application-slot runtime; signed release bundles, not Ansible,
+  install frontend/proxy images and QGroundControl binaries; and
 - `development`: strict submodule policy, the repository-managed Ansible
   controller, offline/build caches, and the pinned ARM64 builder.
 
@@ -64,12 +65,12 @@ relative path, supported platform, and role. These roles are all mandatory:
 - `apt-packages`;
 - `ansible-controller-wheelhouse`;
 - `gc-runtime-wheelhouse`;
-- `gc-container-images`; and
 - `arm64-builder-image`.
 
 The apt artifact is extracted into the local apt archive before an
-`apt-get --no-download` transaction. Python uses `--no-index`; Docker loads only
-the verified image archives. Cache identity contributes to the selected installed
+`apt-get --no-download` transaction. Python uses `--no-index`. Release container
+images are intentionally excluded: only a signed GC component bundle may import
+them through the application slot manager. Cache identity contributes to the selected installed
 environment identity, so a changed cache cannot reuse a stale success marker.
 Bootstrap and convergence never use the network in prepared-offline mode.
 
@@ -86,8 +87,8 @@ wheelhouse directories are unsupported because the deliberately bounded
 
 Online local-project builds occur only from authenticated temporary copies; they
 never create build metadata or wheels in the workspace clone. Offline mode never
-builds source. Loaded frontend/proxy and builder images must expose the planned
-application or builder-definition SHA-256 label before the installed marker is
+builds source. The builder image must expose the planned builder-definition
+SHA-256 label before the installed marker is
 committed.
 
 ```bash
@@ -103,6 +104,107 @@ tools/III-Drone-CLI/bin/iii gc provision \
 The cache must match this computer's Ubuntu release. Cache creation/readiness is
 owned by the field-preparation workflow; provisioning only consumes an exact,
 already prepared cache.
+
+## Transactional GC And QGroundControl Applications
+
+A signed `gc` component bundle is the only application-install authority. Its
+frontend and proxy images are built once, smoke-tested, and retained offline in
+an OCI-layout archive carrying a Docker schema-v2 manifest. This deliberate media
+type lets `skopeo copy --preserve-digests` import the exact recorded runtime
+digest; conversion during field installation is rejected. Containers are
+read-only, drop all capabilities, mount only the maintenance-drain marker, and
+receive no Docker socket, QGC binary, host credential, `.iii` registry, signing
+key, Ansible source, updater, or builder authority.
+
+Stage without changing the selected application. Use `--protect-offline` when
+the retained bundle is an operator-designated offline recovery set:
+
+```bash
+iii gc application stage --bundle /media/III-RELEASE/gc --protect-offline \
+  --dry-run --json
+iii gc application stage --bundle /media/III-RELEASE/gc --protect-offline \
+  --operation-id <retained-operation-id> --confirm --json
+iii gc application status --json
+```
+
+Activation reauthenticates the cached signature, every extracted payload byte,
+both imported image digests, and the pinned QGC checksum before atomically
+selecting the GC/QGC pair. Use one explicit safety source: `--disconnected`,
+`--sim`, or a fresh authenticated `--safety-file` for a real aircraft. A real
+target must be continuously landed, disarmed, owner-free, and fresh. The recovery
+override requires a separate reason and the exact displayed warning; it cannot
+waive a known armed, airborne, or active-owner state.
+
+```bash
+iii gc application activate --release-id <release-id> --disconnected --dry-run
+iii gc application activate --release-id <release-id> --disconnected \
+  --operation-id <retained-operation-id> --confirm
+iii gc application rollback --disconnected --dry-run
+iii gc application reconcile --dry-run
+```
+
+The browser proxy rejects new mutating HTTP requests with 503 and WebSocket
+commands with retry-later code 1013 while the drain marker is active. A durable
+journal restores the exact prior GC/QGC pair after process interruption, logout,
+or reboot. Login runs reconciliation before starting the GC target. Activation
+health failure rolls back immediately; cleanup failure after a healthy durable
+commit is audited and deferred rather than reversing the working pair.
+
+The cache protects the qualified anchor, active release, previous field release,
+staged candidate, and explicitly protected offline sets. Only unprotected entries
+are eligible under the 50-GiB limit, and pruning still preserves at least the
+greater of 10 GiB or ten percent filesystem free space.
+
+QGroundControl 5.0.8 is a checksum-pinned x86_64 AppImage in the same signed GC
+bundle. The build proves the AppImage has no embedded update feed; release
+transactions alone select its atomic content-addressed slot. The unit uses
+`APPIMAGE_EXTRACT_AND_RUN=1`, so FUSE is not part of the host contract. QGC user
+settings and logs remain outside slots in `~/.config/QGroundControl.org`,
+`~/.local/share/QGroundControl`, and `~/Documents/QGroundControl`.
+
+```bash
+iii qgc status --json
+iii qgc start --dry-run
+iii qgc start --operation-id <retained-operation-id> --confirm
+iii qgc stop --dry-run
+```
+
+Release activation stops QGC, takes an immutable backup of the exact existing
+INI bytes (including the absence of a file), merges only the declared managed
+keys, verifies the merge, switches the pinned application selector, and restores
+the prior running/stopped state. Failure or interrupted-transaction reconciliation
+restores both the prior QGC bytes and application pair. Local preferences,
+geometry, paths, credentials, link definitions, and generated caches are never
+release-owned settings. The managed baseline keeps public log/telemetry upload
+disabled.
+
+Explicit configuration workflows use the same retained-plan boundary:
+
+```bash
+iii qgc config apply --release-id <release-id> --qgc-version 5.0.8 \
+  --profile real --dry-run --json
+iii qgc config capture --release-id <release-id> --qgc-version 5.0.8 \
+  --clean-exit --dry-run --json
+iii qgc config diff --capture-id <capture-id> --json
+iii qgc config promote --capture-id <capture-id> --key <managed-key> \
+  --dry-run --json
+iii qgc config verify-cache --cache-id <cache-id> --qgc-version 5.0.8 \
+  --px4-firmware 1.16.1 --manifest-id <manifest-id> --json
+```
+
+Stopping the pinned QGC user unit also records a redacted immutable clean-exit
+capture. Promotion fails for non-managed keys, unsafe upload values, sensitive
+data, local preferences, host paths, geometry, and generated/cache data; it writes
+only reviewed managed keys to the current normal feature branch and never commits
+or pushes. `iii qgc config cache` stores generated ParamCache content under an
+exact QGC/PX4/parameter-manifest compatibility identity instead of treating it as
+hand-maintained policy.
+
+`iii qgc` never starts or stops the GC application, and `iii gc` never starts or
+stops QGC. Paired field deployment activates and health-checks GC first, then
+submits the drone component. A GC failure leaves the drone untouched. If drone
+activation fails, the new GC remains only when its declared contracts overlap the
+restored drone; otherwise the exact prior GC release is restored as well.
 
 ## Persistent User State And Secrets
 
@@ -170,6 +272,9 @@ iii gc status --json
 iii gc stop --dry-run
 ```
 
+The QGroundControl desktop launcher is likewise explicit and routes to the same
+pinned host-native binary used for real and simulation operation.
+
 Before field use, set the expected target profile/runtime/system IDs in the
 preserved `~/.config/iii/gc-profile.env` only after positive identity review. The
 unconfigured baseline can discover sim or real; simulation never enters the Pi
@@ -183,4 +288,7 @@ permissions, unit topology, no automatic browser/QGC, fixed-host discovery,
 real/sim clock behavior, offline cache tamper/platform rejection, and replacement
 archive secret exclusion. A real graphical login/logout and replacement-computer
 enrollment/import drill remain commissioning evidence on the actual laptops; no
-container result is represented as that physical evidence.
+container result is represented as that physical evidence. The application path
+also has real Docker/BuildKit/skopeo digest-preservation checks, an Ubuntu native
+AppImage launch probe, and a PX4 SITL-to-host UDP 14550 MAVLink probe; those do not
+replace the final physical laptop login/reboot commissioning row.

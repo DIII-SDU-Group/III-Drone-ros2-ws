@@ -272,7 +272,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: .qualification/cache/gc
-          key: gc-${{ runner.os }}-${{ hashFiles('src/III-Drone-GC/docker/**', 'src/III-Drone-GC/frontend/Dockerfile', 'src/III-Drone-GC/frontend/package-lock.json') }}
+          key: gc-${{ runner.os }}-${{ hashFiles('deployment/gc-application-policy.json', 'deployment/gc/compose.release.yml', 'src/III-Drone-GC/docker/**', 'src/III-Drone-GC/frontend/Dockerfile', 'src/III-Drone-GC/frontend/package-lock.json') }}
       - name: Download source and GC test evidence
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -285,6 +285,8 @@ jobs:
       - name: Build pinned x86_64 GC OCI artifacts
         run: |
           mkdir -p .qualification/gc .qualification/cache/gc
+          python scripts/build/fetch_qgc_appimage.py \
+            --output "$RUNNER_TEMP/QGroundControl.AppImage" --json
           source_epoch="$(git show -s --format=%ct HEAD)"
           started="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
           python scripts/build/build_gc_release.py \
@@ -293,6 +295,7 @@ jobs:
             --test-record .qualification/gc-tests/gc-tests.json \
             --cache .qualification/cache/gc \
             --output .qualification/gc/release \
+            --qgc-appimage "$RUNNER_TEMP/QGroundControl.AppImage" \
             --source-date-epoch "$source_epoch" --json \
             2>&1 | tee .qualification/gc/build.log
           finished="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"

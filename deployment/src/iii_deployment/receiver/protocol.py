@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 import json
+import math
 import re
 from typing import Any, Mapping
 
@@ -49,7 +50,14 @@ class Action(str, Enum):
     NETWORK_CONFIRM_PLAN = "network-confirm-plan"
     NETWORK_CONFIRM = "network-confirm"
     NETWORK_STATUS = "network-status"
+    PLAN_BACKUP_SEAL = "plan-backup-seal"
     BACKUP_SEAL = "backup-seal"
+    BACKUP_LIST = "backup-list"
+    BACKUP_SHOW = "backup-show"
+    BACKUP_CHUNK = "backup-chunk"
+    BACKUP_STATUS = "backup-status"
+    PLAN_BACKUP_RESTORE = "plan-backup-restore"
+    BACKUP_RESTORE = "backup-restore"
 
 
 READ_ONLY_ACTIONS = frozenset(
@@ -73,6 +81,12 @@ READ_ONLY_ACTIONS = frozenset(
         Action.NETWORK_PLAN,
         Action.NETWORK_CONFIRM_PLAN,
         Action.NETWORK_STATUS,
+        Action.PLAN_BACKUP_SEAL,
+        Action.BACKUP_LIST,
+        Action.BACKUP_SHOW,
+        Action.BACKUP_CHUNK,
+        Action.BACKUP_STATUS,
+        Action.PLAN_BACKUP_RESTORE,
         Action.CANCEL,
     }
 )
@@ -229,6 +243,177 @@ def _identity(value: Any, *, label: str) -> str:
     return value
 
 
+def validate_px4_activation_evidence(value: Any) -> None:
+    """Validate hostile PX4 evidence before retaining it in a receiver plan."""
+
+    if not isinstance(value, dict):
+        raise ContractError("PX4 activation evidence must be an object")
+    _exact(
+        value,
+        {
+            "schema",
+            "evidence_id",
+            "captured_at",
+            "release_id",
+            "profile",
+            "manifest_id",
+            "snapshot",
+            "comparison",
+            "healthy",
+            "writes_performed",
+        },
+        label="PX4 activation evidence",
+    )
+    if value["schema"] != "iii.px4-activation-evidence/v1":
+        raise ContractError("PX4 activation evidence schema is unsupported")
+    for field in ("evidence_id", "release_id", "manifest_id"):
+        _identity(value[field], label=f"PX4 activation {field}")
+    if value["evidence_id"] != content_identity(
+        {key: item for key, item in value.items() if key != "evidence_id"}
+    ):
+        raise ContractError("PX4 activation evidence identity mismatch")
+    if (
+        not isinstance(value["captured_at"], str)
+        or not value["captured_at"]
+        or value["profile"] not in {"real", "sim"}
+        or not isinstance(value["healthy"], bool)
+        or value["writes_performed"] != 0
+    ):
+        raise ContractError("PX4 activation evidence metadata is invalid")
+    snapshot = value["snapshot"]
+    if not isinstance(snapshot, dict):
+        raise ContractError("PX4 activation snapshot must be an object")
+    _exact(
+        snapshot,
+        {
+            "schema",
+            "snapshot_id",
+            "captured_at",
+            "profile",
+            "provenance",
+            "target",
+            "complete",
+            "parameter_count",
+            "parameters",
+        },
+        label="PX4 activation snapshot",
+    )
+    if (
+        snapshot["schema"] != "iii.px4-parameter-snapshot/v1"
+        or snapshot["profile"] != value["profile"]
+        or snapshot["provenance"] != "qgc-forwarded-mavlink-observation"
+        or snapshot["complete"] is not True
+        or not isinstance(snapshot["parameter_count"], int)
+        or isinstance(snapshot["parameter_count"], bool)
+        or not 1 <= snapshot["parameter_count"] <= 4096
+        or not isinstance(snapshot["parameters"], list)
+        or len(snapshot["parameters"]) != snapshot["parameter_count"]
+    ):
+        raise ContractError("PX4 activation snapshot completeness is invalid")
+    _identity(snapshot["snapshot_id"], label="PX4 activation snapshot")
+    if snapshot["snapshot_id"] != content_identity(
+        {
+            "profile": snapshot["profile"],
+            "target": snapshot["target"],
+            "parameter_count": snapshot["parameter_count"],
+            "parameters": snapshot["parameters"],
+        }
+    ):
+        raise ContractError("PX4 activation snapshot identity mismatch")
+    target = snapshot["target"]
+    if not isinstance(target, dict):
+        raise ContractError("PX4 activation target is malformed")
+    _exact(
+        target,
+        {
+            "system_id",
+            "component_id",
+            "armed",
+            "firmware_version",
+            "firmware_commit",
+        },
+        label="PX4 activation target",
+    )
+    if (
+        target["armed"] is not False
+        or not isinstance(target["system_id"], int)
+        or isinstance(target["system_id"], bool)
+        or not 1 <= target["system_id"] <= 255
+        or not isinstance(target["component_id"], int)
+        or isinstance(target["component_id"], bool)
+        or not 0 <= target["component_id"] <= 255
+        or not isinstance(target["firmware_version"], str)
+        or not isinstance(target["firmware_commit"], str)
+        or re.fullmatch(r"[a-f0-9]{10}", target["firmware_commit"]) is None
+    ):
+        raise ContractError("PX4 activation target identity is invalid")
+    names: set[str] = set()
+    indexes: set[int] = set()
+    for parameter in snapshot["parameters"]:
+        if not isinstance(parameter, dict):
+            raise ContractError("PX4 activation parameter is malformed")
+        _exact(
+            parameter,
+            {"name", "mav_type", "value", "index"},
+            label="PX4 activation parameter",
+        )
+        name = parameter["name"]
+        index = parameter["index"]
+        numeric = parameter["value"]
+        if (
+            not isinstance(name, str)
+            or re.fullmatch(r"[A-Z][A-Z0-9_]{0,15}", name) is None
+            or name in names
+            or not isinstance(index, int)
+            or isinstance(index, bool)
+            or index in indexes
+            or parameter["mav_type"] not in {"UINT32", "INT32", "REAL32"}
+            or isinstance(numeric, bool)
+            or not isinstance(numeric, (int, float))
+            or not math.isfinite(float(numeric))
+        ):
+            raise ContractError("PX4 activation parameter inventory is invalid")
+        names.add(name)
+        indexes.add(index)
+    if indexes != set(range(snapshot["parameter_count"])):
+        raise ContractError("PX4 activation parameter indices are incomplete")
+    comparison = value["comparison"]
+    if not isinstance(comparison, dict):
+        raise ContractError("PX4 activation comparison must be an object")
+    _exact(
+        comparison,
+        {
+            "schema",
+            "profile",
+            "manifest_id",
+            "snapshot_id",
+            "inventory_complete",
+            "missing",
+            "unexpected",
+            "drift",
+            "preserved_calibration_identity",
+            "required_match",
+        },
+        label="PX4 activation comparison",
+    )
+    if (
+        comparison["schema"] != "iii.px4-parameter-comparison/v1"
+        or comparison["profile"] != value["profile"]
+        or comparison["manifest_id"] != value["manifest_id"]
+        or comparison["snapshot_id"] != snapshot["snapshot_id"]
+        or not isinstance(comparison["inventory_complete"], bool)
+        or not isinstance(comparison["required_match"], bool)
+        or any(
+            not isinstance(comparison[field], list)
+            for field in ("missing", "unexpected", "preserved_calibration_identity")
+        )
+        or not isinstance(comparison["drift"], dict)
+        or set(comparison["drift"]) != {"release-required", "operator-tunable"}
+        or any(not isinstance(items, list) for items in comparison["drift"].values())
+    ):
+        raise ContractError("PX4 activation comparison is invalid")
+
+
 def _network_plan(value: Any, *, operation_id: str, client_id: str) -> None:
     if not isinstance(value, dict):
         raise ContractError("network plan must be an object")
@@ -265,10 +450,18 @@ def _network_plan(value: Any, *, operation_id: str, client_id: str) -> None:
         raise ContractError("redacted network profile is malformed")
     _exact(
         profile,
-        {"ethernet_dhcp4", "wifi_profile_ids", "wifi_profile_count", "onboard_access_point"},
+        {
+            "ethernet_dhcp4",
+            "wifi_profile_ids",
+            "wifi_profile_count",
+            "onboard_access_point",
+        },
         label="redacted network profile",
     )
-    if profile["ethernet_dhcp4"] is not True or profile["onboard_access_point"] is not False:
+    if (
+        profile["ethernet_dhcp4"] is not True
+        or profile["onboard_access_point"] is not False
+    ):
         raise ContractError("network plan weakens the Ethernet/no-access-point policy")
     if (
         not isinstance(profile["wifi_profile_ids"], list)
@@ -286,7 +479,9 @@ def _network_plan(value: Any, *, operation_id: str, client_id: str) -> None:
     if value["no_change"] == value["connectivity_impacting"]:
         raise ContractError("network plan impact and no-change flags disagree")
     for field in ("declared_permissions", "required_checks"):
-        if not isinstance(value[field], list) or not all(isinstance(item, str) for item in value[field]):
+        if not isinstance(value[field], list) or not all(
+            isinstance(item, str) for item in value[field]
+        ):
             raise ContractError(f"network plan {field} is malformed")
 
 
@@ -303,7 +498,14 @@ def _network_confirmation(value: Any, *, operation_id: str, client_id: str) -> N
         raise ContractError("network confirmation must be an object")
     _exact(
         value,
-        {"schema", "confirmation_id", "operation_id", "client_id", "target_operation_id", "network_id"},
+        {
+            "schema",
+            "confirmation_id",
+            "operation_id",
+            "client_id",
+            "target_operation_id",
+            "network_id",
+        },
         label="network confirmation",
     )
     if value["schema"] != "iii.network-confirmation-plan/v1":
@@ -311,7 +513,9 @@ def _network_confirmation(value: Any, *, operation_id: str, client_id: str) -> N
     if value["operation_id"] != operation_id or value["client_id"] != client_id:
         raise ContractError("network confirmation binding mismatch")
     _identity(value["network_id"], label="network confirmation profile")
-    if not isinstance(value["target_operation_id"], str) or not OPERATION_ID.fullmatch(value["target_operation_id"]):
+    if not isinstance(value["target_operation_id"], str) or not OPERATION_ID.fullmatch(
+        value["target_operation_id"]
+    ):
         raise ContractError("network confirmation target operation is invalid")
     if value["confirmation_id"] != content_identity(
         {key: item for key, item in value.items() if key != "confirmation_id"}
@@ -479,6 +683,8 @@ def validate_mutation_plan(
         Action.HOST_MAINTENANCE.value,
         Action.HOST_REBOOT.value,
         Action.NETWORK_APPLY.value,
+        Action.BACKUP_SEAL.value,
+        Action.BACKUP_RESTORE.value,
     }:
         raise ContractError("unsupported receiver mutation plan")
     _identity(plan["plan_id"], label="receiver plan identity")
@@ -517,7 +723,11 @@ def validate_mutation_plan(
         if parameters["status_index_id"] is not None:
             _identity(parameters["status_index_id"], label="staging status index")
     elif plan["action"] in {Action.ACTIVATE.value, Action.ROLLBACK.value}:
-        expected = {"release_id", "configuration_checkpoint_id"}
+        expected = {
+            "release_id",
+            "configuration_checkpoint_id",
+            "px4_activation_evidence",
+        }
         if plan["action"] == Action.ACTIVATE.value:
             expected.add("explicit_qualified_action")
         _exact(
@@ -530,6 +740,7 @@ def validate_mutation_plan(
             parameters["configuration_checkpoint_id"],
             label="activation configuration checkpoint",
         )
+        validate_px4_activation_evidence(parameters["px4_activation_evidence"])
         if plan["action"] == Action.ACTIVATE.value and not isinstance(
             parameters["explicit_qualified_action"], bool
         ):
@@ -599,9 +810,55 @@ def validate_mutation_plan(
             or parameters["client_id"] != plan["client_id"]
         ):
             raise ContractError("host-maintenance plan binding mismatch")
-    else:
+    elif plan["action"] == Action.HOST_REBOOT.value:
         _exact(parameters, {"maintenance_id"}, label="host-reboot parameters")
         _identity(parameters["maintenance_id"], label="host maintenance")
+    elif plan["action"] == Action.BACKUP_SEAL.value:
+        _exact(parameters, {"source"}, label="backup-seal parameters")
+        if parameters["source"] != "receiver":
+            raise ContractError("receiver backup source is invalid")
+    else:
+        required = {
+            "schema",
+            "plan_id",
+            "operation_id",
+            "backup_id",
+            "archive_path",
+            "archive_sha256",
+            "policy_id",
+            "portable_schema_version",
+            "active_release_id",
+            "clean_converged_host",
+            "mutations",
+        }
+        _exact(parameters, required, label="backup-restore parameters")
+        if parameters["schema"] != "iii.portable-restore-plan/v1":
+            raise ContractError("unsupported portable restore plan")
+        for field in ("plan_id", "backup_id", "archive_sha256", "policy_id"):
+            _identity(parameters[field], label=f"portable restore {field}")
+        if parameters["plan_id"] != content_identity(
+            {key: value for key, value in parameters.items() if key != "plan_id"}
+        ):
+            raise ContractError("portable restore plan identity mismatch")
+        if parameters["operation_id"] != plan["operation_id"]:
+            raise ContractError("portable restore operation binding mismatch")
+        archive_path = parameters["archive_path"]
+        if (
+            not isinstance(archive_path, str)
+            or not archive_path.startswith("/")
+            or ".." in archive_path.split("/")
+            or not archive_path.endswith("/portable-state.tar")
+        ):
+            raise ContractError("portable restore archive path is invalid")
+        if parameters["active_release_id"] is not None:
+            _identity(parameters["active_release_id"], label="portable restore release")
+        if (
+            parameters["portable_schema_version"] != 1
+            or parameters["clean_converged_host"] is not True
+            or not isinstance(parameters["mutations"], list)
+            or not parameters["mutations"]
+        ):
+            raise ContractError("portable restore compatibility/mutations are invalid")
     target = plan["target"]
     if not isinstance(target, dict):
         raise ContractError("receiver mutation plan target is malformed")
@@ -660,6 +917,8 @@ def create_mutation_plan(
         Action.PLAN_HOST_MAINTENANCE,
         Action.PLAN_HOST_REBOOT,
         Action.NETWORK_PLAN,
+        Action.PLAN_BACKUP_SEAL,
+        Action.PLAN_BACKUP_RESTORE,
     }:
         raise ContractError(
             "only fixed receiver planning actions can create mutation plans"
@@ -677,6 +936,10 @@ def create_mutation_plan(
             action = Action.HOST_REBOOT.value
         elif request.action == Action.NETWORK_PLAN:
             action = Action.NETWORK_APPLY.value
+        elif request.action == Action.PLAN_BACKUP_SEAL:
+            action = Action.BACKUP_SEAL.value
+        elif request.action == Action.PLAN_BACKUP_RESTORE:
+            action = Action.BACKUP_RESTORE.value
         else:
             raise ContractError(
                 "receiver parameter override is not allowed for this plan"
@@ -731,12 +994,42 @@ def validate_request_payload(request: Request) -> None:
         Action.HOST_MAINTENANCE_STATUS,
         Action.HARDWARE_INSPECT,
         Action.HOST_INSPECT,
+        Action.BACKUP_LIST,
+        Action.BACKUP_STATUS,
     }:
         _exact(payload, set(), label=f"{request.action.value} payload")
         return
+    if request.action == Action.BACKUP_SHOW:
+        _exact(payload, {"backup_id"}, label="backup-show payload")
+        _identity(payload["backup_id"], label="portable backup")
+        return
+    if request.action == Action.BACKUP_CHUNK:
+        _exact(payload, {"backup_id", "offset", "length"}, label="backup-chunk payload")
+        _identity(payload["backup_id"], label="portable backup")
+        if (
+            not isinstance(payload["offset"], int)
+            or isinstance(payload["offset"], bool)
+            or payload["offset"] < 0
+            or not isinstance(payload["length"], int)
+            or isinstance(payload["length"], bool)
+            or not 1 <= payload["length"] <= 4 * 1024 * 1024
+        ):
+            raise ContractError("portable backup chunk bounds are invalid")
+        return
+    if request.action == Action.PLAN_BACKUP_SEAL:
+        _exact(payload, {"target"}, label="plan-backup-seal payload")
+        _target(payload["target"], label="plan-backup-seal target")
+        return
+    if request.action == Action.PLAN_BACKUP_RESTORE:
+        _exact(payload, {"backup_id", "target"}, label="plan-backup-restore payload")
+        _identity(payload["backup_id"], label="portable backup")
+        _target(payload["target"], label="plan-backup-restore target")
+        return
     if request.action == Action.NETWORK_STATUS:
         _exact(payload, {"target_operation_id"}, label="network-status payload")
-        if not isinstance(payload["target_operation_id"], str) or not OPERATION_ID.fullmatch(payload["target_operation_id"]):
+        if not isinstance(
+            payload["target_operation_id"], str
+        ) or not OPERATION_ID.fullmatch(payload["target_operation_id"]):
             raise ContractError("network status operation ID is invalid")
         return
     if request.action == Action.NETWORK_PLAN:
@@ -745,8 +1038,14 @@ def validate_request_payload(request: Request) -> None:
         _target(payload["target"], label="network-plan target")
         return
     if request.action == Action.NETWORK_CONFIRM_PLAN:
-        _exact(payload, {"target_operation_id", "target"}, label="network-confirm-plan payload")
-        if not isinstance(payload["target_operation_id"], str) or not OPERATION_ID.fullmatch(payload["target_operation_id"]):
+        _exact(
+            payload,
+            {"target_operation_id", "target"},
+            label="network-confirm-plan payload",
+        )
+        if not isinstance(
+            payload["target_operation_id"], str
+        ) or not OPERATION_ID.fullmatch(payload["target_operation_id"]):
             raise ContractError("network confirmation target operation is invalid")
         _target(payload["target"], label="network-confirm-plan target")
         return
@@ -825,6 +1124,7 @@ def validate_request_payload(request: Request) -> None:
                 "release_id",
                 "configuration_checkpoint_id",
                 "explicit_qualified_action",
+                "px4_activation_evidence",
             },
             label="plan-activate parameters",
         )
@@ -835,6 +1135,7 @@ def validate_request_payload(request: Request) -> None:
         )
         if not isinstance(activation["explicit_qualified_action"], bool):
             raise ContractError("activation qualified authority must be boolean")
+        validate_px4_activation_evidence(activation["px4_activation_evidence"])
         _exact(target, {"logical_id", "profile"}, label="plan-activate target")
         if not isinstance(target["logical_id"], str) or not TARGET_ID.fullmatch(
             target["logical_id"]
@@ -853,7 +1154,11 @@ def validate_request_payload(request: Request) -> None:
             raise ContractError("plan-rollback rollback and target must be objects")
         _exact(
             rollback,
-            {"release_id", "configuration_checkpoint_id"},
+            {
+                "release_id",
+                "configuration_checkpoint_id",
+                "px4_activation_evidence",
+            },
             label="plan-rollback parameters",
         )
         _identity(rollback["release_id"], label="rollback release")
@@ -861,6 +1166,7 @@ def validate_request_payload(request: Request) -> None:
             rollback["configuration_checkpoint_id"],
             label="rollback configuration checkpoint",
         )
+        validate_px4_activation_evidence(rollback["px4_activation_evidence"])
         _exact(target, {"logical_id", "profile"}, label="plan-rollback target")
         if not isinstance(target["logical_id"], str) or not TARGET_ID.fullmatch(
             target["logical_id"]
@@ -1033,7 +1339,12 @@ def validate_request_payload(request: Request) -> None:
                 "access-revoke request carries a different mutation plan"
             )
         return
-    if request.action in {Action.HOST_MAINTENANCE, Action.HOST_REBOOT}:
+    if request.action in {
+        Action.HOST_MAINTENANCE,
+        Action.HOST_REBOOT,
+        Action.BACKUP_SEAL,
+        Action.BACKUP_RESTORE,
+    }:
         _exact(payload, {"plan"}, label=f"{request.action.value} payload")
         if not isinstance(payload["plan"], dict):
             raise ContractError(f"{request.action.value} plan must be an object")
@@ -1057,7 +1368,9 @@ def validate_request_payload(request: Request) -> None:
             client_id=request.client_id,
         )
         if payload["plan"]["action"] != Action.NETWORK_APPLY.value:
-            raise ContractError("network-apply request carries a different mutation plan")
+            raise ContractError(
+                "network-apply request carries a different mutation plan"
+            )
         _network_input(payload["profile"])
         return
     if request.action == Action.NETWORK_CONFIRM:

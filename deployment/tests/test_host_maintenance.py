@@ -273,7 +273,10 @@ class MaintenanceCase:
                     "schema": "iii.host-backup-receipt/v1",
                     "backup_id": "f" * 64,
                     "target_state_hash": TARGET_STATE,
+                    "state_marker": "e" * 64,
                     "verified": True,
+                    "external_verified": True,
+                    "fresh": True,
                     "record_sha256": "1" * 64,
                 }
                 if backup

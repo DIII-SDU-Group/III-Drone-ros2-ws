@@ -46,7 +46,6 @@ SUPPORTED_PLATFORM_IDS = {
 OFFLINE_ROLES = {
     "ansible-controller-wheelhouse",
     "gc-runtime-wheelhouse",
-    "gc-container-images",
     "arm64-builder-image",
     "apt-packages",
 }
@@ -61,6 +60,10 @@ REQUIRED_GC_PATHS = {
     ".local/state/iii/logs": "logs",
     ".local/state/iii/registry": "portable-records",
     ".local/share/iii": "application",
+    ".local/share/iii/gc-applications": "application",
+    ".config/QGroundControl.org": "settings",
+    ".local/share/QGroundControl": "state",
+    "Documents/QGroundControl": "logs",
     ".cache/iii": "cache",
 }
 GC_LOGIN_UNITS = {
@@ -69,6 +72,7 @@ GC_LOGIN_UNITS = {
     "iii-gc-discovery.service",
     "iii-gc-mirror.service",
     "iii-gc-clock.service",
+    "iii-gc-px4-parameters.service",
 }
 
 
@@ -271,9 +275,11 @@ def load_policy(path: Path, registry: ContractRegistry) -> dict[str, Any]:
         declared_paths.get(path) != kind for path, kind in REQUIRED_GC_PATHS.items()
     ):
         raise GCHostError("GC policy omits a required persistent path boundary")
-    if set(value["login_units"]) != GC_LOGIN_UNITS or value["manual_units"] != [
-        "iii-gc-browser.service"
-    ]:
+    if (
+        set(value["login_units"]) != GC_LOGIN_UNITS
+        or set(value["manual_units"]) != {"iii-gc-browser.service", "iii-qgc.service"}
+        or value["recovery_units"] != ["iii-gc-application-reconcile.service"]
+    ):
         raise GCHostError("GC policy user-session unit ownership is not canonical")
     if set(value["forbidden_proxy_host_packages"]) != {
         "mavsdk",
@@ -896,7 +902,11 @@ def inspect_status(
         mode = format(stat.S_IMODE(path.stat().st_mode), "04o") if exists else None
         paths.append({**item, "exists": exists, "actual_mode": mode})
     units = []
-    for unit in [*policy["login_units"], *policy["manual_units"]]:
+    for unit in [
+        *policy["login_units"],
+        *policy["manual_units"],
+        *policy["recovery_units"],
+    ]:
         completed = runner(
             [
                 "systemctl",

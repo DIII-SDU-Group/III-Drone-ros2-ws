@@ -8,12 +8,12 @@
     mode: "0700"
   become: true
 
-- name: Inspect the installed GC application identity
+- name: Inspect the installed host-native GC runtime identity
   ansible.builtin.stat:
     path: "{{ iii_gc_home }}/.local/share/iii/gc-runtime/application-id"
   register: iii_gc_application_marker
 
-- name: Remove an unsafe GC application identity marker
+- name: Remove an unsafe GC runtime identity marker
   ansible.builtin.file:
     path: "{{ iii_gc_home }}/.local/share/iii/gc-runtime/application-id"
     state: absent
@@ -22,7 +22,7 @@
     (iii_gc_application_marker.stat.islnk or not iii_gc_application_marker.stat.isreg)
   become: true
 
-- name: Read the installed GC application identity
+- name: Read the installed GC runtime identity
   ansible.builtin.slurp:
     src: "{{ iii_gc_home }}/.local/share/iii/gc-runtime/application-id"
   register: iii_gc_application_marker_content
@@ -38,25 +38,6 @@
   ansible.builtin.stat:
     path: "{{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/iii-gc-companion"
   register: iii_gc_companion_executable
-
-- name: Authenticate the pinned GC container images
-  ansible.builtin.shell: |
-    set -eu
-    for image in \
-      "iii-drone-gc-proxy:{{ iii_gc_application_id }}" \
-      "iii-drone-gc-frontend:{{ iii_gc_application_id }}"
-    do
-      actual="$(/usr/bin/docker image inspect \
-        --format '{% raw %}{{ index .Config.Labels "io.iii-drone.application-id" }}{% endraw %}' \
-        "$image" 2>/dev/null || true)"
-      test "$actual" = "$III_EXPECTED_APPLICATION_ID"
-    done
-  environment:
-    III_EXPECTED_APPLICATION_ID: "{{ iii_gc_application_id }}"
-  register: iii_gc_image_status
-  changed_when: false
-  failed_when: false
-  when: not iii_gc_test_mode
 
 - name: Select the exact host-native GC runtime dependency lock
   ansible.builtin.set_fact:
@@ -108,13 +89,6 @@
          (iii_gc_runtime_environment.stat.pw_name | default('') != iii_gc_user) or
          (not iii_gc_companion_executable.stat.exists) or
          ((not iii_gc_test_mode) and (iii_gc_runtime_authentication.rc | default(1) != 0)) }}
-    iii_gc_images_changed: >-
-      {{ (not iii_gc_test_mode) and (iii_gc_image_status.rc | default(1) != 0) }}
-
-- name: Decide whether any GC application content must change
-  ansible.builtin.set_fact:
-    iii_gc_application_changed: >-
-      {{ iii_gc_runtime_changed or iii_gc_images_changed }}
 
 - name: Create a deterministic test runtime in target-equivalent matrices
   ansible.builtin.shell: |
@@ -276,55 +250,7 @@
   become_user: "{{ iii_gc_user }}"
   changed_when: false
 
-- name: Build the pinned GC frontend and proxy images online
-  ansible.builtin.command:
-    argv:
-      - /usr/bin/docker
-      - compose
-      - --project-name
-      - iii-ground-control-build
-      - --file
-      - "{{ iii_gc_workspace }}/src/III-Drone-GC/docker-compose.prod.yml"
-      - build
-      - --pull=false
-  environment:
-    III_GC_IMAGE_TAG: "{{ iii_gc_application_id }}"
-    III_GC_APPLICATION_ID: "{{ iii_gc_application_id }}"
-  when: not iii_gc_test_mode and not iii_gc_offline and iii_gc_images_changed
-  become: true
-  become_user: "{{ iii_gc_user }}"
-  changed_when: true
-
-- name: Load authenticated prepared-offline GC images
-  ansible.builtin.command:
-    argv:
-      - /usr/bin/docker
-      - load
-      - --input
-      - "{{ iii_gc_offline_artifacts['gc-container-images'] }}"
-  when: not iii_gc_test_mode and iii_gc_offline and iii_gc_images_changed
-  become: true
-  become_user: "{{ iii_gc_user }}"
-  changed_when: true
-
-- name: Require the installed GC images to match the planned application identity
-  ansible.builtin.shell: |
-    set -eu
-    for image in \
-      "iii-drone-gc-proxy:{{ iii_gc_application_id }}" \
-      "iii-drone-gc-frontend:{{ iii_gc_application_id }}"
-    do
-      actual="$(/usr/bin/docker image inspect \
-        --format '{% raw %}{{ index .Config.Labels "io.iii-drone.application-id" }}{% endraw %}' \
-        "$image")"
-      test "$actual" = "$III_EXPECTED_APPLICATION_ID"
-    done
-  environment:
-    III_EXPECTED_APPLICATION_ID: "{{ iii_gc_application_id }}"
-  when: not iii_gc_test_mode and iii_gc_images_changed
-  changed_when: false
-
-- name: Commit the installed GC application identity
+- name: Commit the installed host-native GC runtime identity
   ansible.builtin.copy:
     content: "{{ iii_gc_install_id }}\n"
     dest: "{{ iii_gc_home }}/.local/share/iii/gc-runtime/application-id"

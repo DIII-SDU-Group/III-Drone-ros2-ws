@@ -346,6 +346,25 @@ class ReleaseStore:
         with self._locked():
             return self._load_state()
 
+    def active_release_manifest(self) -> dict[str, Any] | None:
+        """Return the authenticated active release metadata for offboard pairing."""
+        with self._locked():
+            state = self._load_state()
+            release_id = state["active_release_id"]
+            if release_id is None:
+                return None
+            release_root = self.releases_root / release_id
+            receipt = self._verify_release_tree(release_root)
+            if receipt["release_id"] != release_id:
+                raise ContractError("active release receipt identity mismatch")
+            manifest = _canonical_document(
+                release_root / "release-manifest.json",
+                label="active release manifest",
+            )
+            if manifest.get("release_id") != release_id:
+                raise ContractError("active release manifest identity mismatch")
+            return manifest
+
     def _commit_state(self, state: dict[str, Any]) -> dict[str, Any]:
         state["generation"] = int(state["generation"]) + 1
         state["state_id"] = _state_identity(state)

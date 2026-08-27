@@ -38,7 +38,12 @@ HOST_MAINTENANCE_DEADLINES = {
 def operation_deadlines(action: str) -> dict[str, int]:
     return dict(
         HOST_MAINTENANCE_DEADLINES
-        if action == Action.HOST_MAINTENANCE.value
+        if action
+        in {
+            Action.HOST_MAINTENANCE.value,
+            Action.BACKUP_SEAL.value,
+            Action.BACKUP_RESTORE.value,
+        }
         else DEFAULT_DEADLINES
     )
 
@@ -337,7 +342,9 @@ class ReceiverControlStore:
             or lease["client_id"] != client_id
             or lease["action"] != leased_action.value
         ):
-            raise ContractError("receiver confirmation does not match the active network lease")
+            raise ContractError(
+                "receiver confirmation does not match the active network lease"
+            )
         nonce_hash = hashlib.sha256(bytes.fromhex(nonce)).hexdigest()
         record = value["nonces"].get(nonce_hash)
         now = self.monotonic()

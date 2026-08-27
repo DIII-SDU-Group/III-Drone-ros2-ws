@@ -146,7 +146,7 @@
       "additionalProperties": false,
       "required": ["role", "path", "sha256", "size", "absolute_path"],
       "properties": {
-        "role": {"enum": ["apt-packages", "ansible-controller-wheelhouse", "gc-runtime-wheelhouse", "gc-container-images", "arm64-builder-image"]},
+        "role": {"enum": ["apt-packages", "ansible-controller-wheelhouse", "gc-runtime-wheelhouse", "arm64-builder-image"]},
         "path": {"type": "string", "minLength": 1},
         "sha256": {"$ref": "#/definitions/hash"},
         "size": {"type": "integer", "minimum": 1},
@@ -162,7 +162,7 @@
         "manifest": {"$ref": "#/definitions/file"},
         "cache_id": {"$ref": "#/definitions/hash"},
         "platform_id": {"enum": ["ubuntu-22.04-x86_64", "ubuntu-24.04-x86_64"]},
-        "artifacts": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"$ref": "#/definitions/offline_artifact"}}
+        "artifacts": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/definitions/offline_artifact"}}
       }
     }
   }

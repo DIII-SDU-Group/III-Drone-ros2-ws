@@ -109,6 +109,10 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     locks, prepared-offline cache contract, persistent state, replacement-host
     recovery, and graphical login lifecycle.
 
+30. `portable-host-backup-and-restore.md`
+    Receiver-coordinated portable state, external content-addressed backup,
+    post-reimage reconciliation, and powered-off removed-media salvage.
+
 Domain language and context ownership are indexed by the root
 `CONTEXT-MAP.md`.
 

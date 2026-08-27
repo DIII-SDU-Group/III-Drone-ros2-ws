@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/portable-backup-chunk.schema.json",
+  "title": "III bounded portable backup transfer chunk",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "backup_id", "offset", "bytes", "total_bytes", "sha256", "data_base64", "archive_sha256"],
+  "properties": {
+    "schema": {"const": "iii.portable-backup-chunk/v1"},
+    "backup_id": {"$ref": "#/definitions/hash"},
+    "offset": {"type": "integer", "minimum": 0},
+    "bytes": {"type": "integer", "minimum": 0, "maximum": 4194304},
+    "total_bytes": {"type": "integer", "minimum": 1},
+    "sha256": {"$ref": "#/definitions/hash"},
+    "data_base64": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$"},
+    "archive_sha256": {"$ref": "#/definitions/hash"}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

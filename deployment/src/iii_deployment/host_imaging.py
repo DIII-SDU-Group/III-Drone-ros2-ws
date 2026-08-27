@@ -191,7 +191,9 @@ def render_nocloud_seed(
 
     hostname = str(bootstrap["hostname"])
     if hostname != "iii":
-        raise BootstrapInputError("aircraft bootstrap hostname must be iii for iii.local mDNS")
+        raise BootstrapInputError(
+            "aircraft bootstrap hostname must be iii for iii.local mDNS"
+        )
     instance_material = {
         "profile_id": profile["profile_id"],
         "hostname": hostname,
@@ -573,6 +575,25 @@ def _backup_reference(path: Path | None) -> dict[str, Any] | None:
         raise ImagingError(
             "pre-reimage evidence is not a verified host backup or salvage record"
         )
+    if value.get("schema") == "iii.host-backup-receipt/v1":
+        from .portable_state import validate_external_receipt
+
+        try:
+            validate_external_receipt(value)
+        except ContractError as exc:
+            raise ImagingError(str(exc)) from exc
+    elif (
+        value.get("verified") is not True
+        or value.get("outcome") != "verified"
+        or value.get("recommissioning_required") is not True
+        or value.get("credentials_recovered") is not False
+        or value.get("filesystem", {}).get("source_modified") is not False
+    ):
+        raise ImagingError("pre-reimage salvage record is incomplete or unsafe")
+    elif value.get("salvage_id") != content_identity(
+        {key: item for key, item in value.items() if key != "salvage_id"}
+    ):
+        raise ImagingError("pre-reimage salvage record identity is invalid")
     if value.get("verified") is not True and value.get("outcome") != "verified":
         raise ImagingError("pre-reimage backup record is not verified")
     return {"path": str(path.absolute()), "sha256": _sha256_file(path)}

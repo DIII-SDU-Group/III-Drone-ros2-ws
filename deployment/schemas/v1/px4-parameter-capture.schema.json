@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/px4-parameter-capture.schema.json",
+  "title": "Named PX4 parameter capture metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "capture_id", "snapshot_id", "short_name", "description", "created_at"],
+  "properties": {
+    "schema": {"const": "iii.px4-parameter-capture/v1"},
+    "capture_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "snapshot_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "short_name": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"},
+    "description": {"type": "string", "minLength": 1, "maxLength": 500},
+    "created_at": {"type": "string", "format": "date-time"}
+  }
+}

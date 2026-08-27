@@ -4,7 +4,7 @@
   "title": "III field deployment operation plan",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "operation_id", "release_id", "target", "impact", "bundle_set", "configuration_checkpoint_id", "mutations", "px4_write"],
+  "required": ["schema", "operation_id", "release_id", "target", "impact", "bundle_set", "configuration_checkpoint_id", "mutations", "px4_write", "px4_validation"],
   "properties": {
     "schema": {"const": "iii.field-deployment-plan/v1"},
     "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
@@ -13,8 +13,9 @@
     "impact": {"type": "object", "required": ["schema", "impact_id", "components"]},
     "bundle_set": {"type": "string", "minLength": 1},
     "configuration_checkpoint_id": {"$ref": "#/definitions/hash"},
-    "mutations": {"type": "array", "uniqueItems": true, "items": {"enum": ["prepare-gc-handoff", "transfer-drone", "stage-drone", "activate-drone"]}},
-    "px4_write": {"const": false}
+    "mutations": {"type": "array", "uniqueItems": true, "items": {"enum": ["stage-gc-application", "activate-gc-application", "transfer-drone", "stage-drone", "activate-drone"]}},
+    "px4_write": {"const": false},
+    "px4_validation": {"enum": ["complete-disarmed-inventory-before-activation", "not-requested"]}
   },
   "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
 }

@@ -93,6 +93,13 @@ iii_filesystem_directories:
   - {path: /var/lib/iii, owner: iii, group: iii, mode: "0750"}
   - {path: /var/lib/iii/configuration, owner: iii, group: iii, mode: "0750"}
   - {path: /var/lib/iii/configuration/checkpoints, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/backups, owner: root, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/portable-generations, owner: root, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/portable-selector, owner: root, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/tuning, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/px4, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/hardware, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/diagnostics, owner: iii, group: iii, mode: "0750"}
   - {path: /var/lib/iii/deployment, owner: root, group: iii, mode: "0750"}
   - {path: /var/lib/iii/deployment/activation-transactions, owner: root, group: iii, mode: "0750"}
   - {path: /var/lib/iii/deployment/activation, owner: root, group: iii, mode: "0750"}

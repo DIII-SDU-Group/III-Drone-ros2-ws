@@ -9,7 +9,7 @@ automatic selector rollback is permanently disabled for that transaction.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import json
 from pathlib import Path
 import re
@@ -23,10 +23,12 @@ from iii_deployment.activation import (
     MaintenanceOverride,
 )
 from iii_deployment.contracts import ContractError, canonical_json, content_identity
-from iii_deployment.receiver.protocol import OPERATION_ID
+from iii_deployment.receiver.protocol import (
+    OPERATION_ID,
+    validate_px4_activation_evidence,
+)
 from iii_deployment.receiver.state import atomic_document
 from iii_deployment.staging import ActivationAuthorization, ReleaseStore
-
 
 HEALTH_SCHEMA = "iii.activation-health/v1"
 POLICY_SCHEMA = "iii.activation-health-policy/v1"
@@ -808,6 +810,60 @@ class ActivationCoordinator:
             raise ContractError("release lacks a runtime API compatibility range")
         return candidate, policy, runtime_range
 
+    def validate_px4_evidence(
+        self, *, release_id: str, evidence: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        validate_px4_activation_evidence(evidence)
+        manifest = self._manifest(release_id)
+        profile = next(
+            (
+                item
+                for item in manifest.get("profiles", [])
+                if item.get("id") == self.profile
+            ),
+            None,
+        )
+        parameter_profile = profile and profile.get("parameter_profile")
+        expected_manifest = (
+            manifest.get("px4", {}).get("manifest_ids", {}).get(parameter_profile)
+        )
+        comparison = evidence["comparison"]
+        snapshot = evidence["snapshot"]
+        if (
+            evidence["release_id"] != release_id
+            or parameter_profile not in {"real", "sim"}
+            or evidence["profile"] != parameter_profile
+            or evidence["manifest_id"] != expected_manifest
+            or comparison["inventory_complete"] is not True
+            or comparison["required_match"] is not True
+            or comparison["missing"]
+            or comparison["unexpected"]
+            or comparison["drift"]["release-required"]
+            or evidence["healthy"] is not True
+            or evidence["writes_performed"] != 0
+            or snapshot["target"]["armed"] is not False
+        ):
+            raise ContractError(
+                "PX4 activation evidence does not satisfy the staged release"
+            )
+        return dict(evidence)
+
+    @staticmethod
+    def _with_px4_evidence(
+        snapshot: ActivationHealthSnapshot, evidence: Mapping[str, Any]
+    ) -> ActivationHealthSnapshot:
+        px4 = dict(snapshot.px4)
+        px4["interface_compatible"] = (
+            px4.get("available") is True and px4.get("fresh") is True
+        )
+        px4["firmware_compatible"] = True
+        px4["parameter_manifest_matches"] = True
+        value = asdict(replace(snapshot, px4=px4, evidence_id="0" * 64))
+        value["evidence_id"] = _identity(value, "evidence_id")
+        result = ActivationHealthSnapshot(**value)
+        result.validate()
+        return result
+
     def activate(
         self,
         *,
@@ -815,6 +871,7 @@ class ActivationCoordinator:
         release_id: str,
         configuration_checkpoint_id: str,
         explicit_qualified_action: bool,
+        px4_activation_evidence: Mapping[str, Any],
         status_index: Mapping[str, Any] | None = None,
         maintenance_override: MaintenanceOverride | None = None,
         operator_rollback: bool = False,
@@ -823,6 +880,9 @@ class ActivationCoordinator:
         candidate, policy, runtime_range = self._candidate(
             release_id=release_id,
             configuration_checkpoint_id=configuration_checkpoint_id,
+        )
+        px4_evidence = self.validate_px4_evidence(
+            release_id=release_id, evidence=px4_activation_evidence
         )
         previous = self.transaction_store.current()
         if previous is None:
@@ -914,7 +974,9 @@ class ActivationCoordinator:
                         "activation health deadline expired before a ten-second stable window: "
                         + detail
                     )
-                snapshot = self.health_provider(candidate, policy)
+                snapshot = self._with_px4_evidence(
+                    self.health_provider(candidate, policy), px4_evidence
+                )
                 last_snapshot = snapshot
                 last_reasons = gate.rejection_reasons(snapshot)
                 if last_reasons:
@@ -964,6 +1026,9 @@ class ActivationCoordinator:
                 "elapsed_s": self.monotonic() - started,
                 "automatic_rollback_permitted": False,
                 "autonomy_started": False,
+                "px4_activation_evidence_id": px4_evidence["evidence_id"],
+                "px4_snapshot_id": px4_evidence["snapshot"]["snapshot_id"],
+                "px4_manifest_id": px4_evidence["manifest_id"],
             }
         except Exception as exc:
             state = self.release_store.state()
@@ -1008,6 +1073,7 @@ class ActivationCoordinator:
         *,
         release_id: str,
         configuration_checkpoint_id: str,
+        px4_activation_evidence: Mapping[str, Any],
         operator_rollback: bool = False,
     ) -> dict[str, Any]:
         """Read-only activation inspection used before durable request acceptance."""
@@ -1015,6 +1081,9 @@ class ActivationCoordinator:
         candidate, policy, runtime_range = self._candidate(
             release_id=release_id,
             configuration_checkpoint_id=configuration_checkpoint_id,
+        )
+        px4_evidence = self.validate_px4_evidence(
+            release_id=release_id, evidence=px4_activation_evidence
         )
         previous = self.transaction_store.current()
         release_state = self.release_store.state()
@@ -1050,6 +1119,7 @@ class ActivationCoordinator:
             "ready": not reasons,
             "rejection_reasons": reasons,
             "autonomy_started": False,
+            "px4_activation_evidence_id": px4_evidence["evidence_id"],
         }
 
     def operator_rollback(
@@ -1058,6 +1128,7 @@ class ActivationCoordinator:
         operation_id: str,
         release_id: str,
         configuration_checkpoint_id: str,
+        px4_activation_evidence: Mapping[str, Any],
         status_index: Mapping[str, Any] | None = None,
         maintenance_override: MaintenanceOverride | None = None,
     ) -> dict[str, Any]:
@@ -1068,6 +1139,7 @@ class ActivationCoordinator:
             release_id=release_id,
             configuration_checkpoint_id=configuration_checkpoint_id,
             explicit_qualified_action=False,
+            px4_activation_evidence=px4_activation_evidence,
             status_index=status_index,
             maintenance_override=maintenance_override,
             operator_rollback=True,

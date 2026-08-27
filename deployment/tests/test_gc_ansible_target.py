@@ -48,7 +48,7 @@ run_playbook() {
   if [ "$offline" = true ]; then
     cache_id="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
     install_id="dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
-    artifacts='{"apt-packages":"/unused/apt.tar","ansible-controller-wheelhouse":"/unused/controller.tar","gc-runtime-wheelhouse":"/unused/runtime.tar","gc-container-images":"/unused/gc-images.tar","arm64-builder-image":"/unused/builder.tar"}'
+    artifacts='{"apt-packages":"/unused/apt.tar","ansible-controller-wheelhouse":"/unused/controller.tar","gc-runtime-wheelhouse":"/unused/runtime.tar","arm64-builder-image":"/unused/builder.tar"}'
     offline_cache="/unused/cache"
   fi
   if [ "$mode" = check ]; then check_arg="--check"; fi
@@ -75,9 +75,13 @@ test "$(python3 -c 'import json; print(json.load(open("/tmp/offline-second.json"
 test "$(stat -c %a /home/gcuser/.config/iii/identity/machine-id)" = 600
 test "$(stat -c %a /home/gcuser/.config/iii/keys/ssh/id_ed25519)" = 600
 test -L /home/gcuser/.config/systemd/user/graphical-session.target.wants/iii-gc.target
+test -L /home/gcuser/.config/systemd/user/graphical-session.target.wants/iii-gc-application-reconcile.service
 grep -Fq 'PartOf=graphical-session.target' /home/gcuser/.config/systemd/user/iii-gc.target
 ! grep -Fq 'iii-gc-browser.service' /home/gcuser/.config/systemd/user/iii-gc.target
 ! grep -Riq 'qgroundcontrol' /home/gcuser/.config/systemd/user/iii-gc.target
+test -f /home/gcuser/.config/systemd/user/iii-qgc.service
+! test -e /home/gcuser/.config/systemd/user/graphical-session.target.wants/iii-qgc.service
+grep -Fq '.local/share/iii/gc-applications/current/payload/compose.yml' /home/gcuser/.config/systemd/user/iii-gc-proxy.service
 cp /tmp/first.json /evidence/first.json
 cp /tmp/second.json /evidence/second.json
 cp /tmp/drift.json /evidence/drift.json

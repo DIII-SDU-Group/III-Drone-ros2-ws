@@ -3642,6 +3642,22 @@ Delivery order:
 4. P3.T11 backup/restore and P3.T4 maintenance are accepted only after the
    receiver, local record registry, and qualified recovery anchor exist.
 
+Phase software-boundary verification (2026-08-27):
+
+- The full III-only boundary passed 586 deployment tests (five explicitly opt-in
+  native target/systemd tests skipped), 706 tests across the nine III ROS package
+  targets, 125 GC frontend tests, generated-contract freshness, lint with three
+  existing Fast Refresh warnings and no errors, typecheck, production frontend
+  build, three workspace integration tests, and 180 CLI tests.
+- The boundary run found and fixed GC login-unit policy drift, extensible PX4
+  manifest-identity schema drift, a real-profile Runtime test fixture that did not
+  provide the now-required machine verifier, and stale GC mission-catalog generated
+  types/consumers. Focused regressions passed before the completed boundary reruns.
+- Physical raw-image/SSH reachability, login/logout, second-host convergence, and
+  prepared-offline laptop recommissioning remain intentionally unclaimed because
+  this environment has no attached Raspberry Pi/SD target or replacement GC host;
+  P3.T8 and the physical phase criteria therefore remain open.
+
 #### P3.T0: Create SD Imaging And First-Boot Cloud-Init Profiles
 
 **Status: Completed (2026-08-26).** Added the checksum-pinned Canonical Ubuntu
@@ -4207,6 +4223,8 @@ Implementation notes:
 
 #### P3.T9: Install And Transactionally Update GC/QGroundControl Applications
 
+**Status: Completed.**
+
 Description:
 Install paired GC application artifacts using the workspace release identity while
 keeping GC and drone slots independently rollbackable. Retain pinned production
@@ -4217,27 +4235,27 @@ operation. Keep host package maintenance separate from application updates.
 
 Acceptance:
 
-- [ ] Release-bound frontend/proxy container digests install and roll back offline;
+- [x] Release-bound frontend/proxy container digests install and roll back offline;
       containers own no QGC binary, host credentials, `.iii` state, signer, Ansible,
       updater, or ARM64 builder control plane.
-- [ ] QGroundControl is checksum/version pinned, self-update disabled, atomically
+- [x] QGroundControl is checksum/version pinned, self-update disabled, atomically
       selected, shared by sim/real, and retains a previous known-good binary while
       preserving backed-up user settings/logs outside slots.
-- [ ] `iii gc open/start/stop/restart/status` owns frontend/proxy/discovery/mirror/
+- [x] `iii gc open/start/stop/restart/status` owns frontend/proxy/discovery/mirror/
       clock/browser behavior; `iii qgc start/stop/restart/status/config ...` owns
       every QGC operation. Neither namespace silently invokes the other application.
-- [ ] Simulation launches only PX4/Gazebo in the devcontainer and reaches host QGC
+- [x] Simulation launches only PX4/Gazebo in the devcontainer and reaches host QGC
       over explicit tested networking; no devcontainer QGC path/lifecycle remains.
-- [ ] Paired updates install/health-check compatible GC first, then drone. GC
+- [x] Paired updates install/health-check compatible GC first, then drone. GC
       failure leaves drone untouched; drone failure retains new GC only when it is
       compatible with the restored drone, otherwise rolls GC back too.
-- [ ] Connected-real updates drain/reject new browser commands and enforce the
+- [x] Connected-real updates drain/reject new browser commands and enforce the
       maintenance-safe gate; disconnected/sim updates are permitted, and recovery
       override is separately confirmed/audited.
-- [ ] GC slots protect qualified anchor, active, previous field release, and staged
+- [x] GC slots protect qualified anchor, active, previous field release, and staged
       candidate. Non-protected cache defaults to 50 GiB and reserves at least
       10 GiB or 10 percent free; offline sets and protected domains are not evicted.
-- [ ] Application update failure/interruption/logout/reboot reaches a compatible
+- [x] Application update failure/interruption/logout/reboot reaches a compatible
       recorded pair without losing secrets, captures, `.iii`, or QGC user state.
 
 Tests:
@@ -4247,7 +4265,27 @@ Tests:
   GC-first/drone-failure compatibility rollback, interruption/reboot, cache pressure,
   CLI namespace separation, and native QGC launch.
 
+Implementation notes:
+
+- Added signed, content-addressed GC/QGC application slots with a durable activation
+  journal, exact selector and service-state recovery, paired GC-first deployment,
+  compatibility-aware reconciliation, protected offline-cache classes, and a
+  strict browser drain/safety override contract. QGC settings are transactionally
+  backed up and restored as part of the same application transaction.
+- Split `iii gc` and `iii qgc` into independent lifecycle owners, installed the
+  explicit host-native QGC user unit/desktop launcher, and removed the managed
+  devcontainer QGC configuration. The simulation helper owns only PX4/Gazebo and
+  reports the host UDP 14550 listener without starting it.
+- Verified the actual production GC images and pinned QGC 5.0.8 AppImage
+  (`06969c67ef58ea063def0a8271447a1cc385438c4a7df36813315b4475146737`),
+  native launch probes on the supported Ubuntu targets, real signed manager
+  stage/activate/rollback, cache and power-loss matrices, and isolated SITL host
+  networking. Focused application/release/CLI matrices passed, including the real
+  Ubuntu 22.04/24.04 Ansible targets.
+
 #### P3.T10: Inventory And Manage PX4/QGroundControl Release Configuration
+
+**Status: Completed.**
 
 Description:
 Create release-owned real/sim PX4 parameter manifests and a sanitized managed-key
@@ -4257,35 +4295,35 @@ inspection/application workflows without expanding into PX4 firmware flashing.
 
 Acceptance:
 
-- [ ] Complete expected PX4 sets are versioned per real/sim profile with required,
+- [x] Complete expected PX4 sets are versioned per real/sim profile with required,
       tunable, and calibration/identity classifications and release hashes.
-- [ ] Real activation reads the full FMU inventory and fails health on required
+- [x] Real activation reads the full FMU inventory and fails health on required
       mismatch without silently writing any PX4 parameter.
-- [ ] `iii px4 params pull/plan/apply/verify` requires disarmed safe state, creates
+- [x] `iii px4 params pull/plan/apply/verify` requires disarmed safe state, creates
       a complete restorable backup, presents per-key changes, writes only confirmed
       keys, and verifies readback/recovery.
-- [ ] The GC companion captures a complete disarmed baseline, observes/reconciles
+- [x] The GC companion captures a complete disarmed baseline, observes/reconciles
       MAVLink parameter changes, and mirrors immutable content revisions without
       inventing unavailable operator/transaction provenance for direct QGC edits.
-- [ ] PX4 event handling uses a two-second debounce followed by a complete-set
+- [x] PX4 event handling uses a two-second debounce followed by a complete-set
       reconciliation, repeats every 60 seconds while connected/disarmed, and runs
       once at clean session end; armed/in-flight monitoring never starts a bulk
       parameter transfer or write.
-- [ ] Arbitrary named PX4 sets can be captured, described, exported, verified,
+- [x] Arbitrary named PX4 sets can be captured, described, exported, verified,
       compared, and selectively promoted through the same untracked evidence and
       feature-branch workflow principles as III parameter sets.
-- [ ] QGroundControl release configuration contains only declared stable managed
+- [x] QGroundControl release configuration contains only declared stable managed
       keys; merge is transactional with backup and preserves unowned user state.
-- [ ] A schema-versioned QGC key policy classifies managed, local-preference,
+- [x] A schema-versioned QGC key policy classifies managed, local-preference,
       generated/cache, sensitive, and prohibited settings.
-- [ ] Clean-exit/explicit QGC captures are redacted immutable local evidence, and
+- [x] Clean-exit/explicit QGC captures are redacted immutable local evidence, and
       per-key promotion writes only reviewed managed keys on a feature branch;
       geometry, host paths, credentials, caches, and unsafe upload changes fail.
-- [ ] Public telemetry/log upload is disabled by the managed baseline unless the
+- [x] Public telemetry/log upload is disabled by the managed baseline unless the
       operator explicitly opts in outside release defaults.
-- [ ] QGC ParamCache and equivalent version-coupled generated data is reproducibly
+- [x] QGC ParamCache and equivalent version-coupled generated data is reproducibly
       generated/cached and not treated as hand-maintained policy.
-- [ ] Sim and real use the same manifest schemas, inventory tooling, release
+- [x] Sim and real use the same manifest schemas, inventory tooling, release
       provenance, and diff/report formats with profile-specific values.
 
 Tests:
@@ -4295,7 +4333,35 @@ Tests:
   QGC clean merge, user-state preservation, settings migration rollback, public-
   upload default, and generated-cache compatibility.
 
+Implementation notes:
+
+- Added schema-validated, release-owned real/sim manifests with 1,022/1,021
+  classified parameters, respectively; the decoded reference SITL snapshot is
+  retained by content identity and SHA-256. Release assembly authenticates the
+  snapshot, both manifest identities, PX4 firmware version/40-bit commit prefix,
+  and profile mapping. The reproducible generator rejects lossy/non-integral
+  MAVLink integer evidence.
+- Added `iii px4 params` pull/plan/apply/verify and named capture/list/show/diff/
+  export/import/promote workflows; all writes require disarmed status, a fresh
+  complete backup, exact key confirmation, readback, and recovery. Receiver
+  activation plans now retain and revalidate complete no-write PX4 evidence bound
+  to the staged release manifest before selector mutation.
+- Added the login-scoped QGC-forwarded PX4 companion with fixed two-second debounce,
+  60-second reconciliation, clean-session-end reconciliation, immutable content
+  revisions, and observation-only provenance. Added transactional managed-key QGC
+  merge/restore, redacted clean/explicit captures, guarded feature-branch
+  promotion, and QGC/PX4/version-bound generated ParamCache storage. Public upload
+  remains disabled in the baseline.
+- Focused verification passed 127 deployment tests (plus the separately executed
+  2/2 Ubuntu target matrix), 59 CLI tests, all 118 Draft-07 schemas, deterministic
+  manifest regeneration, and submodule-lock/static checks. Live isolated PX4 SITL
+  proved a receiver-valid 1,021-parameter no-write activation inventory, the real
+  companion entrypoint, and a backup-first 12.0→11.5→12.0 parameter write/restore
+  drill whose final snapshot returned to the original zero-drift identity.
+
 #### P3.T11: Implement Portable Host Backup And Reimage Restore
+
+**Status: Completed.**
 
 Description:
 Implement the Q104–Q106 backup contract across receiver, CLI, persistent-state
@@ -4310,28 +4376,28 @@ Salvage must never modify the source media, reset credentials, or make it bootab
 
 Acceptance:
 
-- [ ] Backup includes every declared portable state domain and proves a single
+- [x] Backup includes every declared portable state domain and proves a single
       coordinated revision/hash boundary without copying live-changing files.
-- [ ] Credentials, private keys, network secrets, host identity, active selectors,
+- [x] Credentials, private keys, network secrets, host identity, active selectors,
       and receiver transaction machinery are structurally excluded and detected if
       accidentally present.
-- [ ] Real/OptiTrack backup requires maintenance-safe state, briefly quiesces and
+- [x] Real/OptiTrack backup requires maintenance-safe state, briefly quiesces and
       flushes writers, seals locally, and resumes standby before long transfer.
-- [ ] `.iii/backups/` supports content-addressed list/show/verify/export/import;
+- [x] `.iii/backups/` supports content-addressed list/show/verify/export/import;
       explicit pruning cannot remove referenced restore/audit evidence.
-- [ ] Planned reimage and host-baseline replacement require a fresh verified backup
+- [x] Planned reimage and host-baseline replacement require a fresh verified backup
       or a separately confirmed, audited unrecoverable-data-loss override.
-- [ ] Backup freshness is bound to the sealed persistent-state generation and all
+- [x] Backup freshness is bound to the sealed persistent-state generation and all
       declared invalidating mutations, not timestamp alone; readiness warns when
       no verified external archive has been produced for 30 days.
-- [ ] Restore requires a clean converged host, compatible deployed release, staged
+- [x] Restore requires a clean converged host, compatible deployed release, staged
       schema review/reconciliation, atomic persistent-root activation, and health
       validation without restoring stale machine/transaction identity.
-- [ ] Salvage refuses the running system disk, mounted/in-use media, unsupported or
+- [x] Salvage refuses the running system disk, mounted/in-use media, unsupported or
       inconsistent filesystems, dirty/mid-transaction state that cannot be safely
       interpreted, and any request for secrets/credentials; source mounts are
       kernel-enforced read-only and unmounted on success, failure, or interruption.
-- [ ] A successful salvage records source block-device identity, filesystem/layout
+- [x] A successful salvage records source block-device identity, filesystem/layout
       evidence, recoverable domains, omissions, transaction consistency, hashes,
       and a prominent statement that fresh credentials and recommissioning remain
       mandatory.
@@ -4344,6 +4410,32 @@ Tests:
   loopback SD salvage, running/in-use-device rejection, forced read-only proof,
   interrupted salvage cleanup, inconsistent transaction refusal, secret exclusion,
   and salvage-to-reimage-to-recommission acceptance.
+
+Implementation notes:
+
+- Added a tracked portable-state policy spanning configuration, tuning, PX4,
+  hardware, activation evidence, deployment audits, and diagnostics. The receiver
+  now owns maintenance-safe quiesce/flush/seal/resume, deterministic archives,
+  exact policy and per-file hash binding, structural secret rejection, freshness
+  state markers, content-addressed retention, and resumable fixed-root transfer.
+- Added `iii host backup create/list/show/verify/export/import/restore/prune/status`
+  with retained mutation plans and externally verified `.iii/backups/` receipts.
+  Reimage and baseline-replacement gates require current state-bound external
+  evidence or the existing separately confirmed data-loss override. Restore claims
+  immutable receiver input, requires a clean compatible host, reconciles in a
+  private generation, atomically selects it, validates health, and rolls back the
+  selector without restoring machine identity or receiver transactions.
+- Added `iii host salvage --device` and a privileged private-mount-namespace worker.
+  It authenticates explicit removable media, rejects the running/in-use/unknown or
+  inconsistent source, uses `e2fsck -fn` and kernel `ro,noload,nodev,nosuid,noexec`,
+  extracts only policy-declared portable state, guarantees unmount, and emits a
+  content-identified salvage record requiring clean reimage, new credentials, and
+  full recommissioning.
+- Focused verification passed 180 deployment/receiver tests (one opt-in native
+  systemd integration test skipped) and 67 CLI tests, all 128 Draft-07 schemas,
+  compile/static/submodule-lock checks, and a privileged loopback ext4 salvage
+  drill. The drill independently reverified the archive and proved no residual
+  mount, loop device, or `/dev/disk/by-id` fixture remained after completion.
 
 ### P4: Make Field Tuning Durable And Traceable
 

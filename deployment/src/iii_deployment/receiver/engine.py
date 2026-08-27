@@ -34,6 +34,24 @@ from iii_deployment.receiver.state import (
 )
 from iii_deployment.staging import STATUS_INDEX_NAME, ReleaseStore
 
+
+def _sha256_regular(path: Path) -> str:
+    digest = hashlib.sha256()
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        observed = os.fstat(descriptor)
+        if not stat.S_ISREG(observed.st_mode):
+            raise ContractError("receiver-owned input is not a regular file")
+        while True:
+            block = os.read(descriptor, 1024 * 1024)
+            if not block:
+                break
+            digest.update(block)
+    finally:
+        os.close(descriptor)
+    return digest.hexdigest()
+
+
 RESULT_SCHEMA = "iii.receiver-result/v1"
 NONCE_EXPIRY_S = 300
 
@@ -89,6 +107,7 @@ class ReceiverEngine:
         hardware_inspector: Any | None = None,
         host_inspector: Any | None = None,
         network_controller: Any | None = None,
+        backup_controller: Any | None = None,
     ) -> None:
         if control.nonce_expiry_s != NONCE_EXPIRY_S:
             raise ContractError(
@@ -121,6 +140,7 @@ class ReceiverEngine:
         self.hardware_inspector = hardware_inspector
         self.host_inspector = host_inspector
         self.network_controller = network_controller
+        self.backup_controller = backup_controller
         if (log_inventory is None) != (log_transfer is None):
             raise ContractError(
                 "receiver log inventory and transfer must be configured together"
@@ -215,6 +235,36 @@ class ReceiverEngine:
                     request.payload["target_operation_id"]
                 ),
             )
+        if request.action == Action.BACKUP_STATUS:
+            self.access.require_active(request.client_id)
+            if self.backup_controller is None:
+                raise ContractError("receiver portable backup is unavailable")
+            return self._result(request, backup=self.backup_controller.status())
+        if request.action == Action.BACKUP_LIST:
+            self.access.require_active(request.client_id)
+            if self.backup_controller is None:
+                raise ContractError("receiver portable backup is unavailable")
+            return self._result(request, backups=self.backup_controller.list())
+        if request.action == Action.BACKUP_SHOW:
+            self.access.require_active(request.client_id)
+            if self.backup_controller is None:
+                raise ContractError("receiver portable backup is unavailable")
+            return self._result(
+                request,
+                backup=self.backup_controller.show(request.payload["backup_id"]),
+            )
+        if request.action == Action.BACKUP_CHUNK:
+            self.access.require_active(request.client_id)
+            if self.backup_controller is None:
+                raise ContractError("receiver portable backup is unavailable")
+            return self._result(
+                request,
+                chunk=self.backup_controller.chunk(
+                    request.payload["backup_id"],
+                    offset=request.payload["offset"],
+                    length=request.payload["length"],
+                ),
+            )
         if request.action == Action.NETWORK_CONFIRM_PLAN:
             return self._plan_network_confirmation(request)
         if request.action == Action.NETWORK_CONFIRM:
@@ -246,6 +296,12 @@ class ReceiverEngine:
                 Action.NETWORK_CONFIRM_PLAN,
                 Action.NETWORK_CONFIRM,
                 Action.NETWORK_STATUS,
+                Action.PLAN_BACKUP_SEAL,
+                Action.PLAN_BACKUP_RESTORE,
+                Action.BACKUP_STATUS,
+                Action.BACKUP_LIST,
+                Action.BACKUP_SHOW,
+                Action.BACKUP_CHUNK,
             }
             and self.clock_controller.status()["gate"] == "CLOCK_FAULT_ACTIVE"
         ):
@@ -261,6 +317,8 @@ class ReceiverEngine:
             Action.PLAN_HOST_MAINTENANCE,
             Action.PLAN_HOST_REBOOT,
             Action.NETWORK_PLAN,
+            Action.PLAN_BACKUP_SEAL,
+            Action.PLAN_BACKUP_RESTORE,
         }:
             return self._plan(request)
         if request.action in {
@@ -275,6 +333,8 @@ class ReceiverEngine:
             Action.HOST_MAINTENANCE,
             Action.HOST_REBOOT,
             Action.NETWORK_APPLY,
+            Action.BACKUP_SEAL,
+            Action.BACKUP_RESTORE,
         }:
             return self._accept(request)
         if request.action == Action.CANCEL:
@@ -314,7 +374,9 @@ class ReceiverEngine:
             or journal["client_id"] != request.client_id
             or journal["state"] != "running"
         ):
-            raise ContractError("network confirmation target is not an owned pending operation")
+            raise ContractError(
+                "network confirmation target is not an owned pending operation"
+            )
         network = self.network_controller.status(target_operation_id)
         if network["state"] != "pending-confirmation":
             raise ContractError("network transaction is not awaiting confirmation")
@@ -327,7 +389,11 @@ class ReceiverEngine:
             "network_id": journal["plan"]["parameters"]["network_id"],
         }
         confirmation["confirmation_id"] = content_identity(
-            {key: item for key, item in confirmation.items() if key != "confirmation_id"}
+            {
+                key: item
+                for key, item in confirmation.items()
+                if key != "confirmation_id"
+            }
         )
         nonce, _ = self.control.issue_nonce(
             operation_id=request.operation_id,
@@ -392,7 +458,9 @@ class ReceiverEngine:
             result=result,
         )
         self.control.release(target_operation_id)
-        return self._result(request, network=result, target_operation_id=target_operation_id)
+        return self._result(
+            request, network=result, target_operation_id=target_operation_id
+        )
 
     def _live_state(self) -> dict[str, Any]:
         supplied = dict(self.live_state_provider())
@@ -477,6 +545,30 @@ class ReceiverEngine:
                 client_id=request.client_id,
                 profile=request.payload["profile"],
             )
+        elif request.action == Action.PLAN_BACKUP_SEAL:
+            if self.backup_controller is None:
+                raise ContractError("receiver portable backup is unavailable")
+            parameter_override = {"source": "receiver"}
+        elif request.action == Action.PLAN_BACKUP_RESTORE:
+            if self.backup_controller is None:
+                raise ContractError("receiver portable backup is unavailable")
+            local_archive = (
+                self.backup_controller.paths.backup_root
+                / request.payload["backup_id"]
+                / "portable-state.tar"
+            )
+            imported_archive = (
+                self.incoming_root
+                / "backups"
+                / request.payload["backup_id"]
+                / "portable-state.tar"
+            )
+            archive_path = (
+                local_archive if local_archive.is_file() else imported_archive
+            )
+            parameter_override = self.backup_controller.plan_restore(
+                archive_path, operation_id=request.operation_id
+            )
         plan = create_mutation_plan(
             request,
             receiver_generation=self.control.receiver_generation,
@@ -500,6 +592,7 @@ class ReceiverEngine:
             fields["preflight"] = self.activation_coordinator.preflight(
                 release_id=parameters["release_id"],
                 configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
+                px4_activation_evidence=parameters["px4_activation_evidence"],
                 operator_rollback=request.action == Action.PLAN_ROLLBACK,
             )
         if request.action == Action.PLAN_CLOCK_SYNC:
@@ -560,6 +653,7 @@ class ReceiverEngine:
             preflight = self.activation_coordinator.preflight(
                 release_id=parameters["release_id"],
                 configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
+                px4_activation_evidence=parameters["px4_activation_evidence"],
                 operator_rollback=request.action == Action.ROLLBACK,
             )
             if not preflight["ready"]:
@@ -575,6 +669,11 @@ class ReceiverEngine:
             raise ContractError("receiver log lifecycle is unavailable")
         if request.action == Action.NETWORK_APPLY and self.network_controller is None:
             raise ContractError("receiver network controller is unavailable")
+        if (
+            request.action in {Action.BACKUP_SEAL, Action.BACKUP_RESTORE}
+            and self.backup_controller is None
+        ):
+            raise ContractError("receiver portable backup is unavailable")
         self.control.consume_and_acquire(
             nonce=request.nonce or "",
             operation_id=request.operation_id,
@@ -586,7 +685,11 @@ class ReceiverEngine:
             if request.action == Action.STAGE:
                 self._claim_staging_input(plan)
             if request.action == Action.NETWORK_APPLY:
-                self.network_controller.claim(plan["parameters"], request.payload["profile"])
+                self.network_controller.claim(
+                    plan["parameters"], request.payload["profile"]
+                )
+            if request.action == Action.BACKUP_RESTORE:
+                self._claim_backup_restore(plan)
             journal = self.journals.create(
                 plan=plan,
                 **(
@@ -595,11 +698,21 @@ class ReceiverEngine:
                         "hard_deadline_s": 7200,
                         "rollback_target_s": 60,
                     }
-                    if request.action == Action.HOST_MAINTENANCE
+                    if request.action
+                    in {
+                        Action.HOST_MAINTENANCE,
+                        Action.BACKUP_SEAL,
+                        Action.BACKUP_RESTORE,
+                    }
                     else {}
                 ),
             )
         except Exception:
+            if request.action == Action.BACKUP_RESTORE:
+                shutil.rmtree(
+                    self.control.root / "accepted-inputs" / request.operation_id,
+                    ignore_errors=True,
+                )
             self.control.release(request.operation_id)
             raise
         self.audit.append(
@@ -640,6 +753,51 @@ class ReceiverEngine:
                 "incoming release-status index differs from retained plan"
             )
         return component, status
+
+    def _claim_backup_restore(self, plan: Mapping[str, Any]) -> None:
+        parameters = plan["parameters"]
+        source = Path(parameters["archive_path"])
+        incoming_backups = self.incoming_root / "backups"
+        expected_parent = incoming_backups / parameters["backup_id"]
+        if (
+            source != expected_parent / "portable-state.tar"
+            or incoming_backups.is_symlink()
+            or expected_parent.is_symlink()
+            or not expected_parent.is_dir()
+        ):
+            # A locally retained receiver backup is also valid, but it is already
+            # root-owned and immutable through this interface.
+            local = (
+                self.backup_controller.paths.backup_root
+                / parameters["backup_id"]
+                / "portable-state.tar"
+            )
+            if source != local:
+                raise ContractError("portable restore input is outside fixed roots")
+        accepted = self.control.root / "accepted-inputs" / plan["operation_id"]
+        accepted.mkdir(parents=True, mode=0o700)
+        destination = accepted / "portable-state.tar"
+        self._copy_regular(source, destination, maximum_bytes=self.maximum_claim_bytes)
+        if _sha256_regular(destination) != parameters["archive_sha256"]:
+            shutil.rmtree(accepted, ignore_errors=True)
+            raise ContractError(
+                "claimed portable restore archive changed after planning"
+            )
+        if source == expected_parent / "portable-state.tar":
+            shutil.rmtree(expected_parent)
+            descriptor = os.open(incoming_backups, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+
+    def _accepted_backup_restore(self, operation_id: str) -> Path:
+        path = (
+            self.control.root / "accepted-inputs" / operation_id / "portable-state.tar"
+        )
+        if path.is_symlink() or not path.is_file():
+            raise ContractError("receiver-owned portable restore input is missing")
+        return path
 
     def _accepted_paths(self, plan: Mapping[str, Any]) -> tuple[Path, Path | None]:
         root = self.control.root / "accepted-inputs" / plan["operation_id"]
@@ -992,6 +1150,7 @@ class ReceiverEngine:
                 release_id=parameters["release_id"],
                 configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
                 explicit_qualified_action=parameters["explicit_qualified_action"],
+                px4_activation_evidence=parameters["px4_activation_evidence"],
             )
         if action == Action.ROLLBACK.value:
             if self.activation_coordinator is None:
@@ -1000,6 +1159,7 @@ class ReceiverEngine:
                 operation_id=plan["operation_id"],
                 release_id=parameters["release_id"],
                 configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
+                px4_activation_evidence=parameters["px4_activation_evidence"],
             )
         if action == Action.CLOCK_SYNC.value:
             if self.clock_controller is None:
@@ -1007,6 +1167,26 @@ class ReceiverEngine:
             return self.clock_controller.synchronize(
                 operation_id=plan["operation_id"], samples=parameters["samples"]
             )
+        if action == Action.BACKUP_SEAL.value:
+            if self.backup_controller is None:
+                raise ContractError("receiver portable backup is unavailable")
+            return {
+                "kind": "backup-seal",
+                **self.backup_controller.seal(
+                    operation_id=plan["operation_id"], source=parameters["source"]
+                ),
+            }
+        if action == Action.BACKUP_RESTORE.value:
+            if self.backup_controller is None:
+                raise ContractError("receiver portable backup is unavailable")
+            accepted = self._accepted_backup_restore(plan["operation_id"])
+            try:
+                return {
+                    "kind": "backup-restore",
+                    **self.backup_controller.restore(parameters, archive_path=accepted),
+                }
+            finally:
+                shutil.rmtree(accepted.parent, ignore_errors=True)
         if action == Action.ACCESS_ADD.value:
             if parameters["phase"] == "add":
                 state = self.access.add_pending(
@@ -1151,7 +1331,9 @@ class ReceiverEngine:
                     continue
                 if journal["action"] == Action.NETWORK_APPLY.value:
                     if self.network_controller is None:
-                        raise ContractError("receiver network controller is unavailable")
+                        raise ContractError(
+                            "receiver network controller is unavailable"
+                        )
                     network = self.network_controller.status(operation_id)
                     if network["state"] in {"confirmed", "reverted"}:
                         self.network_controller.resume_after_transaction()
@@ -1359,6 +1541,25 @@ class ReceiverEngine:
     def _status(self, operation_id: str) -> dict[str, Any]:
         journal = self.journals.load(operation_id)
         control = self.control.load()
+        active_manifest = None
+        manifest_provider = getattr(self.release_store, "active_release_manifest", None)
+        if callable(manifest_provider):
+            active_manifest = manifest_provider()
+        activation_safety = None
+        safety_provider = getattr(self.activation_coordinator, "safety_provider", None)
+        if callable(safety_provider):
+            observation = safety_provider()
+            observation.validate()
+            activation_safety = observation.as_document()
+        backup_status = (
+            self.backup_controller.status()
+            if self.backup_controller is not None
+            else {
+                "schema": "iii.portable-backup-status/v1",
+                "backup_fresh": False,
+                "state": "unavailable",
+            }
+        )
         return {
             "schema": RESULT_SCHEMA,
             "receiver_generation": self.control.receiver_generation,
@@ -1371,6 +1572,8 @@ class ReceiverEngine:
             "recovery": self.release_store.state()["recovery"],
             "boot_id": self.control.boot_id(),
             "live_state": self._live_state(),
+            "active_release_manifest": active_manifest,
+            "activation_safety": activation_safety,
             "clock": (
                 self.clock_controller.status()
                 if self.clock_controller is not None
@@ -1384,6 +1587,8 @@ class ReceiverEngine:
                     "state": "unavailable",
                 }
             ),
+            "portable_backup": (backup_status),
+            "backup_fresh": backup_status["backup_fresh"],
             "autonomy_started": False,
         }
 

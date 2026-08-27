@@ -68,8 +68,8 @@ def test_bootstrap_authenticates_entire_offline_cache_before_selection(
 
     assert bootstrap._offline_manifest(root) == value
 
-    (root / "gc-container-images.tar").write_text("changed\n", encoding="utf-8")
-    with pytest.raises(SystemExit, match="gc-container-images"):
+    (root / "gc-runtime-wheelhouse.tar").write_text("changed\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="gc-runtime-wheelhouse"):
         bootstrap._offline_manifest(root)
 
 

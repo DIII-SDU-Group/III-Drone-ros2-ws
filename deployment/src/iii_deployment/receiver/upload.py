@@ -25,6 +25,7 @@ from iii_deployment.contracts import ContractError, canonical_json, content_iden
 from iii_deployment.receiver.protocol import IDENTITY
 from iii_deployment.receiver.state import atomic_document
 from iii_deployment.staging import STATUS_INDEX_NAME
+from iii_deployment.portable_state import inspect_archive
 
 
 UPLOAD_SCHEMA = "iii.bundle-upload/v1"
@@ -38,6 +39,9 @@ HASH = re.compile(r"^[a-f0-9]{64}$")
 BOOT_ID_PATH = Path("/proc/sys/kernel/random/boot_id")
 CLOCK_TRUST_PATH = Path("/run/iii/clock-trust.json")
 LOCK_PATH = Path("/run/iii/deployment-upload.lock")
+BACKUP_UPLOAD_SCHEMA = "iii.portable-backup-upload/v1"
+BACKUP_UPLOAD_RESULT_SCHEMA = "iii.portable-backup-upload-result/v1"
+BACKUP_ARCHIVE_NAME = "portable-state.tar"
 
 
 def _sha256(path: Path) -> str:
@@ -466,3 +470,186 @@ class UploadStore:
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
+
+
+class BackupUploadStore:
+    """One-file resumable portable archive upload inside the confined incoming root."""
+
+    def __init__(self, root: Path, *, lock_path: Path = LOCK_PATH) -> None:
+        self.root = root.absolute()
+        self.lock_path = lock_path
+        self.store = UploadStore(root, lock_path=lock_path)
+
+    def _partial(self, backup_id: str) -> Path:
+        self._identity(backup_id)
+        return self.root / f"backup-{backup_id}.partial"
+
+    def _complete(self, backup_id: str) -> Path:
+        self._identity(backup_id)
+        return self.root / "backups" / backup_id
+
+    @staticmethod
+    def _identity(value: Any) -> str:
+        if not isinstance(value, str) or not HASH.fullmatch(value):
+            raise ContractError("portable backup upload identity is invalid")
+        return value
+
+    @classmethod
+    def validate_manifest(
+        cls, value: Mapping[str, Any], *, backup_id: str, client_id: str
+    ) -> dict[str, Any]:
+        if (
+            set(value)
+            != {
+                "schema",
+                "upload_id",
+                "backup_id",
+                "client_id",
+                "archive",
+            }
+            or value.get("schema") != BACKUP_UPLOAD_SCHEMA
+        ):
+            raise ContractError("portable backup upload manifest fields are invalid")
+        cls._identity(backup_id)
+        if value.get("backup_id") != backup_id:
+            raise ContractError("portable backup upload identity mismatch")
+        if value.get("client_id") != client_id or not IDENTITY.fullmatch(client_id):
+            raise ContractError("portable backup upload client identity mismatch")
+        archive = value.get("archive")
+        if not isinstance(archive, dict) or set(archive) != {"size", "sha256"}:
+            raise ContractError("portable backup upload archive metadata is invalid")
+        if (
+            not isinstance(archive["size"], int)
+            or isinstance(archive["size"], bool)
+            or archive["size"] <= 0
+            or not isinstance(archive["sha256"], str)
+            or not HASH.fullmatch(archive["sha256"])
+        ):
+            raise ContractError("portable backup upload archive identity is invalid")
+        expected = content_identity(
+            {key: item for key, item in value.items() if key != "upload_id"}
+        )
+        if value.get("upload_id") != expected:
+            raise ContractError("portable backup upload manifest identity mismatch")
+        return dict(value)
+
+    def begin(
+        self, manifest: Mapping[str, Any], *, backup_id: str, client_id: str
+    ) -> dict[str, Any]:
+        manifest = self.validate_manifest(
+            manifest, backup_id=backup_id, client_id=client_id
+        )
+        with self.store.locked():
+            complete = self._complete(backup_id)
+            if complete.exists() or complete.is_symlink():
+                retained = _canonical(
+                    complete / MANIFEST_NAME, label="portable backup upload manifest"
+                )
+                if retained != manifest:
+                    raise ContractError(
+                        "completed portable backup belongs to another upload"
+                    )
+                self._verify(complete, manifest)
+                return self._status(complete, manifest, complete=True, resumed=True)
+            partial = self._partial(backup_id)
+            resumed = partial.exists() or partial.is_symlink()
+            if resumed:
+                if partial.is_symlink() or not partial.is_dir():
+                    raise ContractError("portable backup upload partial is unsafe")
+                retained = _canonical(
+                    partial / MANIFEST_NAME, label="portable backup upload manifest"
+                )
+                if retained != manifest:
+                    raise ContractError(
+                        "portable backup upload partial identity changed"
+                    )
+            else:
+                partial.mkdir(mode=0o700)
+                atomic_document(partial / MANIFEST_NAME, manifest, mode=0o600)
+            return self._status(partial, manifest, complete=False, resumed=resumed)
+
+    def inspect(self, *, backup_id: str, client_id: str) -> dict[str, Any]:
+        with self.store.locked():
+            partial = self._partial(backup_id)
+            manifest = _canonical(
+                partial / MANIFEST_NAME, label="portable backup upload manifest"
+            )
+            self.validate_manifest(manifest, backup_id=backup_id, client_id=client_id)
+            return self._status(partial, manifest, complete=False, resumed=True)
+
+    def finalize(self, *, backup_id: str, client_id: str) -> dict[str, Any]:
+        with self.store.locked():
+            partial = self._partial(backup_id)
+            manifest = _canonical(
+                partial / MANIFEST_NAME, label="portable backup upload manifest"
+            )
+            self.validate_manifest(manifest, backup_id=backup_id, client_id=client_id)
+            self._verify(partial, manifest)
+            verification = inspect_archive(partial / BACKUP_ARCHIVE_NAME)
+            if verification["backup_id"] != backup_id:
+                raise ContractError(
+                    "portable archive content identity differs from upload"
+                )
+            destination = self._complete(backup_id)
+            destination.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
+            if destination.exists() or destination.is_symlink():
+                retained = _canonical(
+                    destination / MANIFEST_NAME,
+                    label="completed portable backup upload manifest",
+                )
+                if retained != manifest:
+                    raise ContractError("completed portable backup upload conflicts")
+                self._verify(destination, manifest)
+                shutil.rmtree(partial)
+                return self._status(destination, manifest, complete=True, resumed=True)
+            os.replace(partial, destination)
+            self.store._fsync_directory(destination.parent)
+            return self._status(destination, manifest, complete=True, resumed=False)
+
+    @staticmethod
+    def _verify(root: Path, manifest: Mapping[str, Any]) -> None:
+        if root.is_symlink() or not root.is_dir():
+            raise ContractError("portable backup upload root is unsafe")
+        if {item.name for item in root.iterdir()} != {
+            MANIFEST_NAME,
+            BACKUP_ARCHIVE_NAME,
+        }:
+            raise ContractError("portable backup upload file set is not exact")
+        archive = root / BACKUP_ARCHIVE_NAME
+        expected = manifest["archive"]
+        if (
+            archive.is_symlink()
+            or not archive.is_file()
+            or archive.stat(follow_symlinks=False).st_size != expected["size"]
+            or _sha256(archive) != expected["sha256"]
+        ):
+            raise ContractError("portable backup upload archive differs from manifest")
+
+    @staticmethod
+    def _status(
+        root: Path,
+        manifest: Mapping[str, Any],
+        *,
+        complete: bool,
+        resumed: bool,
+    ) -> dict[str, Any]:
+        archive = root / BACKUP_ARCHIVE_NAME
+        size = (
+            archive.stat(follow_symlinks=False).st_size
+            if archive.is_file() and not archive.is_symlink()
+            else 0
+        )
+        expected = manifest["archive"]
+        if size > expected["size"]:
+            raise ContractError("portable backup upload exceeds declared size")
+        return {
+            "schema": BACKUP_UPLOAD_RESULT_SCHEMA,
+            "backup_id": manifest["backup_id"],
+            "upload_id": manifest["upload_id"],
+            "state": "complete" if complete else "partial",
+            "resumed": resumed,
+            "archive": {
+                "size": size,
+                "sha256": _sha256(archive) if size == expected["size"] else None,
+            },
+        }

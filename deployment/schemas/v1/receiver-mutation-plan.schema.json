@@ -82,19 +82,21 @@
     },
     "activation_parameters": {
       "type": "object", "additionalProperties": false,
-      "required": ["release_id", "configuration_checkpoint_id", "explicit_qualified_action"],
+      "required": ["release_id", "configuration_checkpoint_id", "explicit_qualified_action", "px4_activation_evidence"],
       "properties": {
         "release_id": {"$ref": "#/definitions/identity"},
         "configuration_checkpoint_id": {"$ref": "#/definitions/identity"},
-        "explicit_qualified_action": {"type": "boolean"}
+        "explicit_qualified_action": {"type": "boolean"},
+        "px4_activation_evidence": {"type": "object"}
       }
     },
     "rollback_parameters": {
       "type": "object", "additionalProperties": false,
-      "required": ["release_id", "configuration_checkpoint_id"],
+      "required": ["release_id", "configuration_checkpoint_id", "px4_activation_evidence"],
       "properties": {
         "release_id": {"$ref": "#/definitions/identity"},
-        "configuration_checkpoint_id": {"$ref": "#/definitions/identity"}
+        "configuration_checkpoint_id": {"$ref": "#/definitions/identity"},
+        "px4_activation_evidence": {"type": "object"}
       }
     },
     "access_add_parameters": {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, replace
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -25,7 +26,6 @@ from iii_deployment.contracts import (
     content_identity,
 )
 from iii_deployment.staging import ActivationAuthorization
-
 
 OLD_RELEASE = "1" * 64
 NEW_RELEASE = "2" * 64
@@ -176,8 +176,68 @@ def _profile() -> dict:
     return {
         "id": "real",
         "bootable": True,
+        "parameter_profile": "real",
         "health": _policy().as_document(),
     }
+
+
+def _px4_evidence(release_id: str, manifest_id: str = "d" * 64) -> dict:
+    target = {
+        "system_id": 1,
+        "component_id": 1,
+        "armed": False,
+        "firmware_version": "1.16.0",
+        "firmware_commit": "0123456789",
+    }
+    parameters = [
+        {"name": "SYS_AUTOSTART", "mav_type": "UINT32", "value": 4001, "index": 0}
+    ]
+    snapshot = {
+        "schema": "iii.px4-parameter-snapshot/v1",
+        "snapshot_id": content_identity(
+            {
+                "profile": "real",
+                "target": target,
+                "parameter_count": len(parameters),
+                "parameters": parameters,
+            }
+        ),
+        "captured_at": "2026-08-27T12:00:00Z",
+        "profile": "real",
+        "provenance": "qgc-forwarded-mavlink-observation",
+        "target": target,
+        "complete": True,
+        "parameter_count": len(parameters),
+        "parameters": parameters,
+    }
+    comparison = {
+        "schema": "iii.px4-parameter-comparison/v1",
+        "profile": "real",
+        "manifest_id": manifest_id,
+        "snapshot_id": snapshot["snapshot_id"],
+        "inventory_complete": True,
+        "missing": [],
+        "unexpected": [],
+        "drift": {"release-required": [], "operator-tunable": []},
+        "preserved_calibration_identity": [],
+        "required_match": True,
+    }
+    evidence = {
+        "schema": "iii.px4-activation-evidence/v1",
+        "evidence_id": "0" * 64,
+        "captured_at": "2026-08-27T12:00:00Z",
+        "release_id": release_id,
+        "profile": "real",
+        "manifest_id": manifest_id,
+        "snapshot": snapshot,
+        "comparison": comparison,
+        "healthy": True,
+        "writes_performed": 0,
+    }
+    evidence["evidence_id"] = content_identity(
+        {key: value for key, value in evidence.items() if key != "evidence_id"}
+    )
+    return evidence
 
 
 def _checkpoint(root: Path, checkpoint_id_seed: str) -> tuple[str, Path]:
@@ -212,6 +272,7 @@ def _release(root: Path, release_id: str, *, health: bool) -> Path:
             "configuration": {"schema_version": 1},
             "mission_catalog": {"catalog_hash": CATALOG},
             "compatibility": {"api_ranges": {"runtime_api": ">=2.0.0,<3.0.0"}},
+            "px4": {"manifest_ids": {"real": "d" * 64}},
         },
     )
     return path
@@ -426,6 +487,7 @@ def test_activation_accepts_only_after_stable_health_evidence_is_durable(
         release_id=NEW_RELEASE,
         configuration_checkpoint_id=env["new_checkpoint_id"],
         explicit_qualified_action=False,
+        px4_activation_evidence=_px4_evidence(NEW_RELEASE),
     )
     assert result["stable_window_s"] == 10.0
     assert result["automatic_rollback_permitted"] is False
@@ -443,6 +505,27 @@ def test_activation_accepts_only_after_stable_health_evidence_is_durable(
         "activation-health",
         __import__("json").loads(evidence_path.read_bytes()),
     )
+
+
+def test_activation_rejects_identity_valid_px4_evidence_for_another_manifest(
+    tmp_path: Path,
+):
+    env = _environment(tmp_path)
+    evidence = deepcopy(_px4_evidence(NEW_RELEASE))
+    evidence["manifest_id"] = "e" * 64
+    evidence["comparison"]["manifest_id"] = "e" * 64
+    evidence["evidence_id"] = content_identity(
+        {key: value for key, value in evidence.items() if key != "evidence_id"}
+    )
+
+    with pytest.raises(ContractError, match="does not satisfy the staged release"):
+        env["coordinator"].preflight(
+            release_id=NEW_RELEASE,
+            configuration_checkpoint_id=env["new_checkpoint_id"],
+            px4_activation_evidence=evidence,
+        )
+    assert env["transactions"].current() == env["old"]
+    assert env["store"].acceptance_calls == 0
 
 
 @pytest.mark.parametrize(
@@ -649,6 +732,7 @@ def test_failed_health_times_out_onboard_and_restores_previous_without_autonomy(
             release_id=NEW_RELEASE,
             configuration_checkpoint_id=env["new_checkpoint_id"],
             explicit_qualified_action=False,
+            px4_activation_evidence=_px4_evidence(NEW_RELEASE),
         )
     assert env["transactions"].current() == env["old"]
     state = env["diagnostics"].load_state(OPERATION)
@@ -744,6 +828,7 @@ def test_post_acceptance_failure_exhausts_bounded_restart_and_never_rolls_back(
         release_id=NEW_RELEASE,
         configuration_checkpoint_id=env["new_checkpoint_id"],
         explicit_qualified_action=False,
+        px4_activation_evidence=_px4_evidence(NEW_RELEASE),
     )
 
     def fail(_candidate):
@@ -773,6 +858,7 @@ def test_explicit_operator_rollback_rechecks_safety_health_and_swaps_retained_ro
         release_id=NEW_RELEASE,
         configuration_checkpoint_id=env["new_checkpoint_id"],
         explicit_qualified_action=False,
+        px4_activation_evidence=_px4_evidence(NEW_RELEASE),
     )
     old_manifest = _profile()
     _write(
@@ -783,6 +869,7 @@ def test_explicit_operator_rollback_rechecks_safety_health_and_swaps_retained_ro
             "configuration": {"schema_version": 1},
             "mission_catalog": {"catalog_hash": CATALOG},
             "compatibility": {"api_ranges": {"runtime_api": ">=2.0.0,<3.0.0"}},
+            "px4": {"manifest_ids": {"real": "d" * 64}},
         },
     )
     env["coordinator"].safety_provider = lambda: _safety(
@@ -791,6 +878,7 @@ def test_explicit_operator_rollback_rechecks_safety_health_and_swaps_retained_ro
     preflight = env["coordinator"].preflight(
         release_id=OLD_RELEASE,
         configuration_checkpoint_id=env["old"].configuration_checkpoint_id,
+        px4_activation_evidence=_px4_evidence(OLD_RELEASE),
         operator_rollback=True,
     )
     assert preflight["ready"] is True
@@ -798,6 +886,7 @@ def test_explicit_operator_rollback_rechecks_safety_health_and_swaps_retained_ro
         operation_id="operator-rollback-0001",
         release_id=OLD_RELEASE,
         configuration_checkpoint_id=env["old"].configuration_checkpoint_id,
+        px4_activation_evidence=_px4_evidence(OLD_RELEASE),
     )
     assert result["kind"] == "rollback"
     assert result["automatic_rollback_permitted"] is False
@@ -817,6 +906,7 @@ def test_explicit_operator_rollback_is_denied_while_armed_without_selector_chang
         release_id=NEW_RELEASE,
         configuration_checkpoint_id=env["new_checkpoint_id"],
         explicit_qualified_action=False,
+        px4_activation_evidence=_px4_evidence(NEW_RELEASE),
     )
     _write(
         Path(env["old"].release_path) / "release-manifest.json",
@@ -826,6 +916,7 @@ def test_explicit_operator_rollback_is_denied_while_armed_without_selector_chang
             "configuration": {"schema_version": 1},
             "mission_catalog": {"catalog_hash": CATALOG},
             "compatibility": {"api_ranges": {"runtime_api": ">=2.0.0,<3.0.0"}},
+            "px4": {"manifest_ids": {"real": "d" * 64}},
         },
     )
     safe = _safety(env["old"].configuration_checkpoint_id)
@@ -841,6 +932,7 @@ def test_explicit_operator_rollback_is_denied_while_armed_without_selector_chang
     preflight = env["coordinator"].preflight(
         release_id=OLD_RELEASE,
         configuration_checkpoint_id=env["old"].configuration_checkpoint_id,
+        px4_activation_evidence=_px4_evidence(OLD_RELEASE),
         operator_rollback=True,
     )
     assert preflight["ready"] is False
@@ -850,6 +942,7 @@ def test_explicit_operator_rollback_is_denied_while_armed_without_selector_chang
             operation_id="operator-rollback-0002",
             release_id=OLD_RELEASE,
             configuration_checkpoint_id=env["old"].configuration_checkpoint_id,
+            px4_activation_evidence=_px4_evidence(OLD_RELEASE),
         )
     assert env["transactions"].current() == env["new"]
     assert env["store"].state()["active_release_id"] == NEW_RELEASE

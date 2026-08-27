@@ -1,0 +1,54 @@
+{
+  "schema": "iii.gc-application-policy/v1",
+  "qgroundcontrol": {
+    "version": "5.0.8",
+    "filename": "QGroundControl.AppImage",
+    "source_url": "https://github.com/mavlink/qgroundcontrol/releases/download/v5.0.8/QGroundControl-x86_64.AppImage",
+    "sha256": "06969c67ef58ea063def0a8271447a1cc385438c4a7df36813315b4475146737",
+    "bytes": 180816376,
+    "appimage_update_information": "",
+    "update_owner": "iii-gc-release"
+  },
+  "application": {
+    "compose_source": "deployment/gc/compose.release.yml",
+    "compose_slot_name": "compose.yml",
+    "environment_slot_name": "application.env",
+    "gc_unit": "iii-gc.target",
+    "qgc_unit": "iii-qgc.service",
+    "health_urls": [
+      "http://127.0.0.1:8780/health",
+      "http://127.0.0.1:5173/"
+    ]
+  },
+  "retention": {
+    "protect": [
+      "qualified-anchor",
+      "active",
+      "previous-field",
+      "staged-candidate"
+    ],
+    "field_history": 1
+  },
+  "cache": {
+    "non_protected_quota_bytes": 53687091200,
+    "minimum_free_bytes": 10737418240,
+    "minimum_free_fraction": 0.1,
+    "protected_domains": [
+      "offline",
+      "qualified-anchor",
+      "active",
+      "previous-field",
+      "staged-candidate"
+    ]
+  },
+  "safety": {
+    "real_safe_continuity_seconds": 3.0,
+    "safe_navigation_states": [
+      "hold",
+      "landed",
+      "manual",
+      "position"
+    ],
+    "override_warning": "RECOVERY OVERRIDE CAN REMOVE THE OPERATOR SURFACE WHILE A REAL AIRCRAFT IS CONNECTED"
+  }
+}

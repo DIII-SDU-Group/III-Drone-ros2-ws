@@ -39,7 +39,6 @@ OFFLINE_ROLES = frozenset(
     {
         "ansible-controller-wheelhouse",
         "gc-runtime-wheelhouse",
-        "gc-container-images",
         "arm64-builder-image",
         "apt-packages",
     }

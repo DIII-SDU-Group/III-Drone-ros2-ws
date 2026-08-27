@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/qgc-generated-cache.schema.json",
+  "title": "QGroundControl generated cache compatibility record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "cache_id", "qgc_version", "px4_firmware", "parameter_manifest_id", "entries"],
+  "properties": {
+    "schema": {"const": "iii.qgc-generated-cache/v1"},
+    "cache_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "qgc_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "px4_firmware": {"type": "string", "minLength": 1},
+    "parameter_manifest_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "entries": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "sha256", "bytes"], "properties": {"path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "bytes": {"type": "integer", "minimum": 0}}}}
+  }
+}

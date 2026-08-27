@@ -234,6 +234,7 @@ def test_release_metadata_binds_px4_qgc_and_extensible_profiles(tmp_path: Path) 
     validate_release_metadata(manifest, REGISTRY)
     assert set(manifest["px4"]["manifests"]) == {"real", "sim"}
     manifest["px4"]["manifests"]["future_lab"] = "3" * 64
+    manifest["px4"]["manifest_ids"]["future_lab"] = "4" * 64
     manifest["profiles"].append(
         {
             "id": "future_lab",

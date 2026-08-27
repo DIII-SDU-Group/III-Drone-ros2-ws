@@ -190,10 +190,15 @@ def _backup_reference(path: Path | None) -> dict[str, Any] | None:
     if path is None:
         return None
     value = _object(path.expanduser().absolute(), label="host backup receipt")
+    from .portable_state import validate_external_receipt
+
+    try:
+        validate_external_receipt(value)
+    except ContractError as exc:
+        raise HostMaintenanceError(str(exc)) from exc
     backup_id = value.get("backup_id") or value.get("receipt_id")
     if (
         value.get("schema") != "iii.host-backup-receipt/v1"
-        or value.get("verified") is not True
         or not isinstance(backup_id, str)
         or not HASH.fullmatch(backup_id)
         or not isinstance(value.get("target_state_hash"), str)
@@ -206,7 +211,10 @@ def _backup_reference(path: Path | None) -> dict[str, Any] | None:
         "schema": "iii.host-backup-receipt/v1",
         "backup_id": backup_id,
         "target_state_hash": value["target_state_hash"],
+        "state_marker": value["state_marker"],
         "verified": True,
+        "external_verified": True,
+        "fresh": True,
         "record_sha256": _sha256(path.expanduser().absolute()),
     }
 

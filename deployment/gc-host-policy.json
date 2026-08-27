@@ -10,9 +10,20 @@
     "curl",
     "docker.io",
     "docker-compose-v2",
+    "gstreamer1.0-gl",
+    "gstreamer1.0-libav",
+    "gstreamer1.0-plugins-bad",
+    "libegl1",
+    "libfontconfig1",
+    "libgl1",
     "libnss-mdns",
+    "libopengl0",
+    "libxcb-cursor0",
+    "libxcb-xinerama0",
+    "libxkbcommon-x11-0",
     "python3",
     "python3-venv",
+    "skopeo",
     "xdg-utils"
   ],
   "development_packages": [
@@ -40,6 +51,10 @@
     {"path": ".local/state/iii/registry", "mode": "0700", "class": "portable-records"},
     {"path": ".local/state/iii/logs", "mode": "0700", "class": "logs"},
     {"path": ".local/share/iii", "mode": "0700", "class": "application"},
+    {"path": ".local/share/iii/gc-applications", "mode": "0700", "class": "application"},
+    {"path": ".config/QGroundControl.org", "mode": "0700", "class": "settings"},
+    {"path": ".local/share/QGroundControl", "mode": "0700", "class": "state"},
+    {"path": "Documents/QGroundControl", "mode": "0700", "class": "logs"},
     {"path": ".cache/iii", "mode": "0700", "class": "cache"}
   ],
   "login_units": [
@@ -47,9 +62,11 @@
     "iii-gc-frontend.service",
     "iii-gc-discovery.service",
     "iii-gc-mirror.service",
-    "iii-gc-clock.service"
+    "iii-gc-clock.service",
+    "iii-gc-px4-parameters.service"
   ],
-  "manual_units": ["iii-gc-browser.service"],
+  "manual_units": ["iii-gc-browser.service", "iii-qgc.service"],
+  "recovery_units": ["iii-gc-application-reconcile.service"],
   "automatic_hostname": "iii.local",
   "clock_profiles": ["real"],
   "clock_skip_profiles": ["sim"],
@@ -62,7 +79,6 @@
   "offline_roles": [
     "ansible-controller-wheelhouse",
     "gc-runtime-wheelhouse",
-    "gc-container-images",
     "arm64-builder-image",
     "apt-packages"
   ],

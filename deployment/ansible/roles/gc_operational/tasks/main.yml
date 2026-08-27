@@ -165,12 +165,15 @@
   become: true
   loop:
     - iii-gc.target
+    - iii-gc-application-reconcile.service
     - iii-gc-proxy.service
     - iii-gc-frontend.service
     - iii-gc-discovery.service
     - iii-gc-mirror.service
     - iii-gc-clock.service
+    - iii-gc-px4-parameters.service
     - iii-gc-browser.service
+    - iii-qgc.service
   notify: Reload GC user unit manager
 
 - name: Enable the GC target only for graphical login sessions
@@ -193,6 +196,17 @@
   become: true
   notify: Reload GC user unit manager
 
+- name: Reconcile an interrupted application transaction before graphical GC start
+  ansible.builtin.file:
+    src: ../iii-gc-application-reconcile.service
+    dest: "{{ iii_gc_home }}/.config/systemd/user/graphical-session.target.wants/iii-gc-application-reconcile.service"
+    state: link
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    force: true
+  become: true
+  notify: Reload GC user unit manager
+
 - name: Install the explicit III Ground Control desktop launcher
   ansible.builtin.file:
     path: "{{ iii_gc_home }}/.local/share/applications"
@@ -206,6 +220,15 @@
   ansible.builtin.template:
     src: iii-ground-control.desktop.j2
     dest: "{{ iii_gc_home }}/.local/share/applications/iii-ground-control.desktop"
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0755"
+  become: true
+
+- name: Render the explicit QGroundControl desktop launcher
+  ansible.builtin.template:
+    src: iii-qgroundcontrol.desktop.j2
+    dest: "{{ iii_gc_home }}/.local/share/applications/iii-qgroundcontrol.desktop"
     owner: "{{ iii_gc_user }}"
     group: "{{ iii_gc_user }}"
     mode: "0755"
