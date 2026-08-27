@@ -1,0 +1,169 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/gc-provisioning-plan.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "operation_id", "platform", "user", "workspace", "policy", "ansible", "ansible_playbook", "repositories", "offline", "offline_cache", "replacement", "archive_import", "required_checks", "declared_permissions", "mutations", "excluded_prerequisites", "managed_boundaries", "content_id"],
+  "properties": {
+    "schema": {"const": "iii.gc-provisioning-plan/v1"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "platform": {"$ref": "#/definitions/platform"},
+    "user": {"$ref": "#/definitions/user"},
+    "workspace": {"$ref": "#/definitions/workspace"},
+    "policy": {"$ref": "#/definitions/file"},
+    "ansible": {"$ref": "#/definitions/tree"},
+    "ansible_playbook": {"$ref": "#/definitions/file"},
+    "repositories": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/definitions/repository"}},
+    "offline": {"type": "boolean"},
+    "offline_cache": {"type": ["object", "null"]},
+    "replacement": {"type": "boolean"},
+    "archive_import": {"type": ["object", "null"]},
+    "required_checks": {"$ref": "#/definitions/nonempty_strings"},
+    "declared_permissions": {"$ref": "#/definitions/nonempty_strings"},
+    "mutations": {"$ref": "#/definitions/nonempty_strings"},
+    "excluded_prerequisites": {"$ref": "#/definitions/nonempty_strings"},
+    "managed_boundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operational", "application", "development", "unmanaged_user_state"],
+      "properties": {
+        "operational": {"type": "string", "minLength": 1},
+        "application": {"type": "string", "minLength": 1},
+        "development": {"type": "string", "minLength": 1},
+        "unmanaged_user_state": {"type": "string", "minLength": 1}
+      }
+    },
+    "content_id": {"$ref": "#/definitions/hash"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"offline": {"const": true}}},
+      "then": {"properties": {"offline_cache": {"$ref": "#/definitions/offline_cache"}}},
+      "else": {"properties": {"offline_cache": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"replacement": {"const": true}}},
+      "then": {"properties": {"archive_import": {"type": "object"}}},
+      "else": {"properties": {"archive_import": {"type": "null"}}}
+    }
+  ],
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "mode": {"type": "string", "pattern": "^0[0-7]{3}$"},
+    "nonempty_strings": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform_id", "os_id", "version_id", "architecture", "graphical_session_required", "excluded_prerequisites"],
+      "properties": {
+        "platform_id": {"enum": ["ubuntu-22.04-x86_64", "ubuntu-24.04-x86_64"]},
+        "os_id": {"const": "ubuntu"},
+        "version_id": {"enum": ["22.04", "24.04"]},
+        "architecture": {"const": "x86_64"},
+        "graphical_session_required": {"const": true},
+        "excluded_prerequisites": {"$ref": "#/definitions/nonempty_strings"}
+      }
+    },
+    "user": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "uid", "gid", "home"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z_][a-z0-9_-]*[$]?$"},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "home": {"type": "string", "pattern": "^/"}
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size", "mode"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/definitions/hash"},
+        "size": {"type": "integer", "minimum": 0},
+        "mode": {"$ref": "#/definitions/mode"}
+      }
+    },
+    "tree": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "content_id", "files"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^/"},
+        "content_id": {"$ref": "#/definitions/hash"},
+        "files": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/file"}}
+      }
+    },
+    "application_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items", "content_id"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["locator", "content"],
+            "properties": {
+              "locator": {"type": "string", "minLength": 1},
+              "content": {"oneOf": [{"$ref": "#/definitions/file"}, {"$ref": "#/definitions/tree"}]}
+            }
+          }
+        },
+        "content_id": {"$ref": "#/definitions/hash"}
+      }
+    },
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "application_inputs", "submodule_lock"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^/"},
+        "application_inputs": {"$ref": "#/definitions/application_inputs"},
+        "submodule_lock": {"$ref": "#/definitions/file"}
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "branch", "old_sha", "new_sha", "mutation", "scoped_worktree_sha256", "scoped_dirty"],
+      "properties": {
+        "repository": {"type": "string", "pattern": "^/"},
+        "branch": {"type": "string", "minLength": 1},
+        "old_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "new_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "mutation": {"const": "none"},
+        "scoped_worktree_sha256": {"$ref": "#/definitions/hash"},
+        "scoped_dirty": {"type": "boolean"}
+      }
+    },
+    "offline_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "path", "sha256", "size", "absolute_path"],
+      "properties": {
+        "role": {"enum": ["apt-packages", "ansible-controller-wheelhouse", "gc-runtime-wheelhouse", "gc-container-images", "arm64-builder-image"]},
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/definitions/hash"},
+        "size": {"type": "integer", "minimum": 1},
+        "absolute_path": {"type": "string", "pattern": "^/"}
+      }
+    },
+    "offline_cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "manifest", "cache_id", "platform_id", "artifacts"],
+      "properties": {
+        "root": {"type": "string", "pattern": "^/"},
+        "manifest": {"$ref": "#/definitions/file"},
+        "cache_id": {"$ref": "#/definitions/hash"},
+        "platform_id": {"enum": ["ubuntu-22.04-x86_64", "ubuntu-24.04-x86_64"]},
+        "artifacts": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"$ref": "#/definitions/offline_artifact"}}
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+[Unit]
+Description=III static ground-control frontend container
+PartOf=iii-gc.target graphical-session.target
+Requires=iii-gc-proxy.service
+After=iii-gc-proxy.service
+
+[Service]
+Type=simple
+EnvironmentFile={{ iii_gc_home }}/.config/iii/gc.env
+EnvironmentFile={{ iii_gc_home }}/.config/iii/gc-profile.env
+ExecStart=/usr/bin/docker compose --project-name iii-ground-control --file {{ iii_gc_workspace }}/src/III-Drone-GC/docker-compose.prod.yml up --no-build --no-deps frontend
+ExecStop=/usr/bin/docker compose --project-name iii-ground-control --file {{ iii_gc_workspace }}/src/III-Drone-GC/docker-compose.prod.yml stop --timeout 10 frontend
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+
+[Install]
+WantedBy=iii-gc.target

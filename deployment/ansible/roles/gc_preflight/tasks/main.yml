@@ -1,0 +1,40 @@
+---
+- name: Load the trusted GC host policy
+  ansible.builtin.set_fact:
+    iii_gc_policy_value: "{{ lookup('ansible.builtin.file', iii_gc_policy) | from_json }}"
+
+- name: Inspect the selected graphical user account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ iii_gc_user }}"
+
+- name: Require the supported local graphical account and platform
+  ansible.builtin.assert:
+    that:
+      - ansible_connection == 'local'
+      - ansible_system == 'Linux'
+      - ansible_architecture in ['x86_64', 'amd64']
+      - ansible_distribution == 'Ubuntu'
+      - ansible_distribution_version in ['22.04', '24.04']
+      - ansible_user_id == iii_gc_user or ansible_env.SUDO_USER | default('') == iii_gc_user
+      - iii_gc_home == ansible_facts.getent_passwd[iii_gc_user][4]
+      - iii_gc_policy_value.schema == 'iii.gc-host-policy/v1'
+      - iii_gc_policy_value.automatic_hostname == 'iii.local'
+      - iii_gc_policy_value.clock_profiles == ['real']
+      - iii_gc_policy_value.clock_skip_profiles == ['sim']
+    fail_msg: GC host platform, account, or trusted policy is unsupported
+
+- name: Require prepared-offline cache path only in offline mode
+  ansible.builtin.assert:
+    that:
+      - (iii_gc_offline and iii_gc_offline_cache | length > 0) or (not iii_gc_offline and iii_gc_offline_cache | length == 0)
+    fail_msg: prepared-offline convergence requires its exact retained cache
+
+- name: Report prerequisites intentionally outside the GC convergence boundary
+  ansible.builtin.debug:
+    msg:
+      managed: false
+      prerequisites: "{{ iii_gc_policy_value.excluded_prerequisites }}"
+      reason: inspected and reported; never mutated by this playbook
+    verbosity: 0
+  changed_when: false

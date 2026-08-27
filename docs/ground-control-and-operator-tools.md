@@ -64,6 +64,14 @@ GC proxy responsibilities:
 - `/identity` validation before target selection.
 - selected-target HTTP/WebSocket forwarding only; it is not an open proxy.
 
+The production host boundary is converged by `iii gc provision`, not by running
+Compose manually. On supported graphical Ubuntu 22.04/24.04 computers it retains
+an exact source/policy/cache plan, converges host-native user services and pinned
+ROS-free application/controller environments, then refuses success unless a
+second Ansible check predicts zero managed drift. See
+[`gc-host-provisioning.md`](gc-host-provisioning.md) for online, prepared-offline,
+replacement-host, login/logout, and persistent-state procedures.
+
 Key docs:
 
 - `src/III-Drone-GC/docs/gui-v2-deployment.md`
@@ -119,9 +127,9 @@ failure or change severity. `iii deploy operations prune --dry-run` includes the
 exact content identities of candidates and protected records; apply refuses a
 changed plan and never touches the artifact cache.
 
-The GC proxy invokes the same receiver-owned clock-sync operation once when it
-discovers a reachable real-profile runtime over mDNS. Simulation and manually
-entered endpoints never trigger it. While the receiver advertises
+The login-scoped GC clock companion invokes the same receiver-owned clock-sync
+operation once for each newly present `iii.local` real-profile runtime. Simulation
+and manually entered endpoints never trigger it. While the receiver advertises
 `DEGRADED_CLOCK` or `CLOCK_FAULT_ACTIVE`, new runtime mutations fail closed while
 status, diagnostics, deployment, recovery, and authenticated clock sync remain
 available.

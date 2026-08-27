@@ -125,6 +125,14 @@ A deterministic checksummed export of selected non-secret local records and
 referenced blobs for operator-managed offline disaster recovery.
 _Avoid_: Repository backup
 
+**GC Host Baseline**:
+The retained, idempotent convergence of one supported graphical Ubuntu operator
+computer into separately reported operational, application, and development
+boundaries. It owns native user-session services, private persistent paths, exact
+ROS-free Python/container environments, and a pinned cross-builder, but never
+owns the aircraft process graph or unmanaged operator state.
+_Avoid_: Workstation setup script, devcontainer authority
+
 **Verified Log Pull**:
 An immutable local copy of one receiver-created log or deployment-diagnostic
 manifest whose every file has been size/hash verified before the receiver may
@@ -166,6 +174,12 @@ _Avoid_: Removing old scripts first
   physical reimage, restore of portable state, fresh enrollment, and recommissioning.
 - The operating manual, CLI schemas, CI, and agent instructions share one policy
   implementation; PR text and decorative output are never trusted inputs.
+- GC host provisioning starts from stock Ubuntu 22.04/24.04 plus the local clone,
+  retains the exact source/policy/cache/controller plan before mutation, and
+  proves zero managed drift with a second convergence. Login owns only local
+  frontend/proxy/discovery/mirror/clock services; it never opens the browser or
+  QGroundControl and never sends an aircraft stop. Replacement hosts import only
+  verified non-secret record archives before creating fresh local keys.
 - Runtime events are grouped by boot-bound runtime session. Before receiver clock
   trust they remain in a 10,000-record/16-MiB monotonic ring; synchronization
   flushes that ring once with an uncertainty interval. The current and four newest

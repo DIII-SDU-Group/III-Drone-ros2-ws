@@ -1,0 +1,334 @@
+---
+- name: Create the host-native GC runtime environment root
+  ansible.builtin.file:
+    path: "{{ iii_gc_home }}/.local/share/iii/gc-runtime"
+    state: directory
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0700"
+  become: true
+
+- name: Inspect the installed GC application identity
+  ansible.builtin.stat:
+    path: "{{ iii_gc_home }}/.local/share/iii/gc-runtime/application-id"
+  register: iii_gc_application_marker
+
+- name: Remove an unsafe GC application identity marker
+  ansible.builtin.file:
+    path: "{{ iii_gc_home }}/.local/share/iii/gc-runtime/application-id"
+    state: absent
+  when: >-
+    iii_gc_application_marker.stat.exists and
+    (iii_gc_application_marker.stat.islnk or not iii_gc_application_marker.stat.isreg)
+  become: true
+
+- name: Read the installed GC application identity
+  ansible.builtin.slurp:
+    src: "{{ iii_gc_home }}/.local/share/iii/gc-runtime/application-id"
+  register: iii_gc_application_marker_content
+  when: iii_gc_application_marker.stat.exists and iii_gc_application_marker.stat.isreg and not iii_gc_application_marker.stat.islnk
+
+- name: Inspect the host-native GC runtime environment boundary
+  ansible.builtin.stat:
+    path: "{{ iii_gc_home }}/.local/share/iii/gc-runtime/venv"
+    follow: false
+  register: iii_gc_runtime_environment
+
+- name: Inspect the host-native companion executable
+  ansible.builtin.stat:
+    path: "{{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/iii-gc-companion"
+  register: iii_gc_companion_executable
+
+- name: Authenticate the pinned GC container images
+  ansible.builtin.shell: |
+    set -eu
+    for image in \
+      "iii-drone-gc-proxy:{{ iii_gc_application_id }}" \
+      "iii-drone-gc-frontend:{{ iii_gc_application_id }}"
+    do
+      actual="$(/usr/bin/docker image inspect \
+        --format '{% raw %}{{ index .Config.Labels "io.iii-drone.application-id" }}{% endraw %}' \
+        "$image" 2>/dev/null || true)"
+      test "$actual" = "$III_EXPECTED_APPLICATION_ID"
+    done
+  environment:
+    III_EXPECTED_APPLICATION_ID: "{{ iii_gc_application_id }}"
+  register: iii_gc_image_status
+  changed_when: false
+  failed_when: false
+  when: not iii_gc_test_mode
+
+- name: Select the exact host-native GC runtime dependency lock
+  ansible.builtin.set_fact:
+    iii_gc_runtime_lock: >-
+      {{ iii_gc_workspace }}/deployment/ansible/gc-runtime-requirements-py{{
+      '310' if iii_gc_platform_id == 'ubuntu-22.04-x86_64' else '312' }}.txt
+    iii_gc_runtime_wheelhouse: >-
+      {{ iii_gc_home }}/.cache/iii/offline/{{ iii_gc_cache_id }}/gc-runtime-wheelhouse
+
+- name: Authenticate the currently selected host-native GC runtime
+  ansible.builtin.command:
+    argv:
+      - "{{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/python"
+      - "{{ iii_gc_workspace }}/deployment/scripts/verify_python_lock.py"
+      - --lock
+      - "{{ iii_gc_runtime_lock }}"
+      - --local
+      - iii==0.2.0
+      - --local
+      - iii-drone-contracts==0.1.0
+      - --local
+      - iii-drone-gc==2.2
+      - --local
+      - iii-deployment==0.1.0
+  environment:
+    PYTHONPATH: ""
+    PYTHONHOME: ""
+  register: iii_gc_runtime_authentication
+  when: >-
+    not iii_gc_test_mode and
+    iii_gc_runtime_environment.stat.exists and
+    iii_gc_runtime_environment.stat.isdir and
+    not iii_gc_runtime_environment.stat.islnk and
+    iii_gc_runtime_environment.stat.pw_name == iii_gc_user and
+    iii_gc_companion_executable.stat.exists
+  failed_when: false
+  changed_when: false
+
+- name: Decide whether the host-native GC runtime must be rebuilt
+  ansible.builtin.set_fact:
+    iii_gc_runtime_changed: >-
+      {{ (not iii_gc_application_marker.stat.exists) or
+         (iii_gc_application_marker.stat.islnk | default(false)) or
+         (not (iii_gc_application_marker.stat.isreg | default(false))) or
+         ((iii_gc_application_marker_content.content | default('') | b64decode | trim) != iii_gc_install_id) or
+         (not iii_gc_runtime_environment.stat.exists) or
+         (not (iii_gc_runtime_environment.stat.isdir | default(false))) or
+         (iii_gc_runtime_environment.stat.islnk | default(false)) or
+         (iii_gc_runtime_environment.stat.pw_name | default('') != iii_gc_user) or
+         (not iii_gc_companion_executable.stat.exists) or
+         ((not iii_gc_test_mode) and (iii_gc_runtime_authentication.rc | default(1) != 0)) }}
+    iii_gc_images_changed: >-
+      {{ (not iii_gc_test_mode) and (iii_gc_image_status.rc | default(1) != 0) }}
+
+- name: Decide whether any GC application content must change
+  ansible.builtin.set_fact:
+    iii_gc_application_changed: >-
+      {{ iii_gc_runtime_changed or iii_gc_images_changed }}
+
+- name: Create a deterministic test runtime in target-equivalent matrices
+  ansible.builtin.shell: |
+    set -eu
+    install -d -m 0700 {{ iii_gc_home | quote }}/.local/share/iii/gc-runtime/venv/bin
+    printf '%s\n' '#!/bin/sh' 'exit 0' > {{ iii_gc_home | quote }}/.local/share/iii/gc-runtime/venv/bin/iii
+    printf '%s\n' '#!/bin/sh' 'exit 0' > {{ iii_gc_home | quote }}/.local/share/iii/gc-runtime/venv/bin/iii-gc-companion
+    chmod 0700 {{ iii_gc_home | quote }}/.local/share/iii/gc-runtime/venv/bin/iii*
+  when: iii_gc_test_mode and iii_gc_runtime_changed
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  changed_when: true
+
+- name: Remove only the invalid or superseded managed GC runtime environment
+  ansible.builtin.file:
+    path: "{{ iii_gc_home }}/.local/share/iii/gc-runtime/venv"
+    state: absent
+  when: not iii_gc_test_mode and iii_gc_runtime_changed
+  become: true
+
+- name: Create the host-native GC runtime virtual environment
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -m
+      - venv
+      - "{{ iii_gc_home }}/.local/share/iii/gc-runtime/venv"
+  when: not iii_gc_test_mode and iii_gc_runtime_changed
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  changed_when: true
+
+- name: Install the hash-locked ROS-free GC runtime dependencies online
+  ansible.builtin.command:
+    argv:
+      - "{{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/pip"
+      - install
+      - --isolated
+      - --disable-pip-version-check
+      - --require-hashes
+      - --requirement
+      - "{{ iii_gc_runtime_lock }}"
+  environment:
+    PYTHONPATH: ""
+    PYTHONHOME: ""
+  when: not iii_gc_test_mode and not iii_gc_offline and iii_gc_runtime_changed
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  changed_when: true
+
+- name: Install the ROS-free GC runtime from isolated source copies
+  ansible.builtin.command:
+    argv:
+      - "{{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/python"
+      - "{{ iii_gc_workspace }}/deployment/scripts/install_local_python_sources.py"
+      - --pip
+      - "{{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/pip"
+      - "{{ iii_gc_workspace }}/tools/III-Drone-CLI"
+      - "{{ iii_gc_workspace }}/src/III-Drone-Contracts"
+      - "{{ iii_gc_workspace }}/src/III-Drone-GC"
+      - "{{ iii_gc_workspace }}/deployment"
+  environment:
+    PYTHONPATH: ""
+    PYTHONHOME: ""
+  when: not iii_gc_test_mode and not iii_gc_offline and iii_gc_runtime_changed
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  changed_when: true
+
+- name: Remove any incomplete extracted offline GC runtime wheelhouse
+  ansible.builtin.file:
+    path: "{{ iii_gc_runtime_wheelhouse }}"
+    state: absent
+  when: not iii_gc_test_mode and iii_gc_offline and iii_gc_runtime_changed
+  become: true
+
+- name: Create the content-addressed offline GC runtime wheelhouse root
+  ansible.builtin.file:
+    path: "{{ iii_gc_runtime_wheelhouse }}"
+    state: directory
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0700"
+  when: not iii_gc_test_mode and iii_gc_offline and iii_gc_runtime_changed
+  become: true
+
+- name: Expand the authenticated offline GC runtime wheelhouse after creating its root
+  ansible.builtin.unarchive:
+    src: "{{ iii_gc_offline_artifacts['gc-runtime-wheelhouse'] }}"
+    dest: "{{ iii_gc_runtime_wheelhouse }}"
+    remote_src: true
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+  when: not iii_gc_test_mode and iii_gc_offline and iii_gc_runtime_changed
+  become: true
+
+- name: Install hash-locked GC runtime dependencies from prepared-offline wheels
+  ansible.builtin.command:
+    argv:
+      - "{{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/pip"
+      - install
+      - --isolated
+      - --no-index
+      - --find-links
+      - "{{ iii_gc_runtime_wheelhouse }}"
+      - --require-hashes
+      - --requirement
+      - "{{ iii_gc_runtime_lock }}"
+  environment:
+    PYTHONPATH: ""
+    PYTHONHOME: ""
+  when: not iii_gc_test_mode and iii_gc_offline and iii_gc_runtime_changed
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  changed_when: true
+
+- name: Install exact local GC runtime wheels without dependency resolution
+  ansible.builtin.command:
+    argv:
+      - "{{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/pip"
+      - install
+      - --isolated
+      - --no-index
+      - --find-links
+      - "{{ iii_gc_runtime_wheelhouse }}"
+      - --no-deps
+      - iii==0.2.0
+      - iii-drone-contracts==0.1.0
+      - iii-drone-gc==2.2
+      - iii-deployment==0.1.0
+  environment:
+    PYTHONPATH: ""
+    PYTHONHOME: ""
+  when: not iii_gc_test_mode and iii_gc_offline and iii_gc_runtime_changed
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  changed_when: true
+
+- name: Verify the exact host-native GC runtime dependency graph
+  ansible.builtin.command:
+    argv:
+      - "{{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/python"
+      - "{{ iii_gc_workspace }}/deployment/scripts/verify_python_lock.py"
+      - --lock
+      - "{{ iii_gc_runtime_lock }}"
+      - --local
+      - iii==0.2.0
+      - --local
+      - iii-drone-contracts==0.1.0
+      - --local
+      - iii-drone-gc==2.2
+      - --local
+      - iii-deployment==0.1.0
+  environment:
+    PYTHONPATH: ""
+    PYTHONHOME: ""
+  when: not iii_gc_test_mode and iii_gc_runtime_changed
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  changed_when: false
+
+- name: Build the pinned GC frontend and proxy images online
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - compose
+      - --project-name
+      - iii-ground-control-build
+      - --file
+      - "{{ iii_gc_workspace }}/src/III-Drone-GC/docker-compose.prod.yml"
+      - build
+      - --pull=false
+  environment:
+    III_GC_IMAGE_TAG: "{{ iii_gc_application_id }}"
+    III_GC_APPLICATION_ID: "{{ iii_gc_application_id }}"
+  when: not iii_gc_test_mode and not iii_gc_offline and iii_gc_images_changed
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  changed_when: true
+
+- name: Load authenticated prepared-offline GC images
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - load
+      - --input
+      - "{{ iii_gc_offline_artifacts['gc-container-images'] }}"
+  when: not iii_gc_test_mode and iii_gc_offline and iii_gc_images_changed
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  changed_when: true
+
+- name: Require the installed GC images to match the planned application identity
+  ansible.builtin.shell: |
+    set -eu
+    for image in \
+      "iii-drone-gc-proxy:{{ iii_gc_application_id }}" \
+      "iii-drone-gc-frontend:{{ iii_gc_application_id }}"
+    do
+      actual="$(/usr/bin/docker image inspect \
+        --format '{% raw %}{{ index .Config.Labels "io.iii-drone.application-id" }}{% endraw %}' \
+        "$image")"
+      test "$actual" = "$III_EXPECTED_APPLICATION_ID"
+    done
+  environment:
+    III_EXPECTED_APPLICATION_ID: "{{ iii_gc_application_id }}"
+  when: not iii_gc_test_mode and iii_gc_images_changed
+  changed_when: false
+
+- name: Commit the installed GC application identity
+  ansible.builtin.copy:
+    content: "{{ iii_gc_install_id }}\n"
+    dest: "{{ iii_gc_home }}/.local/share/iii/gc-runtime/application-id"
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0600"
+  become: true

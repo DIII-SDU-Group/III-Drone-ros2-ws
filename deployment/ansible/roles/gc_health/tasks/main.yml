@@ -1,0 +1,88 @@
+---
+- name: Inspect managed GC path permissions
+  ansible.builtin.stat:
+    path: "{{ iii_gc_home }}/{{ item.path }}"
+  loop: "{{ iii_gc_policy_value.managed_user_paths }}"
+  register: iii_gc_path_status
+
+- name: Require every declared GC path to remain private and user-owned
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isdir
+      - item.stat.pw_name == iii_gc_user
+      - item.stat.mode == item.item.mode
+    fail_msg: "GC path permission drift: {{ item.item.path }}"
+  loop: "{{ iii_gc_path_status.results }}"
+
+- name: Inspect fresh identity and SSH private-key permissions
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ iii_gc_home }}/.config/iii/identity/machine-id"
+    - "{{ iii_gc_home }}/.config/iii/keys/ssh/id_ed25519"
+  register: iii_gc_secret_status
+
+- name: Require owner-only fresh machine material
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg
+      - item.stat.pw_name == iii_gc_user
+      - item.stat.mode == '0600'
+    fail_msg: GC machine identity/private-key boundary is invalid
+  loop: "{{ iii_gc_secret_status.results }}"
+
+- name: Read the GC target definition
+  ansible.builtin.slurp:
+    src: "{{ iii_gc_home }}/.config/systemd/user/iii-gc.target"
+  register: iii_gc_target_content
+
+- name: Require login lifecycle without automatic browser or QGroundControl
+  ansible.builtin.assert:
+    that:
+      - "'PartOf=graphical-session.target' in (iii_gc_target_content.content | b64decode)"
+      - "'iii-gc-browser.service' not in (iii_gc_target_content.content | b64decode)"
+      - "'qgroundcontrol' not in (iii_gc_target_content.content | b64decode | lower)"
+      - "'iii system stop' not in (iii_gc_target_content.content | b64decode)"
+    fail_msg: GC login target violates browser/QGC/drone lifecycle separation
+
+- name: Require fixed iii.local discovery and real-only clock semantics in source
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -c
+      - >-
+        from pathlib import Path;
+        p=Path('{{ iii_gc_workspace }}/src/III-Drone-GC/iii_drone_gc/v2_companion.py').read_text();
+        assert 'HOSTNAME = "iii.local"' in p;
+        assert 'observation.profile == "sim"' in p;
+        assert 'observation.profile != "real"' in p
+  changed_when: false
+
+- name: Require runtime and controller environments to be host-user state
+  ansible.builtin.assert:
+    that:
+      - iii_gc_home is match('^/')
+      - iii_gc_workspace is match('^/')
+      - iii_gc_application_id | length == 64
+    fail_msg: GC environment paths are not bound to the selected host user
+
+- name: Retain the deterministic GC host baseline report
+  ansible.builtin.copy:
+    content: >-
+      {{ {'schema': 'iii.gc-host-baseline/v1',
+          'platform_id': iii_gc_platform_id,
+          'application_id': iii_gc_application_id,
+          'install_id': iii_gc_install_id,
+          'offline': iii_gc_offline,
+          'cache_id': iii_gc_cache_id,
+          'user': iii_gc_user,
+          'automatic_hostname': 'iii.local',
+          'login_units': iii_gc_policy_value.login_units,
+          'unmanaged_user_state': 'preserved'} | to_json }}
+    dest: "{{ iii_gc_home }}/.local/state/iii/gc/host-baseline.json"
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0600"
+  become: true

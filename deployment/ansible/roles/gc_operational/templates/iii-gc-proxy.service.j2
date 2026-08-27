@@ -1,0 +1,18 @@
+[Unit]
+Description=III ROS-free ground-control proxy container
+PartOf=iii-gc.target graphical-session.target
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile={{ iii_gc_home }}/.config/iii/gc.env
+EnvironmentFile={{ iii_gc_home }}/.config/iii/gc-profile.env
+EnvironmentFile=-{{ iii_gc_home }}/.config/iii/ground-control-secrets.env
+ExecStart=/usr/bin/docker compose --project-name iii-ground-control --file {{ iii_gc_workspace }}/src/III-Drone-GC/docker-compose.prod.yml up --no-build proxy
+ExecStop=/usr/bin/docker compose --project-name iii-ground-control --file {{ iii_gc_workspace }}/src/III-Drone-GC/docker-compose.prod.yml stop --timeout 10 proxy
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+
+[Install]
+WantedBy=iii-gc.target

@@ -13,7 +13,12 @@
       "minProperties": 1,
       "additionalProperties": {"$ref": "#/definitions/counters"}
     },
-    "totals": {"$ref": "#/definitions/counters"}
+    "totals": {"$ref": "#/definitions/counters"},
+    "categories": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9-]*$"},
+      "additionalProperties": {"$ref": "#/definitions/counters"}
+    }
   },
   "definitions": {
     "counters": {

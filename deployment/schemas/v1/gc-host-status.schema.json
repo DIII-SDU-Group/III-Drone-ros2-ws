@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/gc-host-status.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "platform", "paths", "units", "machine_identity", "ssh_key", "status_id"],
+  "properties": {
+    "schema": {"const": "iii.gc-host-status/v1"},
+    "platform": {"$ref": "#/definitions/platform"},
+    "paths": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/path_status"}},
+    "units": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/unit_status"}},
+    "machine_identity": {"type": "boolean"},
+    "ssh_key": {"type": "boolean"},
+    "status_id": {"$ref": "#/definitions/hash"}
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform_id", "os_id", "version_id", "architecture", "graphical_session_required", "excluded_prerequisites"],
+      "properties": {
+        "platform_id": {"enum": ["ubuntu-22.04-x86_64", "ubuntu-24.04-x86_64"]},
+        "os_id": {"const": "ubuntu"},
+        "version_id": {"enum": ["22.04", "24.04"]},
+        "architecture": {"const": "x86_64"},
+        "graphical_session_required": {"const": true},
+        "excluded_prerequisites": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "path_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "mode", "class", "exists", "actual_mode"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^[.][A-Za-z0-9._/-]+$"},
+        "mode": {"type": "string", "pattern": "^0[0-7]{3}$"},
+        "class": {"enum": ["application", "cache", "logs", "machine-identity", "portable-records", "secret", "settings", "state"]},
+        "exists": {"type": "boolean"},
+        "actual_mode": {"type": ["string", "null"], "pattern": "^0[0-7]{3}$"}
+      }
+    },
+    "unit_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "load_state", "active_state", "unit_file_state"],
+      "properties": {
+        "unit": {"type": "string", "pattern": "^[a-z0-9@.-]+[.]service$"},
+        "load_state": {"type": "string", "minLength": 1},
+        "active_state": {"type": "string", "minLength": 1},
+        "unit_file_state": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

@@ -29,6 +29,51 @@ class CallbackModule(CallbackBase):
     CALLBACK_NAME = "iii_result"
     CALLBACK_NEEDS_ENABLED = True
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._categories: dict[str, dict[str, int]] = {}
+
+    @staticmethod
+    def _counters() -> dict[str, int]:
+        return {
+            key: 0
+            for key in (
+                "ok",
+                "changed",
+                "failures",
+                "unreachable",
+                "skipped",
+                "rescued",
+                "ignored",
+            )
+        }
+
+    def _record(self, result: object, outcome: str, *, changed: bool = False) -> None:
+        task = getattr(result, "_task", None)
+        tags = getattr(task, "tags", ()) or ()
+        for tag in tags:
+            value = str(tag)
+            if not value.startswith("iii_category_"):
+                continue
+            category = value.removeprefix("iii_category_")
+            counters = self._categories.setdefault(category, self._counters())
+            counters[outcome] += 1
+            if changed:
+                counters["changed"] += 1
+
+    def v2_runner_on_ok(self, result: object) -> None:
+        payload = getattr(result, "_result", {}) or {}
+        self._record(result, "ok", changed=bool(payload.get("changed", False)))
+
+    def v2_runner_on_failed(self, result: object, ignore_errors: bool = False) -> None:
+        self._record(result, "ignored" if ignore_errors else "failures")
+
+    def v2_runner_on_unreachable(self, result: object) -> None:
+        self._record(result, "unreachable")
+
+    def v2_runner_on_skipped(self, result: object) -> None:
+        self._record(result, "skipped")
+
     def v2_playbook_on_stats(self, stats: object) -> None:
         destination = os.environ.get("III_ANSIBLE_RESULT_PATH")
         if not destination:
@@ -51,6 +96,10 @@ class CallbackModule(CallbackBase):
             "totals": {
                 key: sum(host[key] for host in hosts.values())
                 for key in ("ok", "changed", "failures", "unreachable", "skipped", "rescued", "ignored")
+            },
+            "categories": {
+                category: counters
+                for category, counters in sorted(self._categories.items())
             },
         }
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)

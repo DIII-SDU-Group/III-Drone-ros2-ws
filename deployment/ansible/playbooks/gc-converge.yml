@@ -1,0 +1,34 @@
+---
+- name: Converge the local III ground-control host
+  hosts: all
+  gather_facts: true
+  any_errors_fatal: true
+  vars:
+    iii_gc_test_mode: false
+  pre_tasks:
+    - name: Require the complete GC controller input contract
+      ansible.builtin.assert:
+        that:
+          - iii_gc_user | length > 0
+          - iii_gc_uid | int >= 0
+          - iii_gc_gid | int >= 0
+          - iii_gc_home is match('^/')
+          - iii_gc_workspace is match('^/')
+          - iii_gc_platform_id in ['ubuntu-22.04-x86_64', 'ubuntu-24.04-x86_64']
+          - iii_gc_offline is boolean
+          - iii_gc_policy is match('^/')
+          - iii_gc_application_id is match('^[a-f0-9]{64}$')
+          - iii_gc_install_id is match('^[a-f0-9]{64}$')
+        fail_msg: GC convergence requires the retained local-controller variables
+      tags: [always]
+  roles:
+    - role: gc_preflight
+      tags: [iii_category_operational]
+    - role: gc_operational
+      tags: [iii_category_operational]
+    - role: gc_application
+      tags: [iii_category_application]
+    - role: gc_development
+      tags: [iii_category_development]
+    - role: gc_health
+      tags: [iii_category_operational]

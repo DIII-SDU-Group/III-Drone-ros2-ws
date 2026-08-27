@@ -104,6 +104,11 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     retained setting maintenance, explicit reboot validation, and physical SD
     repair/reprovision rehearsal.
 
+29. `gc-host-provisioning.md`
+    Stock Ubuntu 22.04/24.04 ground-control convergence, exact controller/runtime
+    locks, prepared-offline cache contract, persistent state, replacement-host
+    recovery, and graphical login lifecycle.
+
 Domain language and context ownership are indexed by the root
 `CONTEXT-MAP.md`.
 

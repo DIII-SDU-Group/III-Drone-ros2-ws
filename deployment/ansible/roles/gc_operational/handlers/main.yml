@@ -1,0 +1,8 @@
+---
+- name: Reload GC user unit manager
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ iii_gc_uid }}"
+  when: not iii_gc_test_mode

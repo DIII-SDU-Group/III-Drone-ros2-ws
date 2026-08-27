@@ -4132,6 +4132,11 @@ Notes:
 
 #### P3.T8: Provision The Ground-Control Host Baseline
 
+**Status: In-Progress.** The production software boundary is implemented and
+verified on 2026-08-27. Real graphical login/logout and a fresh physical
+replacement-laptop import/enrollment drill remain commissioning evidence; those
+results are not inferred from containers.
+
 Description:
 Create GC-host inventory and idempotent Ansible roles for supported graphical Ubuntu
 x86_64 computers. Preserve the ROS-free frontend/proxy boundary. Separate an
@@ -4142,24 +4147,24 @@ receive both because the repository clone remains a prerequisite in this sweep.
 
 Acceptance:
 
-- [ ] `iii gc provision` converges stock Ubuntu 22.04/24.04 plus a local clone in
+- [x] `iii gc provision` converges stock Ubuntu 22.04/24.04 plus a local clone in
       online or prepared-offline mode and reports excluded disk/OS/vendor prerequisites.
-- [ ] The operational role installs native user-session owners for frontend/proxy,
+- [x] The operational role installs native user-session owners for frontend/proxy,
       discovery, mirror, clock companion, and browser launcher without installing
       ROS/DDS/MAVSDK into the proxy boundary.
-- [ ] The development role installs strict submodule tooling, repository-managed
+- [x] The development role installs strict submodule tooling, repository-managed
       CLI/Ansible environment, pinned ARM64 builder, and offline caches without
       making container-local state authoritative.
-- [ ] Secrets, SSH/signing keys, `.iii` state, captures, logs, and mutable settings
+- [x] Secrets, SSH/signing keys, `.iii` state, captures, logs, and mutable settings
       use declared host-user paths/permissions and survive role/application updates.
-- [ ] A second convergence is idempotent; drift output distinguishes operational,
+- [x] A second convergence is idempotent; drift output distinguishes operational,
       development, application, and unmanaged user state.
 - [ ] A replacement GC creates fresh machine identity/keys and restores only
       verified non-secret records/caches through P2.T8 before enrollment; no prior
       private key or machine credential is copied.
 - [ ] User-login starts required GC companions without opening browser/QGC; logout
       stops only local graphical/user services and never affects the drone.
-- [ ] Discovery targets only `iii.local`, invokes Q59 clock sync only for `real`,
+- [x] Discovery targets only `iii.local`, invokes Q59 clock sync only for `real`,
       and skips Pi clock alignment for `sim`.
 
 Tests:
@@ -4167,6 +4172,38 @@ Tests:
 - Clean 22.04/24.04 operational/development matrices, online/offline convergence,
   second-run idempotence, drift separation, permissions/secrets, login/logout,
   real/sim discovery and clock behavior, and complete replacement-GC rebuild/import.
+
+Implementation notes:
+
+- Added the retained `iii gc provision`/status/lifecycle provider, strict policy
+  and plan/report/cache schemas, categorized Ansible recap, stock-Python
+  content-addressed controller bootstrap, Python 3.10/3.12 hash locks, exact
+  dependency verifier, and safe prepared-offline cache authentication. Local
+  Python projects build from isolated copies, so provisioning never dirties or
+  depends on writable source trees.
+- Added separately reported operational, application, development, and health
+  roles. They own private host-user paths, fresh machine/SSH material, preserved
+  secret overlays, graphical-session services, exact ROS-free runtime and GC
+  images, strict submodules, offline caches, and the definition-labeled ARM64
+  builder. Replacement resume reauthenticates every imported file and the fresh
+  key ownership/modes without accepting a restored runtime credential.
+- Added fixed-`iii.local` discovery, configuration mirror, and real-only clock
+  companions plus lifecycle plans that bind every managed unit byte, mode, owner,
+  and state. Login excludes browser/QGroundControl; local logout/stop contains no
+  aircraft lifecycle command.
+- Task verification passed 24 deployment/bootstrap/host tests, 40 CLI contract
+  tests, 64 GC tests, five documentation-contract tests, Ansible production lint
+  with zero warnings across 21 files, stock Ubuntu 22.04/Python 3.10 and Ubuntu
+  24.04/Python 3.12 bootstraps, exact runtime installs on both Python versions,
+  and online/offline apply/check/drift/repair matrices (133.43 s and 148.03 s).
+  Production frontend/proxy images built with the planned identity label; the
+  proxy inventory contained 23 distributions and no ROS/DDS/MAVSDK package.
+- A complete authenticated prepared-offline controller wheelhouse was exercised
+  with network proxies forced dead. The container matrices validate the offline
+  role transaction and idempotence using authenticated role locators; final
+  prepared-media contents remain a field-preparation responsibility. Physical
+  graphical-session/logout and replacement-computer enrollment are intentionally
+  still unchecked above.
 
 #### P3.T9: Install And Transactionally Update GC/QGroundControl Applications
 

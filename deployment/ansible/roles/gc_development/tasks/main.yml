@@ -1,0 +1,228 @@
+---
+- name: Install GC development and cross-build packages online
+  ansible.builtin.apt:
+    name: "{{ iii_gc_policy_value.development_packages }}"
+    state: present
+    install_recommends: false
+  become: true
+  when: not iii_gc_test_mode and not iii_gc_offline
+
+- name: Install prepared-offline GC development packages without network access
+  ansible.builtin.command:
+    argv: "{{ ['/usr/bin/apt-get', '--no-download', '--yes', 'install'] + iii_gc_policy_value.development_packages }}"
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+    LC_ALL: C
+  become: true
+  when: not iii_gc_test_mode and iii_gc_offline
+  changed_when: "'0 upgraded, 0 newly installed, 0 to remove' not in iii_gc_offline_development_apt.stdout"
+  register: iii_gc_offline_development_apt
+
+- name: Configure strict recursive submodule behavior
+  ansible.builtin.shell: |
+    set -eu
+    current="$(git config --get {{ item.name | quote }} || true)"
+    if [ "$current" = {{ item.value | quote }} ]; then
+      exit 0
+    fi
+    git config {{ item.name | quote }} {{ item.value | quote }}
+    printf '%s\n' CHANGED
+  args:
+    chdir: "{{ iii_gc_workspace }}"
+  loop:
+    - {name: submodule.recurse, value: 'true'}
+    - {name: fetch.recurseSubmodules, value: on-demand}
+    - {name: push.recurseSubmodules, value: check}
+    - {name: status.submoduleSummary, value: 'true'}
+  register: iii_gc_git_config
+  changed_when: "'CHANGED' in iii_gc_git_config.stdout"
+  when: not iii_gc_test_mode
+
+- name: Verify the governed submodule lock before development setup
+  ansible.builtin.command:
+    argv:
+      - "{{ iii_gc_workspace }}/scripts/git/verify_submodule_lock.sh"
+  args:
+    chdir: "{{ iii_gc_workspace }}"
+  changed_when: false
+
+- name: Create repository-managed controller and build-cache roots
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0700"
+  become: true
+  loop:
+    - "{{ iii_gc_home }}/.local/share/iii/controller"
+    - "{{ iii_gc_home }}/.cache/iii/ansible"
+    - "{{ iii_gc_home }}/.cache/iii/build"
+    - "{{ iii_gc_home }}/.cache/iii/ccache"
+    - "{{ iii_gc_home }}/.cache/iii/offline"
+
+- name: Inspect the atomic controller environment selector
+  ansible.builtin.stat:
+    path: "{{ iii_gc_home }}/.local/share/iii/controller/venv"
+    follow: false
+  register: iii_gc_controller_selector
+  when: not iii_gc_test_mode
+
+- name: Resolve the selected content-addressed controller environment
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/readlink
+      - -f
+      - "{{ iii_gc_home }}/.local/share/iii/controller/venv"
+  register: iii_gc_controller_resolved
+  when: not iii_gc_test_mode
+  changed_when: false
+
+- name: Require the selected controller to stay inside its content store
+  ansible.builtin.assert:
+    that:
+      - iii_gc_controller_selector.stat.islnk
+      - iii_gc_controller_selector.stat.pw_name == iii_gc_user
+      - iii_gc_controller_resolved.stdout is match('^' + iii_gc_home + '/[.]local/share/iii/controller/environments/[a-f0-9]{64}$')
+    fail_msg: repository-managed GC controller selector escapes its content store
+  when: not iii_gc_test_mode
+
+- name: Read the selected controller identity
+  ansible.builtin.slurp:
+    src: "{{ iii_gc_home }}/.local/share/iii/controller/venv/iii-controller-id"
+  register: iii_gc_controller_identity
+  when: not iii_gc_test_mode
+  no_log: true
+
+- name: Inspect required repository-managed controller executables
+  ansible.builtin.stat:
+    path: "{{ iii_gc_home }}/.local/share/iii/controller/venv/bin/{{ item }}"
+  loop:
+    - ansible-playbook
+    - iii
+    - pip
+  register: iii_gc_controller_executables
+  when: not iii_gc_test_mode
+
+- name: Require the authenticated atomic controller boundary
+  ansible.builtin.assert:
+    that:
+      - (iii_gc_controller_identity.content | b64decode | trim) == (iii_gc_controller_resolved.stdout | basename)
+      - iii_gc_controller_executables.results | map(attribute='stat.exists') | min
+      - iii_gc_controller_executables.results | map(attribute='stat.isreg') | min
+    fail_msg: repository-managed GC controller selector or content is invalid
+  when: not iii_gc_test_mode
+
+- name: Verify the exact selected controller dependency graph
+  ansible.builtin.command:
+    argv:
+      - "{{ iii_gc_home }}/.local/share/iii/controller/venv/bin/python"
+      - "{{ iii_gc_workspace }}/deployment/scripts/verify_python_lock.py"
+      - --lock
+      - >-
+        {{ iii_gc_workspace }}/deployment/ansible/controller-requirements-py{{
+        '310' if iii_gc_platform_id == 'ubuntu-22.04-x86_64' else '312' }}.txt
+      - --local
+      - iii==0.2.0
+      - --local
+      - iii-deployment==0.1.0
+  environment:
+    PYTHONPATH: ""
+    PYTHONHOME: ""
+  when: not iii_gc_test_mode
+  changed_when: false
+
+- name: Commit the controller environment identity
+  ansible.builtin.copy:
+    content: "{{ iii_gc_controller_identity.content | b64decode | trim }}\n"
+    dest: "{{ iii_gc_home }}/.local/share/iii/controller/environment-id"
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0600"
+  become: true
+  when: not iii_gc_test_mode
+
+- name: Inspect the pinned ARM64 builder marker
+  ansible.builtin.stat:
+    path: "{{ iii_gc_home }}/.local/share/iii/controller/builder-id"
+  register: iii_gc_builder_marker
+
+- name: Read the pinned ARM64 builder marker
+  ansible.builtin.slurp:
+    src: "{{ iii_gc_home }}/.local/share/iii/controller/builder-id"
+  register: iii_gc_builder_marker_content
+  when: iii_gc_builder_marker.stat.exists
+
+- name: Authenticate the pinned ARM64 builder image
+  ansible.builtin.shell: |
+    set -eu
+    actual="$(/usr/bin/docker image inspect \
+      --format '{% raw %}{{ index .Config.Labels "io.iii-drone.builder-definition-sha256" }}{% endraw %}' \
+      {{ iii_gc_policy_value.builder.tag | quote }} 2>/dev/null || true)"
+    test "$actual" = "$III_EXPECTED_BUILDER_ID"
+  environment:
+    III_EXPECTED_BUILDER_ID: "{{ iii_gc_policy_value.builder.definition_sha256 }}"
+  register: iii_gc_builder_image
+  changed_when: false
+  failed_when: false
+  when: not iii_gc_test_mode
+
+- name: Decide whether the pinned ARM64 builder must be restored
+  ansible.builtin.set_fact:
+    iii_gc_builder_changed: >-
+      {{ (not iii_gc_builder_marker.stat.exists) or
+         ((iii_gc_builder_marker_content.content | default('') | b64decode | trim) != iii_gc_policy_value.builder.definition_sha256) or
+         ((not iii_gc_test_mode) and (iii_gc_builder_image.rc | default(1) != 0)) }}
+
+- name: Build the pinned ARM64 builder online
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - build
+      - --pull=false
+      - --label
+      - "io.iii-drone.builder-definition-sha256={{ iii_gc_policy_value.builder.definition_sha256 }}"
+      - --target
+      - "{{ iii_gc_policy_value.builder.target }}"
+      - --tag
+      - "{{ iii_gc_policy_value.builder.tag }}"
+      - --file
+      - "{{ iii_gc_workspace }}/{{ iii_gc_policy_value.builder.definition }}"
+      - "{{ iii_gc_workspace }}"
+  when: not iii_gc_test_mode and not iii_gc_offline and iii_gc_builder_changed
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  changed_when: true
+
+- name: Load the authenticated prepared-offline ARM64 builder
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - load
+      - --input
+      - "{{ iii_gc_offline_artifacts['arm64-builder-image'] }}"
+  when: not iii_gc_test_mode and iii_gc_offline and iii_gc_builder_changed
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  changed_when: true
+
+- name: Require the installed ARM64 builder to match its trusted definition
+  ansible.builtin.shell: |
+    set -eu
+    actual="$(/usr/bin/docker image inspect \
+      --format '{% raw %}{{ index .Config.Labels "io.iii-drone.builder-definition-sha256" }}{% endraw %}' \
+      {{ iii_gc_policy_value.builder.tag | quote }})"
+    test "$actual" = "$III_EXPECTED_BUILDER_ID"
+  environment:
+    III_EXPECTED_BUILDER_ID: "{{ iii_gc_policy_value.builder.definition_sha256 }}"
+  when: not iii_gc_test_mode and iii_gc_builder_changed
+  changed_when: false
+
+- name: Commit the ARM64 builder definition identity
+  ansible.builtin.copy:
+    content: "{{ iii_gc_policy_value.builder.definition_sha256 }}\n"
+    dest: "{{ iii_gc_home }}/.local/share/iii/controller/builder-id"
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0600"
+  become: true

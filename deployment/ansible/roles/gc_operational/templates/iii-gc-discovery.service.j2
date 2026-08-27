@@ -1,0 +1,14 @@
+[Unit]
+Description=III fixed-aircraft discovery companion
+PartOf=iii-gc.target graphical-session.target
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile={{ iii_gc_home }}/.config/iii/gc.env
+ExecStart={{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/iii-gc-companion --role discovery
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=iii-gc.target

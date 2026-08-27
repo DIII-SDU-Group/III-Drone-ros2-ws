@@ -21,13 +21,19 @@ A failed or interrupted run never implies commissioning. The final onboard
 ## Controller Prerequisites
 
 Use the same reviewed workspace and CLI branches throughout planning and apply.
-Install the hash-pinned controller dependencies in an isolated environment:
+Install the hash-pinned controller dependencies in an isolated environment.
+Use the lock matching stock Ubuntu 22.04/Python 3.10 or Ubuntu 24.04/Python
+3.12; any other controller Python fails closed:
 
 ```bash
 python3 -m venv testing/ansible-venv
+case "$(python3 -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')" in
+  310|312) controller_python="$(python3 -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')" ;;
+  *) echo "unsupported controller Python" >&2; exit 1 ;;
+esac
 testing/ansible-venv/bin/pip install \
   --require-hashes \
-  --requirement deployment/ansible/controller-requirements.txt
+  --requirement "deployment/ansible/controller-requirements-py${controller_python}.txt"
 ```
 
 Prepare these controller-side artifacts outside Git with owner-only permissions:
