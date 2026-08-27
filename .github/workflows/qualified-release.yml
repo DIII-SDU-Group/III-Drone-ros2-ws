@@ -114,7 +114,7 @@ jobs:
         run: |
           mkdir -p .qualification/deployment
           started="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
-          python -m pip install --disable-pip-version-check ./tools/III-Drone-CLI ./src/III-Drone-Configuration './deployment[test]'
+          python -m pip install --disable-pip-version-check ./src/III-Drone-Contracts ./tools/III-Drone-CLI ./src/III-Drone-Configuration './deployment[test]'
           iii verify deployment --root . --audit-only \
             --report .qualification/deployment/verification-matrix.json \
             --junit .qualification/deployment/verification-matrix.xml

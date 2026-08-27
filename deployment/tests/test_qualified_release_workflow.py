@@ -26,6 +26,7 @@ def test_qualified_workflow_is_tag_only_strictly_revalidated_and_secret_separate
     assert "III_QUALIFIED_SIGNING_KEY_PEM" not in text[text.index("  publish:"):]
     assert value["jobs"]["publish"]["permissions"] == {"contents": "write"}
     assert value["jobs"]["initial-status"]["environment"] == "release-status"
+    assert "pip install --disable-pip-version-check ./src/III-Drone-Contracts" in text
     failure_steps = value["jobs"]["retain-failure"]["steps"]
     failure_checkout = next(step for step in failure_steps if "uses" in step)
     assert failure_checkout["with"]["ref"] == "refs/heads/release"
