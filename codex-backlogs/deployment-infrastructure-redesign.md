@@ -3657,6 +3657,15 @@ Phase software-boundary verification (2026-08-27):
   prepared-offline laptop recommissioning remain intentionally unclaimed because
   this environment has no attached Raspberry Pi/SD target or replacement GC host;
   P3.T8 and the physical phase criteria therefore remain open.
+- The final opt-in target-equivalent phase gates passed on 2026-08-27: privileged
+  Noble/systemd Ansible convergence (`1 passed` in 555.92 s), native systemd
+  boot/restart/broken-release recovery/switching (`1 passed` in 12.10 s), Ubuntu
+  22.04 and 24.04 GC online/offline convergence and drift repair (`2 passed` in
+  324.76 s), and replacement-record import/fresh-identity ordering (`1 passed`).
+  The Ansible harness now builds the complete local receiver distribution graph
+  and includes the immutable portable-state policy in its signed receiver payload;
+  the native-systemd fixture materializes every Ansible-owned writable path and
+  retains unit journals on startup failure.
 
 #### P3.T0: Create SD Imaging And First-Boot Cloud-Init Profiles
 
@@ -3737,6 +3746,12 @@ ARM64 emulation integrity. No physical Raspberry Pi or live aircraft was
 available; real ARM64 snapshot package identities were verified against the
 governed ROS snapshot and the integration harness separately smoke-tested ARM64
 execution before and after the native-systemd run.
+
+Final target-equivalent rerun (2026-08-27): `1 passed` in 555.92 s after the
+isolated receiver artifact fixture was corrected to wheel all four local Python
+distributions and sign the required portable-state policy into the immutable
+receiver slot. First apply, zero-change check, injected drift, repair, final
+zero-change check, recovery services, and bootstrap finalization all passed.
 
 Description:
 Create roles for OS baseline, ROS installation, III user/groups, directories,
@@ -3839,6 +3854,12 @@ first-convergence, zero-drift, injected-drift, repair, and second-zero-drift tes
 passed twice (516.02 s and 494.87 s), including the final host-unit contract. No
 physical Raspberry Pi was attached, so no claim is made for a hardware power-cycle;
 that remains commissioning evidence rather than an unverified task result.
+
+Final native-systemd rerun (2026-08-27): `1 passed` in 12.10 s for boot, daemon
+restart, API/SSH independence, broken-release recovery, A-to-B selector switch,
+and container restart. The test now reports unit status and journals on startup
+failure and faithfully creates the Ansible-owned tuning path required by the
+production unit namespace.
 
 #### P3.T3: Implement Shared Target Identity And Secret Provisioning
 
@@ -4220,6 +4241,12 @@ Implementation notes:
   prepared-media contents remain a field-preparation responsibility. Physical
   graphical-session/logout and replacement-computer enrollment are intentionally
   still unchecked above.
+Final opt-in matrix rerun (2026-08-27): Ubuntu 22.04 and 24.04 online/offline
+apply/check, zero drift, injected operational drift, repair, permissions, and
+user-unit ownership passed (`2 passed` in 324.76 s). The replacement plan's
+authenticated non-secret record import-before-convergence and fresh-identity
+boundary also passed (`1 passed`); this unit-level result does not substitute
+for the unchecked physical replacement-laptop enrollment or login/logout drill.
 
 #### P3.T9: Install And Transactionally Update GC/QGroundControl Applications
 
@@ -4969,6 +4996,11 @@ Implementation notes (software boundary, 2026-08-27):
   unchecked criteria require the actual commissioned OptiTrack cycle and all nine
   signed Q131 scenarios against one clean qualified physical candidate; no such
   evidence is available in this environment, so P5.T0 remains In-Progress.
+The final software-only phase audit also exercised every feasible opt-in target
+gate: target-equivalent aircraft convergence, native systemd recovery/switching,
+both supported GC Ubuntu matrices, and replacement import/fresh-identity
+ordering all passed. These results remain target-equivalent evidence and do not
+satisfy or reclassify the 119 physical matrix rows.
 
 #### P5.T1: Commission The First Aircraft From Raw Image
 

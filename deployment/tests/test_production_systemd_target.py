@@ -205,7 +205,7 @@ def test_boot_restart_failure_recovery_and_release_switch(tmp_path: Path) -> Non
         setup = (
             "id iii >/dev/null 2>&1 || useradd --uid 1100 --create-home iii; "
             "install -d -o iii -g iii -m 0750 /run/iii /run/iii/clock-flush "
-            "/var/log/iii /var/lib/iii/configuration; "
+            "/var/log/iii /var/lib/iii/configuration /var/lib/iii/tuning; "
             "chmod -R a+rX /opt/iii/releases /var/lib/iii/deployment /etc/iii; "
             "systemctl daemon-reload; "
             "systemctl enable --now ssh.service; "
@@ -213,7 +213,30 @@ def test_boot_restart_failure_recovery_and_release_switch(tmp_path: Path) -> Non
             "iii-runtime-api.service iii.target; "
             "systemctl start iii.target"
         )
-        _run(["docker", "exec", container, "bash", "-lc", setup])
+        try:
+            _run(["docker", "exec", container, "bash", "-lc", setup])
+        except subprocess.CalledProcessError as exc:
+            diagnostics = _run(
+                [
+                    "docker",
+                    "exec",
+                    container,
+                    "bash",
+                    "-lc",
+                    "systemctl --no-pager --full status iii.target "
+                    "iii-system-daemon.service iii-runtime-api.service "
+                    "iii-deployment-receiver.service; "
+                    "journalctl --no-pager --output=short-monotonic "
+                    "--unit=iii.target --unit=iii-system-daemon.service "
+                    "--unit=iii-runtime-api.service "
+                    "--unit=iii-deployment-receiver.service",
+                ],
+                check=False,
+            )
+            raise AssertionError(
+                f"failed to start native III target: {exc.stderr}\n"
+                f"target diagnostics:\n{diagnostics.stdout}\n{diagnostics.stderr}"
+            ) from exc
         _wait(
             container,
             "systemctl is-active --quiet iii-system-daemon.service iii-runtime-api.service",

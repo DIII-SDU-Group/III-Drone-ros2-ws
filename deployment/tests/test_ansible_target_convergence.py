@@ -27,6 +27,12 @@ SCHEMAS = Path(__file__).parents[1] / "schemas/v1"
 WORKSPACE = Path(__file__).parents[2]
 ANSIBLE_ROOT = WORKSPACE / "deployment/ansible"
 CLI_ROOT = WORKSPACE / "tools/III-Drone-CLI"
+RECEIVER_WHEEL_PROJECTS = (
+    ("III-Drone-Contracts", WORKSPACE / "src/III-Drone-Contracts"),
+    ("III-Drone-Configuration", WORKSPACE / "src/III-Drone-Configuration"),
+    ("III-Drone-CLI", CLI_ROOT),
+    ("deployment", WORKSPACE / "deployment"),
+)
 
 
 def _run(argv: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -90,8 +96,8 @@ def _receiver_artifacts(root: Path) -> tuple[Path, Path, Path, Path, Path]:
     ignored = shutil.ignore_patterns(
         ".git", ".pytest_cache", "__pycache__", "*.egg-info", "*.pyc"
     )
-    shutil.copytree(CLI_ROOT, source / "III-Drone-CLI", ignore=ignored)
-    shutil.copytree(WORKSPACE / "deployment", source / "deployment", ignore=ignored)
+    for name, project_root in RECEIVER_WHEEL_PROJECTS:
+        shutil.copytree(project_root, source / name, ignore=ignored)
     _run(
         [
             "docker",
@@ -110,8 +116,7 @@ def _receiver_artifacts(root: Path) -> tuple[Path, Path, Path, Path, Path]:
             "wheel",
             "--wheel-dir",
             "/out",
-            "/src/III-Drone-CLI",
-            "/src/deployment",
+            *(f"/src/{name}" for name, _project_root in RECEIVER_WHEEL_PROJECTS),
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -137,6 +142,12 @@ def _receiver_artifacts(root: Path) -> tuple[Path, Path, Path, Path, Path]:
     shutil.copytree(
         SCHEMAS,
         payload / "share/iii-deployment/schemas/v1",
+    )
+    policy_root = payload / "share/iii-deployment/policy"
+    policy_root.mkdir(parents=True)
+    shutil.copy2(
+        WORKSPACE / "deployment/portable-state-policy.json",
+        policy_root / "portable-state-policy.json",
     )
     compatibility = {
         "bootstrap_protocols": ["1"],
@@ -166,6 +177,25 @@ def _receiver_artifacts(root: Path) -> tuple[Path, Path, Path, Path, Path]:
         registry=ContractRegistry(SCHEMAS),
     )
     return bundle, wheelhouse, bundle_trust, status_trust, receiver_trust
+
+
+def test_receiver_wheel_sources_cover_local_distribution_graph() -> None:
+    assert tuple(name for name, _root in RECEIVER_WHEEL_PROJECTS) == (
+        "III-Drone-Contracts",
+        "III-Drone-Configuration",
+        "III-Drone-CLI",
+        "deployment",
+    )
+    for _name, project_root in RECEIVER_WHEEL_PROJECTS:
+        assert (project_root / "setup.py").is_file() or (
+            project_root / "pyproject.toml"
+        ).is_file()
+
+
+def test_receiver_payload_policy_source_is_regular_file() -> None:
+    policy = WORKSPACE / "deployment/portable-state-policy.json"
+    assert policy.is_file()
+    assert not policy.is_symlink()
 
 
 def _wait_for_ssh(port: str, key: Path) -> None:
@@ -293,11 +323,11 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
                 "/run",
                 "--tmpfs",
                 "/run/lock",
-                    "--publish",
-                    "127.0.0.1::22",
-                    "--hostname",
-                    "iii",
-                    "--name",
+                "--publish",
+                "127.0.0.1::22",
+                "--hostname",
+                "iii",
+                "--name",
                 container,
                 image,
             ],
