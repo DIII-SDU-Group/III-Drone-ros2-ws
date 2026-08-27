@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-from io import StringIO
 import json
 import lzma
 import os
@@ -14,6 +13,7 @@ import yaml
 
 from iii_deployment.contracts import ContractRegistry
 from iii_deployment.host_imaging import (
+    _partition_one,
     _write_raw_image,
     BootstrapInputError,
     DeviceChangedError,
@@ -344,6 +344,51 @@ def test_device_selection_requires_exact_stable_path_and_reports_identity() -> N
         select_device(devices, "/dev/sdz")
 
 
+def test_partition_discovery_retries_transient_reader_reenumeration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lsblk_attempts = 0
+
+    def run(argv: list[str], **_kwargs) -> subprocess.CompletedProcess:
+        nonlocal lsblk_attempts
+        if argv[0] != "lsblk":
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        lsblk_attempts += 1
+        if lsblk_attempts == 1:
+            return subprocess.CompletedProcess(argv, 1, "", "device temporarily absent")
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            json.dumps(
+                {
+                    "blockdevices": [
+                        {
+                            "path": "/dev/sdd",
+                            "type": "disk",
+                            "fstype": None,
+                            "children": [
+                                {
+                                    "path": "/dev/sdd1",
+                                    "type": "part",
+                                    "fstype": "vfat",
+                                }
+                            ],
+                        }
+                    ]
+                }
+            ),
+            "",
+        )
+
+    monkeypatch.setattr("iii_deployment.host_imaging.subprocess.run", run)
+
+    assert _partition_one(
+        "/dev/disk/by-id/usb-Kingston_Multi-Reader_-3",
+        partition_number_reader=lambda path: 1 if path == "/dev/sdd1" else None,
+    ) == Path("/dev/sdd1")
+    assert lsblk_attempts == 2
+
+
 def test_string_flags_and_nested_mapper_ancestry_fail_closed() -> None:
     topology = _lsblk(target_updates={"rm": "0", "ro": "0"})
     topology["blockdevices"][1]["children"][0]["children"] = [
@@ -615,6 +660,21 @@ def test_successful_apply_requires_exact_write_seed_flush_and_emits_valid_record
             "verified": True,
         }
 
+    observed_targets: list[tuple[str, str]] = []
+
+    def seed_installer(target: str, seed: dict) -> list[dict]:
+        observed_targets.append(("seed", target))
+        return seed["file_evidence"]
+
+    def ejector(target: str) -> dict:
+        observed_targets.append(("eject", target))
+        return {
+            "fsync": True,
+            "block_buffers": True,
+            "eject_requested": True,
+            "method": "fixture-eject",
+        }
+
     record = apply_image_plan(
         plan,
         schema_root=SCHEMAS,
@@ -623,13 +683,8 @@ def test_successful_apply_requires_exact_write_seed_flush_and_emits_valid_record
         ],
         device_inspector=inspector,
         image_writer=writer,
-        seed_installer=lambda _target, seed: seed["file_evidence"],
-        ejector=lambda _target: {
-            "fsync": True,
-            "block_buffers": True,
-            "eject_requested": True,
-            "method": "fixture-eject",
-        },
+        seed_installer=seed_installer,
+        ejector=ejector,
     )
     schema = json.loads((SCHEMAS / "host-image-record.schema.json").read_text())
     jsonschema.Draft7Validator(schema).validate(
@@ -639,6 +694,10 @@ def test_successful_apply_requires_exact_write_seed_flush_and_emits_valid_record
     assert record["write"]["verified"] is True
     assert record["seed"]["verified"] is True
     assert record["destructive_authority"]["accepted_data_loss"] is True
+    assert observed_targets == [
+        ("seed", "/dev/disk/by-id/usb-TEST_SERIAL-1234"),
+        ("eject", "/dev/disk/by-id/usb-TEST_SERIAL-1234"),
+    ]
 
 
 def test_mutating_apply_refuses_changed_bootstrap_input(tmp_path: Path) -> None:

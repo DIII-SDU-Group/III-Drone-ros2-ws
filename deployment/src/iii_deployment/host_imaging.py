@@ -18,15 +18,18 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from .contracts import ContractRegistry, content_identity
+from .contracts import ContractError, ContractRegistry, content_identity
 
 
 IMAGE_PLAN_SCHEMA = "iii.host-image-plan/v1"
 IMAGE_RECORD_SCHEMA = "iii.host-image-record/v1"
 BOOTSTRAP_INPUT_SCHEMA = "iii.cloud-init-bootstrap-input/v1"
 CHUNK_BYTES = 4 * 1024 * 1024
+PARTITION_DISCOVERY_ATTEMPTS = 20
+PARTITION_DISCOVERY_DELAY_SECONDS = 0.25
 
 
 class ImagingError(RuntimeError):
@@ -761,32 +764,67 @@ def _write_raw_image(
     }
 
 
-def _partition_one(kernel_path: str) -> Path:
+def _sysfs_partition_number(device_path: str) -> int | None:
+    """Return the kernel partition number without depending on lsblk columns."""
+
+    sysfs_value = Path("/sys/class/block") / Path(device_path).name / "partition"
+    try:
+        return int(sysfs_value.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _partition_one(
+    kernel_path: str,
+    *,
+    partition_number_reader: Callable[[str], int | None] = _sysfs_partition_number,
+) -> Path:
     subprocess.run(
         ["partprobe", kernel_path], check=True, capture_output=True, text=True
     )
-    subprocess.run(["udevadm", "settle"], check=True, capture_output=True, text=True)
-    output = subprocess.run(
-        ["lsblk", "--json", "--output", "PATH,TYPE,PARTN,FSTYPE", kernel_path],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout
-    rows = _flatten_lsblk(json.loads(output).get("blockdevices", []))
-    matches = [
-        row
-        for row in rows
-        if row.get("type") == "part" and int(row.get("partn") or 0) == 1
-    ]
-    if len(matches) != 1 or str(matches[0].get("fstype") or "").lower() not in {
-        "vfat",
-        "fat",
-        "fat32",
-    }:
-        raise ImagingError(
-            "written image does not expose one supported FAT boot partition"
+    last_detail = "partition discovery did not run"
+    for attempt in range(PARTITION_DISCOVERY_ATTEMPTS):
+        subprocess.run(
+            ["udevadm", "settle", "--timeout=1"],
+            check=False,
+            capture_output=True,
+            text=True,
         )
-    return Path(str(matches[0]["path"]))
+        observed = subprocess.run(
+            ["lsblk", "--json", "--output", "PATH,TYPE,FSTYPE", kernel_path],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if observed.returncode == 0:
+            try:
+                value = json.loads(observed.stdout)
+            except json.JSONDecodeError:
+                last_detail = "lsblk returned invalid JSON during device settlement"
+            else:
+                rows = _flatten_lsblk(value.get("blockdevices", []))
+                matches = [
+                    row
+                    for row in rows
+                    if row.get("type") == "part"
+                    and partition_number_reader(str(row.get("path") or "")) == 1
+                ]
+                if len(matches) == 1 and str(
+                    matches[0].get("fstype") or ""
+                ).lower() in {"vfat", "fat", "fat32"}:
+                    return Path(str(matches[0]["path"]))
+                last_detail = (
+                    "the settled device did not expose exactly one supported FAT "
+                    "partition 1"
+                )
+        else:
+            last_detail = "lsblk could not resolve the device during re-enumeration"
+        if attempt + 1 < PARTITION_DISCOVERY_ATTEMPTS:
+            time.sleep(PARTITION_DISCOVERY_DELAY_SECONDS)
+    raise ImagingError(
+        "written image did not expose one supported FAT boot partition after "
+        f"bounded device settlement: {last_detail}"
+    )
 
 
 def install_seed_on_boot_partition(
@@ -989,12 +1027,13 @@ def apply_image_plan(
         raise ImageVerificationError(
             "image writer did not prove exact stream and readback identity"
         )
-    seed_files = seed_installer(str(current["kernel_path"]), seed)
+    stable_target = str(current["stable_path"])
+    seed_files = seed_installer(stable_target, seed)
     if seed_files != seed["file_evidence"]:
         raise ImageVerificationError(
             "on-media NoCloud seed evidence differs from retained render"
         )
-    flush = dict(ejector(str(current["kernel_path"])))
+    flush = dict(ejector(stable_target))
     if not flush.get("block_buffers") or not flush.get("eject_requested"):
         raise ImageVerificationError("media flush/eject did not complete")
     unsigned: dict[str, Any] = {
