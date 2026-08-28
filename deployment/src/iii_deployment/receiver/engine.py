@@ -32,6 +32,11 @@ from iii_deployment.receiver.state import (
     ReceiverControlStore,
     TERMINAL_STATES,
 )
+from iii_deployment.receiver.upload import (
+    MANIFEST_NAME as UPLOAD_MANIFEST_NAME,
+    RECEIVER_UPDATE_FILES,
+    ReceiverUpdateUploadStore,
+)
 from iii_deployment.staging import STATUS_INDEX_NAME, ReleaseStore
 
 
@@ -108,6 +113,10 @@ class ReceiverEngine:
         host_inspector: Any | None = None,
         network_controller: Any | None = None,
         backup_controller: Any | None = None,
+        receiver_slots: Any | None = None,
+        receiver_generation: int | None = None,
+        prepare_receiver_handoff: Callable[[], None] | None = None,
+        schedule_receiver_handoff: Callable[[], None] | None = None,
     ) -> None:
         if control.nonce_expiry_s != NONCE_EXPIRY_S:
             raise ContractError(
@@ -141,6 +150,14 @@ class ReceiverEngine:
         self.host_inspector = host_inspector
         self.network_controller = network_controller
         self.backup_controller = backup_controller
+        self.receiver_slots = receiver_slots
+        self.receiver_generation = (
+            control.receiver_generation
+            if receiver_generation is None
+            else receiver_generation
+        )
+        self.prepare_receiver_handoff = prepare_receiver_handoff
+        self.schedule_receiver_handoff = schedule_receiver_handoff
         if (log_inventory is None) != (log_transfer is None):
             raise ContractError(
                 "receiver log inventory and transfer must be configured together"
@@ -319,6 +336,7 @@ class ReceiverEngine:
             Action.NETWORK_PLAN,
             Action.PLAN_BACKUP_SEAL,
             Action.PLAN_BACKUP_RESTORE,
+            Action.PLAN_RECEIVER_UPDATE,
         }:
             return self._plan(request)
         if request.action in {
@@ -335,6 +353,7 @@ class ReceiverEngine:
             Action.NETWORK_APPLY,
             Action.BACKUP_SEAL,
             Action.BACKUP_RESTORE,
+            Action.RECEIVER_UPDATE,
         }:
             return self._accept(request)
         if request.action == Action.CANCEL:
@@ -569,9 +588,19 @@ class ReceiverEngine:
             parameter_override = self.backup_controller.plan_restore(
                 archive_path, operation_id=request.operation_id
             )
+        elif request.action == Action.PLAN_RECEIVER_UPDATE:
+            verified = self._preflight_receiver_update(
+                request.payload["artifact"], client_id=request.client_id
+            )
+            parameter_override = {
+                "receiver_id": verified.manifest["receiver_id"],
+                "generation": verified.manifest["generation"],
+                "archive_sha256": request.payload["artifact"]["archive_sha256"],
+                "upload_id": request.payload["artifact"]["upload_id"],
+            }
         plan = create_mutation_plan(
             request,
-            receiver_generation=self.control.receiver_generation,
+            receiver_generation=self.receiver_generation,
             live_state=self._live_state(),
             parameter_override=parameter_override,
         )
@@ -642,7 +671,7 @@ class ReceiverEngine:
         )
         if plan["action"] != request.action.value:
             raise ContractError("receiver apply action differs from retained plan")
-        if plan["receiver_generation"] != self.control.receiver_generation:
+        if plan["receiver_generation"] != self.receiver_generation:
             raise ContractError("receiver plan belongs to another receiver generation")
         if plan["target"] != {
             "logical_id": self.logical_target,
@@ -656,6 +685,10 @@ class ReceiverEngine:
             self.host_maintenance.assert_mutation_allowed(request.action.value)
         if request.action == Action.STAGE:
             self._preflight_staging(plan)
+        if request.action == Action.RECEIVER_UPDATE:
+            self._preflight_receiver_update(
+                plan["parameters"], client_id=request.client_id
+            )
         if request.action in {Action.ACTIVATE, Action.ROLLBACK}:
             if self.activation_coordinator is None:
                 raise ContractError("receiver activation coordinator is unavailable")
@@ -704,6 +737,8 @@ class ReceiverEngine:
         try:
             if request.action == Action.STAGE:
                 self._claim_staging_input(plan)
+            if request.action == Action.RECEIVER_UPDATE:
+                self._claim_receiver_update(plan)
             if request.action == Action.NETWORK_APPLY:
                 self.network_controller.claim(
                     plan["parameters"], request.payload["profile"]
@@ -996,6 +1031,118 @@ class ReceiverEngine:
         if _sha256(archive) != parameters["archive_sha256"]:
             raise ContractError("incoming bundle archive differs from retained plan")
 
+    def _receiver_update_paths(
+        self, parameters: Mapping[str, Any], *, accepted: bool = False
+    ) -> tuple[Path, Path | None]:
+        if accepted:
+            bundle = (
+                self.control.root
+                / "accepted-inputs"
+                / str(parameters["operation_id"])
+                / "receiver-update"
+            )
+            return bundle, None
+        upload_root = (
+            self.incoming_root
+            / "receiver-updates"
+            / str(parameters["receiver_id"])
+        )
+        return upload_root / "bundle", upload_root / UPLOAD_MANIFEST_NAME
+
+    def _preflight_receiver_update(
+        self,
+        parameters: Mapping[str, Any],
+        *,
+        client_id: str | None = None,
+        accepted: bool = False,
+    ) -> Any:
+        if self.receiver_slots is None:
+            raise ContractError("receiver self-update is unavailable")
+        bundle, upload_manifest_path = self._receiver_update_paths(
+            parameters, accepted=accepted
+        )
+        if bundle.is_symlink() or not bundle.is_dir():
+            raise ContractError("incoming receiver update bundle is missing or linked")
+        if {path.name for path in bundle.iterdir()} != RECEIVER_UPDATE_FILES:
+            raise ContractError("incoming receiver update file set is not exact")
+        if any(path.is_symlink() or not path.is_file() for path in bundle.iterdir()):
+            raise ContractError("incoming receiver update contains an unsafe file")
+        if not accepted:
+            assert upload_manifest_path is not None
+            upload = _canonical_object(
+                upload_manifest_path, label="receiver update upload manifest"
+            )
+            ReceiverUpdateUploadStore.validate_manifest(
+                upload,
+                receiver_id=str(parameters["receiver_id"]),
+                client_id=str(client_id or upload.get("client_id", "")),
+            )
+            if upload["upload_id"] != parameters["upload_id"]:
+                raise ContractError(
+                    "receiver update upload differs from retained artifact"
+                )
+        verified = self.receiver_slots.verify_update(bundle)
+        manifest = verified.manifest
+        if (
+            manifest["receiver_id"] != parameters["receiver_id"]
+            or manifest["generation"] != parameters["generation"]
+            or _sha256(bundle / "receiver-update.tar")
+            != parameters["archive_sha256"]
+        ):
+            raise ContractError(
+                "signed receiver update differs from retained artifact identity"
+            )
+        return verified
+
+    def _claim_receiver_update(self, plan: Mapping[str, Any]) -> None:
+        parameters = {**plan["parameters"], "operation_id": plan["operation_id"]}
+        destination, _ = self._receiver_update_paths(parameters, accepted=True)
+        if destination.exists() or destination.is_symlink():
+            self._preflight_receiver_update(parameters, accepted=True)
+            return
+        source, _ = self._receiver_update_paths(parameters)
+        try:
+            if {path.name for path in source.iterdir()} != RECEIVER_UPDATE_FILES:
+                raise ContractError("incoming receiver update file set is not exact")
+            sources = [source / name for name in sorted(RECEIVER_UPDATE_FILES)]
+            if any(path.is_symlink() or not path.is_file() for path in sources):
+                raise ContractError("incoming receiver update contains an unsafe file")
+            total_bytes = sum(
+                path.stat(follow_symlinks=False).st_size for path in sources
+            )
+        except OSError as exc:
+            raise ContractError(f"cannot inspect receiver update input: {exc}") from exc
+        if total_bytes > self.maximum_claim_bytes:
+            raise ContractError(
+                "incoming receiver update exceeds the receiver-owned input limit"
+            )
+        accepted_root = destination.parent
+        accepted_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        minimum_bytes = getattr(self.release_store, "minimum_reserve_bytes", 0)
+        minimum_percent = getattr(self.release_store, "minimum_reserve_percent", 0.0)
+        usage = shutil.disk_usage(accepted_root)
+        reserve = max(
+            int(minimum_bytes), int(usage.total * float(minimum_percent) / 100.0)
+        )
+        if usage.free - total_bytes < reserve:
+            raise ContractError(
+                "insufficient storage to claim receiver update and preserve reserve"
+            )
+        temporary = accepted_root / ".receiver-update.partial"
+        if temporary.exists() or temporary.is_symlink():
+            raise ContractError("partial receiver update claim requires reconciliation")
+        temporary.mkdir(mode=0o700)
+        remaining = self.maximum_claim_bytes
+        for name in sorted(RECEIVER_UPDATE_FILES):
+            copied = self._copy_regular(
+                source / name, temporary / name, maximum_bytes=remaining
+            )
+            remaining -= copied
+        self._fsync_directory(temporary)
+        os.replace(temporary, destination)
+        self._fsync_directory(accepted_root)
+        self._preflight_receiver_update(parameters, accepted=True)
+
     def _submit(self, operation_id: str) -> None:
         if operation_id in self._running:
             return
@@ -1057,6 +1204,17 @@ class ReceiverEngine:
                     client_id=journal["client_id"],
                     action=journal["action"],
                     detail_code="reboot-scheduled-awaiting-postboot-validation",
+                )
+                return
+            if journal["action"] == Action.RECEIVER_UPDATE.value:
+                self.audit.append(
+                    event="operation",
+                    outcome="accepted",
+                    operation_id=operation_id,
+                    client_id=journal["client_id"],
+                    action=journal["action"],
+                    detail_code="receiver-handoff-scheduled",
+                    evidence_hash=content_identity(result),
                 )
                 return
             if (
@@ -1162,6 +1320,48 @@ class ReceiverEngine:
             if result.release_id != parameters["release_id"]:
                 raise ContractError("staged release differs from accepted operation")
             return {"kind": "stage", **asdict(result)}
+        if action == Action.RECEIVER_UPDATE.value:
+            if (
+                self.receiver_slots is None
+                or self.prepare_receiver_handoff is None
+                or self.schedule_receiver_handoff is None
+            ):
+                raise ContractError("receiver self-update handoff is unavailable")
+            parameters_with_operation = {
+                **parameters,
+                "operation_id": plan["operation_id"],
+            }
+            self._preflight_receiver_update(
+                parameters_with_operation, accepted=True
+            )
+            self.prepare_receiver_handoff()
+            bundle, _ = self._receiver_update_paths(
+                parameters_with_operation, accepted=True
+            )
+            state = self.receiver_slots.stage(
+                bundle,
+                operation_id=plan["operation_id"],
+                client_id=plan["client_id"],
+            )
+            try:
+                self.schedule_receiver_handoff()
+            except Exception as exc:
+                self.receiver_slots.abort_staged(
+                    operation_id=plan["operation_id"],
+                    client_id=plan["client_id"],
+                    reason=f"receiver handoff could not be scheduled: {exc}",
+                )
+                raise ContractError(
+                    f"receiver handoff could not be scheduled: {exc}"
+                ) from exc
+            return {
+                "kind": "receiver-update",
+                "receiver_id": parameters["receiver_id"],
+                "generation": parameters["generation"],
+                "state_id": state["state_id"],
+                "stage": "handoff-scheduled",
+                "autonomy_started": False,
+            }
         if action == Action.ACTIVATE.value:
             if self.activation_coordinator is None:
                 raise ContractError("receiver activation coordinator is unavailable")
@@ -1358,6 +1558,79 @@ class ReceiverEngine:
                     )
             for operation_id, journal in journals.items():
                 if journal["state"] in TERMINAL_STATES:
+                    continue
+                if journal["action"] == Action.RECEIVER_UPDATE.value:
+                    if self.receiver_slots is None:
+                        raise ContractError("receiver self-update is unavailable")
+                    update = self.receiver_slots.update_state()
+                    if (
+                        update is None
+                        or update["operation_id"] != operation_id
+                        or update["client_id"] != journal["client_id"]
+                    ):
+                        raise ContractError(
+                            "receiver update journal and A/B state disagree"
+                        )
+                    if update["stage"] == "committed":
+                        if update["candidate_generation"] != self.receiver_generation:
+                            raise ContractError(
+                                "committed receiver update generation is not active"
+                            )
+                        if self.control.receiver_generation != self.receiver_generation:
+                            self.control.adopt_generation(
+                                self.receiver_generation, operation_id=operation_id
+                            )
+                            control = self.control.load()
+                            lease = control["lease"]
+                        result = {
+                            "kind": "receiver-update",
+                            "receiver_id": update["candidate_receiver_id"],
+                            "generation": update["candidate_generation"],
+                            "state_id": update["state_id"],
+                            "stage": "committed",
+                            "readiness": update["readiness"],
+                            "autonomy_started": False,
+                            "reconciled_after_handoff": True,
+                        }
+                        self.journals.transition(
+                            operation_id,
+                            state="completed",
+                            checkpoint="receiver-handoff-committed",
+                            cancellation_safe=False,
+                            event="receiver-handoff-reconciled",
+                            evidence_hash=content_identity(result),
+                            result=result,
+                        )
+                        if lease is not None and lease["operation_id"] == operation_id:
+                            self.control.release(operation_id)
+                            lease = None
+                        recovered.append(operation_id)
+                        continue
+                    if update["stage"] == "reverted":
+                        self.journals.transition(
+                            operation_id,
+                            state="failed",
+                            checkpoint="receiver-handoff-reverted",
+                            cancellation_safe=False,
+                            event="receiver-handoff-reverted",
+                            failure={
+                                "code": "receiver-update-reverted",
+                                "message": update["failure"]
+                                or "receiver candidate did not become ready",
+                            },
+                        )
+                        if lease is not None and lease["operation_id"] == operation_id:
+                            self.control.release(operation_id)
+                            lease = None
+                        recovered.append(operation_id)
+                        continue
+                    if update["stage"] == "staged":
+                        if self.schedule_receiver_handoff is None:
+                            raise ContractError(
+                                "receiver update handoff scheduler is unavailable"
+                            )
+                        self.schedule_receiver_handoff()
+                    recovered.append(operation_id)
                     continue
                 if journal["action"] == Action.NETWORK_APPLY.value:
                     if self.network_controller is None:
@@ -1592,7 +1865,12 @@ class ReceiverEngine:
         )
         return {
             "schema": RESULT_SCHEMA,
-            "receiver_generation": self.control.receiver_generation,
+            "receiver_generation": self.receiver_generation,
+            "receiver_update": (
+                self.receiver_slots.update_state()
+                if self.receiver_slots is not None
+                else None
+            ),
             "target": {
                 "logical_id": self.logical_target,
                 "profile": self.profile,

@@ -222,7 +222,16 @@ def test_stable_units_run_receiver_outside_release_tree_and_allow_only_declared_
             line for line in unit.splitlines() if line.startswith("ReadOnlyPaths=")
         )
         read_only = set(read_only_line.removeprefix("ReadOnlyPaths=").split())
-        assert read_only == set(policy["normal_release_read_only_paths"])
+        expected_read_only = (
+            {
+                "/opt/iii/receiver/bootstrap",
+                "/opt/iii/receiver/selectors",
+            }
+            if name == "iii-deployment-receiver.service"
+            else {"/opt/iii/receiver"}
+        )
+        assert read_only == expected_read_only
+        assert "/opt/iii/receiver" in policy["normal_release_read_only_paths"]
         assert all(
             any(path == root or path.startswith(root + "/") for root in read_only)
             for path in policy["normal_release_forbidden_paths"]
@@ -236,6 +245,7 @@ def test_stable_units_run_receiver_outside_release_tree_and_allow_only_declared_
 
     for name in (
         "iii-receiver-bootstrap-apply.service",
+        "iii-receiver-bootstrap-prepare.service",
         "iii-receiver-bootstrap-reconcile.service",
     ):
         bootstrap = (ROOT / "deployment/systemd" / name).read_text(encoding="utf-8")

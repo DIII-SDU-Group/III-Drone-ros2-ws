@@ -31,10 +31,10 @@ CURRENT_RECEIVER = Path(
 )
 
 
-def _start_candidate() -> None:
+def _spawn_candidate() -> subprocess.Popen:
     try:
         READINESS_PATH.unlink(missing_ok=True)
-        subprocess.Popen(
+        return subprocess.Popen(
             [str(CURRENT_RECEIVER), "--config", str(CONFIG_PATH), "--foreground"],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
@@ -61,11 +61,23 @@ def _readiness() -> dict:
         return {}
 
 
+def _stop_candidate(candidate: subprocess.Popen | None) -> None:
+    if candidate is None or candidate.poll() is not None:
+        return
+    candidate.terminate()
+    try:
+        candidate.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        candidate.kill()
+        candidate.wait(timeout=5)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="iii-receiver-bootstrap")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--apply", action="store_true")
     mode.add_argument("--reconcile", action="store_true")
+    mode.add_argument("--prepare", action="store_true")
     arguments = parser.parse_args()
     try:
         assert_production_root()
@@ -81,11 +93,36 @@ def main() -> int:
             boot_id=lambda: Path("/proc/sys/kernel/random/boot_id")
             .read_text(encoding="ascii")
             .strip(),
-            restart_receiver=_start_candidate,
+            restart_receiver=lambda: None,
             readiness_probe=_readiness,
             wait_tick=lambda: time.sleep(0.25),
         )
-        result = bootstrap.apply() if arguments.apply else bootstrap.reconcile()
+        if arguments.prepare:
+            inactive = bootstrap.prepare_staging()
+            print(
+                json.dumps(
+                    {
+                        "schema": "iii.receiver-update-prepare/v1",
+                        "inactive_slot": inactive,
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+            return 0
+
+        candidate: subprocess.Popen | None = None
+
+        def restart_candidate() -> None:
+            nonlocal candidate
+            _stop_candidate(candidate)
+            candidate = _spawn_candidate()
+
+        bootstrap.restart_receiver = restart_candidate
+        try:
+            result = bootstrap.apply() if arguments.apply else bootstrap.reconcile()
+        finally:
+            _stop_candidate(candidate)
         print(json.dumps(result, sort_keys=True, separators=(",", ":")))
         return 0 if result["stage"] in {"committed", "staged", "reverted"} else 1
     except ContractError as exc:

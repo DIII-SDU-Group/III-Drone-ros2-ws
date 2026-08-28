@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/receiver-update-upload.schema.json",
+  "title": "III receiver update upload manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "upload_id", "receiver_id", "client_id", "files"],
+  "properties": {
+    "schema": {"const": "iii.receiver-update-upload/v1"},
+    "upload_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "receiver_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "client_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "files": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "size", "sha256"],
+        "properties": {
+          "path": {"type": "string", "pattern": "^bundle/receiver-update\\.(manifest\\.json|sig\\.json|tar)$"},
+          "size": {"type": "integer", "minimum": 1},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  }
+}

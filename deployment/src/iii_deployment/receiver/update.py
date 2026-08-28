@@ -758,6 +758,50 @@ class ReceiverSlotStore:
     def inactive_slot(self) -> str:
         return "b" if self.active_slot() == "a" else "a"
 
+    def verify_update(self, bundle: Path) -> VerifiedReceiverUpdate:
+        """Verify one signed update against this store's fixed trust contract."""
+
+        return verify_receiver_update(
+            bundle, trust=self.trust, registry=self.registry
+        )
+
+    def update_state(self) -> dict[str, Any] | None:
+        """Return the authenticated durable A/B handoff state when present."""
+
+        if not self.state_path.exists() and not self.state_path.is_symlink():
+            return None
+        value = _read_canonical(self.state_path, label="receiver update state")
+        if value.get("schema") != STATE_SCHEMA or value.get("state_id") != _identity(
+            value, "state_id"
+        ):
+            raise ContractError("receiver update state identity mismatch")
+        self.registry.validate("receiver-update-state", value)
+        return value
+
+    def abort_staged(
+        self, *, operation_id: str, client_id: str, reason: str
+    ) -> dict[str, Any]:
+        """Close a pre-switch update after the external handoff cannot start."""
+
+        value = self.update_state()
+        if value is None:
+            raise ContractError("receiver update state is unavailable for abort")
+        if (
+            value["stage"] != "staged"
+            or value["operation_id"] != operation_id
+            or value["client_id"] != client_id
+        ):
+            raise ContractError("receiver update abort binding or stage mismatch")
+        if not isinstance(reason, str) or not reason:
+            raise ContractError("receiver update abort reason is empty")
+        value["stage"] = "reverted"
+        value["failure"] = reason
+        value["readiness"] = None
+        value["state_id"] = _identity(value, "state_id")
+        self.registry.validate("receiver-update-state", value)
+        atomic_document(self.state_path, value)
+        return value
+
     def install_initial(self, bundle: Path) -> dict[str, Any]:
         """Install the first signed receiver on a clean converged host.
 
@@ -767,9 +811,7 @@ class ReceiverSlotStore:
         be discarded before selectors exist.
         """
 
-        verified = verify_receiver_update(
-            bundle, trust=self.trust, registry=self.registry
-        )
+        verified = self.verify_update(bundle)
         compatibility = verified.manifest["compatibility"]
         if (
             "1" not in compatibility["bootstrap_protocols"]
@@ -930,9 +972,7 @@ class ReceiverSlotStore:
         operation_id: str,
         client_id: str,
     ) -> dict[str, Any]:
-        verified = verify_receiver_update(
-            bundle, trust=self.trust, registry=self.registry
-        )
+        verified = self.verify_update(bundle)
         if inventory is not None and self.root == Path("/"):
             raise ContractError(
                 "production receiver compatibility cannot be caller-supplied"

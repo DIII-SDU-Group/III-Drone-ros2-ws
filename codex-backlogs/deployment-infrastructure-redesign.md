@@ -3121,7 +3121,11 @@ Implementation notes:
 
 #### P2.T3: Implement Transactional Receiver A/B Self-Update
 
-**Status: Completed.**
+**Status: In-Progress.** The A/B package, slot, compatibility, bootstrap, and
+reconciliation internals are complete, but the first finalized physical host
+proved that no receiver protocol/upload/CLI path can submit a signed update to
+those internals. The missing production invocation surface is being added before
+this task can return to Completed.
 
 Description:
 Implement the Q32/Q49 receiver update path on top of P2.T2 without coupling it to
@@ -3195,6 +3199,25 @@ Implementation notes (2026-08-26):
   passed. `systemd-analyze verify` found no dependency/sandbox graph conflict; on
   this unprovisioned host it reported only the expected absent future `/opt/iii`
   executables plus unrelated host-unit warnings.
+- Physical provisioning exposed a missing invocation surface, so P2.T3 was
+  reopened rather than treating unreachable internals as complete. The receiver
+  now owns a fixed, resumable, client/content-bound upload, exact plan/action
+  protocol, root-owned claim with size and storage-reserve gates, durable
+  acceptance, staged systemd preparation, and no-block stable-bootstrap handoff.
+  The CLI adds read-only signed inspection and one retained
+  `receiver-update apply` transaction with a schema-validated actual record.
+- Candidate generation and persisted control generation now reconcile across the
+  handoff without weakening the converged host generation floor. Candidate child
+  processes are terminated before replacement and before the main receiver
+  service resumes. A systemd scheduling failure explicitly closes the pre-switch
+  state as reverted, releases the mutation lease, and leaves the selector
+  untouched so a later update is not permanently blocked.
+- Focused verification after reopening passed 95 receiver A/B, engine, state,
+  upload, bootstrap-entrypoint, transport/policy, and systemd cases; 31 CLI
+  deploy/SSH cases; 18 offline documentation cases; 26 contract/systemd cases;
+  deterministic wheel construction included all four new schemas and the prepare
+  unit. Physical update/fallback evidence remains open before returning this task
+  to Completed.
 
 #### P2.T4: Implement Activation Health And Automatic Rollback
 
@@ -3632,9 +3655,9 @@ Task-specific verification:
 
 Phase acceptance:
 
-- [ ] A documented raw-image workflow creates an SSH-reachable target.
-- [ ] Ansible converges that target into the complete III host baseline.
-- [ ] A second convergence run reports no unintended changes.
+- [x] A documented raw-image workflow creates an SSH-reachable target.
+- [x] Ansible converges that target into the complete III host baseline.
+- [x] A second convergence run reports no unintended changes.
 - [ ] Re-convergence succeeds offline from the prepared development laptop.
 
 Delivery order:
@@ -4000,7 +4023,7 @@ Implementation notes and verification:
 
 #### P3.T5: Implement And Commission The Shared Hardware-Role Manifest
 
-Status: In-Progress
+**Status: In-Progress.**
 
 Description:
 Define the shared Raspberry Pi 5 attached-device contract for FMU, mmWave CLI/
@@ -4060,7 +4083,7 @@ Implementation notes and verification:
 
 #### P3.T6: Manage The Raspberry Pi Boot Baseline
 
-Status: In-Progress
+**Status: Completed (2026-08-28).**
 
 Description:
 Define the source-controlled Raspberry Pi 5 boot profile and host inventory for
@@ -4079,7 +4102,7 @@ Acceptance:
       modifying boot files.
 - [x] Host maintenance backs up changed boot files and records package/settings
       deltas before requesting an explicit reboot.
-- [ ] Physical SD repair/reprovisioning steps are documented and tested because
+- [x] Physical SD repair/reprovisioning steps are documented and tested because
       A/B boot/root recovery is intentionally deferred.
 
 Tests:
@@ -4157,10 +4180,23 @@ Implementation notes and verification:
   finalization, and fresh permanent-session test passed in 704.82 s. A final
   governed physical reimage is still required because the correctly finalized
   second card contains no bypass authority.
+- The final governed repair/reprovision rehearsal completed on 2026-08-28.
+  Imaging operation `iii-image-aircraft-20260828-r6` produced verified record
+  `d679645957ad78b9957daacd1d7a7ad832256865ac0ebf0a6226bb805b83690c`;
+  the clean Pi reached error-free `ansible-ready` cloud-init at `10.42.0.70`.
+  Artifact record
+  `ff58b7f73e7a9c2eacb0c76449221a406e588cadfeb8dcdf3ed9e37f5a683f33`
+  bound the committed ARM64 controller inputs. Host operation
+  `iii-host-provision-aircraft-r3-20260828` completed 70 first-run changes and
+  139 checks with no failure, predicted exactly zero changes across 93 checks,
+  finalized all 17 checks, revoked bootstrap access, and opened a new permanent
+  forced-command gateway session. The run also found and fixed the documented
+  artifact builder's missing executable mode and Canonical Ubuntu's valid stock
+  `initramfs initrd.img followkernel` parsing gap; focused regressions pass.
 
 #### P3.T7: Provision Transactional Operator Networking
 
-Status: In-Progress
+**Status: Completed (2026-08-28).**
 
 Description:
 Generate first-boot Ethernet/Wi-Fi configuration from safe committed templates
@@ -4175,7 +4211,7 @@ Acceptance:
       without writing credentials to Git, logs, artifacts, or review files.
 - [x] Installed network secrets are root-readable and survive application
       releases independently from release directories.
-- [ ] `iii.local` resolves on supported operator networks without a fixed IP.
+- [x] `iii.local` resolves on supported operator networks without a fixed IP.
 - [x] Network plan/apply reports connectivity-impacting changes before mutation
       and uses the settled 90-second monotonic onboard confirmation deadline
       independent of the CLI process.
@@ -4210,10 +4246,14 @@ Notes:
   host health, and bootstrap finalization in 562.27 seconds. Focused network,
   imaging, receiver, policy, systemd, host-baseline, target-definition, and CLI
   coverage passed (165 tests in 2.81 seconds after the final harness adjustment).
-- No physical Raspberry Pi or operator LAN is available, so an external
-  workstation lookup of `iii.local` and a physical Ethernet/Wi-Fi switch/revert
-  rehearsal are not claimed. The mDNS acceptance item remains open and this task
-  remains In-Progress while later software tasks continue.
+- At the software-boundary implementation checkpoint no physical Raspberry Pi or
+  operator LAN was available, so an external workstation lookup of `iii.local`
+  was left open rather than inferred from the target-equivalent rehearsal.
+- Physical direct-Ethernet acceptance completed on 2026-08-28: the workstation
+  served DHCP without a fixed target address, authenticated the Pi's exact MAC,
+  and resolved `iii.local` externally to the current lease `10.42.0.70` after
+  finalization. Three ICMP samples averaged 0.247 ms, and permanent receiver SSH
+  remained functional while the bootstrap identity was denied.
 
 #### P3.T8: Provision The Ground-Control Host Baseline
 

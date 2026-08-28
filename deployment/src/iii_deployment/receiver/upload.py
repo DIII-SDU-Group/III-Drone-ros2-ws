@@ -42,6 +42,15 @@ LOCK_PATH = Path("/run/iii/deployment-upload.lock")
 BACKUP_UPLOAD_SCHEMA = "iii.portable-backup-upload/v1"
 BACKUP_UPLOAD_RESULT_SCHEMA = "iii.portable-backup-upload-result/v1"
 BACKUP_ARCHIVE_NAME = "portable-state.tar"
+RECEIVER_UPDATE_UPLOAD_SCHEMA = "iii.receiver-update-upload/v1"
+RECEIVER_UPDATE_UPLOAD_RESULT_SCHEMA = "iii.receiver-update-upload-result/v1"
+RECEIVER_UPDATE_FILES = frozenset(
+    {
+        "receiver-update.manifest.json",
+        "receiver-update.sig.json",
+        "receiver-update.tar",
+    }
+)
 
 
 def _sha256(path: Path) -> str:
@@ -652,4 +661,194 @@ class BackupUploadStore:
                 "size": size,
                 "sha256": _sha256(archive) if size == expected["size"] else None,
             },
+        }
+
+
+class ReceiverUpdateUploadStore:
+    """Resumable signed receiver payload upload below the confined incoming root."""
+
+    def __init__(self, root: Path, *, lock_path: Path = LOCK_PATH) -> None:
+        self.root = root.absolute()
+        self.store = UploadStore(root, lock_path=lock_path)
+
+    @staticmethod
+    def _identity(value: Any) -> str:
+        if not isinstance(value, str) or not HASH.fullmatch(value):
+            raise ContractError("receiver update upload identity is invalid")
+        return value
+
+    def partial_path(self, receiver_id: str) -> Path:
+        self._identity(receiver_id)
+        return self.root / f"receiver-{receiver_id}.partial"
+
+    def complete_path(self, receiver_id: str) -> Path:
+        self._identity(receiver_id)
+        return self.root / "receiver-updates" / receiver_id
+
+    @classmethod
+    def validate_manifest(
+        cls, value: Mapping[str, Any], *, receiver_id: str, client_id: str
+    ) -> dict[str, Any]:
+        if (
+            set(value)
+            != {"schema", "upload_id", "receiver_id", "client_id", "files"}
+            or value.get("schema") != RECEIVER_UPDATE_UPLOAD_SCHEMA
+        ):
+            raise ContractError("receiver update upload manifest fields are invalid")
+        cls._identity(receiver_id)
+        if value.get("receiver_id") != receiver_id:
+            raise ContractError("receiver update upload identity mismatch")
+        if value.get("client_id") != client_id or not IDENTITY.fullmatch(client_id):
+            raise ContractError("receiver update upload client identity mismatch")
+        files = value.get("files")
+        if not isinstance(files, list):
+            raise ContractError("receiver update upload file index is invalid")
+        paths = [item.get("path") for item in files if isinstance(item, dict)]
+        expected_paths = sorted(
+            (f"bundle/{name}" for name in RECEIVER_UPDATE_FILES),
+            key=lambda item: item.encode("utf-8"),
+        )
+        if paths != expected_paths or len(paths) != len(files):
+            raise ContractError("receiver update upload file set is not exact")
+        for item in files:
+            if set(item) != {"path", "size", "sha256"}:
+                raise ContractError("receiver update upload metadata is malformed")
+            if (
+                not isinstance(item["size"], int)
+                or isinstance(item["size"], bool)
+                or item["size"] <= 0
+                or not isinstance(item["sha256"], str)
+                or not HASH.fullmatch(item["sha256"])
+            ):
+                raise ContractError("receiver update upload file identity is invalid")
+        expected = content_identity(
+            {key: item for key, item in value.items() if key != "upload_id"}
+        )
+        if value.get("upload_id") != expected:
+            raise ContractError("receiver update upload manifest identity mismatch")
+        return dict(value)
+
+    def begin(
+        self, manifest: Mapping[str, Any], *, receiver_id: str, client_id: str
+    ) -> dict[str, Any]:
+        manifest = self.validate_manifest(
+            manifest, receiver_id=receiver_id, client_id=client_id
+        )
+        with self.store.locked():
+            complete = self.complete_path(receiver_id)
+            if complete.exists() or complete.is_symlink():
+                retained = _canonical(
+                    complete / MANIFEST_NAME,
+                    label="completed receiver update upload manifest",
+                )
+                if retained != manifest:
+                    raise ContractError("completed receiver update upload conflicts")
+                self._verify(complete, manifest)
+                return self._status(complete, manifest, complete=True, resumed=True)
+            partial = self.partial_path(receiver_id)
+            resumed = partial.exists() or partial.is_symlink()
+            if resumed:
+                if partial.is_symlink() or not partial.is_dir():
+                    raise ContractError("receiver update upload partial is unsafe")
+                retained = _canonical(
+                    partial / MANIFEST_NAME, label="receiver update upload manifest"
+                )
+                if retained != manifest:
+                    raise ContractError("receiver update upload partial identity changed")
+            else:
+                partial.mkdir(mode=0o700)
+                (partial / "bundle").mkdir(mode=0o700)
+                atomic_document(partial / MANIFEST_NAME, manifest, mode=0o600)
+            return self._status(partial, manifest, complete=False, resumed=resumed)
+
+    def inspect(self, *, receiver_id: str, client_id: str) -> dict[str, Any]:
+        with self.store.locked():
+            partial = self.partial_path(receiver_id)
+            manifest = _canonical(
+                partial / MANIFEST_NAME, label="receiver update upload manifest"
+            )
+            self.validate_manifest(
+                manifest, receiver_id=receiver_id, client_id=client_id
+            )
+            return self._status(partial, manifest, complete=False, resumed=True)
+
+    def finalize(self, *, receiver_id: str, client_id: str) -> dict[str, Any]:
+        with self.store.locked():
+            partial = self.partial_path(receiver_id)
+            manifest = _canonical(
+                partial / MANIFEST_NAME, label="receiver update upload manifest"
+            )
+            self.validate_manifest(
+                manifest, receiver_id=receiver_id, client_id=client_id
+            )
+            self._verify(partial, manifest)
+            destination = self.complete_path(receiver_id)
+            destination.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
+            if destination.exists() or destination.is_symlink():
+                retained = _canonical(
+                    destination / MANIFEST_NAME,
+                    label="completed receiver update upload manifest",
+                )
+                if retained != manifest:
+                    raise ContractError("completed receiver update upload conflicts")
+                self._verify(destination, manifest)
+                shutil.rmtree(partial)
+                return self._status(destination, manifest, complete=True, resumed=True)
+            os.replace(partial, destination)
+            self.store._fsync_directory(destination.parent)
+            return self._status(destination, manifest, complete=True, resumed=False)
+
+    @staticmethod
+    def _verify(root: Path, manifest: Mapping[str, Any]) -> None:
+        if root.is_symlink() or not root.is_dir():
+            raise ContractError("receiver update upload root is unsafe")
+        if {item.name for item in root.iterdir()} != {MANIFEST_NAME, "bundle"}:
+            raise ContractError("receiver update upload root file set is not exact")
+        bundle = root / "bundle"
+        if bundle.is_symlink() or not bundle.is_dir():
+            raise ContractError("receiver update upload bundle is unsafe")
+        if {item.name for item in bundle.iterdir()} != RECEIVER_UPDATE_FILES:
+            raise ContractError("receiver update upload bundle file set is not exact")
+        for item in manifest["files"]:
+            path = root.joinpath(*item["path"].split("/"))
+            if (
+                path.is_symlink()
+                or not path.is_file()
+                or path.stat(follow_symlinks=False).st_size != item["size"]
+                or _sha256(path) != item["sha256"]
+            ):
+                raise ContractError(
+                    f"receiver update upload differs from manifest: {item['path']}"
+                )
+
+    @staticmethod
+    def _status(
+        root: Path,
+        manifest: Mapping[str, Any],
+        *,
+        complete: bool,
+        resumed: bool,
+    ) -> dict[str, Any]:
+        files: dict[str, dict[str, Any]] = {}
+        for item in manifest["files"]:
+            path = root.joinpath(*item["path"].split("/"))
+            if not path.exists() and not path.is_symlink():
+                files[item["path"]] = {"size": 0, "sha256": None}
+                continue
+            if path.is_symlink() or not path.is_file():
+                raise ContractError("receiver update upload contains an unsafe file")
+            size = path.stat(follow_symlinks=False).st_size
+            if size > item["size"]:
+                raise ContractError("receiver update upload exceeds declared size")
+            files[item["path"]] = {
+                "size": size,
+                "sha256": _sha256(path) if size == item["size"] else None,
+            }
+        return {
+            "schema": RECEIVER_UPDATE_UPLOAD_RESULT_SCHEMA,
+            "receiver_id": manifest["receiver_id"],
+            "upload_id": manifest["upload_id"],
+            "state": "complete" if complete else "partial",
+            "resumed": resumed,
+            "files": files,
         }

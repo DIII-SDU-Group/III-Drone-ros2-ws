@@ -14,7 +14,11 @@ from iii_deployment.contracts import (
     content_identity,
 )
 from iii_deployment.receiver.ssh_gateway import dispatch, restrict_writes_to
-from iii_deployment.receiver.upload import EXPIRY_S, UploadStore
+from iii_deployment.receiver.upload import (
+    EXPIRY_S,
+    ReceiverUpdateUploadStore,
+    UploadStore,
+)
 
 
 RELEASE = "a" * 64
@@ -80,6 +84,75 @@ def _write_bundle(root: Path, manifest: dict, *, corrupt: str | None = None) -> 
             else f"content:{name}\n".encode()
         )
         path.write_bytes(b"corrupt" if name == corrupt else content)
+
+
+def _receiver_manifest() -> dict:
+    files = []
+    for name in (
+        "receiver-update.manifest.json",
+        "receiver-update.sig.json",
+        "receiver-update.tar",
+    ):
+        content = f"receiver:{name}\n".encode()
+        files.append(
+            {
+                "path": f"bundle/{name}",
+                "size": len(content),
+                "sha256": hashlib.sha256(content).hexdigest(),
+            }
+        )
+    value = {
+        "schema": "iii.receiver-update-upload/v1",
+        "upload_id": "0" * 64,
+        "receiver_id": RELEASE,
+        "client_id": CLIENT,
+        "files": files,
+    }
+    value["upload_id"] = content_identity(
+        {key: item for key, item in value.items() if key != "upload_id"}
+    )
+    return value
+
+
+def test_receiver_update_upload_is_resumable_and_exposes_exact_signed_bundle(
+    tmp_path: Path,
+) -> None:
+    store = ReceiverUpdateUploadStore(
+        tmp_path / "incoming", lock_path=tmp_path / "run/upload.lock"
+    )
+    manifest = _receiver_manifest()
+    first = store.begin(manifest, receiver_id=RELEASE, client_id=CLIENT)
+    REGISTRY.validate("receiver-update-upload", manifest)
+    REGISTRY.validate("receiver-update-upload-result", first)
+    assert first["state"] == "partial"
+    partial = store.partial_path(RELEASE)
+    first_file = manifest["files"][0]
+    path = partial / first_file["path"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"receiver:")
+    resumed = store.begin(manifest, receiver_id=RELEASE, client_id=CLIENT)
+    assert resumed["resumed"] is True
+    assert resumed["files"][first_file["path"]] == {
+        "size": len(b"receiver:"),
+        "sha256": None,
+    }
+    for item in manifest["files"]:
+        destination = partial / item["path"]
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(f"receiver:{destination.name}\n".encode())
+    completed = store.finalize(receiver_id=RELEASE, client_id=CLIENT)
+    REGISTRY.validate("receiver-update-upload-result", completed)
+    assert completed["state"] == "complete"
+    root = store.complete_path(RELEASE)
+    assert {path.name for path in root.iterdir()} == {
+        ".upload-manifest.json",
+        "bundle",
+    }
+    assert {path.name for path in (root / "bundle").iterdir()} == {
+        "receiver-update.manifest.json",
+        "receiver-update.sig.json",
+        "receiver-update.tar",
+    }
 
 
 def test_partial_resume_requires_exact_manifest_and_remote_size_hash_agreement(

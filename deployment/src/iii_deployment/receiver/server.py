@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import signal
 import socket
+import subprocess
 import time
 from typing import Any, Mapping
 
@@ -51,6 +52,7 @@ from iii_deployment.receiver.config import (
     OPERATIONAL_POLICY_PATH,
     RECEIVER_ROOT,
     READINESS_PATH,
+    RECEIVER_UPDATE_TRUST_PATH,
     SCHEMA_ROOT,
     SOCKET_PATH,
     STATE_ROOT,
@@ -119,9 +121,36 @@ def _operational_policy() -> dict:
     return value
 
 
+def _receiver_runtime(
+    config: ReceiverConfig, registry: ContractRegistry
+) -> tuple[ReceiverSlotStore, dict[str, Any], int]:
+    """Bind the executable generation to the active immutable slot and control."""
+
+    slots = ReceiverSlotStore(
+        Path("/"), trust=RECEIVER_UPDATE_TRUST_PATH, registry=registry
+    )
+    active_slot = slots.active_slot()
+    if active_slot is None:
+        raise ContractError("receiver A/B active slot is unavailable")
+    receiver_manifest = slots.verify_slot(active_slot)
+    if receiver_manifest["generation"] < config.receiver_generation:
+        raise ContractError(
+            "active immutable receiver predates the converged host baseline"
+        )
+    control_generation = ReceiverControlStore.persisted_generation(
+        STATE_ROOT, fallback=receiver_manifest["generation"]
+    )
+    if control_generation > receiver_manifest["generation"]:
+        raise ContractError(
+            "receiver control generation is newer than the active immutable slot"
+        )
+    return slots, receiver_manifest, control_generation
+
+
 def build_engine(config: ReceiverConfig) -> ReceiverEngine:
     policy = _operational_policy()
     registry = ContractRegistry(SCHEMA_ROOT)
+    slots, receiver_manifest, control_generation = _receiver_runtime(config, registry)
     store = ReleaseStore(
         Path("/"),
         bundle_trust=BUNDLE_TRUST_PATH,
@@ -135,7 +164,7 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
     )
     control = ReceiverControlStore(
         STATE_ROOT,
-        receiver_generation=config.receiver_generation,
+        receiver_generation=control_generation,
         nonce_expiry_s=NONCE_EXPIRY_S,
         monotonic=time.monotonic,
     )
@@ -150,17 +179,6 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         runtime_uid=config.runtime_uid,
         runtime_gid=config.runtime_gid,
     )
-    slots = ReceiverSlotStore(
-        Path("/"), trust={}, registry=ContractRegistry(SCHEMA_ROOT)
-    )
-    active_slot = slots.active_slot()
-    if active_slot is None:
-        raise ContractError("receiver A/B active slot is unavailable")
-    receiver_manifest = slots.verify_slot(active_slot)
-    if receiver_manifest["generation"] != config.receiver_generation:
-        raise ContractError(
-            "receiver configuration generation differs from the active immutable slot"
-        )
     control_plane = OnboardControlPlane()
     safety_provider = OnboardSafetyProvider()
     hardware_inspector = HardwareInspector(
@@ -360,6 +378,25 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         host_inspector=host_inspector,
         network_controller=network_controller,
         backup_controller=backup_controller,
+        receiver_slots=slots,
+        receiver_generation=receiver_manifest["generation"],
+        prepare_receiver_handoff=lambda: subprocess.run(
+            [
+                "/usr/bin/systemctl",
+                "start",
+                "iii-receiver-bootstrap-prepare.service",
+            ],
+            check=True,
+        ),
+        schedule_receiver_handoff=lambda: subprocess.run(
+            [
+                "/usr/bin/systemctl",
+                "start",
+                "--no-block",
+                "iii-receiver-bootstrap-apply.service",
+            ],
+            check=True,
+        ),
     )
 
 

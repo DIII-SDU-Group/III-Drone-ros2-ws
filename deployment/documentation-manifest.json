@@ -17,7 +17,7 @@
       "qualified_release_inclusion": true,
       "repository": "cli",
       "repository_path": "tools/III-Drone-CLI",
-      "sha256": "becf09b3a6f41f633f40f4e73edd7837e6eb2dc76f5edc7b6d656103aca91b45",
+      "sha256": "705b821974d1b98381703310f96d0325f383cf0c5da36f8a1b2857e952116bf0",
       "source_of_truth": "README.md"
     },
     {
@@ -961,7 +961,7 @@
       "qualified_release_inclusion": false,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "292bb8bcc9c3b3499e0d6d3d21de13c7f306138d74132c436e0accffac1c8a53",
+      "sha256": "10c9a707a96f935eb5a6df8ff97bb0a2fc2c0e09f3af3fc2d7463e0fde82c4e9",
       "source_of_truth": "codex-backlogs/deployment-infrastructure-redesign.md"
     },
     {
@@ -1585,7 +1585,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "c8e0f5724a675d785108f69cf007252996295c5764966a14517fef566ef726f4",
+      "sha256": "98b6f406c91e8e7867c3d996add5d2e208ad32bf331fb9cecb0bcafbe97b531e",
       "source_of_truth": "docs/deployment-and-field-operations.md"
     },
     {
@@ -1697,7 +1697,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "79a5873d915f9ce4dcf6e787d72148cac0a2f68d7d6a413903460e08bdf990fe",
+      "sha256": "c7350d3f63dc7a898bf0b515c1d6766f84b470e427efedb651843becb6869b2e",
       "source_of_truth": "deployment/scripts/update_documentation_references.py"
     },
     {
@@ -1713,7 +1713,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "5c293ae48c5b5cf8f45965326870356eba61be7bda6038b8c1bb3dc62df0c4a9",
+      "sha256": "9ccad21bb78d88024f357d15bc3d2dee8e90659be1d8279e96d25c5dfe7b3a9a",
       "source_of_truth": "deployment/scripts/update_documentation_references.py"
     },
     {
@@ -2309,7 +2309,7 @@
       "source_of_truth": "tools/III-Drone-MCP/README.md"
     }
   ],
-  "manifest_id": "906e51e075adb8100c8fd1611b8e63d014d75ff7175f03fc83ae4c3d78e7cbfb",
+  "manifest_id": "71d34a9620cf7b11ba42dcf3188260c2a6cf7a383c986e6f0459a3771248f47b",
   "policy_schema": "iii.documentation-policy/v1",
   "schema": "iii.documentation-manifest/v1"
 }

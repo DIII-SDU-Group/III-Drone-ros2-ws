@@ -483,6 +483,44 @@ def test_signed_receiver_update_stages_only_inactive_slot_and_commits_handoff(tm
     assert store._selector_slot(store.fallback_path, required=True) == "b"
 
 
+def test_staged_update_can_abort_before_selector_and_allows_later_replacement(
+    tmp_path,
+):
+    key, trust = _trust(tmp_path)
+    root = tmp_path / "host"
+    store = ReceiverSlotStore(root, trust=trust, registry=REGISTRY)
+    clock = Clock()
+    first_bundle, first = _bundle(tmp_path, key, generation=1)
+    _provision_active(store, first_bundle, first, clock)
+    bootstrap = ReceiverRecoveryBootstrap(
+        store,
+        monotonic=clock.monotonic,
+        boot_id=clock.boot_id,
+        restart_receiver=lambda: None,
+        readiness_probe=lambda: {},
+        wait_tick=clock.tick,
+    )
+    assert bootstrap.prepare_staging() == "b"
+    second_bundle, _second = _bundle(tmp_path, key, generation=2)
+    store.stage(
+        second_bundle,
+        inventory=_inventory(),
+        operation_id="receiver-update-abort-0001",
+        client_id="a" * 64,
+    )
+
+    aborted = store.abort_staged(
+        operation_id="receiver-update-abort-0001",
+        client_id="a" * 64,
+        reason="handoff scheduler unavailable",
+    )
+
+    assert aborted["stage"] == "reverted"
+    assert aborted["failure"] == "handoff scheduler unavailable"
+    assert store.active_slot() == "a"
+    assert bootstrap.prepare_staging() == "b"
+
+
 @pytest.mark.parametrize(
     "field",
     [

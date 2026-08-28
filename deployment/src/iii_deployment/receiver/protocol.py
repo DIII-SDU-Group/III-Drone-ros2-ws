@@ -26,6 +26,7 @@ class Action(str, Enum):
     PLAN_CLOCK_SYNC = "plan-clock-sync"
     PLAN_HOST_MAINTENANCE = "plan-host-maintenance"
     PLAN_HOST_REBOOT = "plan-host-reboot"
+    PLAN_RECEIVER_UPDATE = "plan-receiver-update"
     LOG_EXPORT = "log-export"
     LOG_CHUNK = "log-chunk"
     PLAN_LOG_RECEIPT = "plan-log-receipt"
@@ -42,6 +43,7 @@ class Action(str, Enum):
     ACCESS_REVOKE = "access-revoke"
     HOST_MAINTENANCE = "host-maintenance"
     HOST_REBOOT = "host-reboot"
+    RECEIVER_UPDATE = "receiver-update"
     HOST_MAINTENANCE_STATUS = "host-maintenance-status"
     HARDWARE_INSPECT = "hardware-inspect"
     HOST_INSPECT = "host-inspect"
@@ -70,6 +72,7 @@ READ_ONLY_ACTIONS = frozenset(
         Action.PLAN_CLOCK_SYNC,
         Action.PLAN_HOST_MAINTENANCE,
         Action.PLAN_HOST_REBOOT,
+        Action.PLAN_RECEIVER_UPDATE,
         Action.LOG_EXPORT,
         Action.LOG_CHUNK,
         Action.PLAN_LOG_RECEIPT,
@@ -695,6 +698,7 @@ def validate_mutation_plan(
         Action.LOG_PRUNE.value,
         Action.HOST_MAINTENANCE.value,
         Action.HOST_REBOOT.value,
+        Action.RECEIVER_UPDATE.value,
         Action.NETWORK_APPLY.value,
         Action.BACKUP_SEAL.value,
         Action.BACKUP_RESTORE.value,
@@ -735,6 +739,20 @@ def validate_mutation_plan(
             _identity(parameters[field], label=f"staging {field}")
         if parameters["status_index_id"] is not None:
             _identity(parameters["status_index_id"], label="staging status index")
+    elif plan["action"] == Action.RECEIVER_UPDATE.value:
+        _exact(
+            parameters,
+            {"receiver_id", "generation", "archive_sha256", "upload_id"},
+            label="receiver update parameters",
+        )
+        for field in ("receiver_id", "archive_sha256", "upload_id"):
+            _identity(parameters[field], label=f"receiver update {field}")
+        if (
+            not isinstance(parameters["generation"], int)
+            or isinstance(parameters["generation"], bool)
+            or parameters["generation"] < 1
+        ):
+            raise ContractError("receiver update generation is invalid")
     elif plan["action"] in {Action.ACTIVATE.value, Action.ROLLBACK.value}:
         expected = {
             "release_id",
@@ -935,6 +953,7 @@ def create_mutation_plan(
         Action.PLAN_LOG_PRUNE,
         Action.PLAN_HOST_MAINTENANCE,
         Action.PLAN_HOST_REBOOT,
+        Action.PLAN_RECEIVER_UPDATE,
         Action.NETWORK_PLAN,
         Action.PLAN_BACKUP_SEAL,
         Action.PLAN_BACKUP_RESTORE,
@@ -953,6 +972,8 @@ def create_mutation_plan(
             action = Action.HOST_MAINTENANCE.value
         elif request.action == Action.PLAN_HOST_REBOOT:
             action = Action.HOST_REBOOT.value
+        elif request.action == Action.PLAN_RECEIVER_UPDATE:
+            action = Action.RECEIVER_UPDATE.value
         elif request.action == Action.NETWORK_PLAN:
             action = Action.NETWORK_APPLY.value
         elif request.action == Action.PLAN_BACKUP_SEAL:
@@ -1131,6 +1152,28 @@ def validate_request_payload(request: Request) -> None:
         ):
             raise ContractError("invalid plan-stage profile")
         return
+    if request.action == Action.PLAN_RECEIVER_UPDATE:
+        _exact(
+            payload, {"artifact", "target"}, label="plan-receiver-update payload"
+        )
+        artifact = payload["artifact"]
+        if not isinstance(artifact, dict):
+            raise ContractError("receiver update artifact must be an object")
+        _exact(
+            artifact,
+            {"receiver_id", "generation", "archive_sha256", "upload_id"},
+            label="receiver update artifact",
+        )
+        for field in ("receiver_id", "archive_sha256", "upload_id"):
+            _identity(artifact[field], label=f"receiver update artifact {field}")
+        if (
+            not isinstance(artifact["generation"], int)
+            or isinstance(artifact["generation"], bool)
+            or artifact["generation"] < 1
+        ):
+            raise ContractError("receiver update artifact generation is invalid")
+        _target(payload["target"], label="plan-receiver-update target")
+        return
     if request.action == Action.PLAN_ACTIVATE:
         _exact(payload, {"activation", "target"}, label="plan-activate payload")
         activation = payload["activation"]
@@ -1281,6 +1324,20 @@ def validate_request_payload(request: Request) -> None:
         )
         if payload["plan"]["action"] != Action.STAGE.value:
             raise ContractError("stage request carries a different mutation plan")
+        return
+    if request.action == Action.RECEIVER_UPDATE:
+        _exact(payload, {"plan"}, label="receiver-update payload")
+        if not isinstance(payload["plan"], dict):
+            raise ContractError("receiver-update plan must be an object")
+        validate_mutation_plan(
+            payload["plan"],
+            operation_id=request.operation_id,
+            client_id=request.client_id,
+        )
+        if payload["plan"]["action"] != Action.RECEIVER_UPDATE.value:
+            raise ContractError(
+                "receiver-update request carries a different mutation plan"
+            )
         return
     if request.action == Action.ACTIVATE:
         _exact(payload, {"plan"}, label="activate payload")

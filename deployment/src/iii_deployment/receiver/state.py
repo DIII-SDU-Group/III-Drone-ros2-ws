@@ -140,6 +140,48 @@ class ReceiverControlStore:
         value["control_id"] = _identity(value, "control_id")
         return value
 
+    @classmethod
+    def persisted_generation(cls, root: Path, *, fallback: int) -> int:
+        path = root / "receiver-control.json"
+        if not path.exists() and not path.is_symlink():
+            return fallback
+        value = _canonical_document(path, label="receiver control state")
+        if value.get("schema") != CONTROL_SCHEMA or value.get(
+            "control_id"
+        ) != _identity(value, "control_id"):
+            raise ContractError("receiver control-state identity mismatch")
+        generation = value.get("receiver_generation")
+        if (
+            not isinstance(generation, int)
+            or isinstance(generation, bool)
+            or generation < 1
+        ):
+            raise ContractError("receiver control-state generation is invalid")
+        return generation
+
+    def adopt_generation(self, generation: int, *, operation_id: str) -> dict[str, Any]:
+        """Advance control generation after the stable bootstrap commits A/B."""
+
+        value = self.load()
+        if generation == self.receiver_generation:
+            return value
+        if generation <= self.receiver_generation:
+            raise ContractError("receiver control generation cannot move backward")
+        lease = value.get("lease")
+        if (
+            not isinstance(lease, dict)
+            or lease.get("operation_id") != operation_id
+            or lease.get("action") != Action.RECEIVER_UPDATE.value
+        ):
+            raise ContractError(
+                "receiver control generation change lacks its update lease"
+            )
+        value["receiver_generation"] = generation
+        value["control_id"] = _identity(value, "control_id")
+        atomic_document(self.path, value)
+        self.receiver_generation = generation
+        return value
+
     def load(self) -> dict[str, Any]:
         if not self.path.exists() and not self.path.is_symlink():
             return self._initial()

@@ -528,6 +528,41 @@ options:
   --target {sim,real}   explicit per-command runtime target
 ```
 
+## `iii deploy receiver-update apply`
+
+- Mutating: `yes`
+- Interactive terminal: `no`
+
+```text
+usage: iii deploy receiver-update apply [-h] --trust TRUST
+                                        [--target {sim,real}]
+                                        bundle
+
+positional arguments:
+  bundle
+
+options:
+  -h, --help           show this help message and exit
+  --trust TRUST
+  --target {sim,real}  explicit per-command runtime target
+```
+
+## `iii deploy receiver-update inspect`
+
+- Mutating: `no`
+- Interactive terminal: `no`
+
+```text
+usage: iii deploy receiver-update inspect [-h] --trust TRUST bundle
+
+positional arguments:
+  bundle
+
+options:
+  -h, --help     show this help message and exit
+  --trust TRUST
+```
+
 ## `iii deploy rollback`
 
 - Mutating: `yes`

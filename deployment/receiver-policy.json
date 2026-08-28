@@ -74,6 +74,7 @@
     "/opt/iii/receiver/bootstrap",
     "/etc/iii/trust",
     "/etc/systemd/system/iii-receiver-bootstrap-apply.service",
+    "/etc/systemd/system/iii-receiver-bootstrap-prepare.service",
     "/etc/systemd/system/iii-receiver-bootstrap-reconcile.service",
     "/etc/systemd/system/iii-deployment-receiver-reconcile.service",
     "/etc/systemd/system/iii-deployment-receiver.service",

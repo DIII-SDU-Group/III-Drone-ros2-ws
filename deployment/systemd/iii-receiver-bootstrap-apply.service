@@ -4,6 +4,7 @@ After=local-fs.target
 Before=iii-deployment-receiver-reconcile.service iii-deployment-receiver.service
 Conflicts=iii-deployment-receiver.service
 ConditionPathExists=/var/lib/iii/deployment/receiver-update.json
+OnSuccess=iii-deployment-receiver.service
 
 [Service]
 Type=oneshot

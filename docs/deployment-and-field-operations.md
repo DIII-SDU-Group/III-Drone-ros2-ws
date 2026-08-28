@@ -122,6 +122,59 @@ authority and records `commissioned: false`: **provisioned is not commissioned**
 The complete three-run convergence, access enrollment, fixed service/network
 boundary, and failure recovery are in [aircraft host provisioning](host-provisioning.md).
 
+### Update The Deployment Receiver
+
+Receiver updates are signed host-control artifacts, not application releases.
+Use this workflow only on a provisioned aircraft that is landed, disarmed, not
+executing a mission or custom operation, reachable through the permanent
+forced-command gateway, and has enough free storage to preserve the configured
+reserve. The candidate must use the separately governed `receiver-update` trust
+authority and declare compatibility with every retained application,
+configuration, journal, audit, bootstrap, CLI, and request format.
+
+Verify the exact bundle locally without contacting or mutating the aircraft:
+
+```bash
+iii deploy receiver-update inspect <signed-receiver-bundle> \
+  --trust <receiver-update-trust-store> --output=json
+```
+
+Retain a normal dry-run operation plan before transfer or selector mutation:
+
+```bash
+iii deploy receiver-update apply <signed-receiver-bundle> \
+  --trust <receiver-update-trust-store> --target real \
+  --dry-run --operation-id receiver-update-<generation> --output=json
+```
+
+Review the returned mutation, target binding, permissions, and exact retained
+operation ID, then execute only its confirmed resume command. Success means the
+upload and receiver mutation were durably accepted; it does not mean the new
+generation has committed. The stable Ansible-owned bootstrap independently
+prepares the inactive slot, switches the selector, starts the candidate, and
+requires its Unix socket, self-tests, journal compatibility, identity, generation,
+and protocol readiness within 30 monotonic seconds. Client, SSH, or network loss
+does not disable that deadline or automatic fallback.
+
+Reattach and inspect both remote state and the retained local actual record:
+
+```bash
+iii deploy status --target real \
+  --operation receiver-update-<generation> --output=json
+```
+
+The retained `receiver-update-actual.json` uses
+`iii.receiver-update-actual/v1` and binds the verified receiver identity,
+generation, transfer record, exact mutation plan, and durable acceptance. Keep it
+with the later terminal receiver journal and physical validation evidence. If the
+operation remains interrupted, rerun status with the same operation ID; do not
+upload different bytes under that ID. A failed candidate automatically restores
+the prior receiver slot before application activation. A failed or unavailable
+stable bootstrap, corrupt selector, or loss of all authenticated access is a stop
+condition requiring the physical SD recovery/reprovision procedure, followed by
+recommissioning. Application rollback does not roll back a successfully committed
+compatible receiver generation.
+
 ## 4. Commission Before Flight
 
 Commissioning binds the physical target, host report, hardware evidence, exact

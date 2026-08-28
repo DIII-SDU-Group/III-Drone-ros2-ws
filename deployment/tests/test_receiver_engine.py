@@ -27,6 +27,7 @@ from iii_deployment.receiver.state import (
     ReceiverControlStore,
 )
 from iii_deployment.receiver.server import assert_reconciliation_boot_safe
+from iii_deployment.receiver.upload import RECEIVER_UPDATE_FILES
 from iii_deployment.staging import StageResult
 
 REGISTRY = ContractRegistry(Path(__file__).resolve().parents[1] / "schemas/v1")
@@ -142,6 +143,47 @@ class FakeReleaseStore:
         )
 
 
+class FakeReceiverSlots:
+    def __init__(self, receiver_id: str = "f" * 64, generation: int = 2) -> None:
+        self.receiver_id = receiver_id
+        self.generation = generation
+        self.state = None
+
+    def verify_update(self, bundle: Path):
+        assert {path.name for path in bundle.iterdir()} == {
+            "receiver-update.manifest.json",
+            "receiver-update.sig.json",
+            "receiver-update.tar",
+        }
+        return SimpleNamespace(
+            manifest={"receiver_id": self.receiver_id, "generation": self.generation}
+        )
+
+    def stage(self, _bundle: Path, *, operation_id: str, client_id: str):
+        self.state = {
+            "schema": "iii.receiver-update-state/v1",
+            "state_id": "7" * 64,
+            "operation_id": operation_id,
+            "client_id": client_id,
+            "candidate_receiver_id": self.receiver_id,
+            "candidate_generation": self.generation,
+            "stage": "staged",
+            "failure": None,
+            "readiness": None,
+        }
+        return self.state
+
+    def update_state(self):
+        return self.state
+
+    def abort_staged(self, *, operation_id: str, client_id: str, reason: str):
+        assert self.state["operation_id"] == operation_id
+        assert self.state["client_id"] == client_id
+        assert self.state["stage"] == "staged"
+        self.state.update(stage="reverted", failure=reason)
+        return self.state
+
+
 def key(character: int) -> str:
     blob = (
         struct.pack(">I", 11)
@@ -231,6 +273,10 @@ def receiver(tmp_path: Path):
         host_inspector=None,
         network_controller=None,
         backup_controller=None,
+        receiver_slots=None,
+        receiver_generation=None,
+        prepare_receiver_handoff=None,
+        schedule_receiver_handoff=None,
     ):
         return ReceiverEngine(
             release_store=store,
@@ -253,6 +299,10 @@ def receiver(tmp_path: Path):
             host_inspector=host_inspector,
             network_controller=network_controller,
             backup_controller=backup_controller,
+            receiver_slots=receiver_slots,
+            receiver_generation=receiver_generation,
+            prepare_receiver_handoff=prepare_receiver_handoff,
+            schedule_receiver_handoff=schedule_receiver_handoff,
         )
 
     return SimpleNamespace(
@@ -478,6 +528,186 @@ def apply_stage(receiver, planned: dict, operation_id: str = "operation-stage-00
             planned["nonce"],
         )
     )
+
+
+def test_receiver_update_is_claimed_handed_off_and_completed_by_new_generation(
+    receiver, monkeypatch,
+) -> None:
+    receiver_id = "f" * 64
+    slots = FakeReceiverSlots(receiver_id=receiver_id, generation=2)
+    prepared = []
+    scheduled = []
+    engine = receiver.build(
+        receiver_slots=slots,
+        receiver_generation=1,
+        prepare_receiver_handoff=lambda: prepared.append(True),
+        schedule_receiver_handoff=lambda: scheduled.append(True),
+    )
+    bundle = receiver.root / "incoming/receiver-updates" / receiver_id / "bundle"
+    bundle.mkdir(parents=True)
+    for name in (
+        "receiver-update.manifest.json",
+        "receiver-update.sig.json",
+        "receiver-update.tar",
+    ):
+        (bundle / name).write_text(name + "\n", encoding="utf-8")
+    archive_sha256 = hashlib.sha256(
+        (bundle / "receiver-update.tar").read_bytes()
+    ).hexdigest()
+    files = [
+        {
+            "path": f"bundle/{path.name}",
+            "size": path.stat().st_size,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+        for path in sorted(bundle.iterdir())
+    ]
+    upload = {
+        "schema": "iii.receiver-update-upload/v1",
+        "upload_id": "0" * 64,
+        "receiver_id": receiver_id,
+        "client_id": receiver.operator_id,
+        "files": files,
+    }
+    upload["upload_id"] = content_identity(
+        {key: item for key, item in upload.items() if key != "upload_id"}
+    )
+    (bundle.parent / ".upload-manifest.json").write_bytes(
+        canonical_json(upload) + b"\n"
+    )
+    operation_id = "receiver-update-0001"
+    planned = engine.handle(
+        request(
+            "plan-receiver-update",
+            operation_id,
+            receiver.operator_id,
+            {
+                "artifact": {
+                    "receiver_id": receiver_id,
+                    "generation": 2,
+                    "archive_sha256": archive_sha256,
+                    "upload_id": upload["upload_id"],
+                },
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    REGISTRY.validate("receiver-mutation-plan", planned["plan"])
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            "iii_deployment.receiver.engine.shutil.disk_usage",
+            lambda _path: SimpleNamespace(total=100, free=0),
+        )
+        with pytest.raises(ContractError, match="preserve reserve"):
+            engine._claim_receiver_update(planned["plan"])
+    accepted = engine.handle(
+        request(
+            "receiver-update",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"]},
+            planned["nonce"],
+        )
+    )
+    assert accepted["operation"]["state"] == "accepted"
+    receiver.executor.run_next()
+    assert prepared == [True]
+    assert scheduled == [True]
+    assert receiver.journals.load(operation_id)["state"] == "running"
+
+    slots.state.update(
+        stage="committed",
+        state_id="8" * 64,
+        readiness={"schema": "iii.receiver-readiness/v1"},
+    )
+    next_engine = receiver.build(
+        receiver_slots=slots,
+        receiver_generation=2,
+        prepare_receiver_handoff=lambda: None,
+        schedule_receiver_handoff=lambda: None,
+    )
+    recovery = next_engine.reconcile()
+    assert recovery["recovered_operations"] == [operation_id]
+    terminal = receiver.journals.load(operation_id)
+    assert terminal["state"] == "completed"
+    assert terminal["result"]["generation"] == 2
+    assert receiver.control.receiver_generation == 2
+
+
+def test_receiver_update_schedule_failure_aborts_before_selector_and_releases_lease(
+    receiver,
+) -> None:
+    receiver_id = "e" * 64
+    slots = FakeReceiverSlots(receiver_id=receiver_id, generation=2)
+    engine = receiver.build(
+        receiver_slots=slots,
+        receiver_generation=1,
+        prepare_receiver_handoff=lambda: None,
+        schedule_receiver_handoff=lambda: (_ for _ in ()).throw(
+            RuntimeError("systemd unavailable")
+        ),
+    )
+    bundle = receiver.root / "incoming/receiver-updates" / receiver_id / "bundle"
+    bundle.mkdir(parents=True)
+    for name in RECEIVER_UPDATE_FILES:
+        (bundle / name).write_text(name + "\n", encoding="utf-8")
+    files = [
+        {
+            "path": f"bundle/{path.name}",
+            "size": path.stat().st_size,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+        for path in sorted(bundle.iterdir())
+    ]
+    upload = {
+        "schema": "iii.receiver-update-upload/v1",
+        "upload_id": "0" * 64,
+        "receiver_id": receiver_id,
+        "client_id": receiver.operator_id,
+        "files": files,
+    }
+    upload["upload_id"] = content_identity(
+        {key: value for key, value in upload.items() if key != "upload_id"}
+    )
+    (bundle.parent / ".upload-manifest.json").write_bytes(
+        canonical_json(upload) + b"\n"
+    )
+    operation_id = "receiver-update-schedule-failure"
+    planned = engine.handle(
+        request(
+            "plan-receiver-update",
+            operation_id,
+            receiver.operator_id,
+            {
+                "artifact": {
+                    "receiver_id": receiver_id,
+                    "generation": 2,
+                    "archive_sha256": hashlib.sha256(
+                        (bundle / "receiver-update.tar").read_bytes()
+                    ).hexdigest(),
+                    "upload_id": upload["upload_id"],
+                },
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    engine.handle(
+        request(
+            "receiver-update",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"]},
+            planned["nonce"],
+        )
+    )
+
+    receiver.executor.run_next()
+
+    journal = receiver.journals.load(operation_id)
+    assert journal["state"] == "failed"
+    assert "could not be scheduled" in journal["failure"]["message"]
+    assert slots.state["stage"] == "reverted"
+    assert receiver.control.load()["lease"] is None
 
 
 def test_clock_sync_uses_receiver_plan_nonce_and_detached_journal(receiver) -> None:
