@@ -74,9 +74,32 @@ owner-only. Only `enrollment.json` is copied into provisioning input; never copy
 `ssh_ed25519`, `field-signing-key.pem`, `runtime-api-token`, a passphrase, or an
 SSH agent socket.
 
-The receiver bundle and wheelhouse are recursively content-addressed in the plan.
-Symlinks, special files, empty trees, input files writable by another identity,
-and changed content between plan and apply are rejected.
+Materialize the signed initial receiver, complete ARM64 wheelhouse, three trust
+stores, public enrollment, runtime secret, input, and strict inventory with the
+repository-owned controller builder. Inspection is read-only; `--apply` writes a
+new owner-only output tree and refuses to replace an existing tree:
+
+```bash
+deployment/scripts/prepare_host_provisioning_artifacts.py \
+  --output .iii/host-provision \
+  --workspace-root . \
+  --enrollment "$XDG_CONFIG_HOME/iii/credentials/provisioning/enrollment.json" \
+  --runtime-token "$XDG_CONFIG_HOME/iii/credentials/provisioning/runtime-api-token" \
+  --ssh-private-key "$XDG_CONFIG_HOME/iii/credentials/provisioning/ssh_ed25519" \
+  --known-hosts .iii/ssh/first-boot-known-hosts \
+  --target 192.168.10.42 \
+  --operator-cidr 192.168.10.0/24 \
+  --python testing/ansible-venv/bin/python \
+  --operation-id iii-host-provision-artifacts-REPLACE_ME
+# Review the canonical inspection result, then repeat the exact command with --apply.
+```
+
+The resulting `artifact-record.json` binds every wheel, signer, receiver,
+enrollment, inventory, and input identity without retaining secret values. Keep
+that record with the provisioning operation evidence. The receiver bundle and
+wheelhouse are recursively content-addressed again in the retained host plan.
+Symlinks, special files, empty trees, inputs writable by another identity, and
+changed content between plan and apply are rejected.
 
 ## Owner-Controlled Input
 
@@ -185,8 +208,11 @@ path and is never exposed through that API.
 Finalization preserves the cloud-init netplan as root-only
 `/etc/netplan/90-iii-operator.yaml`, validates it, disables cloud-init reruns,
 removes seed/instance/log secrets, validates sudoers, force-removes the bootstrap
-account, and verifies that permanent receiver-gateway keys remain. There is no
-default password or bootstrap-key reinjection recovery.
+account, and verifies that permanent receiver-gateway keys remain with mode
+`0600` and the configured runtime UID/GID so OpenSSH can read them after dropping
+privileges. Target-equivalent acceptance opens a new permanent forced-command SSH
+session after bootstrap removal. There is no default password or bootstrap-key
+reinjection recovery.
 
 ## Evidence And Recovery
 

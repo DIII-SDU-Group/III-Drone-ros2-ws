@@ -764,7 +764,7 @@
       ],
       "path": "docs/generated/deployment-schema-reference.md",
       "repository": "workspace",
-      "sha256": "d8d728f3de4e5b26996cc1a1321a71cc51eebb55173ae2a17147e458045e15a1",
+      "sha256": "79a5873d915f9ce4dcf6e787d72148cac0a2f68d7d6a413903460e08bdf990fe",
       "status": "passed"
     },
     {
@@ -868,7 +868,7 @@
       ],
       "path": "docs/host-provisioning.md",
       "repository": "workspace",
-      "sha256": "c4ef00bbea5b77bed9ab9323dd4a44c42c59ffb23c3ca90141cbca36bc789977",
+      "sha256": "0951510a9ad8acca57205e5d8d09c964ca58c61f7ee07263b6e41113829a83e8",
       "status": "passed"
     },
     {
@@ -1197,8 +1197,8 @@
       "status": "passed"
     }
   ],
-  "manifest_id": "e79bcb39c0927ae83dd5348accaf83561b0b0ea4ce7b719a8fbb231964c5008d",
-  "review_id": "1868a5423f6f940b99538b1c48c623f4d61cbd846d359e9744705b3920881d24",
-  "reviewer": "codex",
+  "manifest_id": "e34880d991f0899ecf221bcbd280d363e802c6e776304b825ec2dde2af1c8877",
+  "review_id": "eaf3d1931d648eb396714d4778afaa7316c6019f59218b2065bab88fe18c3942",
+  "reviewer": "codex-deployment-infrastructure-redesign",
   "schema": "iii.documentation-review/v1"
 }

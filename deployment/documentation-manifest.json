@@ -1697,7 +1697,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "d8d728f3de4e5b26996cc1a1321a71cc51eebb55173ae2a17147e458045e15a1",
+      "sha256": "79a5873d915f9ce4dcf6e787d72148cac0a2f68d7d6a413903460e08bdf990fe",
       "source_of_truth": "deployment/scripts/update_documentation_references.py"
     },
     {
@@ -1825,7 +1825,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "c4ef00bbea5b77bed9ab9323dd4a44c42c59ffb23c3ca90141cbca36bc789977",
+      "sha256": "0951510a9ad8acca57205e5d8d09c964ca58c61f7ee07263b6e41113829a83e8",
       "source_of_truth": "docs/host-provisioning.md"
     },
     {
@@ -2309,7 +2309,7 @@
       "source_of_truth": "tools/III-Drone-MCP/README.md"
     }
   ],
-  "manifest_id": "e79bcb39c0927ae83dd5348accaf83561b0b0ea4ce7b719a8fbb231964c5008d",
+  "manifest_id": "e34880d991f0899ecf221bcbd280d363e802c6e776304b825ec2dde2af1c8877",
   "policy_schema": "iii.documentation-policy/v1",
   "schema": "iii.documentation-manifest/v1"
 }
