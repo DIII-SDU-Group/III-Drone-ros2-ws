@@ -33,7 +33,8 @@ def _root(tmp_path: Path) -> Path:
         b"# Ubuntu stock defaults\n[all]\n"
         b"initramfs initrd.img followkernel\n"
         b"dtoverlay=vc4-kms-v3d\ninclude usercfg.txt\n"
-        b"[pi4]\nover_voltage=6\n",
+        b"[pi4]\nover_voltage=6\n"
+        b"[pi3+]\ndtoverlay=vc4-kms-v3d,cma-128\n",
     )
     _write(
         root / "boot/firmware/usercfg.txt",

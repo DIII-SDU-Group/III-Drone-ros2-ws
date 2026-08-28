@@ -46,7 +46,7 @@
       "properties": {
         "source": {"type": "string", "pattern": "^/boot/firmware/[A-Za-z0-9._/-]+$"},
         "line": {"type": "integer", "minimum": 1},
-        "section": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "section": {"type": "string", "pattern": "^[A-Za-z0-9._+*=:&<>-]{1,128}$"},
         "key": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$"},
         "value": {"type": "string", "maxLength": 512},
         "active": {"type": "boolean"}

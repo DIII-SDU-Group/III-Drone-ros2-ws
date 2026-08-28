@@ -20,6 +20,7 @@ PROFILE_SCHEMA = "iii.boot-profile/v1"
 INSPECTION_SCHEMA = "iii.boot-inspection/v1"
 MAX_CONFIG_BYTES = 1024 * 1024
 MAX_INCLUDE_DEPTH = 8
+CONFIG_SECTION_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789._+*-=:&<>")
 
 
 def _under(root: Path, absolute: str) -> Path:
@@ -112,9 +113,13 @@ def _config_directives(
             continue
         if line.startswith("[") and line.endswith("]"):
             candidate = line[1:-1].strip().lower()
-            if not candidate or any(
-                character not in "abcdefghijklmnopqrstuvwxyz0123456789._-"
-                for character in candidate
+            if (
+                not candidate
+                or len(candidate) > 128
+                or any(
+                    character not in CONFIG_SECTION_CHARACTERS
+                    for character in candidate
+                )
             ):
                 raise ContractError("boot config section is malformed")
             current = candidate

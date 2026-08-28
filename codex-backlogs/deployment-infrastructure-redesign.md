@@ -4119,7 +4119,11 @@ Implementation notes and verification:
 
 #### P3.T6: Manage The Raspberry Pi Boot Baseline
 
-**Status: Completed (2026-08-28).**
+**Status: In-Progress.** The physical reprovision rehearsal passed, but the
+post-provision live inspection exposed one additional stock Ubuntu conditional
+filter that the deployed receiver rejects. Source and schema fixes pass locally;
+the task remains open until the corrected receiver is installed and the same
+physical inspection accepts the boot baseline.
 
 Description:
 Define the source-controlled Raspberry Pi 5 boot profile and host inventory for
@@ -4229,6 +4233,16 @@ Implementation notes and verification:
   forced-command gateway session. The run also found and fixed the documented
   artifact builder's missing executable mode and Canonical Ubuntu's valid stock
   `initramfs initrd.img followkernel` parsing gap; focused regressions pass.
+- The authenticated powered-Pi inspection
+  `.iii/evidence/physical-host-inspect-powered-20260828-r3.json` then proved the
+  installed generation still rejects the pinned image's valid `[pi3+]`
+  conditional section. Read-only extraction authenticated the image's
+  `config.txt` SHA-256 as
+  `fcf55af036aa70e9600dae8313a0bebafc43e6aedef8c31883828526b357e28d`,
+  exactly matching the live host. The parser and `iii.boot-inspection/v1`
+  schema now accept the bounded official conditional-filter character set; the
+  exact stock file parses as 19 directives across five sections and all seven
+  focused boot tests pass. Physical acceptance remains open until r7 is booted.
 
 #### P3.T7: Provision Transactional Operator Networking
 
