@@ -192,6 +192,7 @@ def test_apply_runs_converge_check_finalize_in_order(
             "check_mode": kwargs["check"],
             "hosts": {"iii.local": dict(counters)},
             "totals": counters,
+            "categories": {"operational": dict(counters)},
         }
 
     monkeypatch.setattr(provision, "_run_ansible", run)
@@ -203,6 +204,9 @@ def test_apply_runs_converge_check_finalize_in_order(
         ("aircraft-finalize.yml", False),
     ]
     assert report["state"] == "provisioned"
+    assert set(report["runs"]["first_convergence"]["categories"]) == {
+        "operational"
+    }
     assert len(report["report_id"]) == 64
 
 
