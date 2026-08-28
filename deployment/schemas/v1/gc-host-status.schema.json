@@ -33,7 +33,7 @@
       "additionalProperties": false,
       "required": ["path", "mode", "class", "exists", "actual_mode"],
       "properties": {
-        "path": {"type": "string", "pattern": "^[.][A-Za-z0-9._/-]+$"},
+        "path": {"type": "string", "pattern": "^(?:[.][A-Za-z0-9._/-]+|Documents/QGroundControl)$"},
         "mode": {"type": "string", "pattern": "^0[0-7]{3}$"},
         "class": {"enum": ["application", "cache", "logs", "machine-identity", "portable-records", "secret", "settings", "state"]},
         "exists": {"type": "boolean"},

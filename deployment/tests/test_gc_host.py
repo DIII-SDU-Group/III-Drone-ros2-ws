@@ -15,6 +15,7 @@ from iii_deployment.gc_host import (
     apply_plan,
     build_plan,
     inspect_platform,
+    inspect_status,
     load_offline_cache,
     load_policy,
 )
@@ -125,6 +126,76 @@ def test_platform_matrix_reports_the_explicitly_excluded_prerequisites(
         "ubuntu-installation",
         "vendor-firmware",
     }
+
+
+def test_stock_ubuntu_os_release_symlink_is_accepted_but_other_links_fail(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "usr/lib").mkdir(parents=True)
+    canonical = _os_release(tmp_path / "usr/lib/os-release", "24.04")
+    exposed = tmp_path / "etc/os-release"
+    exposed.parent.mkdir(parents=True)
+    exposed.symlink_to("../usr/lib/os-release")
+    monkeypatch.setattr(gc_host, "OS_RELEASE_PATH", exposed)
+    monkeypatch.setattr(gc_host, "OS_RELEASE_CANONICAL_PATH", canonical)
+
+    assert gc_host._read_os_release(exposed)["VERSION_ID"] == "24.04"
+
+    other = tmp_path / "etc/other-release"
+    other.symlink_to("../usr/lib/os-release")
+    with pytest.raises(GCHostError, match="not canonical"):
+        gc_host._read_os_release(other)
+
+
+def test_status_accepts_declared_documents_path_and_normalizes_empty_unit_state(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        gc_host,
+        "_current_user",
+        lambda *_args, **_kwargs: {
+            "name": "gc-test",
+            "uid": 1000,
+            "gid": 1000,
+            "home": str(tmp_path),
+        },
+    )
+    monkeypatch.setattr(
+        gc_host,
+        "inspect_platform",
+        lambda _policy: {
+            "platform_id": "ubuntu-24.04-x86_64",
+            "os_id": "ubuntu",
+            "version_id": "24.04",
+            "architecture": "x86_64",
+            "graphical_session_required": True,
+            "excluded_prerequisites": [
+                "disk-partitioning",
+                "full-disk-encryption",
+                "proprietary-hardware-drivers",
+                "ubuntu-installation",
+                "vendor-firmware",
+            ],
+        },
+    )
+
+    def missing_unit(*_args, **_kwargs):
+        return __import__("subprocess").CompletedProcess(
+            [], 0, "LoadState=not-found\nActiveState=inactive\nUnitFileState=\n", ""
+        )
+
+    status = inspect_status(
+        policy_path=POLICY,
+        schema_root=SCHEMAS,
+        home=tmp_path,
+        runner=missing_unit,
+    )
+
+    documents = next(
+        item for item in status["paths"] if item["path"] == "Documents/QGroundControl"
+    )
+    assert documents["exists"] is False
+    assert {item["unit_file_state"] for item in status["units"]} == {"unavailable"}
 
 
 def test_unsupported_os_or_architecture_fails_closed(tmp_path):

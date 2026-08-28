@@ -195,7 +195,19 @@ def _git_identity(repo: Path, *, scoped_paths: Sequence[str] = ()) -> dict[str, 
     }
 
 
+OS_RELEASE_PATH = Path("/etc/os-release")
+OS_RELEASE_CANONICAL_PATH = Path("/usr/lib/os-release")
+
+
 def _read_os_release(path: Path) -> dict[str, str]:
+    if path.is_symlink():
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError as exc:
+            raise GCHostError("/etc/os-release is unavailable or unsafe") from exc
+        if path != OS_RELEASE_PATH or resolved != OS_RELEASE_CANONICAL_PATH:
+            raise GCHostError("/etc/os-release symlink target is not canonical")
+        path = resolved
     if path.is_symlink() or not path.is_file():
         raise GCHostError("/etc/os-release is unavailable or unsafe")
     values = {}
@@ -210,7 +222,7 @@ def _read_os_release(path: Path) -> dict[str, str]:
 def inspect_platform(
     policy: Mapping[str, Any],
     *,
-    os_release_path: Path = Path("/etc/os-release"),
+    os_release_path: Path = OS_RELEASE_PATH,
     architecture: str | None = None,
 ) -> dict[str, Any]:
     release = _read_os_release(os_release_path)
@@ -460,7 +472,7 @@ def build_plan(
     replacement_archive: Path | None = None,
     user: str | None = None,
     home: Path | None = None,
-    os_release_path: Path = Path("/etc/os-release"),
+    os_release_path: Path = OS_RELEASE_PATH,
     architecture: str | None = None,
 ) -> dict[str, Any]:
     registry = ContractRegistry(schema_root)
@@ -930,9 +942,9 @@ def inspect_status(
         units.append(
             {
                 "unit": unit,
-                "load_state": values.get("LoadState", "unavailable"),
-                "active_state": values.get("ActiveState", "unavailable"),
-                "unit_file_state": values.get("UnitFileState", "unavailable"),
+                "load_state": values.get("LoadState") or "unavailable",
+                "active_state": values.get("ActiveState") or "unavailable",
+                "unit_file_state": values.get("UnitFileState") or "unavailable",
             }
         )
     status: dict[str, Any] = {
