@@ -5,6 +5,8 @@
       - /opt/iii/receiver/bootstrap/bin/iii-receiver-access-bootstrap
       - --enrollment
       - /etc/iii/bootstrap-machine-enrollment.json
+      - --runtime-uid
+      - "{{ iii_runtime_uid | string }}"
       - --runtime-gid
       - "{{ iii_runtime_gid | string }}"
   register: iii_finalize_access

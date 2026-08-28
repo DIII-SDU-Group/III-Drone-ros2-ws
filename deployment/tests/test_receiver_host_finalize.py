@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import struct
@@ -19,7 +20,6 @@ from iii_deployment.identity import create_machine_enrollment
 from iii_deployment.receiver.access import AccessManager
 from iii_deployment.receiver.host_finalize import finalize_host
 from iii_deployment.signers import generate_signer
-
 
 BASELINE_ID = "a" * 64
 RECEIVER_ID = "b" * 64
@@ -75,6 +75,17 @@ def _root(tmp_path: Path) -> Path:
     )
     _write(tmp_path / "var/lib/iii/deployment/host-baseline-report.json", health)
     _write(tmp_path / "run/iii/receiver-readiness.json", readiness)
+    _write(
+        tmp_path / "etc/iii/deployment-receiver.json",
+        {
+            "schema": "iii.receiver-config/v1",
+            "receiver_generation": 1,
+            "logical_target": "drone",
+            "profile": "real",
+            "runtime_uid": os.getuid(),
+            "runtime_gid": os.getgid(),
+        },
+    )
     AccessManager(
         state_path=tmp_path / "var/lib/iii/deployment/access-state.json",
         authorized_keys_path=tmp_path / "home/iii/.ssh/authorized_keys",
@@ -85,6 +96,7 @@ def _root(tmp_path: Path) -> Path:
         field_signers_path=(
             tmp_path / "var/lib/iii/deployment/workstation-field-signers.json"
         ),
+        runtime_uid=os.getuid(),
     ).bootstrap([enrollment])
     slots = tmp_path / "opt/iii/receiver/slots"
     (slots / "a").mkdir(parents=True)
@@ -177,6 +189,26 @@ def test_finalize_refuses_pending_access_and_preserves_bootstrap(
     _write(path, access)
 
     with pytest.raises(ContractError, match="absent, pending, or revoked"):
+        finalize_host(
+            baseline_id=BASELINE_ID,
+            root=root,
+            run=lambda _argv: None,
+            user_exists=lambda _name: True,
+        )
+
+    assert (root / "boot/firmware/user-data").is_file()
+
+
+def test_finalize_refuses_unreadable_authorized_keys_ownership_before_revocation(
+    tmp_path: Path,
+) -> None:
+    root = _root(tmp_path)
+    config_path = root / "etc/iii/deployment-receiver.json"
+    config = json.loads(config_path.read_text())
+    config["runtime_uid"] = os.getuid() + 1
+    _write(config_path, config)
+
+    with pytest.raises(ContractError, match="ownership is not SSH-readable"):
         finalize_host(
             baseline_id=BASELINE_ID,
             root=root,

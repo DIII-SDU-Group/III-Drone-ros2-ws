@@ -147,6 +147,7 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         registry=registry,
         runtime_verifiers_path=RUNTIME_VERIFIERS_PATH,
         field_signers_path=FIELD_SIGNERS_PATH,
+        runtime_uid=config.runtime_uid,
         runtime_gid=config.runtime_gid,
     )
     slots = ReceiverSlotStore(

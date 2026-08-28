@@ -14,7 +14,6 @@ from typing import Any, Callable, Mapping, Sequence
 from iii_deployment.contracts import ContractError, canonical_json, content_identity
 from iii_deployment.receiver.state import atomic_bytes, atomic_document
 
-
 BOOTSTRAP_USER = "iii-bootstrap"
 REPORT_PATH = Path("/var/lib/iii/deployment/host-provisioning-report.json")
 SANITIZED_PATHS = (
@@ -232,10 +231,35 @@ def finalize_host(
         for client_id, record in clients.items()
     ):
         raise ContractError("permanent operator access is absent, pending, or revoked")
+    receiver_config = _document(
+        _under(root, Path("/etc/iii/deployment-receiver.json")),
+        label="receiver configuration",
+    )
+    runtime_uid = receiver_config.get("runtime_uid")
+    runtime_gid = receiver_config.get("runtime_gid")
+    if (
+        receiver_config.get("schema") != "iii.receiver-config/v1"
+        or not isinstance(runtime_uid, int)
+        or isinstance(runtime_uid, bool)
+        or runtime_uid <= 0
+        or not isinstance(runtime_gid, int)
+        or isinstance(runtime_gid, bool)
+        or runtime_gid <= 0
+    ):
+        raise ContractError("receiver configuration lacks runtime ownership")
     authorized_keys = _under(root, Path("/home/iii/.ssh/authorized_keys"))
     if authorized_keys.is_symlink() or not authorized_keys.is_file():
         raise ContractError(
             "permanent forced-command authorized_keys is absent or linked"
+        )
+    authorized_keys_metadata = authorized_keys.stat(follow_symlinks=False)
+    if (
+        authorized_keys_metadata.st_uid != runtime_uid
+        or authorized_keys_metadata.st_gid != runtime_gid
+        or authorized_keys_metadata.st_mode & 0o077
+    ):
+        raise ContractError(
+            "permanent forced-command authorized_keys ownership is not SSH-readable"
         )
     key_lines = sorted(
         line

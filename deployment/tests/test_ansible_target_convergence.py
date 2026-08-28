@@ -21,7 +21,6 @@ from iii_deployment.identity import create_machine_enrollment
 from iii_deployment.receiver.update import package_receiver_update
 from iii_deployment.signers import generate_signer
 
-
 pytestmark = pytest.mark.target
 SCHEMAS = Path(__file__).parents[1] / "schemas/v1"
 WORKSPACE = Path(__file__).parents[2]
@@ -523,6 +522,32 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
         assert report["state"] == "provisioned"
         assert report["bootstrap_user_removed"] is True
         assert report["commissioned"] is False
+        permanent_access = subprocess.run(
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-o",
+                "UserKnownHostsFile=/dev/null",
+                "-o",
+                "ConnectTimeout=3",
+                "-i",
+                str(ssh_key),
+                "-p",
+                port,
+                "iii@127.0.0.1",
+                "true",
+            ],
+            check=False,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        assert permanent_access.returncode != 255, permanent_access.stdout
+        assert "Permission denied (publickey)" not in permanent_access.stdout
         assert (
             _run(
                 [

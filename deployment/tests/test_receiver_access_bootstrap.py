@@ -12,7 +12,6 @@ from iii_deployment.identity import create_machine_enrollment
 from iii_deployment.receiver import access_bootstrap
 from iii_deployment.receiver.access import AccessManager
 
-
 SCHEMAS = Path(__file__).resolve().parents[1] / "schemas/v1"
 REGISTRY = ContractRegistry(SCHEMAS)
 
@@ -91,6 +90,29 @@ def test_access_bootstrap_is_idempotent_and_reconciles_all_derived_access(
         ).load()["access_id"]
         == first["access_id"]
     )
+
+
+def test_access_bootstrap_projects_authorized_keys_to_runtime_owner(
+    monkeypatch, tmp_path: Path
+) -> None:
+    import iii_deployment.receiver.access as access
+
+    _configure(monkeypatch, tmp_path)
+    source = tmp_path / "enrollment.json"
+    _write(source, _enrollment(1))
+    ownership: list[tuple[Path, int, int]] = []
+
+    monkeypatch.setattr(
+        access.os,
+        "chown",
+        lambda path, uid, gid, **_kwargs: ownership.append((Path(path), uid, gid)),
+    )
+
+    access_bootstrap.reconcile(
+        [source], schema_root=SCHEMAS, runtime_uid=1100, runtime_gid=1100
+    )
+
+    assert (tmp_path / "authorized_keys", 1100, 1100) in ownership
 
 
 def test_access_bootstrap_allows_later_enrollment_but_rejects_bootstrap_change(

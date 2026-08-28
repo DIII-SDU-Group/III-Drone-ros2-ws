@@ -25,7 +25,6 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from iii_deployment.receiver.protocol import IDENTITY
 from iii_deployment.receiver.state import atomic_bytes, atomic_document
 
-
 ACCESS_SCHEMA_V1 = "iii.receiver-access-state/v1"
 ACCESS_SCHEMA = "iii.receiver-access-state/v2"
 RUNTIME_VERIFIER_SCHEMA = "iii.runtime-api-client-verifiers/v1"
@@ -40,6 +39,7 @@ class AccessManager:
         registry: ContractRegistry,
         runtime_verifiers_path: Path | None = None,
         field_signers_path: Path | None = None,
+        runtime_uid: int | None = None,
         runtime_gid: int | None = None,
         client_path: str = "/usr/bin/iii-deployment-ssh-gateway",
     ) -> None:
@@ -51,6 +51,7 @@ class AccessManager:
         self.authorized_keys_path = authorized_keys_path
         self.runtime_verifiers_path = runtime_verifiers_path
         self.field_signers_path = field_signers_path
+        self.runtime_uid = runtime_uid
         self.runtime_gid = runtime_gid
         self.registry = registry
         self.client_path = client_path
@@ -480,6 +481,13 @@ class AccessManager:
             lines.append('restrict,command="' + command + '" ' + record["public_key"])
         raw = ("\n".join(lines) + ("\n" if lines else "")).encode("ascii")
         atomic_bytes(self.authorized_keys_path, raw, mode=0o600)
+        if self.runtime_uid is not None:
+            os.chown(
+                self.authorized_keys_path,
+                self.runtime_uid,
+                self.runtime_gid if self.runtime_gid is not None else -1,
+                follow_symlinks=False,
+            )
 
     def _write_derived(self, value: Mapping[str, Any]) -> None:
         active = [
