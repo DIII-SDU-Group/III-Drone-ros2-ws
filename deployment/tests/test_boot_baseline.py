@@ -30,7 +30,10 @@ def _root(tmp_path: Path) -> Path:
     root = tmp_path / "target"
     _write(
         root / "boot/firmware/config.txt",
-        b"# Ubuntu stock defaults\n[all]\ndtoverlay=vc4-kms-v3d\ninclude usercfg.txt\n[pi4]\nover_voltage=6\n",
+        b"# Ubuntu stock defaults\n[all]\n"
+        b"initramfs initrd.img followkernel\n"
+        b"dtoverlay=vc4-kms-v3d\ninclude usercfg.txt\n"
+        b"[pi4]\nover_voltage=6\n",
     )
     _write(
         root / "boot/firmware/usercfg.txt",
@@ -75,6 +78,12 @@ def test_stock_pi5_profile_schema_identity_and_effective_inspection(tmp_path: Pa
     assert report["firmware"]["revision_hex"] == "00d04170"
     assert any(
         item["key"] == "over_voltage" and item["active"] is False
+        for item in report["firmware"]["directives"]
+    )
+    assert any(
+        item["key"] == "initramfs"
+        and item["value"] == "initrd.img followkernel"
+        and item["active"] is True
         for item in report["firmware"]["directives"]
     )
     secret = next(

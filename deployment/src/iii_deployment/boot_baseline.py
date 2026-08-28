@@ -119,8 +119,12 @@ def _config_directives(
                 raise ContractError("boot config section is malformed")
             current = candidate
             continue
-        if line.lower().startswith("include "):
-            key, separator, item = "include", " ", line.split(None, 1)[1]
+        directive = line.split(None, 1)
+        if len(directive) == 2 and directive[0].lower() in {
+            "include",
+            "initramfs",
+        }:
+            key, separator, item = directive[0], " ", directive[1]
         else:
             key, separator, item = line.partition("=")
         key = key.strip()
