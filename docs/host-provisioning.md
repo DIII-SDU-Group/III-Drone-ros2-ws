@@ -210,9 +210,12 @@ Finalization preserves the cloud-init netplan as root-only
 removes seed/instance/log secrets, validates sudoers, force-removes the bootstrap
 account, and verifies that permanent receiver-gateway keys remain with mode
 `0600` and the configured runtime UID/GID so OpenSSH can read them after dropping
-privileges. Target-equivalent acceptance opens a new permanent forced-command SSH
-session after bootstrap removal. There is no default password or bootstrap-key
-reinjection recovery.
+privileges. It also resolves the fixed gateway through the active signed receiver
+slot and verifies that the runtime identity can traverse every directory and
+execute the root-write-protected gateway before bootstrap authority is revoked.
+Target-equivalent acceptance opens a new permanent forced-command SSH session and
+requires the gateway itself to execute after bootstrap removal. There is no
+default password or bootstrap-key reinjection recovery.
 
 ## Evidence And Recovery
 
