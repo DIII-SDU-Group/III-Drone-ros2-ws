@@ -899,10 +899,10 @@ class ReceiverSlotStore:
             base = Path(current)
             for name in files:
                 path = base / name
-                path.chmod(0o550 if path.stat().st_mode & 0o111 else 0o440)
+                path.chmod(0o555 if path.stat().st_mode & 0o111 else 0o444)
             for name in directories:
-                (base / name).chmod(0o550)
-        root.chmod(0o550)
+                (base / name).chmod(0o555)
+        root.chmod(0o555)
 
     @staticmethod
     def _make_removable(root: Path) -> None:

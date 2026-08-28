@@ -258,6 +258,15 @@ def test_initial_receiver_install_is_signed_idempotent_and_completes_selectors(
     }
     assert store.active_slot() == "a"
     assert store.verify_slot("a")["receiver_id"] == manifest["receiver_id"]
+    slot = root / "opt/iii/receiver/slots/a"
+    assert slot.stat().st_mode & 0o777 == 0o555
+    assert (slot / "bin").stat().st_mode & 0o777 == 0o555
+    assert (
+        (slot / "bin/iii-deployment-receiver").stat().st_mode & 0o777
+        == 0o555
+    )
+    assert (slot / "share/generation.txt").stat().st_mode & 0o777 == 0o444
+    assert (slot / MANIFEST_NAME).stat().st_mode & 0o777 == 0o444
     assert store.install_initial(bundle)["installed"] is False
 
 

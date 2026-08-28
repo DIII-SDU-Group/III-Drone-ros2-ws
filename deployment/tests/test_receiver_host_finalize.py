@@ -99,11 +99,19 @@ def _root(tmp_path: Path) -> Path:
         runtime_uid=os.getuid(),
     ).bootstrap([enrollment])
     slots = tmp_path / "opt/iii/receiver/slots"
-    (slots / "a").mkdir(parents=True)
+    gateway = slots / "a/bin/iii-deployment-ssh-gateway"
+    gateway.parent.mkdir(parents=True)
+    gateway.write_text("#!/bin/sh\nexit 0\n")
+    gateway.chmod(0o555)
     selectors = tmp_path / "opt/iii/receiver/selectors"
     selectors.mkdir(parents=True)
     (selectors / "current").symlink_to("../slots/a")
     (selectors / "fallback").symlink_to("../slots/a")
+    system_gateway = tmp_path / "usr/bin/iii-deployment-ssh-gateway"
+    system_gateway.parent.mkdir(parents=True)
+    system_gateway.symlink_to(
+        "/opt/iii/receiver/selectors/current/bin/iii-deployment-ssh-gateway"
+    )
     _write(tmp_path / "etc/netplan/50-cloud-init.yaml", b"network:\n  version: 2\n")
     _write(tmp_path / "boot/firmware/user-data", b"secret\n")
     _write(tmp_path / "var/lib/cloud/instances/iid/user-data.txt", b"secret\n")
@@ -215,6 +223,27 @@ def test_finalize_refuses_unreadable_authorized_keys_ownership_before_revocation
             run=lambda _argv: None,
             user_exists=lambda _name: True,
         )
+
+    assert (root / "boot/firmware/user-data").is_file()
+
+
+def test_finalize_refuses_runtime_inaccessible_gateway_before_revocation(
+    tmp_path: Path,
+) -> None:
+    root = _root(tmp_path)
+    slot = root / "opt/iii/receiver/slots/a"
+    slot.chmod(0o000)
+
+    try:
+        with pytest.raises(ContractError, match="gateway is not runtime-executable"):
+            finalize_host(
+                baseline_id=BASELINE_ID,
+                root=root,
+                run=lambda _argv: None,
+                user_exists=lambda _name: True,
+            )
+    finally:
+        slot.chmod(0o555)
 
     assert (root / "boot/firmware/user-data").is_file()
 

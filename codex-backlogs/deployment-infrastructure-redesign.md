@@ -4138,6 +4138,25 @@ Implementation notes and verification:
   permanent SSH session after bootstrap removal and passed in 631.50 s. Because
   the already-finalized physical card correctly has no bypass, a second governed
   reimage/reprovision rehearsal is required before this task can complete.
+- The second governed image write completed on 2026-08-28 as operation
+  `iii-image-aircraft-20260828-r4`; record
+  `9c94c3a3fb388bbe76f91e8131c9b154f7b5db791443dc9a576a3249a67c7708`
+  proves the same 4,139,719,168-byte image SHA, corrected seed readback, flush,
+  and hardware power-off. The clean Pi booted at `10.42.0.71`, cloud-init reached
+  `done` with its authenticated `ansible-ready` marker, `iii.local` resolved,
+  and retained host operation `iii-host-provision-aircraft-r2-20260828`
+  converged with 70 changes, proved zero-change idempotence, and finalized with
+  no failures. Bootstrap revocation then exposed a third production defect: the
+  immutable signed receiver slot used root-only `0550`/`0440` modes, so OpenSSH
+  authenticated the permanent key but the unprivileged forced command exited
+  126. Receiver slots now use root-write-protected public read/execute modes
+  (`0555`/`0444`), finalization validates every gateway traversal/execute bit for
+  the configured runtime identity before revocation, and the SSH regression
+  requires actual gateway execution. The focused receiver boundary passed 48
+  tests and the full Noble/systemd convergence, idempotence, drift repair,
+  finalization, and fresh permanent-session test passed in 704.82 s. A final
+  governed physical reimage is still required because the correctly finalized
+  second card contains no bypass authority.
 
 #### P3.T7: Provision Transactional Operator Networking
 
@@ -5103,6 +5122,15 @@ Implementation notes (software boundary, 2026-08-27):
   The physical host remains deliberately inaccessible until the card is
   reimaged; no commissioning acceptance item is claimed from this failed first
   attempt.
+- The second raw-image attempt reached a fully converged, zero-drift,
+  finalized host and proved direct Ethernet plus `iii.local`, but physical
+  testing found that signed receiver slot permissions prevented the `iii`
+  forced-command account from executing the gateway after successful key
+  authentication. The mode policy, pre-revocation finalizer check, and
+  post-finalization functional SSH assertion are now red/green tested; the full
+  target-equivalent lifecycle passed in 704.82 s. No commissioning criterion is
+  upgraded from the failed attempt, and the next physical run must start from a
+  newly governed image built from the committed fix.
 
 #### P5.T2: Establish Automation-Ready Documentation Architecture And Validation
 

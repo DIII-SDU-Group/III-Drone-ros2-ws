@@ -546,8 +546,11 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
-        assert permanent_access.returncode != 255, permanent_access.stdout
-        assert "Permission denied (publickey)" not in permanent_access.stdout
+        assert permanent_access.returncode == 2, permanent_access.stdout
+        assert (
+            "SSH command is outside the fixed deployment gateway"
+            in permanent_access.stdout
+        )
         assert (
             _run(
                 [

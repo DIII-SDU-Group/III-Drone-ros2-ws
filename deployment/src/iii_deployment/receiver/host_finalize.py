@@ -87,6 +87,51 @@ def _selector_slot(root: Path, selector: str) -> str:
     return relative.name
 
 
+def _runtime_has_mode(path: Path, *, uid: int, gid: int, required: int) -> bool:
+    metadata = path.stat(follow_symlinks=False)
+    if metadata.st_uid == uid:
+        granted = metadata.st_mode >> 6
+    elif metadata.st_gid == gid:
+        granted = metadata.st_mode >> 3
+    else:
+        granted = metadata.st_mode
+    return granted & required == required
+
+
+def _require_runtime_gateway(
+    root: Path, *, slot: str, uid: int, gid: int
+) -> None:
+    gateway = _under(root, Path("/usr/bin/iii-deployment-ssh-gateway"))
+    if not gateway.is_symlink():
+        raise ContractError("permanent forced-command gateway is not a symbolic link")
+    if (
+        os.readlink(gateway)
+        != "/opt/iii/receiver/selectors/current/bin/iii-deployment-ssh-gateway"
+    ):
+        raise ContractError(
+            "permanent forced-command gateway does not use the active receiver selector"
+        )
+    relative = Path(
+        f"opt/iii/receiver/slots/{slot}/bin/iii-deployment-ssh-gateway"
+    )
+    target = root / relative
+    current = root
+    for part in relative.parts[:-1]:
+        current /= part
+        if (
+            current.is_symlink()
+            or not current.is_dir()
+            or not _runtime_has_mode(current, uid=uid, gid=gid, required=0o1)
+        ):
+            raise ContractError(
+                "permanent forced-command gateway is not runtime-executable"
+            )
+    if target.is_symlink() or not target.is_file():
+        raise ContractError("permanent forced-command gateway target is unsafe")
+    if not _runtime_has_mode(target, uid=uid, gid=gid, required=0o1):
+        raise ContractError("permanent forced-command gateway is not runtime-executable")
+
+
 def _sanitize_sudoers(root: Path, run: Callable[[Sequence[str]], None]) -> list[str]:
     sudoers_root = _under(root, Path("/etc/sudoers.d"))
     changed: list[str] = []
@@ -277,7 +322,6 @@ def finalize_host(
         raise ContractError(
             "permanent operator keys are not restricted to the receiver gateway"
         )
-
     runtime_verifiers = {
         "schema": "iii.runtime-api-client-verifiers/v1",
         "verifier_id": "0" * 64,
@@ -340,6 +384,9 @@ def finalize_host(
         raise ContractError(
             "initial receiver current and recovery fallback selectors differ"
         )
+    _require_runtime_gateway(
+        root, slot=current_slot, uid=runtime_uid, gid=runtime_gid
+    )
 
     target_network = _under(root, Path("/etc/netplan/90-iii-operator.yaml"))
     source_network = _under(root, Path("/etc/netplan/50-cloud-init.yaml"))
