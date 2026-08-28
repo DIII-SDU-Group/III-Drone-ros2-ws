@@ -961,7 +961,7 @@
       "qualified_release_inclusion": false,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "10c9a707a96f935eb5a6df8ff97bb0a2fc2c0e09f3af3fc2d7463e0fde82c4e9",
+      "sha256": "f91e1b9f6198f0b79160ff04a6cb07ea37cbc6a59d7dddb869aea9591d3e5e57",
       "source_of_truth": "codex-backlogs/deployment-infrastructure-redesign.md"
     },
     {
@@ -1585,7 +1585,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "98b6f406c91e8e7867c3d996add5d2e208ad32bf331fb9cecb0bcafbe97b531e",
+      "sha256": "b5e575c6660e6f128ddf4e933783696f38aa9a0fb6396b868a865192b3ddb7ec",
       "source_of_truth": "docs/deployment-and-field-operations.md"
     },
     {
@@ -1697,7 +1697,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "c7350d3f63dc7a898bf0b515c1d6766f84b470e427efedb651843becb6869b2e",
+      "sha256": "21f3251006e39938935f15c10b2a5940b8823a415b6ab4feeadcf439ad8db71d",
       "source_of_truth": "deployment/scripts/update_documentation_references.py"
     },
     {
@@ -1825,7 +1825,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "c5581a27811afe3bf8436b4050530876648fe260554fd507a0d31bfad3afd1d9",
+      "sha256": "939e51d322b6c1112f3ba07b0b624121bf1c4f02399f6080964821a2392242cd",
       "source_of_truth": "docs/host-provisioning.md"
     },
     {
@@ -2309,7 +2309,7 @@
       "source_of_truth": "tools/III-Drone-MCP/README.md"
     }
   ],
-  "manifest_id": "71d34a9620cf7b11ba42dcf3188260c2a6cf7a383c986e6f0459a3771248f47b",
+  "manifest_id": "63b0fc312b65ed15cd808ffa86243ce452526bc1ec9a1185815baa6e906f79bd",
   "policy_schema": "iii.documentation-policy/v1",
   "schema": "iii.documentation-manifest/v1"
 }

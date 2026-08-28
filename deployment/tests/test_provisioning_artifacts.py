@@ -20,7 +20,9 @@ from iii_deployment.provisioning_artifacts import (
     RECEIVER_SITE_PACKAGES,
     _extract_receiver_wheels,
     inspect_materialization,
+    inspect_receiver_update_materialization,
     materialize,
+    materialize_receiver_update,
     write_receiver_requirements,
 )
 from iii_deployment.receiver.update import verify_receiver_update
@@ -32,6 +34,8 @@ SCHEMAS = WORKSPACE / "deployment/schemas/v1"
 def test_controller_builder_entrypoint_is_executable() -> None:
     script = WORKSPACE / "deployment/scripts/prepare_host_provisioning_artifacts.py"
     assert os.access(script, os.X_OK)
+    update = WORKSPACE / "deployment/scripts/prepare_receiver_update_artifact.py"
+    assert os.access(update, os.X_OK)
 
 
 def _enrollment(path: Path) -> Path:
@@ -142,6 +146,63 @@ def test_materializer_produces_complete_signed_owner_controlled_input(
     assert all(
         path.stat().st_mode & 0o077 == 0 for path in output.rglob("*") if path.is_file()
     )
+
+    update_output = tmp_path / "receiver-update-generation-2"
+    update_inspection = inspect_receiver_update_materialization(
+        output_root=update_output,
+        provisioning_root=output,
+        workspace_root=WORKSPACE,
+        generation=2,
+        version="v1.0.1",
+        schema_root=SCHEMAS,
+    )
+    update_record = materialize_receiver_update(
+        update_inspection, operation_id="iii-receiver-update-artifact-test"
+    )
+    stored_update = json.loads((update_output / "artifact-record.json").read_text())
+    registry.validate("receiver-update-artifact", stored_update)
+    assert stored_update["record_id"] == update_record["record_id"]
+    assert stored_update["source_provisioning_record_id"] == stored["record_id"]
+    assert stored_update["source_receiver_id"] == stored["receiver_id"]
+    assert stored_update["generation"] == 2
+    assert stored_update["signer_id"] == stored["signer_ids"]["receiver_update"]
+    updated = verify_receiver_update(
+        update_output / "bundle",
+        trust=output / "trust/receiver-update-signers.json",
+        registry=registry,
+    )
+    assert updated.manifest["receiver_id"] == stored_update["receiver_id"]
+    assert updated.manifest["generation"] == 2
+    assert all(
+        path.stat().st_mode & 0o077 == 0
+        for path in update_output.rglob("*")
+        if path.is_file()
+    )
+
+    wheel = next((output / "artifacts/receiver-wheelhouse").glob("*.whl"))
+    original = wheel.read_bytes()
+    wheel.write_bytes(original + b"tamper")
+    with pytest.raises(ProvisioningArtifactError, match="wheel changed"):
+        inspect_receiver_update_materialization(
+            output_root=tmp_path / "tampered-update",
+            provisioning_root=output,
+            workspace_root=WORKSPACE,
+            generation=3,
+            version="v1.0.2",
+            schema_root=SCHEMAS,
+        )
+    wheel.write_bytes(original)
+    wheel.chmod(0o600)
+
+    with pytest.raises(ProvisioningArtifactError, match="newer than"):
+        inspect_receiver_update_materialization(
+            output_root=tmp_path / "old-generation-update",
+            provisioning_root=output,
+            workspace_root=WORKSPACE,
+            generation=1,
+            version="v1.0.0",
+            schema_root=SCHEMAS,
+        )
 
 
 @pytest.mark.parametrize("hostile", ["../escape.py", "/absolute.py"])

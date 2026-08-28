@@ -232,6 +232,7 @@ def test_finalize_refuses_runtime_inaccessible_gateway_before_revocation(
 ) -> None:
     root = _root(tmp_path)
     slot = root / "opt/iii/receiver/slots/a"
+    original_mode = slot.stat().st_mode & 0o777
     slot.chmod(0o000)
 
     try:
@@ -243,7 +244,7 @@ def test_finalize_refuses_runtime_inaccessible_gateway_before_revocation(
                 user_exists=lambda _name: True,
             )
     finally:
-        slot.chmod(0o555)
+        slot.chmod(original_mode)
 
     assert (root / "boot/firmware/user-data").is_file()
 

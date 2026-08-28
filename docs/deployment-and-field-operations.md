@@ -132,10 +132,29 @@ reserve. The candidate must use the separately governed `receiver-update` trust
 authority and declare compatibility with every retained application,
 configuration, journal, audit, bootstrap, CLI, and request format.
 
+From a source checkout, first materialize a new signed candidate from the exact
+retained host-provisioning artifact. Inspect before creating any files, then run
+only the same command with `--apply` after review:
+
+```bash
+deployment/scripts/prepare_receiver_update_artifact.py \
+  --output .iii/receiver-update-<generation> \
+  --provisioning-artifacts .iii/host-provision \
+  --workspace-root . \
+  --generation <generation> \
+  --version v<major>.<minor>.<patch> \
+  --operation-id receiver-update-artifact-<generation>
+```
+
+Retain its `iii.receiver-update-artifact/v1` record. It binds the source
+provisioning record and receiver identity, signer, exact schema/policy inputs,
+new receiver identity/generation, and hashes of all signed bundle files. Use the
+generated `bundle/` directory in the following inspection and apply commands.
+
 Verify the exact bundle locally without contacting or mutating the aircraft:
 
 ```bash
-iii deploy receiver-update inspect <signed-receiver-bundle> \
+iii deploy receiver-update inspect .iii/receiver-update-<generation>/bundle \
   --trust <receiver-update-trust-store> --output=json
 ```
 

@@ -101,6 +101,31 @@ wheelhouse are recursively content-addressed again in the retained host plan.
 Symlinks, special files, empty trees, inputs writable by another identity, and
 changed content between plan and apply are rejected.
 
+The provisioning tree is also the sole source for later receiver self-update
+artifacts. Build each newer generation from the exact retained tree so the
+wheel closure, generation-1 receiver identity, private signer, and active
+receiver-update trust entry are authenticated together. Planning is read-only
+and the output must be a new Git-ignored owner-only path:
+
+```bash
+deployment/scripts/prepare_receiver_update_artifact.py \
+  --output .iii/receiver-update-generation-2 \
+  --provisioning-artifacts .iii/host-provision \
+  --workspace-root . \
+  --generation 2 \
+  --version v1.0.1 \
+  --operation-id iii-receiver-update-artifact-generation-2
+# Review the canonical inspection result, then repeat the exact command with --apply.
+```
+
+The resulting `iii.receiver-update-artifact/v1` record binds the source
+provisioning record and receiver, new receiver identity and generation, signer,
+schema/policy inputs, and every signed bundle file. The builder refuses an
+existing output, an altered wheel, source record or trust relationship, a
+generation at or below the provisioning generation, non-SemVer versions, links,
+and content changes between inspection and apply. Preserve this record beside
+the receiver-update plan, actual record, and terminal receiver journal.
+
 ## Owner-Controlled Input
 
 Create the input under the Git-ignored `.iii/` tree or another owner-controlled,

@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/receiver-update-artifact.schema.json",
+  "title": "III receiver self-update materialization record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "record_id", "operation_id", "recorded_at", "source_provisioning_record_id", "source_receiver_id", "receiver_id", "generation", "version", "signer_id", "schema_content_id", "portable_policy_sha256", "files"],
+  "properties": {
+    "schema": {"const": "iii.receiver-update-artifact/v1"},
+    "record_id": {"$ref": "#/definitions/hash"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,127}$"},
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "source_provisioning_record_id": {"$ref": "#/definitions/hash"},
+    "source_receiver_id": {"$ref": "#/definitions/hash"},
+    "receiver_id": {"$ref": "#/definitions/hash"},
+    "generation": {"type": "integer", "minimum": 2},
+    "version": {"type": "string", "pattern": "^v(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$"},
+    "signer_id": {"$ref": "#/definitions/hash"},
+    "schema_content_id": {"$ref": "#/definitions/hash"},
+    "portable_policy_sha256": {"$ref": "#/definitions/hash"},
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receiver-update.manifest.json", "receiver-update.sig.json", "receiver-update.tar"],
+      "properties": {
+        "receiver-update.manifest.json": {"$ref": "#/definitions/file"},
+        "receiver-update.sig.json": {"$ref": "#/definitions/file"},
+        "receiver-update.tar": {"$ref": "#/definitions/file"}
+      }
+    }
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "size"],
+      "properties": {
+        "sha256": {"$ref": "#/definitions/hash"},
+        "size": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

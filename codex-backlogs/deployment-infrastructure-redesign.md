@@ -3235,6 +3235,25 @@ Implementation notes (2026-08-26):
   inspected native extension was confirmed AArch64 ELF. The target-equivalent
   Ansible fixture now consumes this same canonical slot builder instead of the
   retired bootstrap-delegating wrapper.
+- Added the canonical read-only-plan/apply builder for later receiver
+  generations. It authenticates the exact host-provisioning artifact record,
+  complete wheel closure, generation-1 bundle identity, owner-only signer,
+  active receiver-update trust entry, schemas, and portable-state policy before
+  expanding and signing a separately identified slot; every input is
+  reauthenticated immediately before materialization. It refuses overwrites,
+  generation regression, non-SemVer versions, tampering, links, and unsafe
+  output paths and emits a validated `iii.receiver-update-artifact/v1` record.
+- The production r7 source produced signed generation 2 / `v1.0.1` artifact
+  `.iii/receiver-update-r7-g2` under operation
+  `iii-receiver-update-r7-g2-20260828`. Artifact record
+  `5d54c1f140ca032d40c449db836fabb061df6a6dc04ade5b8d018b63022862f3`
+  binds source record `bcd2d80c8954cf5ad8cdd5968696101054e9335606fcb0c69c8d92001a882770`
+  and receiver `14ae2380ce5048c734b9157c35bab8a28207308e93fceb9dfa58c0c2a6e75db9`
+  to candidate receiver
+  `9b2c6e8d91a31b3c3fa52df6af6e2c9799a9d99e3bf55eaeb5580203be2b0364`.
+  Focused tests include real generation-2 creation plus schema, signature,
+  permissions, wheel-tamper, and generation-regression checks. Physical A/B
+  apply and forced fallback evidence remain open until r7 is booted on the Pi.
 
 #### P2.T4: Implement Activation Health And Automatic Rollback
 
@@ -4352,6 +4371,26 @@ user-unit ownership passed (`2 passed` in 324.76 s). The replacement plan's
 authenticated non-secret record import-before-convergence and fresh-identity
 boundary also passed (`1 passed`); this unit-level result does not substitute
 for the unchecked physical replacement-laptop enrollment or login/logout drill.
+
+- Live Ubuntu 22.04 GC commissioning on 2026-08-28 exposed and fixed stock
+  `/etc/os-release` symlink handling, valid `Documents/QGroundControl` status,
+  empty systemd unit-file states, an existing complete Docker CE versus
+  `docker.io` package conflict, read-only authentication skipped by Ansible
+  check mode, an omitted PX4-parameter companion in lifecycle plan binding, and
+  false lifecycle success when a target condition prevented activation. Each
+  defect has a focused regression. Provisioning operation
+  `iii-bf5f8b2b85214a2e9c0dd03c` converged the physical workstation and proved
+  zero drift across all three managed categories; report
+  `ddbdfc5f8b2f4add92d51d6d09018c773639c6a8b0403ab68b1596e517a94e4f`.
+- Retained start operation `iii-c4898f9e8a2441e9a4f81b72` activated the GC
+  target plus discovery, mirror, and clock companions while the absent
+  application slot safely conditioned proxy/frontend and browser/QGroundControl
+  remained inactive. Retained stop operation
+  `iii-2ccd413edcd3452382062e0f` explicitly contained every target member; all
+  were inactive afterward and both lifecycle results declared
+  `aircraft_mutation=false`. This validates the physical current-session
+  lifecycle but does not claim the still-disruptive desktop logout/login event
+  or a separate replacement-laptop import/enrollment drill.
 
 #### P3.T9: Install And Transactionally Update GC/QGroundControl Applications
 

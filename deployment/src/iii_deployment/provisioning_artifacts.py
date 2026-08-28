@@ -6,8 +6,10 @@ from datetime import datetime, timezone
 from email.parser import Parser
 import hashlib
 import ipaddress
+import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
@@ -20,9 +22,15 @@ from .contracts import ContractError, ContractRegistry, canonical_json, content_
 from .host_provision import load_input
 from .identity import load_machine_enrollment
 from .receiver.update import package_receiver_update, verify_receiver_update
-from .signers import generate_signer, validate_trusted_signers
+from .signers import (
+    generate_signer,
+    load_private_key,
+    signer_id_for_public_key,
+    validate_trusted_signers,
+)
 
 RECORD_SCHEMA = "iii.host-provisioning-artifacts/v1"
+RECEIVER_ARTIFACT_SCHEMA = "iii.receiver-update-artifact/v1"
 LOCAL_PROJECTS = (
     "src/III-Drone-Contracts",
     "src/III-Drone-Configuration",
@@ -567,6 +575,249 @@ def materialize(
         return {
             **record,
             "output_root": str(output),
+            "record_path": str(output / "artifact-record.json"),
+        }
+    except Exception:
+        shutil.rmtree(partial, ignore_errors=True)
+        raise
+
+
+def inspect_receiver_update_materialization(
+    *,
+    output_root: Path,
+    provisioning_root: Path,
+    workspace_root: Path,
+    generation: int,
+    version: str,
+    schema_root: Path,
+) -> dict[str, Any]:
+    output = output_root.expanduser().absolute()
+    _require_ignored(output)
+    if output.exists() or output.is_symlink():
+        raise ProvisioningArtifactError("receiver update output already exists")
+    if generation <= 1:
+        raise ProvisioningArtifactError(
+            "receiver self-update generation must be newer than provisioning generation 1"
+        )
+    if (
+        re.fullmatch(
+            r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version
+        )
+        is None
+    ):
+        raise ProvisioningArtifactError("receiver self-update version is not SemVer")
+
+    source = provisioning_root.expanduser().resolve()
+    if provisioning_root.is_symlink() or source.is_symlink() or not source.is_dir():
+        raise ProvisioningArtifactError(
+            "source provisioning artifact must be a real directory"
+        )
+    registry = ContractRegistry(schema_root)
+    record_path = _owner_file(
+        source / "artifact-record.json", label="source provisioning record"
+    )
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ProvisioningArtifactError(
+            f"cannot load source provisioning record: {exc}"
+        ) from exc
+    registry.validate("host-provisioning-artifacts", record)
+    if (
+        content_identity(
+            {key: value for key, value in record.items() if key != "record_id"}
+        )
+        != record["record_id"]
+    ):
+        raise ProvisioningArtifactError("source provisioning record identity mismatch")
+
+    wheelhouse = source / "artifacts/receiver-wheelhouse"
+    if wheelhouse.is_symlink() or not wheelhouse.is_dir():
+        raise ProvisioningArtifactError("source receiver wheelhouse is unsafe")
+    expected_wheels = {item["filename"]: item for item in record["wheels"]}
+    actual_names = {path.name for path in wheelhouse.glob("*.whl")}
+    if actual_names != set(expected_wheels):
+        raise ProvisioningArtifactError("source receiver wheel inventory changed")
+    for name, expected in expected_wheels.items():
+        path = wheelhouse / name
+        if (
+            path.is_symlink()
+            or not path.is_file()
+            or path.stat().st_size != expected["size"]
+            or _sha256(path) != expected["sha256"]
+        ):
+            raise ProvisioningArtifactError(f"source receiver wheel changed: {name}")
+
+    key_path = _owner_file(
+        source / "signing/private/receiver-update.pem",
+        label="receiver update private key",
+    )
+    trust_path = _owner_file(
+        source / "trust/receiver-update-signers.json",
+        label="receiver update trust store",
+    )
+    try:
+        trust = validate_trusted_signers(
+            json.loads(trust_path.read_text(encoding="utf-8")), registry
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ProvisioningArtifactError(
+            f"cannot load receiver update trust: {exc}"
+        ) from exc
+    signer_id = signer_id_for_public_key(load_private_key(key_path).public_key())
+    trusted = [
+        item
+        for item in trust["signers"]
+        if item["signer_id"] == signer_id
+        and item["authority"] == "receiver-update"
+        and item["state"] == "active"
+    ]
+    if len(trusted) != 1 or signer_id != record["signer_ids"]["receiver_update"]:
+        raise ProvisioningArtifactError(
+            "receiver update signer does not match source record and active trust"
+        )
+    installed = verify_receiver_update(
+        source / "artifacts/receiver-bundle", trust=trust_path, registry=registry
+    )
+    if (
+        installed.manifest["generation"] != 1
+        or installed.manifest["receiver_id"] != record["receiver_id"]
+    ):
+        raise ProvisioningArtifactError(
+            "source provisioning receiver bundle differs from its record"
+        )
+
+    workspace = workspace_root.expanduser().resolve()
+    policy = workspace / "deployment/portable-state-policy.json"
+    if workspace_root.is_symlink() or not policy.is_file() or policy.is_symlink():
+        raise ProvisioningArtifactError("receiver update workspace inputs are unsafe")
+    schemas = Path(schema_root).resolve()
+    if schema_root.is_symlink() or not schemas.is_dir():
+        raise ProvisioningArtifactError("receiver update schema root is unsafe")
+    schema_files = []
+    for path in sorted(schemas.glob("*.json"), key=lambda item: item.name):
+        if path.is_symlink() or not path.is_file():
+            raise ProvisioningArtifactError("receiver update schema input is unsafe")
+        schema_files.append(
+            {"path": path.name, "sha256": _sha256(path), "size": path.stat().st_size}
+        )
+    if not schema_files:
+        raise ProvisioningArtifactError("receiver update schema root is empty")
+    return {
+        "output_root": str(output),
+        "provisioning_root": str(source),
+        "source_record_id": record["record_id"],
+        "source_receiver_id": record["receiver_id"],
+        "workspace_root": str(workspace),
+        "schema_root": str(schemas),
+        "schema_content_id": content_identity(schema_files),
+        "portable_policy_sha256": _sha256(policy),
+        "wheelhouse": str(wheelhouse),
+        "wheels": list(record["wheels"]),
+        "private_key": str(key_path),
+        "private_key_sha256": _sha256(key_path),
+        "trust": str(trust_path),
+        "trust_sha256": _sha256(trust_path),
+        "signer_id": signer_id,
+        "generation": generation,
+        "version": version,
+    }
+
+
+def materialize_receiver_update(
+    inspection: Mapping[str, Any], *, operation_id: str
+) -> dict[str, Any]:
+    output = Path(str(inspection["output_root"]))
+    partial = output.with_name(f".{output.name}.partial-{uuid.uuid4().hex}")
+    if partial.exists() or partial.is_symlink():
+        raise ProvisioningArtifactError("receiver update partial already exists")
+    current = inspect_receiver_update_materialization(
+        output_root=output,
+        provisioning_root=Path(str(inspection["provisioning_root"])),
+        workspace_root=Path(str(inspection["workspace_root"])),
+        generation=int(inspection["generation"]),
+        version=str(inspection["version"]),
+        schema_root=Path(str(inspection["schema_root"])),
+    )
+    if current != dict(inspection):
+        raise ProvisioningArtifactError(
+            "receiver update inputs changed after inspection"
+        )
+    partial.mkdir(parents=True, mode=0o700)
+    try:
+        workspace = Path(str(inspection["workspace_root"]))
+        schemas = Path(str(inspection["schema_root"]))
+        registry = ContractRegistry(schemas)
+        payload = _receiver_payload(
+            partial,
+            workspace,
+            schemas,
+            Path(str(inspection["wheelhouse"])),
+        )
+        bundle = partial / "bundle"
+        manifest = package_receiver_update(
+            payload,
+            bundle,
+            generation=int(inspection["generation"]),
+            version=str(inspection["version"]),
+            compatibility=COMPATIBILITY,
+            private_key_path=Path(str(inspection["private_key"])),
+            registry=registry,
+        )
+        verified = verify_receiver_update(
+            bundle, trust=Path(str(inspection["trust"])), registry=registry
+        )
+        if verified.manifest != manifest:
+            raise ProvisioningArtifactError(
+                "materialized receiver update verification disagrees"
+            )
+        shutil.rmtree(payload)
+        files = {
+            name: {
+                "sha256": _sha256(bundle / name),
+                "size": (bundle / name).stat().st_size,
+            }
+            for name in (
+                "receiver-update.manifest.json",
+                "receiver-update.sig.json",
+                "receiver-update.tar",
+            )
+        }
+        record: dict[str, Any] = {
+            "schema": RECEIVER_ARTIFACT_SCHEMA,
+            "record_id": "0" * 64,
+            "operation_id": operation_id,
+            "recorded_at": datetime.now(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z"),
+            "source_provisioning_record_id": inspection["source_record_id"],
+            "source_receiver_id": inspection["source_receiver_id"],
+            "receiver_id": manifest["receiver_id"],
+            "generation": manifest["generation"],
+            "version": manifest["version"],
+            "signer_id": inspection["signer_id"],
+            "schema_content_id": inspection["schema_content_id"],
+            "portable_policy_sha256": inspection["portable_policy_sha256"],
+            "files": files,
+        }
+        record["record_id"] = content_identity(
+            {key: value for key, value in record.items() if key != "record_id"}
+        )
+        registry.validate("receiver-update-artifact", record)
+        record_path = partial / "artifact-record.json"
+        record_path.write_bytes(canonical_json(record) + b"\n")
+        for path in partial.rglob("*"):
+            if path.is_symlink():
+                raise ProvisioningArtifactError(
+                    "materialized receiver update contains a link"
+                )
+            path.chmod(0o700 if path.is_dir() else 0o600)
+        output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.replace(partial, output)
+        return {
+            **record,
+            "output_root": str(output),
+            "bundle": str(output / "bundle"),
             "record_path": str(output / "artifact-record.json"),
         }
     except Exception:
