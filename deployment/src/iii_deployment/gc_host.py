@@ -49,6 +49,14 @@ OFFLINE_ROLES = {
     "arm64-builder-image",
     "apt-packages",
 }
+DEFAULT_CONTAINER_PACKAGES = ("docker.io", "docker-compose-v2")
+DOCKER_CE_PACKAGES = (
+    "containerd.io",
+    "docker-buildx-plugin",
+    "docker-ce",
+    "docker-ce-cli",
+    "docker-compose-plugin",
+)
 REQUIRED_GC_PATHS = {
     ".config/iii": "settings",
     ".config/iii/credentials": "secret",
@@ -253,6 +261,69 @@ def inspect_platform(
     }
 
 
+def _installed_deb_packages(
+    names: Sequence[str], *, runner=subprocess.run
+) -> dict[str, str]:
+    completed = runner(
+        [
+            "/usr/bin/dpkg-query",
+            "--show",
+            "--showformat=${binary:Package}\\t${Version}\\t${db:Status-Abbrev}\\n",
+            *names,
+        ],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    if completed.returncode not in {0, 1}:
+        raise GCHostError("cannot inspect the installed container runtime packages")
+    installed = {}
+    for line in completed.stdout.splitlines():
+        fields = line.split("\t")
+        if len(fields) != 3 or fields[2] != "ii ":
+            continue
+        name = fields[0].split(":", 1)[0]
+        if name in names and fields[1]:
+            installed[name] = fields[1]
+    return installed
+
+
+def inspect_container_runtime(
+    policy: Mapping[str, Any], *, runner=subprocess.run
+) -> dict[str, Any]:
+    contract = policy["container_runtime"]
+    accepted = tuple(contract["accepted_existing_packages"])
+    installed = _installed_deb_packages(accepted, runner=runner)
+    present = set(installed)
+    if present and present != set(accepted):
+        missing = sorted(set(accepted) - present)
+        raise GCHostError(
+            "partial Docker CE installation cannot satisfy the GC runtime boundary; "
+            f"missing: {', '.join(missing)}"
+        )
+    if present:
+        defaults = set(contract["default_packages"])
+        install_packages = [
+            package
+            for package in policy["operational_packages"]
+            if package not in defaults
+        ]
+        return {
+            "provider": contract["accepted_existing_provider"],
+            "install_packages": install_packages,
+            "existing_packages": [
+                {"name": name, "version": installed[name]} for name in sorted(installed)
+            ],
+        }
+    return {
+        "provider": "ubuntu",
+        "install_packages": list(policy["operational_packages"]),
+        "existing_packages": [],
+    }
+
+
 def load_policy(path: Path, registry: ContractRegistry) -> dict[str, Any]:
     source = path.resolve()
     if path.is_symlink() or source.is_symlink() or not source.is_file():
@@ -268,6 +339,14 @@ def load_policy(path: Path, registry: ContractRegistry) -> dict[str, Any]:
         raise GCHostError("GC policy must define exactly both supported Ubuntu hosts")
     if set(value["offline_roles"]) != OFFLINE_ROLES:
         raise GCHostError("GC policy prepared-offline role inventory is not canonical")
+    runtime = value["container_runtime"]
+    if (
+        tuple(runtime["default_packages"]) != DEFAULT_CONTAINER_PACKAGES
+        or runtime["accepted_existing_provider"] != "docker-ce"
+        or tuple(runtime["accepted_existing_packages"]) != DOCKER_CE_PACKAGES
+        or not set(DEFAULT_CONTAINER_PACKAGES).issubset(value["operational_packages"])
+    ):
+        raise GCHostError("GC policy container runtime ownership is not canonical")
     if len(value["managed_user_paths"]) != len(
         {item["path"] for item in value["managed_user_paths"]}
     ):
@@ -531,6 +610,7 @@ def build_plan(
         "ansible": _tree_manifest(ansible_root),
         "ansible_playbook": _file_evidence(playbook),
         "repositories": repositories,
+        "container_runtime": inspect_container_runtime(policy),
         "offline": offline,
         "offline_cache": cache,
         "replacement": replacement,
@@ -651,6 +731,8 @@ def _verify_plan(
     current_user = _current_user(None, None)
     if current_user != plan["user"]:
         raise GCHostChangedError("GC user identity changed after planning")
+    if inspect_container_runtime(policy) != plan["container_runtime"]:
+        raise GCHostChangedError("GC container runtime changed after planning")
     workspace = Path(str(plan["workspace"]["path"]))
     if _application_manifest(workspace) != plan["workspace"]["application_inputs"]:
         raise GCHostChangedError("GC application inputs changed after planning")
@@ -730,6 +812,10 @@ def _run_ansible(
             "iii_gc_home": plan["user"]["home"],
             "iii_gc_workspace": plan["workspace"]["path"],
             "iii_gc_platform_id": plan["platform"]["platform_id"],
+            "iii_gc_container_runtime": plan["container_runtime"],
+            "iii_gc_operational_packages": plan["container_runtime"][
+                "install_packages"
+            ],
             "iii_gc_offline": plan["offline"],
             "iii_gc_offline_cache": (
                 plan["offline_cache"]["root"] if plan["offline_cache"] else ""

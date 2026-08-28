@@ -3,11 +3,21 @@
   "$id": "https://iii-drone.invalid/schemas/v1/gc-host-policy.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "supported_platforms", "operational_packages", "development_packages", "forbidden_proxy_host_packages", "managed_user_paths", "login_units", "manual_units", "recovery_units", "automatic_hostname", "clock_profiles", "clock_skip_profiles", "builder", "offline_roles", "excluded_prerequisites"],
+  "required": ["schema", "supported_platforms", "operational_packages", "container_runtime", "development_packages", "forbidden_proxy_host_packages", "managed_user_paths", "login_units", "manual_units", "recovery_units", "automatic_hostname", "clock_profiles", "clock_skip_profiles", "builder", "offline_roles", "excluded_prerequisites"],
   "properties": {
     "schema": {"const": "iii.gc-host-policy/v1"},
     "supported_platforms": {"type": "array", "minItems": 2, "items": {"type": "object", "additionalProperties": false, "required": ["id", "os_id", "version_id", "architecture"], "properties": {"id": {"type": "string", "minLength": 1}, "os_id": {"const": "ubuntu"}, "version_id": {"enum": ["22.04", "24.04"]}, "architecture": {"const": "x86_64"}}}},
     "operational_packages": {"$ref": "#/definitions/strings"},
+    "container_runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default_packages", "accepted_existing_provider", "accepted_existing_packages"],
+      "properties": {
+        "default_packages": {"const": ["docker.io", "docker-compose-v2"]},
+        "accepted_existing_provider": {"const": "docker-ce"},
+        "accepted_existing_packages": {"const": ["containerd.io", "docker-buildx-plugin", "docker-ce", "docker-ce-cli", "docker-compose-plugin"]}
+      }
+    },
     "development_packages": {"$ref": "#/definitions/strings"},
     "forbidden_proxy_host_packages": {"$ref": "#/definitions/strings"},
     "managed_user_paths": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["path", "mode", "class"], "properties": {"path": {"type": "string", "pattern": "^(?:[.][A-Za-z0-9._/-]+|Documents/QGroundControl)$"}, "mode": {"pattern": "^0[0-7]{3}$"}, "class": {"enum": ["application", "cache", "logs", "machine-identity", "portable-records", "secret", "settings", "state"]}}}},

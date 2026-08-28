@@ -3,7 +3,7 @@
   "$id": "https://iii-drone.invalid/schemas/v1/gc-provisioning-plan.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "operation_id", "platform", "user", "workspace", "policy", "ansible", "ansible_playbook", "repositories", "offline", "offline_cache", "replacement", "archive_import", "required_checks", "declared_permissions", "mutations", "excluded_prerequisites", "managed_boundaries", "content_id"],
+  "required": ["schema", "operation_id", "platform", "user", "workspace", "policy", "ansible", "ansible_playbook", "repositories", "container_runtime", "offline", "offline_cache", "replacement", "archive_import", "required_checks", "declared_permissions", "mutations", "excluded_prerequisites", "managed_boundaries", "content_id"],
   "properties": {
     "schema": {"const": "iii.gc-provisioning-plan/v1"},
     "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
@@ -14,6 +14,7 @@
     "ansible": {"$ref": "#/definitions/tree"},
     "ansible_playbook": {"$ref": "#/definitions/file"},
     "repositories": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/definitions/repository"}},
+    "container_runtime": {"$ref": "#/definitions/container_runtime"},
     "offline": {"type": "boolean"},
     "offline_cache": {"type": ["object", "null"]},
     "replacement": {"type": "boolean"},
@@ -139,6 +140,28 @@
         "mutation": {"const": "none"},
         "scoped_worktree_sha256": {"$ref": "#/definitions/hash"},
         "scoped_dirty": {"type": "boolean"}
+      }
+    },
+    "container_runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "install_packages", "existing_packages"],
+      "properties": {
+        "provider": {"enum": ["ubuntu", "docker-ce"]},
+        "install_packages": {"$ref": "#/definitions/nonempty_strings"},
+        "existing_packages": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "version"],
+            "properties": {
+              "name": {"type": "string", "pattern": "^[a-z0-9+.-]+$"},
+              "version": {"type": "string", "minLength": 1}
+            }
+          }
+        }
       }
     },
     "offline_artifact": {

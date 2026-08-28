@@ -15,6 +15,8 @@
           - iii_gc_home is match('^/')
           - iii_gc_workspace is match('^/')
           - iii_gc_platform_id in ['ubuntu-22.04-x86_64', 'ubuntu-24.04-x86_64']
+          - iii_gc_container_runtime.provider in ['ubuntu', 'docker-ce']
+          - iii_gc_operational_packages | length > 0
           - iii_gc_offline is boolean
           - iii_gc_policy is match('^/')
           - iii_gc_application_id is match('^[a-f0-9]{64}$')

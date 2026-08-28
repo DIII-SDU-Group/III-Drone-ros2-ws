@@ -15,6 +15,7 @@ from iii_deployment.gc_host import (
     apply_plan,
     build_plan,
     inspect_platform,
+    inspect_container_runtime,
     inspect_status,
     load_offline_cache,
     load_policy,
@@ -55,6 +56,17 @@ def test_policy_pins_both_supported_platforms_and_ros_free_boundaries():
         "Documents/QGroundControl",
     }.issubset({item["path"] for item in policy["managed_user_paths"]})
     assert "skopeo" in policy["operational_packages"]
+    assert policy["container_runtime"] == {
+        "default_packages": ["docker.io", "docker-compose-v2"],
+        "accepted_existing_provider": "docker-ce",
+        "accepted_existing_packages": [
+            "containerd.io",
+            "docker-buildx-plugin",
+            "docker-ce",
+            "docker-ce-cli",
+            "docker-compose-plugin",
+        ],
+    }
     assert {
         "gstreamer1.0-gl",
         "gstreamer1.0-libav",
@@ -213,6 +225,46 @@ def test_unsupported_os_or_architecture_fails_closed(tmp_path):
             os_release_path=_os_release(tmp_path / "os-release", "24.04"),
             architecture="aarch64",
         )
+
+
+def test_container_runtime_preserves_only_a_complete_retained_docker_ce_install():
+    policy = load_policy(POLICY, ContractRegistry(SCHEMAS))
+    packages = policy["container_runtime"]["accepted_existing_packages"]
+
+    def runner(_argv, **_kwargs):
+        stdout = "".join(f"{name}\t1.2.3-retained\tii \n" for name in packages)
+        return __import__("subprocess").CompletedProcess([], 0, stdout, "")
+
+    result = inspect_container_runtime(policy, runner=runner)
+
+    assert result["provider"] == "docker-ce"
+    assert {item["name"] for item in result["existing_packages"]} == set(packages)
+    assert "docker.io" not in result["install_packages"]
+    assert "docker-compose-v2" not in result["install_packages"]
+    assert "skopeo" in result["install_packages"]
+
+    def partial(_argv, **_kwargs):
+        return __import__("subprocess").CompletedProcess(
+            [], 1, "docker-ce\t1.2.3-retained\tii \n", ""
+        )
+
+    with pytest.raises(GCHostError, match="partial Docker CE"):
+        inspect_container_runtime(policy, runner=partial)
+
+
+def test_container_runtime_uses_ubuntu_packages_when_docker_ce_is_absent():
+    policy = load_policy(POLICY, ContractRegistry(SCHEMAS))
+    missing = lambda *_args, **_kwargs: __import__("subprocess").CompletedProcess(
+        [], 1, "", ""
+    )
+
+    result = inspect_container_runtime(policy, runner=missing)
+
+    assert result == {
+        "provider": "ubuntu",
+        "install_packages": policy["operational_packages"],
+        "existing_packages": [],
+    }
 
 
 def _cache(tmp_path: Path, platform_id: str = "ubuntu-24.04-x86_64") -> Path:

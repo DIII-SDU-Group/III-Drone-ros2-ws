@@ -26,6 +26,17 @@
     "skopeo",
     "xdg-utils"
   ],
+  "container_runtime": {
+    "default_packages": ["docker.io", "docker-compose-v2"],
+    "accepted_existing_provider": "docker-ce",
+    "accepted_existing_packages": [
+      "containerd.io",
+      "docker-buildx-plugin",
+      "docker-ce",
+      "docker-ce-cli",
+      "docker-compose-plugin"
+    ]
+  },
   "development_packages": [
     "build-essential",
     "git",

@@ -77,6 +77,7 @@
           'install_id': iii_gc_install_id,
           'offline': iii_gc_offline,
           'cache_id': iii_gc_cache_id,
+          'container_runtime_provider': iii_gc_container_runtime.provider,
           'user': iii_gc_user,
           'automatic_hostname': 'iii.local',
           'login_units': iii_gc_policy_value.login_units,

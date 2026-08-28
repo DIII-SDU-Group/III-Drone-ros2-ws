@@ -1,4 +1,18 @@
 ---
+- name: Inventory installed packages for an accepted existing Docker CE runtime
+  ansible.builtin.package_facts:
+    manager: apt
+  when: iii_gc_container_runtime.provider == 'docker-ce'
+
+- name: Reauthenticate every retained Docker CE package and version
+  ansible.builtin.assert:
+    that:
+      - item.name in ansible_facts.packages
+      - ansible_facts.packages[item.name] | selectattr('version', 'equalto', item.version) | list | length == 1
+    fail_msg: "Retained Docker CE package changed or is unavailable: {{ item.name }}"
+  loop: "{{ iii_gc_container_runtime.existing_packages }}"
+  when: iii_gc_container_runtime.provider == 'docker-ce'
+
 - name: Refresh online Ubuntu package metadata for the GC baseline
   ansible.builtin.apt:
     update_cache: true
@@ -8,7 +22,7 @@
 
 - name: Install the ROS-free GC operational host packages
   ansible.builtin.apt:
-    name: "{{ iii_gc_policy_value.operational_packages }}"
+    name: "{{ iii_gc_operational_packages }}"
     state: present
     install_recommends: false
   become: true
@@ -35,7 +49,7 @@
 
 - name: Install prepared-offline GC operational packages without network access
   ansible.builtin.command:
-    argv: "{{ ['/usr/bin/apt-get', '--no-download', '--yes', 'install'] + iii_gc_policy_value.operational_packages }}"
+    argv: "{{ ['/usr/bin/apt-get', '--no-download', '--yes', 'install'] + iii_gc_operational_packages }}"
   environment:
     DEBIAN_FRONTEND: noninteractive
     LC_ALL: C
