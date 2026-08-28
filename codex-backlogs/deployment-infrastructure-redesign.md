@@ -4128,6 +4128,16 @@ Implementation notes and verification:
   `942351d911b4dc366c5634f0f5abd9a89dd95f3dff8ce674f8f41d961c3a3a0c`.
   First boot, repair/reprovision completion, and recommissioning evidence remain
   open, so the acceptance item and task remain In-Progress.
+- The first physical boot reached the authenticated `ansible-ready` cloud-init
+  marker and direct Ethernet DHCP address `10.42.0.70`. The canonical host apply
+  completed convergence, zero drift, and finalization, then exposed two
+  production defects: the aggregate run schema omitted callback `categories`,
+  and root-owned mode-0600 permanent `authorized_keys` could not be read after
+  OpenSSH dropped privileges to `iii`. Both now have red/green regressions. The
+  target-equivalent full convergence/drift-repair/finalization test opens a new
+  permanent SSH session after bootstrap removal and passed in 631.50 s. Because
+  the already-finalized physical card correctly has no bypass, a second governed
+  reimage/reprovision rehearsal is required before this task can complete.
 
 #### P3.T7: Provision Transactional Operator Networking
 
@@ -5082,6 +5092,17 @@ Implementation notes (software boundary, 2026-08-27):
   wiped-media starting point only; none of the eight acceptance items is checked
   until first boot, convergence, hardware acceptance, interruption/recovery, GC,
   and signed commissioning evidence pass on the same candidate.
+- On 2026-08-28 the first boot and direct-link bootstrap access were proven, and
+  a real three-run host transaction reached finalization. Physical execution
+  found and fixed contract drift in `iii.host-provisioning-run/v1` plus an
+  OpenSSH ownership defect in the permanent credential projection. Focused unit
+  tests pass, and the full Noble/systemd/Ansible target-equivalent regression now
+  proves a new permanent forced-command SSH session after bootstrap deletion.
+  Fresh signed ARM64 provisioning artifacts were materialized from committed
+  source as record `be08ec46a0a2b9bc772ac368aeb8f85951199191f8c3b3ff3260e1e115f93733`.
+  The physical host remains deliberately inaccessible until the card is
+  reimaged; no commissioning acceptance item is claimed from this failed first
+  attempt.
 
 #### P5.T2: Establish Automation-Ready Documentation Architecture And Validation
 
