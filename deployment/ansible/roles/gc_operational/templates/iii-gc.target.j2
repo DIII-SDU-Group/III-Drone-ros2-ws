@@ -2,7 +2,6 @@
 Description=III ground-control login session
 PartOf=graphical-session.target
 After=graphical-session.target network-online.target iii-gc-application-reconcile.service
-ConditionPathExists={{ iii_gc_home }}/.local/share/iii/gc-applications/current/application.env
 Wants=iii-gc-proxy.service iii-gc-frontend.service iii-gc-discovery.service iii-gc-mirror.service iii-gc-clock.service iii-gc-px4-parameters.service
 
 [Install]

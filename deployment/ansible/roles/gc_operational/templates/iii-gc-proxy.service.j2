@@ -2,6 +2,7 @@
 Description=III ROS-free ground-control proxy container
 PartOf=iii-gc.target graphical-session.target
 After=network-online.target
+ConditionPathExists={{ iii_gc_home }}/.local/share/iii/gc-applications/current/application.env
 
 [Service]
 Type=simple

@@ -3,6 +3,7 @@ Description=III static ground-control frontend container
 PartOf=iii-gc.target graphical-session.target
 Requires=iii-gc-proxy.service
 After=iii-gc-proxy.service
+ConditionPathExists={{ iii_gc_home }}/.local/share/iii/gc-applications/current/application.env
 
 [Service]
 Type=simple

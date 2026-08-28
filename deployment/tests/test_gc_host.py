@@ -420,6 +420,12 @@ def test_user_units_autostart_companions_but_never_browser_qgc_or_drone():
         assert unit in target
     assert "iii-gc-browser.service" not in target
     assert "qgroundcontrol" not in target.lower()
+    assert "ConditionPathExists=" not in target
+    for conditional in ("iii-gc-proxy.service.j2", "iii-gc-frontend.service.j2"):
+        assert (
+            "ConditionPathExists={{ iii_gc_home }}/.local/share/iii/gc-applications/current/application.env"
+            in (templates / conditional).read_text()
+        )
     qgc = (templates / "iii-qgc.service.j2").read_text()
     assert "WantedBy=" not in qgc
     assert "iii-gc.target" not in qgc
