@@ -183,6 +183,12 @@ def test_owner_only_bootstrap_input_renders_recovery_ethernet_and_diagnosable_se
     assert parsed_user_data["ssh_pwauth"] is False
     assert parsed_user_data["disable_root"] is True
     assert parsed_user_data["package_update"] is False
+    assert "output" not in parsed_user_data
+    rendered_commands = json.dumps(parsed_user_data["runcmd"], sort_keys=True)
+    assert (
+        "install -D -o root -g adm -m 0640 /var/log/cloud-init-output.log "
+        "/var/log/iii/bootstrap-cloud-init.log"
+    ) in rendered_commands
 
 
 def test_ethernet_only_and_multiple_wifi_bootstrap_profiles(tmp_path: Path) -> None:

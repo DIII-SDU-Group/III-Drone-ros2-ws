@@ -258,14 +258,14 @@ def render_nocloud_seed(
             [
                 "sh",
                 "-c",
+                "install -D -o root -g adm -m 0640 "
+                "/var/log/cloud-init-output.log "
+                "/var/log/iii/bootstrap-cloud-init.log && "
                 'printf \'%s\\n\' \'{"schema":"iii.cloud-init-bootstrap-status/v1","state":"ansible-ready","instance_id":"'
                 + instance_id
                 + "\"}' > /var/lib/iii/bootstrap/cloud-init-status.json && chmod 0600 /var/lib/iii/bootstrap/cloud-init-status.json",
             ]
         ],
-        "output": {
-            "all": "| sh -c 'mkdir -p /var/log/iii && exec tee -a /var/log/iii/bootstrap-cloud-init.log'"
-        },
         "final_message": "III first-boot bootstrap reached ansible-ready; inspect /var/log/cloud-init*.log and /var/log/iii/bootstrap-cloud-init.log on failure.",
     }
     access_points: dict[str, Any] = {}
