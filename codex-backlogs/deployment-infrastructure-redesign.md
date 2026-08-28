@@ -3212,6 +3212,13 @@ Implementation notes (2026-08-26):
   service resumes. A systemd scheduling failure explicitly closes the pre-switch
   state as reverted, releases the mutation lease, and leaves the selector
   untouched so a later update is not permanently blocked.
+- Canonical provisioning-artifact review found that the slot launchers still
+  delegated to the stable bootstrap virtualenv. The builder now safely expands
+  the complete hash-locked ARM64 wheel closure into each separately signed slot,
+  rejects wheel path traversal, links, collisions, and expansion-limit overflow,
+  and launches receiver/gateway/client modules with system site packages disabled
+  from the immutable active selector. A/B selection therefore changes executable
+  code while the Ansible-owned recovery bootstrap remains unchanged.
 - Focused verification after reopening passed 95 receiver A/B, engine, state,
   upload, bootstrap-entrypoint, transport/policy, and systemd cases; 31 CLI
   deploy/SSH cases; 18 offline documentation cases; 26 contract/systemd cases;

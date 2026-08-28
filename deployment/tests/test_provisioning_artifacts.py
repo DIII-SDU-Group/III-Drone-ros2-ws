@@ -5,13 +5,20 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import stat
 import struct
+import tarfile
 import zipfile
+
+import pytest
 
 from iii_deployment.contracts import ContractRegistry, canonical_json
 from iii_deployment.host_provision import load_input
 from iii_deployment.identity import create_machine_enrollment
 from iii_deployment.provisioning_artifacts import (
+    ProvisioningArtifactError,
+    RECEIVER_SITE_PACKAGES,
+    _extract_receiver_wheels,
     inspect_materialization,
     materialize,
     write_receiver_requirements,
@@ -63,6 +70,7 @@ def _fake_wheelhouse(destination: Path, **_kwargs) -> list[dict]:
             "fixture_runtime/_vendor/helper-2.0.dist-info/METADATA",
             "Metadata-Version: 2.1\nName: vendored-helper\nVersion: 2.0\n",
         )
+        archive.writestr("fixture_runtime/__init__.py", "GENERATION = 1\n")
     return write_receiver_requirements(destination)
 
 
@@ -107,11 +115,25 @@ def test_materializer_produces_complete_signed_owner_controlled_input(
     values, source = load_input(output / "inputs.json", schema_root=SCHEMAS)
     assert source == output / "inputs.json"
     assert values["operator_cidr"] == "10.42.0.0/24"
-    verify_receiver_update(
+    verified = verify_receiver_update(
         output / "artifacts/receiver-bundle",
         trust=output / "trust/receiver-update-signers.json",
         registry=registry,
     )
+    indexed = {item["path"] for item in verified.manifest["content"]}
+    assert f"{RECEIVER_SITE_PACKAGES}/fixture_runtime/__init__.py" in indexed
+    with tarfile.open(
+        output / "artifacts/receiver-bundle/receiver-update.tar"
+    ) as archive:
+        launcher = archive.extractfile("bin/iii-deployment-receiver")
+        assert launcher is not None
+        launcher_text = launcher.read().decode("utf-8")
+    assert (
+        "/opt/iii/receiver/selectors/current/lib/python3.12/site-packages"
+        in launcher_text
+    )
+    assert "-S -m iii_deployment.receiver.server" in launcher_text
+    assert "/opt/iii/receiver/bootstrap/bin" not in launcher_text
     inventory = json.loads((output / "inventory.json").read_text())
     host = inventory["all"]["children"]["aircraft"]["hosts"]["10.42.0.70"]
     assert host["ansible_user"] == "iii-bootstrap"
@@ -120,3 +142,27 @@ def test_materializer_produces_complete_signed_owner_controlled_input(
     assert all(
         path.stat().st_mode & 0o077 == 0 for path in output.rglob("*") if path.is_file()
     )
+
+
+@pytest.mark.parametrize("hostile", ["../escape.py", "/absolute.py"])
+def test_receiver_wheel_expansion_rejects_escaping_paths(tmp_path, hostile):
+    wheelhouse = tmp_path / "wheels"
+    wheelhouse.mkdir()
+    with zipfile.ZipFile(wheelhouse / "hostile.whl", "w") as archive:
+        archive.writestr(hostile, "unsafe\n")
+
+    with pytest.raises(ProvisioningArtifactError, match="unsafe|escapes"):
+        _extract_receiver_wheels(wheelhouse, tmp_path / "site-packages")
+
+
+def test_receiver_wheel_expansion_rejects_symbolic_links(tmp_path):
+    wheelhouse = tmp_path / "wheels"
+    wheelhouse.mkdir()
+    linked = zipfile.ZipInfo("linked.py")
+    linked.create_system = 3
+    linked.external_attr = (stat.S_IFLNK | 0o777) << 16
+    with zipfile.ZipFile(wheelhouse / "hostile.whl", "w") as archive:
+        archive.writestr(linked, "outside.py")
+
+    with pytest.raises(ProvisioningArtifactError, match="link or special"):
+        _extract_receiver_wheels(wheelhouse, tmp_path / "site-packages")

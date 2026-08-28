@@ -13,6 +13,7 @@ import stat
 import subprocess
 import uuid
 import zipfile
+from pathlib import PurePosixPath
 from typing import Any, Callable, Mapping, Sequence
 
 from .contracts import ContractError, ContractRegistry, canonical_json, content_identity
@@ -42,6 +43,14 @@ COMPATIBILITY = {
     "request_protocols": ["1"],
     "upload_activity_schemas": ["iii.bundle-upload-activity/v1"],
     "upload_manifest_schemas": ["iii.bundle-upload/v1"],
+}
+RECEIVER_SITE_PACKAGES = "lib/python3.12/site-packages"
+MAX_RECEIVER_PAYLOAD_FILES = 100_000
+MAX_RECEIVER_PAYLOAD_BYTES = 512 * 1024**2
+RECEIVER_MODULES = {
+    "iii-deployment-receiver": "iii_deployment.receiver.server",
+    "iii-deployment-ssh-gateway": "iii_deployment.receiver.ssh_gateway",
+    "iii-deploymentctl": "iii_deployment.receiver.client",
 }
 
 
@@ -298,21 +307,105 @@ def _trust(
     return private_key, trust_path, descriptor["signer_id"]
 
 
-def _receiver_payload(root: Path, workspace: Path, schema_root: Path) -> Path:
+def _wheel_destination(name: str) -> PurePosixPath | None:
+    if not name or "\\" in name or "\0" in name:
+        raise ProvisioningArtifactError("receiver wheel contains an unsafe path")
+    path = PurePosixPath(name)
+    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+        raise ProvisioningArtifactError("receiver wheel path escapes site-packages")
+    data_index = next(
+        (index for index, part in enumerate(path.parts) if part.endswith(".data")),
+        None,
+    )
+    if data_index is None:
+        return path
+    remainder = path.parts[data_index + 1 :]
+    if len(remainder) < 2 or remainder[0] not in {"purelib", "platlib"}:
+        return None
+    return PurePosixPath(*remainder[1:])
+
+
+def _extract_receiver_wheels(wheelhouse: Path, destination: Path) -> None:
+    destination.mkdir(parents=True, mode=0o755)
+    files = 0
+    total_bytes = 0
+    for wheel in sorted(wheelhouse.glob("*.whl"), key=lambda item: item.name):
+        if wheel.is_symlink() or not wheel.is_file():
+            raise ProvisioningArtifactError(
+                "receiver wheelhouse contains an unsafe wheel"
+            )
+        with zipfile.ZipFile(wheel) as archive:
+            for member in sorted(archive.infolist(), key=lambda item: item.filename):
+                relative = _wheel_destination(member.filename)
+                if relative is None:
+                    continue
+                mode = (member.external_attr >> 16) & 0xFFFF
+                kind = stat.S_IFMT(mode)
+                if kind not in {0, stat.S_IFREG, stat.S_IFDIR}:
+                    raise ProvisioningArtifactError(
+                        "receiver wheel contains a link or special file"
+                    )
+                target = destination.joinpath(*relative.parts)
+                if member.is_dir() or kind == stat.S_IFDIR:
+                    if target.exists() and not target.is_dir():
+                        raise ProvisioningArtifactError(
+                            "receiver wheel directory collides with a file"
+                        )
+                    target.mkdir(parents=True, exist_ok=True, mode=0o755)
+                    continue
+                files += 1
+                total_bytes += member.file_size
+                if (
+                    files > MAX_RECEIVER_PAYLOAD_FILES
+                    or total_bytes > MAX_RECEIVER_PAYLOAD_BYTES
+                ):
+                    raise ProvisioningArtifactError(
+                        "expanded receiver wheel closure exceeds fixed limits"
+                    )
+                target.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+                if target.exists() or target.is_symlink():
+                    raise ProvisioningArtifactError(
+                        f"receiver wheel file collision: {relative.as_posix()}"
+                    )
+                descriptor = os.open(
+                    target,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                    0o755 if mode & 0o111 else 0o644,
+                )
+                try:
+                    os.fchmod(descriptor, 0o755 if mode & 0o111 else 0o644)
+                    with archive.open(member) as source, os.fdopen(
+                        descriptor, "wb", closefd=False
+                    ) as output:
+                        shutil.copyfileobj(source, output, length=1024 * 1024)
+                finally:
+                    os.close(descriptor)
+                if target.stat(follow_symlinks=False).st_size != member.file_size:
+                    raise ProvisioningArtifactError(
+                        "receiver wheel extraction size differs from its index"
+                    )
+    if files == 0:
+        raise ProvisioningArtifactError("receiver wheel closure is empty")
+
+
+def _receiver_payload(
+    root: Path, workspace: Path, schema_root: Path, wheelhouse: Path
+) -> Path:
     payload = root / "receiver-payload"
     binary_root = payload / "bin"
     binary_root.mkdir(parents=True, mode=0o755)
-    for command in (
-        "iii-deployment-receiver",
-        "iii-deployment-ssh-gateway",
-        "iii-deploymentctl",
-    ):
+    for command, module in RECEIVER_MODULES.items():
         path = binary_root / command
         path.write_text(
-            f'#!/bin/sh\nexec /opt/iii/receiver/bootstrap/bin/{command} "$@"\n',
+            "#!/bin/sh\n"
+            f"PYTHONPATH=/opt/iii/receiver/selectors/current/{RECEIVER_SITE_PACKAGES}\n"
+            "export PYTHONPATH\n"
+            "export PYTHONNOUSERSITE=1\n"
+            f'exec /usr/bin/python3 -S -m {module} "$@"\n',
             encoding="utf-8",
         )
         path.chmod(0o755)
+    _extract_receiver_wheels(wheelhouse, payload / RECEIVER_SITE_PACKAGES)
     shutil.copytree(schema_root, payload / "share/iii-deployment/schemas/v1")
     policy = payload / "share/iii-deployment/policy"
     policy.mkdir(parents=True)
@@ -358,6 +451,7 @@ def materialize(
             partial,
             Path(str(inspection["workspace_root"])),
             Path(str(inspection["schema_root"])),
+            wheelhouse,
         )
         bundle = partial / "artifacts/receiver-bundle"
         manifest = package_receiver_update(
