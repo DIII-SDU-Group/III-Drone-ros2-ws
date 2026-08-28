@@ -18,6 +18,7 @@ from iii_deployment.host_provision import (
     build_plan,
 )
 from iii_deployment.identity import create_machine_enrollment
+from iii_deployment.provisioning_artifacts import _receiver_payload
 from iii_deployment.receiver.update import package_receiver_update
 from iii_deployment.signers import generate_signer
 
@@ -125,29 +126,7 @@ def _receiver_artifacts(root: Path) -> tuple[Path, Path, Path, Path, Path]:
     receiver_key, receiver_trust = _trust(root, "receiver", "receiver-update")
     _bundle_key, bundle_trust = _trust(root, "bundle", "ci-qualified")
     _status_key, status_trust = _trust(root, "status", "release-status")
-    payload = root / "receiver-payload"
-    binary = payload / "bin/iii-deployment-receiver"
-    binary.parent.mkdir(parents=True)
-    binary.write_text(
-        '#!/bin/sh\nexec /opt/iii/receiver/bootstrap/bin/iii-deployment-receiver "$@"\n'
-    )
-    binary.chmod(0o755)
-    for command in ("iii-deployment-ssh-gateway", "iii-deploymentctl"):
-        wrapper = payload / "bin" / command
-        wrapper.write_text(
-            f'#!/bin/sh\nexec /opt/iii/receiver/bootstrap/bin/{command} "$@"\n'
-        )
-        wrapper.chmod(0o755)
-    shutil.copytree(
-        SCHEMAS,
-        payload / "share/iii-deployment/schemas/v1",
-    )
-    policy_root = payload / "share/iii-deployment/policy"
-    policy_root.mkdir(parents=True)
-    shutil.copy2(
-        WORKSPACE / "deployment/portable-state-policy.json",
-        policy_root / "portable-state-policy.json",
-    )
+    payload = _receiver_payload(root, WORKSPACE, SCHEMAS, wheelhouse)
     compatibility = {
         "bootstrap_protocols": ["1"],
         "cli_protocols": ["1"],

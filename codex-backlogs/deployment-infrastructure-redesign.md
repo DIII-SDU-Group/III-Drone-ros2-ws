@@ -3225,6 +3225,16 @@ Implementation notes (2026-08-26):
   deterministic wheel construction included all four new schemas and the prepare
   unit. Physical update/fallback evidence remains open before returning this task
   to Completed.
+- Committed source `8415622` produced canonical provisioning artifact r7, record
+  `bcd2d80c8954cf5ad8cdd5968696101054e9335606fcb0c69c8d92001a882770`,
+  with receiver identity
+  `14ae2380ce5048c734b9157c35bab8a28207308e93fceb9dfa58c0c2a6e75db9`.
+  Its 55 MiB signed generation-1 slot contains 1,470 indexed entries. Under the
+  ARM64 target-equivalent image, the slot-local receiver, client, and SSH gateway
+  entrypoints each imported the embedded closure and exited zero on `--help`; an
+  inspected native extension was confirmed AArch64 ELF. The target-equivalent
+  Ansible fixture now consumes this same canonical slot builder instead of the
+  retired bootstrap-delegating wrapper.
 
 #### P2.T4: Implement Activation Health And Automatic Rollback
 
