@@ -458,6 +458,26 @@ def test_development_role_keeps_authority_in_host_paths_and_strict_git_state():
     assert "- pip\n" in role
     assert "- install\n" not in role
     assert "/home/iii" not in role
+    assert role.count("check_mode: false") >= 5
+
+
+def test_gc_read_only_authentication_runs_during_zero_drift_check_mode():
+    application = (
+        DEPLOYMENT / "ansible/roles/gc_application/tasks/main.yml"
+    ).read_text()
+    development = (
+        DEPLOYMENT / "ansible/roles/gc_development/tasks/main.yml"
+    ).read_text()
+    health = (DEPLOYMENT / "ansible/roles/gc_health/tasks/main.yml").read_text()
+
+    assert "Authenticate the currently selected host-native GC runtime" in application
+    assert application.count("check_mode: false") >= 2
+    assert (
+        "Resolve the selected content-addressed controller environment" in development
+    )
+    assert development.count("check_mode: false") >= 5
+    assert "Require fixed iii.local discovery" in health
+    assert "check_mode: false" in health
 
 
 def test_host_baseline_cannot_build_or_load_release_container_images():

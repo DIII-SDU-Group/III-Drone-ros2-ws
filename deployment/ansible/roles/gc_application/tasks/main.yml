@@ -75,6 +75,7 @@
     iii_gc_companion_executable.stat.exists
   failed_when: false
   changed_when: false
+  check_mode: false
 
 - name: Decide whether the host-native GC runtime must be rebuilt
   ansible.builtin.set_fact:
@@ -249,6 +250,7 @@
   become: true
   become_user: "{{ iii_gc_user }}"
   changed_when: false
+  check_mode: false
 
 - name: Commit the installed host-native GC runtime identity
   ansible.builtin.copy:

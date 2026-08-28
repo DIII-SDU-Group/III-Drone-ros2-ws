@@ -45,6 +45,7 @@
   args:
     chdir: "{{ iii_gc_workspace }}"
   changed_when: false
+  check_mode: false
 
 - name: Create repository-managed controller and build-cache roots
   ansible.builtin.file:
@@ -77,6 +78,7 @@
   register: iii_gc_controller_resolved
   when: not iii_gc_test_mode
   changed_when: false
+  check_mode: false
 
 - name: Require the selected controller to stay inside its content store
   ansible.builtin.assert:
@@ -131,6 +133,7 @@
     PYTHONHOME: ""
   when: not iii_gc_test_mode
   changed_when: false
+  check_mode: false
 
 - name: Commit the controller environment identity
   ansible.builtin.copy:
@@ -165,6 +168,7 @@
   register: iii_gc_builder_image
   changed_when: false
   failed_when: false
+  check_mode: false
   when: not iii_gc_test_mode
 
 - name: Decide whether the pinned ARM64 builder must be restored
@@ -217,6 +221,7 @@
     III_EXPECTED_BUILDER_ID: "{{ iii_gc_policy_value.builder.definition_sha256 }}"
   when: not iii_gc_test_mode and iii_gc_builder_changed
   changed_when: false
+  check_mode: false
 
 - name: Commit the ARM64 builder definition identity
   ansible.builtin.copy:

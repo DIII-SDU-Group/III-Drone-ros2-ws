@@ -59,6 +59,7 @@
         assert 'observation.profile == "sim"' in p;
         assert 'observation.profile != "real"' in p
   changed_when: false
+  check_mode: false
 
 - name: Require runtime and controller environments to be host-user state
   ansible.builtin.assert:
