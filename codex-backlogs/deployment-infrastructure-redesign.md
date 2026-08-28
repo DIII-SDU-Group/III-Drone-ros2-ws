@@ -3253,7 +3253,18 @@ Implementation notes (2026-08-26):
   `9b2c6e8d91a31b3c3fa52df6af6e2c9799a9d99e3bf55eaeb5580203be2b0364`.
   Focused tests include real generation-2 creation plus schema, signature,
   permissions, wheel-tamper, and generation-regression checks. Physical A/B
-  apply and forced fallback evidence remain open until r7 is booted on the Pi.
+  apply and forced fallback evidence remain open until r8 is booted on the Pi.
+- The live stock-boot parser correction supersedes r7 before physical use.
+  Committed source `f65dec6` produced r8 provisioning record
+  `36dcdec6c4a4916bdf3a0b5f7fae5373d66b82dfafc9b48ceb677aecce3b0f70`
+  with generation-1 receiver
+  `a626fe0e38498d45ce80fc71d68603c2442bbb25afdb571ac1904797785ff393`.
+  Its canonical generation-2 / `v1.0.1` artifact record
+  `2095b8b9d024952a7fcc48ede78d5ecdc4bd501b70b348c12a3a16613fa8aa02`
+  binds candidate receiver
+  `1f81a9795225de69ad485393ad5fedde08266dbcd6916a8c923d66b43ce2475f`;
+  both signatures and the 1,471-file initial slot verify locally. These are the
+  only receiver artifacts eligible for the pending physical A/B evidence.
 
 #### P2.T4: Implement Activation Health And Automatic Rollback
 
