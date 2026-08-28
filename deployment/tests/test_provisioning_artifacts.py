@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 from pathlib import Path
 import struct
 import zipfile
@@ -19,6 +20,11 @@ from iii_deployment.receiver.update import verify_receiver_update
 
 WORKSPACE = Path(__file__).parents[2]
 SCHEMAS = WORKSPACE / "deployment/schemas/v1"
+
+
+def test_controller_builder_entrypoint_is_executable() -> None:
+    script = WORKSPACE / "deployment/scripts/prepare_host_provisioning_artifacts.py"
+    assert os.access(script, os.X_OK)
 
 
 def _enrollment(path: Path) -> Path:
