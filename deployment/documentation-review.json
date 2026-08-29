@@ -1197,8 +1197,8 @@
       "status": "passed"
     }
   ],
-  "manifest_id": "11030c06df1a8ca1858648363ab58403084ceccd589ebe1ba95b5e51ea3c1ba3",
-  "review_id": "1ed0bff7010c9f03cef87f5969a6360d786156102656b020e6882f4d48c59afa",
+  "manifest_id": "39f33ec47f5438ef3021287b3d3e97d6972ac3e68f563b7524ec9d1a8e693375",
+  "review_id": "9a81480eb78c5445105449d171c606ec1d014adf8e00c157b16ca92194b3716f",
   "reviewer": "codex-deployment-infrastructure-redesign",
   "schema": "iii.documentation-review/v1"
 }

@@ -5686,6 +5686,12 @@ Implementation notes (reversible boundary, 2026-08-27):
   `not_run` rows when no signed execution evidence was supplied. The legacy
   repository therefore remains unarchived and the two Q131-dependent acceptance
   items remain open, as required.
+- The final remote software phase gate passed 654 deployment tests with five
+  explicit opt-in target skips and all 229 CLI tests. The skipped aircraft
+  Ansible, GC Ubuntu, and native systemd tests had already been run explicitly in
+  this phase: aircraft convergence passed in 513.38 seconds, both GC matrices
+  passed in 132.49/152.28 seconds, and systemd release switching/recovery passed
+  in 12.80 seconds. No physical result is inferred from these suites.
 
 ## In-Progress
 

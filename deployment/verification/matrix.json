@@ -1,5 +1,5 @@
 {
-  "matrix_id": "08c4539a25defab63dd2faa642c8eb9ce85e7664b0890b8bad7d7b009a5591f6",
+  "matrix_id": "d8a79c46deaeb664948f66477a0c78b5de46ccffbaa2a089229592157ac54d3c",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -287,7 +287,7 @@
         "P1.T2.t8",
         "P3.T1.t1",
         "P3.T2.t2",
-        "P5.T6.t6"
+        "P5.T6.t9"
       ],
       "text": "Settled.",
       "title": "Onboard Docker role"
@@ -372,7 +372,7 @@
         "P1.T2.t8",
         "P3.T1.t1",
         "P3.T2.t2",
-        "P5.T6.t6"
+        "P5.T6.t9"
       ],
       "text": "Run the real runtime natively under host systemd and deploy immutable ARM64 install bundles.",
       "title": "Onboard Docker role"
@@ -29588,7 +29588,7 @@
         "P0.T4.t1",
         "P5.T0.t5",
         "P5.T1.t6",
-        "P5.T6.t6"
+        "P5.T6.t9"
       ],
       "text": "Settled by delegated authority.",
       "title": "Final cutover and legacy-retirement gate"
@@ -29632,7 +29632,7 @@
         "P0.T4.t1",
         "P5.T0.t7",
         "P5.T1.t2",
-        "P5.T6.t4"
+        "P5.T6.t9"
       ],
       "text": "Retire the legacy repository and old CLI paths only after one exact candidate passes the complete signed acceptance matrix: clean GC provisioning; raw verified SD imaging and interrupted/resumed aircraft provisioning; Ansible idempotence and offline reconvergence; qualified release creation from the protected release chain; dirty/untracked field build from the GC; component-aware GC/drone deployment; activation, client-loss, power-loss, health failure, and automatic rollback; receiver self-update failure recovery; real/OptiTrack profile switching; native QGC plus PX4 inventory; parameter add/remove/reintroduction, live tuning, arbitrary capture, and promotion; log/diagnostic pull and receipt- based prune; key enrollment/revocation and replacement-computer recovery; host backup, destructive reimage, restore, and recommissioning; signed field readiness; and a fully offline prepared field cycle.",
       "title": "Final cutover and legacy-retirement gate"
@@ -29760,7 +29760,7 @@
         "P0.T4.t1",
         "P5.T0.t8",
         "P5.T1.t6",
-        "P5.T6.t6"
+        "P5.T6.t9"
       ],
       "text": "do not delete its history.",
       "title": "Final cutover and legacy-retirement gate"
@@ -43212,7 +43212,7 @@
       "required_evidence": "junit",
       "task": "P5.T6",
       "test_refs": [
-        "P5.T6.t4"
+        "P5.T6.t9"
       ],
       "text": "No supported CLI path can perform the retired destructive workflow.",
       "title": "Remove Legacy CLI And Deployment Behavior"
@@ -43519,7 +43519,7 @@
       "scenario": "evidence",
       "test_refs": [
         "P5.T0.t8",
-        "P5.T6.t6"
+        "P5.T6.t9"
       ],
       "text": "A replacement GC verifies, restores, and rearchives all declared non-secret records while new machine identity and credentials are generated.",
       "title": "Q131 evidence cutover scenario"
@@ -43660,7 +43660,7 @@
       "scenario": "field",
       "test_refs": [
         "P5.T0.t7",
-        "P5.T6.t2"
+        "P5.T6.t9"
       ],
       "text": "Prepared online and fully offline field-development and qualified workflows operate through III CLI with native GC and no onboard source or build dependency.",
       "title": "Q131 field cutover scenario"
@@ -43707,7 +43707,7 @@
       "scenario": "offline",
       "test_refs": [
         "P5.T0.t6",
-        "P5.T6.t4"
+        "P5.T6.t9"
       ],
       "text": "Representative GC-only, aircraft-only, paired deploy, diagnostics, tuning capture, rollback, and recovery complete from prepared caches with network denied.",
       "title": "Q131 offline cutover scenario"
