@@ -5467,6 +5467,14 @@ Implementation notes (software boundary, 2026-08-27):
   `III_DOCS_OK` for 141 documents and 90 maintained documents. The independent
   clean-computer and physical Q131 walkthrough still requires intended hardware,
   so P5.T3 remains In-Progress rather than claiming production evidence.
+- The r11 continuation reran the canonical offline documentation gate. Its first
+  pass correctly detected that this backlog's retained evidence changed the
+  governed document hash. Regeneration proved the inventory remained exactly 144
+  documents with no additions/removals, both generated references were
+  byte-identical, and only this reviewed backlog entry changed. The manifest and
+  migration review were renewed, after which `iii docs check` returned
+  `III_DOCS_OK` for 92 maintained documents and two generated references. The
+  independent physical Q131 walkthrough remains open.
 
 #### P5.T4: Migrate CI, Branch Hygiene, Release, And AI-Agent Instructions
 
@@ -5673,6 +5681,11 @@ Implementation notes (reversible boundary, 2026-08-27):
   clones and caches absent, and the final signed Q131 no-legacy rerun remain
   physical gates. The last two acceptance items stay unchecked and the task
   remains In-Progress.
+- The 2026-08-29 active-tree retirement audit passed again with zero findings,
+  while the full verification CLI deliberately rejected completion with 1,197
+  `not_run` rows when no signed execution evidence was supplied. The legacy
+  repository therefore remains unarchived and the two Q131-dependent acceptance
+  items remain open, as required.
 
 ## In-Progress
 

@@ -1,5 +1,5 @@
 {
-  "matrix_id": "18aaa5606947a4901363a0a5542b973b214f0f9442a43bd06cc4581fad7151c0",
+  "matrix_id": "08c4539a25defab63dd2faa642c8eb9ce85e7664b0890b8bad7d7b009a5591f6",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -414,7 +414,7 @@
         "P1.T2.t2",
         "P3.T1.t1",
         "P3.T2.t2",
-        "P5.T6.t2"
+        "P5.T6.t8"
       ],
       "text": "Docker may remain an offboard development/builder implementation only.",
       "title": "Onboard Docker role"
@@ -830,7 +830,7 @@
       "test_refs": [
         "P2.T5.t8",
         "P3.T3.t1",
-        "P5.T3.t5"
+        "P5.T3.t6"
       ],
       "text": "Settled.",
       "title": "SSH host trust"
@@ -908,7 +908,7 @@
       "test_refs": [
         "P2.T5.t2",
         "P3.T3.t1",
-        "P5.T3.t5"
+        "P5.T3.t6"
       ],
       "text": "Do not inventory or authenticate individual Pi host keys.",
       "title": "SSH host trust"
@@ -12178,7 +12178,7 @@
       "test_refs": [
         "P2.T6.t8",
         "P3.T8.t7",
-        "P5.T3.t5"
+        "P5.T3.t6"
       ],
       "text": "Settled with a deferred HIL extension.",
       "title": "Fail-safe sim/real target selection"
@@ -29208,7 +29208,7 @@
         "P0.T11.t1",
         "P0.T12.t1",
         "P5.T2.t3",
-        "P5.T3.t5",
+        "P5.T3.t6",
         "P5.T4.t4",
         "P5.T5.t5"
       ],
@@ -29256,7 +29256,7 @@
         "P0.T11.t1",
         "P0.T12.t1",
         "P5.T2.t2",
-        "P5.T3.t5",
+        "P5.T3.t6",
         "P5.T4.t4",
         "P5.T5.t6"
       ],
@@ -29304,7 +29304,7 @@
         "P0.T11.t1",
         "P0.T12.t1",
         "P5.T2.t5",
-        "P5.T3.t4",
+        "P5.T3.t6",
         "P5.T4.t2",
         "P5.T5.t6"
       ],
@@ -29352,7 +29352,7 @@
         "P0.T11.t1",
         "P0.T12.t1",
         "P5.T2.t4",
-        "P5.T3.t3",
+        "P5.T3.t6",
         "P5.T4.t2",
         "P5.T5.t6"
       ],
@@ -29544,7 +29544,7 @@
         "P0.T11.t1",
         "P0.T12.t1",
         "P5.T2.t4",
-        "P5.T3.t5",
+        "P5.T3.t6",
         "P5.T4.t4",
         "P5.T5.t1"
       ],
