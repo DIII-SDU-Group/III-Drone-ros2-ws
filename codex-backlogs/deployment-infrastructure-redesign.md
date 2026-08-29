@@ -4465,6 +4465,15 @@ for the unchecked physical replacement-laptop enrollment or login/logout drill.
   `aircraft_mutation=false`. This validates the physical current-session
   lifecycle but does not claim the still-disruptive desktop logout/login event
   or a separate replacement-laptop import/enrollment drill.
+- The 2026-08-29 target rerun exposed that the privileged Ubuntu fixture lagged
+  the production GC controller contract: it omitted the now-required explicit
+  container-runtime and operational-package inputs. Production planning already
+  supplied both. The fixture now derives the Ubuntu runtime object and package
+  list from the canonical GC policy, preventing a divergent hard-coded package
+  model. Ubuntu 22.04 and 24.04 then passed their complete online convergence,
+  zero-drift, injected-drift, repair, prepared-offline, permissions, and
+  user-session ownership matrices in 132.49 and 152.28 seconds respectively.
+  The two physical replacement/login acceptance items remain unchanged.
 
 #### P3.T9: Install And Transactionally Update GC/QGroundControl Applications
 

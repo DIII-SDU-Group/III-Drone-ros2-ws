@@ -10,6 +10,20 @@ import pytest
 
 pytestmark = pytest.mark.target
 ROOT = Path(__file__).parents[2]
+GC_POLICY = json.loads(
+    (ROOT / "deployment/gc-host-policy.json").read_text(encoding="utf-8")
+)
+GC_OPERATIONAL_PACKAGES = json.dumps(
+    GC_POLICY["operational_packages"], separators=(",", ":")
+)
+GC_CONTAINER_RUNTIME = json.dumps(
+    {
+        "provider": "ubuntu",
+        "install_packages": GC_POLICY["operational_packages"],
+        "existing_packages": [],
+    },
+    separators=(",", ":"),
+)
 
 
 @pytest.mark.skipif(
@@ -57,7 +71,7 @@ run_playbook() {
     ANSIBLE_NOCOLOR=1 III_ANSIBLE_RESULT_PATH=$result \
     III_ANSIBLE_CHECK_MODE=$([ \"$mode\" = check ] && echo 1 || echo 0) \
     /opt/ansible/bin/ansible-playbook --inventory localhost, --connection local \
-    --extra-vars '{\"iii_gc_user\":\"gcuser\",\"iii_gc_uid\":$uid,\"iii_gc_gid\":$gid,\"iii_gc_home\":\"/home/gcuser\",\"iii_gc_workspace\":\"/workspace\",\"iii_gc_platform_id\":\"ubuntu-$III_VERSION-x86_64\",\"iii_gc_offline\":$offline,\"iii_gc_offline_cache\":\"$offline_cache\",\"iii_gc_policy\":\"/workspace/deployment/gc-host-policy.json\",\"iii_gc_application_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"iii_gc_install_id\":\"$install_id\",\"iii_gc_cache_id\":\"$cache_id\",\"iii_gc_offline_artifacts\":$artifacts,\"iii_gc_test_mode\":true}' \
+    --extra-vars '{\"iii_gc_user\":\"gcuser\",\"iii_gc_uid\":$uid,\"iii_gc_gid\":$gid,\"iii_gc_home\":\"/home/gcuser\",\"iii_gc_workspace\":\"/workspace\",\"iii_gc_platform_id\":\"ubuntu-$III_VERSION-x86_64\",\"iii_gc_container_runtime\":$III_GC_CONTAINER_RUNTIME_JSON,\"iii_gc_operational_packages\":$III_GC_OPERATIONAL_PACKAGES_JSON,\"iii_gc_offline\":$offline,\"iii_gc_offline_cache\":\"$offline_cache\",\"iii_gc_policy\":\"/workspace/deployment/gc-host-policy.json\",\"iii_gc_application_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"iii_gc_install_id\":\"$install_id\",\"iii_gc_cache_id\":\"$cache_id\",\"iii_gc_offline_artifacts\":$artifacts,\"iii_gc_test_mode\":true}' \
     --diff $check_arg playbooks/gc-converge.yml" >/tmp/ansible-$mode.log
 }
 run_playbook apply /tmp/first.json
@@ -101,6 +115,10 @@ chmod 0644 /evidence/*.json
             "linux/amd64",
             "--env",
             f"III_VERSION={version}",
+            "--env",
+            f"III_GC_CONTAINER_RUNTIME_JSON={GC_CONTAINER_RUNTIME}",
+            "--env",
+            f"III_GC_OPERATIONAL_PACKAGES_JSON={GC_OPERATIONAL_PACKAGES}",
             "--volume",
             f"{ROOT}:/workspace:ro",
             "--volume",

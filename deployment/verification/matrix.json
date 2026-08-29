@@ -1,5 +1,5 @@
 {
-  "matrix_id": "3a2cfaa20ea83980399530209a04e39984d48a0252faaa5107400071eb3a0b63",
+  "matrix_id": "18aaa5606947a4901363a0a5542b973b214f0f9442a43bd06cc4581fad7151c0",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -1104,7 +1104,7 @@
       "test_refs": [
         "P2.T5.t2",
         "P3.T3.t1",
-        "P3.T8.t8"
+        "P3.T8.t9"
       ],
       "text": "Disable password login and never transfer private keys.",
       "title": "SSH client authentication"
@@ -8966,7 +8966,7 @@
       "test_refs": [
         "P1.T3.t3",
         "P3.T3.t1",
-        "P3.T8.t2"
+        "P3.T8.t9"
       ],
       "text": "Generate one Ed25519 key per build computer outside the repository with owner-only permissions and encrypted-at-rest storage.",
       "title": "Workstation signing-key storage"
@@ -10322,7 +10322,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t7",
+        "P3.T8.t9",
         "P4.T2.t2",
         "P4.T3.t4"
       ],
@@ -10829,7 +10829,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t8",
+        "P3.T8.t9",
         "P4.T2.t5",
         "P4.T3.t4"
       ],
@@ -11102,7 +11102,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t2",
+        "P3.T8.t9",
         "P4.T2.t2",
         "P4.T3.t5"
       ],
@@ -11141,7 +11141,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t2",
+        "P3.T8.t9",
         "P4.T2.t5",
         "P4.T3.t1"
       ],
@@ -12943,7 +12943,7 @@
         "P2.T7.t5",
         "P3.T1.t1",
         "P3.T2.t2",
-        "P3.T8.t5"
+        "P3.T8.t9"
       ],
       "text": "do not persist ordinary III runtime logs while degraded.",
       "title": "Clock handling on a power-cycled, sometimes-offline Pi"
@@ -13810,7 +13810,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t8",
+        "P3.T8.t9",
         "P3.T9.t3"
       ],
       "text": "Separate this into an operational GC base role and an optional development/ cross-build role, but install both on the current GC laptop; this preserves a future source-repo-independent field computer without requiring it now.",
@@ -15590,7 +15590,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P3.T3.t1",
-        "P3.T8.t5"
+        "P3.T8.t9"
       ],
       "text": "Current real runtime uses one shared browser password and one shared CLI token, while the settled deployment model already requires unique SSH and signing keys per computer.",
       "title": "Enrolling credentials on additional GC/operator computers"
@@ -15809,7 +15809,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T3.t1",
-        "P3.T8.t7"
+        "P3.T8.t9"
       ],
       "text": "The accepted plain-HTTP LAN risk remains explicit.",
       "title": "Enrolling credentials on additional GC/operator computers"
@@ -15845,7 +15845,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T3.t1",
-        "P3.T8.t5"
+        "P3.T8.t9"
       ],
       "text": "Replace the single shared CLI token with this per-computer enrollment model.",
       "title": "Enrolling credentials on additional GC/operator computers"
@@ -39371,7 +39371,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P3.T8",
       "test_refs": [
-        "P3.T8.t7"
+        "P3.T8.t9"
       ],
       "text": "`iii gc provision` converges stock Ubuntu 22.04/24.04 plus a local clone in online or prepared-offline mode and reports excluded disk/OS/vendor prerequisites.",
       "title": "Provision The Ground-Control Host Baseline"
