@@ -23,7 +23,6 @@ from iii_deployment.receiver.upload import (
     UploadStore,
 )
 
-
 SFTP_SERVER = Path("/usr/lib/openssh/sftp-server")
 SFTP_ORIGINAL_COMMANDS = frozenset(
     {
@@ -244,3 +243,7 @@ def main() -> int:
     except (ContractError, OSError) as exc:
         parser.error(str(exc))
     return 64
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

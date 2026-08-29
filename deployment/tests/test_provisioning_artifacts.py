@@ -17,6 +17,7 @@ from iii_deployment.host_provision import load_input
 from iii_deployment.identity import create_machine_enrollment
 from iii_deployment.provisioning_artifacts import (
     ProvisioningArtifactError,
+    RECEIVER_MODULES,
     RECEIVER_SITE_PACKAGES,
     _extract_receiver_wheels,
     inspect_materialization,
@@ -129,15 +130,17 @@ def test_materializer_produces_complete_signed_owner_controlled_input(
     with tarfile.open(
         output / "artifacts/receiver-bundle/receiver-update.tar"
     ) as archive:
-        launcher = archive.extractfile("bin/iii-deployment-receiver")
-        assert launcher is not None
-        launcher_text = launcher.read().decode("utf-8")
-    assert (
-        "/opt/iii/receiver/selectors/current/lib/python3.12/site-packages"
-        in launcher_text
-    )
-    assert "-S -m iii_deployment.receiver.server" in launcher_text
-    assert "/opt/iii/receiver/bootstrap/bin" not in launcher_text
+        for command, module in RECEIVER_MODULES.items():
+            launcher = archive.extractfile(f"bin/{command}")
+            assert launcher is not None
+            launcher_text = launcher.read().decode("utf-8")
+            assert (
+                "/opt/iii/receiver/selectors/current/lib/python3.12/site-packages"
+                in launcher_text
+            )
+            assert "PYTHONDONTWRITEBYTECODE=1" in launcher_text
+            assert f"-B -S -m {module}" in launcher_text
+            assert "/opt/iii/receiver/bootstrap/bin" not in launcher_text
     inventory = json.loads((output / "inventory.json").read_text())
     host = inventory["all"]["children"]["aircraft"]["hosts"]["10.42.0.70"]
     assert host["ansible_user"] == "iii-bootstrap"

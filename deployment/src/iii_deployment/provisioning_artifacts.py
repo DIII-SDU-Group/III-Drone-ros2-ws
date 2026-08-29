@@ -409,7 +409,8 @@ def _receiver_payload(
             f"PYTHONPATH=/opt/iii/receiver/selectors/current/{RECEIVER_SITE_PACKAGES}\n"
             "export PYTHONPATH\n"
             "export PYTHONNOUSERSITE=1\n"
-            f'exec /usr/bin/python3 -S -m {module} "$@"\n',
+            "export PYTHONDONTWRITEBYTECODE=1\n"
+            f'exec /usr/bin/python3 -B -S -m {module} "$@"\n',
             encoding="utf-8",
         )
         path.chmod(0o755)

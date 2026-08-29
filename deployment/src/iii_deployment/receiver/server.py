@@ -503,3 +503,7 @@ def main() -> int:
     except ContractError as exc:
         parser.error(str(exc))
     return 64
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

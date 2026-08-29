@@ -1,12 +1,40 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
 
 from iii_deployment.contracts import ContractError
+from iii_deployment.provisioning_artifacts import RECEIVER_MODULES
 from iii_deployment.receiver import bootstrap, server
+
+
+@pytest.mark.parametrize(("program", "module"), sorted(RECEIVER_MODULES.items()))
+def test_receiver_payload_module_entrypoints_invoke_main(
+    program: str, module: str
+) -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            module,
+            "--help",
+        ],
+        check=False,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=Path(__file__).parents[2],
+    )
+
+    assert completed.returncode == 0
+    assert f"usage: {program}" in completed.stdout
+    assert completed.stderr == ""
 
 
 class Candidate:

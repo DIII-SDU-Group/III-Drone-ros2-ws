@@ -3263,8 +3263,34 @@ Implementation notes (2026-08-26):
   `2095b8b9d024952a7fcc48ede78d5ecdc4bd501b70b348c12a3a16613fa8aa02`
   binds candidate receiver
   `1f81a9795225de69ad485393ad5fedde08266dbcd6916a8c923d66b43ce2475f`;
-  both signatures and the 1,471-file initial slot verify locally. These are the
-  only receiver artifacts eligible for the pending physical A/B evidence.
+  both signatures and the 1,471-file initial slot verify locally. Subsequent
+  pseudo-flash execution superseded these artifacts before physical use.
+- The deferred physical flash was replaced by an exact ARM64 pseudo-flash of the
+  signed payloads under native AArch64 emulation. That gate found two production
+  defects rather than weakening acceptance: module execution through
+  `python -m` returned without calling `main`, and a root receiver process could
+  write `__pycache__` into an otherwise immutable signed slot. All three receiver
+  modules now have executable module guards, and generated launchers enforce
+  `PYTHONDONTWRITEBYTECODE=1` plus `python -B -S`. Regression tests execute every
+  launcher module and prove the packaged launchers are selector-local and
+  bytecode-free.
+- Development artifact r10 is the first corrected pseudo-flash candidate.
+  Provisioning record
+  `2540f6e8ac5465dcf8367c2d00cd29342fc11ee5b1f387070a4755f9e6055212`
+  installed generation-1 receiver
+  `a57079effedc2ebae0d31905f5fa22b21ea904d5359be16b5a61be6fd09c1eee`;
+  receiver-update record
+  `f7a3189628177f290e6e1d0739f6a3acf8d892399d5a963a558139b4ab2c876d`
+  committed generation 2 in slot B with slot A retained as fallback. Native
+  AArch64 imports, all three root launcher entrypoints, both complete signed slot
+  trees, the selector, and zero bytecode cache entries passed. Retained evidence
+  `.iii/evidence/pseudo-flash-r10-arm64-20260829.json` has SHA-256
+  `23b99f0e063df8db28ea9f99cf182557e73959906a04fef933d4e031a1e7031e`.
+  The full Noble/systemd convergence, idempotence, drift repair, finalization,
+  bootstrap revocation, and fresh permanent forced-command session then passed
+  in 513.38 seconds. Because r10 was deliberately built from the working tree,
+  it is target-equivalent evidence only; a fresh artifact from committed source
+  is required for the deferred physical A/B and fallback acceptance.
 
 #### P2.T4: Implement Activation Health And Automatic Rollback
 
@@ -4253,7 +4279,14 @@ Implementation notes and verification:
   exactly matching the live host. The parser and `iii.boot-inspection/v1`
   schema now accept the bounded official conditional-filter character set; the
   exact stock file parses as 19 directives across five sections and all seven
-  focused boot tests pass. Physical acceptance remains open until r7 is booted.
+  focused boot tests pass.
+- The corrected parser and receiver payload were exercised through the exact
+  ARM64 pseudo-flash and the full Noble/systemd host lifecycle described in
+  P2.T3. The powered physical Pi remains intentionally unchanged on the older
+  generation while the operator is remote; its read-only inspection still
+  reports the expected `[pi3+]` parser drift. Physical boot-baseline acceptance
+  therefore remains open until a fresh committed artifact is written and booted
+  during the final in-office flash cycle.
 
 #### P3.T7: Provision Transactional Operator Networking
 
@@ -5252,6 +5285,14 @@ Implementation notes (software boundary, 2026-08-27):
   target-equivalent lifecycle passed in 704.82 s. No commissioning criterion is
   upgraded from the failed attempt, and the next physical run must start from a
   newly governed image built from the committed fix.
+- With the operator remote, the next destructive flash was explicitly deferred.
+  An exact ARM64 pseudo-flash instead installed the corrected generation-1
+  receiver, performed the signed generation-2 A/B switch, retained the fallback,
+  executed every launcher as root without mutating either slot, and passed the
+  complete target-equivalent Noble/systemd provisioning lifecycle. This expands
+  preflight evidence but does not satisfy any physical commissioning item. The
+  current onboard generation is unchanged, and the final physical run must use a
+  newly materialized artifact from committed source.
 
 #### P5.T2: Establish Automation-Ready Documentation Architecture And Validation
 

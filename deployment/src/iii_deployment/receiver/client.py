@@ -22,10 +22,14 @@ def main() -> int:
             raise ContractError("forced receiver client identity is invalid")
         raw = sys.stdin.buffer.read(MAXIMUM_REQUEST_BYTES + 2)
         if len(raw) > MAXIMUM_REQUEST_BYTES + 1 or not raw.endswith(b"\n"):
-            raise ContractError("receiver client requires one bounded newline-terminated request")
+            raise ContractError(
+                "receiver client requires one bounded newline-terminated request"
+            )
         request = Request.parse(raw[:-1], maximum_bytes=MAXIMUM_REQUEST_BYTES)
         if request.client_id != arguments.client_id:
-            raise ContractError("request client differs from authenticated forced-command identity")
+            raise ContractError(
+                "request client differs from authenticated forced-command identity"
+            )
         connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             connection.connect(str(SOCKET_PATH))
@@ -49,3 +53,7 @@ def main() -> int:
     except (ContractError, OSError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
     return 64
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

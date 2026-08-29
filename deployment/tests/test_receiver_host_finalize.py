@@ -43,6 +43,8 @@ def _write(path: Path, value: object | bytes) -> None:
 
 
 def _root(tmp_path: Path) -> Path:
+    runtime_uid = os.getuid() or 1100
+    runtime_gid = os.getgid() or 1100
     health = {
         "schema": "iii.host-baseline-report/v1",
         "state": "converged",
@@ -82,8 +84,8 @@ def _root(tmp_path: Path) -> Path:
             "receiver_generation": 1,
             "logical_target": "drone",
             "profile": "real",
-            "runtime_uid": os.getuid(),
-            "runtime_gid": os.getgid(),
+            "runtime_uid": runtime_uid,
+            "runtime_gid": runtime_gid,
         },
     )
     AccessManager(
@@ -96,7 +98,8 @@ def _root(tmp_path: Path) -> Path:
         field_signers_path=(
             tmp_path / "var/lib/iii/deployment/workstation-field-signers.json"
         ),
-        runtime_uid=os.getuid(),
+        runtime_uid=runtime_uid,
+        runtime_gid=runtime_gid,
     ).bootstrap([enrollment])
     slots = tmp_path / "opt/iii/receiver/slots"
     gateway = slots / "a/bin/iii-deployment-ssh-gateway"
