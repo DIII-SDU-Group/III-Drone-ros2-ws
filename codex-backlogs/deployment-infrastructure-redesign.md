@@ -3307,6 +3307,14 @@ Implementation notes (2026-08-26):
   `04fe9d53f3d71639e29569154f31dbb023133ff433ff11d2a151065c17cac0b1`.
   This is the retained candidate for the deferred physical flash; physical A/B
   switch and forced-fallback evidence remain open.
+- The first remote workspace CI run exposed that the host-finalization fixture
+  always requested root-owned runtime projections, even on an unprivileged
+  GitHub runner. The fixture now retains the production root/group ownership
+  path under root while relying on the temporary tree's inherited runtime group
+  when unprivileged. The original non-root reproduction and all 10 finalization
+  tests pass on the host, the same 10 pass through the root devcontainer path,
+  and the 117-test receiver-focused suite passes without weakening production
+  ownership enforcement.
 
 #### P2.T4: Implement Activation Health And Automatic Rollback
 

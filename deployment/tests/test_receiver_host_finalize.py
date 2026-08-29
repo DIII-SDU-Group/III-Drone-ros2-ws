@@ -99,7 +99,11 @@ def _root(tmp_path: Path) -> Path:
             tmp_path / "var/lib/iii/deployment/workstation-field-signers.json"
         ),
         runtime_uid=runtime_uid,
-        runtime_gid=runtime_gid,
+        # Production bootstrap runs as root and must establish root-owned,
+        # runtime-group-readable verifier state.  An unprivileged test process
+        # cannot change a file's owner to root; its temporary files already
+        # inherit runtime_gid, so omit the privileged reconciliation there.
+        runtime_gid=runtime_gid if os.geteuid() == 0 else None,
     ).bootstrap([enrollment])
     slots = tmp_path / "opt/iii/receiver/slots"
     gateway = slots / "a/bin/iii-deployment-ssh-gateway"
