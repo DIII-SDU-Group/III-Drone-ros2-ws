@@ -3291,6 +3291,22 @@ Implementation notes (2026-08-26):
   in 513.38 seconds. Because r10 was deliberately built from the working tree,
   it is target-equivalent evidence only; a fresh artifact from committed source
   is required for the deferred physical A/B and fallback acceptance.
+- Committed fix `00bbb00` produced the clean-source r11 provisioning record
+  `9093beca08812d3c642cc5abf549d2a629e911e4073e36b6fd15dff210b47649`
+  and generation-1 receiver
+  `092db7af6cef71f072a6a2aafb64865a9bf36d1999be3d88de5da6ed3c0fdf3f`.
+  Its separately planned generation-2 update record
+  `79f32baa4df8089ccb2db7319dc8bb58658ee09b5759538dfe696f729d7533aa`
+  committed receiver
+  `528a354de229e4e2c7578e5be86f6eba6ef3d513e8834b88d876587ddd8bab8f`
+  to slot B with slot A retained as fallback. The exact signed ARM64 closure
+  passed native extension imports, root execution of all three launchers in
+  both generations, complete signed-slot verification, and a zero-bytecode
+  mutation check. Evidence
+  `.iii/evidence/pseudo-flash-r11-arm64-20260829.json` has SHA-256
+  `04fe9d53f3d71639e29569154f31dbb023133ff433ff11d2a151065c17cac0b1`.
+  This is the retained candidate for the deferred physical flash; physical A/B
+  switch and forced-fallback evidence remain open.
 
 #### P2.T4: Implement Activation Health And Automatic Rollback
 
@@ -5203,6 +5219,14 @@ gate: target-equivalent aircraft convergence, native systemd recovery/switching,
 both supported GC Ubuntu matrices, and replacement import/fresh-identity
 ordering all passed. These results remain target-equivalent evidence and do not
 satisfy or reclassify the 119 physical matrix rows.
+- The r11 pseudo-flash continuation reran the focused application activation,
+  automatic rollback, field workflow, profile cycle, qualified-release,
+  receiver-clock, portable-state, and verification-storage batch: 175 tests
+  passed. Native systemd boot, service restart, failed-release recovery, and
+  release switching passed separately in 12.80 seconds. The batch exposed a
+  stale committed matrix: the canonical generator preserved all 1,197 rows and
+  the policy identity while updating 145 `test_refs`; the matrix audit and the
+  original batch then passed. This is target-equivalent evidence only.
 
 #### P5.T1: Commission The First Aircraft From Raw Image
 
@@ -5293,6 +5317,10 @@ Implementation notes (software boundary, 2026-08-27):
   preflight evidence but does not satisfy any physical commissioning item. The
   current onboard generation is unchanged, and the final physical run must use a
   newly materialized artifact from committed source.
+- Clean-source r11 is now materialized and has passed the exact ARM64 pseudo-flash
+  and downstream systemd/application/field/recovery gates recorded in P2.T3 and
+  P5.T0. It remains provisioned-but-not-commissioned evidence: no attached-device,
+  power-interruption, native-QGC, flight, or signed physical Q131 row is claimed.
 
 #### P5.T2: Establish Automation-Ready Documentation Architecture And Validation
 

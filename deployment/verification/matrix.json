@@ -1,5 +1,5 @@
 {
-  "matrix_id": "6387f1c1f73b960de57d41dfc172da86f5996061cdc1b622b751ec2682959595",
+  "matrix_id": "3a2cfaa20ea83980399530209a04e39984d48a0252faaa5107400071eb3a0b63",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -36,7 +36,7 @@
       "test_refs": [
         "P0.T2.t1",
         "P3.T5.t4",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Settled.",
       "title": "Initial aircraft hardware class"
@@ -77,7 +77,7 @@
       "test_refs": [
         "P0.T2.t1",
         "P3.T5.t4",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Raspberry Pi 5 Model B booting from an SD card.",
       "title": "Initial aircraft hardware class"
@@ -116,7 +116,7 @@
       "test_refs": [
         "P0.T2.t1",
         "P3.T5.t4",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "RAM is intentionally not inventoried or used as a compatibility discriminator.",
       "title": "Initial aircraft hardware class"
@@ -158,7 +158,7 @@
         "P1.T0.t6",
         "P3.T0.t1",
         "P3.T1.t1",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Settled.",
       "title": "Target OS and ROS baseline"
@@ -201,7 +201,7 @@
         "P1.T0.t2",
         "P3.T0.t1",
         "P3.T1.t1",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Ubuntu Server 24.04 LTS ARM64 with ROS 2 Jazzy.",
       "title": "Target OS and ROS baseline"
@@ -245,7 +245,7 @@
         "P1.T0.t3",
         "P3.T0.t1",
         "P3.T1.t1",
-        "P5.T1.t2"
+        "P5.T1.t5"
       ],
       "text": "Remaining work must validate attached hardware drivers and remove Humble assumptions.",
       "title": "Target OS and ROS baseline"
@@ -453,7 +453,7 @@
       "test_refs": [
         "P3.T0.t1",
         "P3.T1.t1",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Settled.",
       "title": "Raw SD-card provisioning"
@@ -494,7 +494,7 @@
       "test_refs": [
         "P3.T0.t1",
         "P3.T1.t1",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Use a checksum-pinned official Ubuntu Server 24.04 ARM64 Raspberry Pi image, generated cloud-init first-boot data, and Ansible convergence.",
       "title": "Raw SD-card provisioning"
@@ -533,7 +533,7 @@
       "test_refs": [
         "P3.T0.t1",
         "P3.T1.t1",
-        "P5.T1.t3"
+        "P5.T1.t7"
       ],
       "text": "Do not maintain a custom III disk image yet.",
       "title": "Raw SD-card provisioning"
@@ -577,8 +577,8 @@
         "P1.T2.t8",
         "P2.T6.t8",
         "P3.T1.t1",
-        "P3.T8.t5",
-        "P5.T0.t2"
+        "P3.T8.t7",
+        "P5.T0.t8"
       ],
       "text": "Settled.",
       "title": "Offline operation"
@@ -986,7 +986,7 @@
       "test_refs": [
         "P2.T5.t8",
         "P3.T3.t1",
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "Settled.",
       "title": "SSH client authentication"
@@ -1104,7 +1104,7 @@
       "test_refs": [
         "P2.T5.t2",
         "P3.T3.t1",
-        "P3.T8.t2"
+        "P3.T8.t8"
       ],
       "text": "Disable password login and never transfer private keys.",
       "title": "SSH client authentication"
@@ -1143,7 +1143,7 @@
       "test_refs": [
         "P2.T2.t6",
         "P3.T1.t1",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Settled.",
       "title": "Deployment privilege"
@@ -1183,7 +1183,7 @@
       "test_refs": [
         "P2.T2.t6",
         "P3.T1.t1",
-        "P5.T1.t3"
+        "P5.T1.t6"
       ],
       "text": "Install a narrow root-owned deployment helper and grant the `iii` account passwordless sudo only for that helper and explicitly necessary systemd operations.",
       "title": "Deployment privilege"
@@ -1222,7 +1222,7 @@
       "test_refs": [
         "P2.T2.t5",
         "P3.T1.t1",
-        "P5.T1.t3"
+        "P5.T1.t6"
       ],
       "text": "Do not grant unrestricted sudo; remove or narrow bootstrap authority after initial convergence.",
       "title": "Deployment privilege"
@@ -4993,7 +4993,7 @@
         "P2.T2.t6",
         "P2.T4.t6",
         "P2.T5.t8",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Settled.",
       "title": "Field activation downtime"
@@ -5035,7 +5035,7 @@
         "P2.T2.t6",
         "P2.T4.t6",
         "P2.T5.t8",
-        "P5.T1.t4"
+        "P5.T1.t6"
       ],
       "text": "Build, transfer, verification, and staging occur while the current runtime remains available.",
       "title": "Field activation downtime"
@@ -5077,7 +5077,7 @@
         "P2.T2.t2",
         "P2.T4.t2",
         "P2.T5.t3",
-        "P5.T1.t3"
+        "P5.T1.t6"
       ],
       "text": "Stop runtime only after candidate and configuration plan are ready.",
       "title": "Field activation downtime"
@@ -5119,7 +5119,7 @@
         "P2.T2.t6",
         "P2.T4.t2",
         "P2.T5.t8",
-        "P5.T1.t4"
+        "P5.T1.t6"
       ],
       "text": "Target candidate health acceptance within 60 seconds; after a hard 120-second deadline, initiate automatic rollback onboard.",
       "title": "Field activation downtime"
@@ -5457,7 +5457,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P2.T3.t5",
+        "P2.T3.t17",
         "P3.T1.t1"
       ],
       "text": "Settled.",
@@ -5494,7 +5494,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P2.T3.t3",
+        "P2.T3.t10",
         "P3.T1.t1"
       ],
       "text": "Use versioned A/B receiver slots plus a minimal stable host recovery bootstrap installed by Ansible.",
@@ -5642,7 +5642,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P2.T3.t4",
+        "P2.T3.t17",
         "P3.T1.t1"
       ],
       "text": "Always retain the previous working receiver.",
@@ -5679,7 +5679,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P2.T3.t4",
+        "P2.T3.t17",
         "P3.T1.t1"
       ],
       "text": "Update the stable bootstrap, systemd unit, trust root, and recovery selector only through explicit Ansible/host maintenance, never ordinary application deployment.",
@@ -5934,7 +5934,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T5.t4",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Settled.",
       "title": "Physical device role matching"
@@ -6008,7 +6008,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T5.t1",
-        "P5.T1.t3"
+        "P5.T1.t9"
       ],
       "text": "Prefer vendor/product/interface and stable device properties; add exact serial allowlists only where needed to distinguish ambiguous or safety-critical devices.",
       "title": "Physical device role matching"
@@ -6044,7 +6044,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T5.t4",
-        "P5.T1.t3"
+        "P5.T1.t6"
       ],
       "text": "Generate stable `/dev/iii/*` role paths and provide `iii host inspect`.",
       "title": "Physical device role matching"
@@ -6080,7 +6080,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T5.t1",
-        "P5.T1.t4"
+        "P5.T1.t6"
       ],
       "text": "Missing or ambiguous required roles block real- runtime health acceptance.",
       "title": "Physical device role matching"
@@ -6118,7 +6118,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P3.T5.t4",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Do not create per-aircraft inventory.",
       "title": "Physical device role matching"
@@ -6156,7 +6156,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P3.T5.t1",
-        "P5.T1.t4"
+        "P5.T1.t8"
       ],
       "text": "Resolve the conflicting legacy/current serial literals through physical commissioning.",
       "title": "Physical device role matching"
@@ -6194,8 +6194,8 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T4.t4",
-        "P3.T6.t5",
-        "P5.T1.t2"
+        "P3.T6.t8",
+        "P5.T1.t6"
       ],
       "text": "Settled.",
       "title": "Raspberry Pi boot firmware policy"
@@ -6235,8 +6235,8 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P3.T4.t4",
-        "P3.T6.t2",
-        "P5.T1.t4"
+        "P3.T6.t9",
+        "P5.T1.t6"
       ],
       "text": "Maintain one source- controlled Raspberry Pi 5 boot profile under `deployment/`, based on stock Ubuntu defaults with only documented required overlays/options and no initial overclocking.",
       "title": "Raspberry Pi boot firmware policy"
@@ -6275,7 +6275,7 @@
       "test_refs": [
         "P3.T4.t4",
         "P3.T6.t2",
-        "P5.T1.t1"
+        "P5.T1.t6"
       ],
       "text": "Inventory firmware, kernel, command line, overlays, and boot configuration.",
       "title": "Raspberry Pi boot firmware policy"
@@ -6315,7 +6315,7 @@
       "test_refs": [
         "P3.T4.t4",
         "P3.T6.t3",
-        "P5.T1.t4"
+        "P5.T1.t6"
       ],
       "text": "Normal III releases cannot modify boot files; only explicit Ansible/host maintenance may do so, with pre-change backups and reboot validation.",
       "title": "Raspberry Pi boot firmware policy"
@@ -6353,8 +6353,8 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T4.t4",
-        "P3.T6.t2",
-        "P5.T1.t2"
+        "P3.T6.t10",
+        "P5.T1.t6"
       ],
       "text": "Retain previous boot config/kernel where supported.",
       "title": "Raspberry Pi boot firmware policy"
@@ -6395,7 +6395,7 @@
       "test_refs": [
         "P3.T4.t4",
         "P3.T6.t5",
-        "P5.T1.t3"
+        "P5.T1.t6"
       ],
       "text": "Defer A/B boot/root filesystems and accept physical SD repair/reprovisioning for an unbootable host.",
       "title": "Raspberry Pi boot firmware policy"
@@ -6541,7 +6541,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T0.t1",
-        "P3.T7.t5"
+        "P3.T7.t6"
       ],
       "text": "Advertise `iii.local` with mDNS on the active interface.",
       "title": "Network bootstrap and field connectivity"
@@ -6615,7 +6615,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P3.T0.t1",
-        "P3.T7.t5"
+        "P3.T7.t4"
       ],
       "text": "Do not initially host an aircraft access point; use a router, laptop hotspot, or Ethernet.",
       "title": "Network bootstrap and field connectivity"
@@ -6693,7 +6693,7 @@
         "P2.T5.t8",
         "P3.T1.t1",
         "P3.T2.t2",
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "Settled.",
       "title": "Runtime API network exposure"
@@ -6821,7 +6821,7 @@
         "P2.T5.t8",
         "P3.T1.t1",
         "P3.T2.t2",
-        "P3.T8.t5"
+        "P3.T8.t8"
       ],
       "text": "Deployment control remains separate over SSH plus receiver Unix-socket IPC.",
       "title": "Runtime API network exposure"
@@ -7550,7 +7550,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T2.t2",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Settled.",
       "title": "Normal power-on runtime state"
@@ -7587,7 +7587,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P3.T2.t2",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "On host boot, start the deployment receiver first and reconcile interrupted transactions.",
       "title": "Normal power-on runtime state"
@@ -7623,7 +7623,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T2.t2",
-        "P5.T1.t4"
+        "P5.T1.t6"
       ],
       "text": "Then start the minimal `iii-runtime-api`/III-daemon control plane in `DEGRADED_CLOCK` until the post-boot clock gate in Q59 succeeds",
       "title": "Normal power-on runtime state"
@@ -7695,7 +7695,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T2.t2",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "After clock synchronization and buffered-log flush, automatically boot the real graph into operational standby with required sensors/health monitoring active.",
       "title": "Normal power-on runtime state"
@@ -7731,7 +7731,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T2.t2",
-        "P5.T1.t3"
+        "P5.T1.t7"
       ],
       "text": "Never automatically start Mission Execution, Custom Operation, Direct Operation, or a Reference Owner",
       "title": "Normal power-on runtime state"
@@ -7768,7 +7768,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P3.T2.t2",
-        "P5.T1.t3"
+        "P5.T1.t9"
       ],
       "text": "never arm PX4 or initiate movement.",
       "title": "Normal power-on runtime state"
@@ -7806,7 +7806,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P3.T2.t2",
-        "P5.T1.t2"
+        "P5.T1.t5"
       ],
       "text": "Configuration/hardware/ release health failure leaves a diagnosable non-operational state.",
       "title": "Normal power-on runtime state"
@@ -7842,7 +7842,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T2.t2",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Keep `iii system boot` idempotent as a manual recovery/bringup command rather than requiring it after every normal power cycle.",
       "title": "Normal power-on runtime state"
@@ -8927,7 +8927,7 @@
       "test_refs": [
         "P1.T3.t6",
         "P3.T3.t1",
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "Settled.",
       "title": "Workstation signing-key storage"
@@ -9122,7 +9122,7 @@
       "test_refs": [
         "P1.T3.t4",
         "P3.T3.t1",
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "Do not share/back up keys between computers.",
       "title": "Workstation signing-key storage"
@@ -9201,7 +9201,7 @@
       "test_refs": [
         "P1.T3.t6",
         "P3.T3.t1",
-        "P3.T8.t3"
+        "P3.T8.t8"
       ],
       "text": "CI retains its separate protected qualified-release key.",
       "title": "Workstation signing-key storage"
@@ -9488,7 +9488,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P2.T3.t5",
+        "P2.T3.t17",
         "P2.T4.t6"
       ],
       "text": "Settled.",
@@ -9676,7 +9676,7 @@
       "test_refs": [
         "P1.T0.t6",
         "P1.T2.t8",
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "Settled.",
       "title": "Supported operator-computer platform"
@@ -9716,7 +9716,7 @@
       "test_refs": [
         "P1.T0.t2",
         "P1.T2.t8",
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "Initially support Ubuntu 22.04 and 24.04 x86_64 workstation/ground-control computers.",
       "title": "Supported operator-computer platform"
@@ -9756,7 +9756,7 @@
       "test_refs": [
         "P1.T0.t1",
         "P1.T2.t3",
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "Containerize and pin the ARM64 builder; install CLI/Ansible dependencies through a repository- managed environment rather than global packages.",
       "title": "Supported operator-computer platform"
@@ -9795,7 +9795,7 @@
       "test_refs": [
         "P1.T0.t6",
         "P1.T2.t3",
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "Linux block-device access is required for SD preparation.",
       "title": "Supported operator-computer platform"
@@ -9834,7 +9834,7 @@
       "test_refs": [
         "P1.T0.t6",
         "P1.T2.t2",
-        "P3.T8.t2"
+        "P3.T8.t7"
       ],
       "text": "Keep signing keys and `.iii` operation/cache state in host user storage outside containers.",
       "title": "Supported operator-computer platform"
@@ -10166,7 +10166,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P4.T2.t3",
         "P4.T3.t4"
       ],
@@ -10205,7 +10205,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t6",
+        "P3.T8.t7",
         "P4.T2.t3",
         "P4.T3.t5"
       ],
@@ -10244,7 +10244,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t4",
+        "P3.T8.t8",
         "P4.T2.t5",
         "P4.T3.t3"
       ],
@@ -10283,7 +10283,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t2",
+        "P3.T8.t7",
         "P4.T2.t2",
         "P4.T3.t2"
       ],
@@ -10322,7 +10322,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P4.T2.t2",
         "P4.T3.t4"
       ],
@@ -10400,7 +10400,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P4.T2.t5",
         "P4.T3.t3"
       ],
@@ -10439,7 +10439,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P4.T2.t5",
         "P4.T3.t4"
       ],
@@ -10478,7 +10478,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t6",
+        "P3.T8.t7",
         "P4.T2.t3",
         "P4.T3.t4"
       ],
@@ -10517,7 +10517,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P4.T2.t3",
         "P4.T3.t4"
       ],
@@ -10556,7 +10556,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t2",
+        "P3.T8.t7",
         "P4.T2.t4",
         "P4.T3.t4"
       ],
@@ -10595,7 +10595,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t3",
+        "P3.T8.t8",
         "P4.T2.t2",
         "P4.T3.t4"
       ],
@@ -10634,7 +10634,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P4.T2.t4",
         "P4.T3.t4"
       ],
@@ -10712,7 +10712,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P4.T2.t5",
         "P4.T3.t4"
       ],
@@ -10790,7 +10790,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P4.T2.t6",
         "P4.T3.t4"
       ],
@@ -10829,7 +10829,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t2",
+        "P3.T8.t8",
         "P4.T2.t5",
         "P4.T3.t4"
       ],
@@ -10868,7 +10868,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t2",
+        "P3.T8.t8",
         "P4.T2.t4",
         "P4.T3.t4"
       ],
@@ -10907,7 +10907,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t4",
+        "P3.T8.t8",
         "P4.T2.t5",
         "P4.T3.t1"
       ],
@@ -10946,7 +10946,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P4.T2.t3",
         "P4.T3.t4"
       ],
@@ -10985,7 +10985,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t2",
+        "P3.T8.t8",
         "P4.T2.t3",
         "P4.T3.t4"
       ],
@@ -11024,7 +11024,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P4.T2.t2",
         "P4.T3.t5"
       ],
@@ -11063,7 +11063,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t2",
+        "P3.T8.t8",
         "P4.T2.t5",
         "P4.T3.t1"
       ],
@@ -11180,7 +11180,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t3",
+        "P3.T8.t8",
         "P4.T2.t3",
         "P4.T3.t4"
       ],
@@ -11219,7 +11219,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t2",
+        "P3.T8.t7",
         "P4.T2.t5",
         "P4.T3.t1"
       ],
@@ -11297,7 +11297,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P4.T2.t7",
         "P4.T3.t7"
       ],
@@ -12177,7 +12177,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T6.t8",
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P5.T3.t5"
       ],
       "text": "Settled with a deferred HIL extension.",
@@ -12335,7 +12335,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T6.t4",
-        "P3.T8.t1",
+        "P3.T8.t7",
         "P5.T3.t3"
       ],
       "text": "Show a persistent active-profile target badge and endpoint in the GUI (initially SIM, REAL, and only when commissioned OPTITRACK).",
@@ -12459,7 +12459,7 @@
         "P0.T2.t1",
         "P1.T3.t5",
         "P2.T6.t4",
-        "P3.T7.t5"
+        "P3.T7.t6"
       ],
       "text": "Current supervision accepts only hard-coded `sim`, `real`, and `opti_track` profiles; development Gazebo transport defaults to loopback; CycloneDDS files hard-code workstation/Pi interface names.",
       "title": "Deployment preparation for future split-host HIL"
@@ -12501,7 +12501,7 @@
         "P0.T2.t1",
         "P1.T3.t5",
         "P2.T6.t4",
-        "P3.T7.t4"
+        "P3.T7.t5"
       ],
       "text": "Do not implement HIL launch or behavior now, but decouple target endpoint, runtime profile, execution host, and simulator provider in deployment/CLI manifests; make release manifests declare extensible supported-profile/capability data rather than a closed sim/local versus real/remote mapping; parameterize middleware interface/peer configuration from detected stable LAN interfaces; and reserve an opt-in, disabled-by-default network-policy extension for future workstation simulator peers.",
       "title": "Deployment preparation for future split-host HIL"
@@ -12543,7 +12543,7 @@
         "P0.T2.t1",
         "P1.T3.t6",
         "P2.T6.t8",
-        "P3.T7.t5"
+        "P3.T7.t6"
       ],
       "text": "Keep Gazebo and its assets off the Pi.",
       "title": "Deployment preparation for future split-host HIL"
@@ -12628,7 +12628,7 @@
         "P0.T2.t1",
         "P1.T3.t5",
         "P2.T6.t4",
-        "P3.T7.t2"
+        "P3.T7.t6"
       ],
       "text": "A provisioned drone defaults to the `real` runtime profile.",
       "title": "Deployment preparation for future split-host HIL"
@@ -12715,7 +12715,7 @@
         "P2.T7.t4",
         "P3.T1.t1",
         "P3.T2.t2",
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "Settled.",
       "title": "Clock handling on a power-cycled, sometimes-offline Pi"
@@ -12761,7 +12761,7 @@
         "P2.T7.t6",
         "P3.T1.t1",
         "P3.T2.t2",
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "On every Pi boot, start only the receiver and minimal daemon/runtime-API control plane in an explicit `DEGRADED_CLOCK` state.",
       "title": "Clock handling on a power-cycled, sometimes-offline Pi"
@@ -12808,7 +12808,7 @@
         "P2.T7.t6",
         "P3.T1.t1",
         "P3.T2.t2",
-        "P3.T8.t5"
+        "P3.T8.t8"
       ],
       "text": "Do not boot/start the ROS graph or permit flight, mission, operation, configuration mutation, capture mutation, or other runtime operations until clock synchronization commits.",
       "title": "Clock handling on a power-cycled, sometimes-offline Pi"
@@ -12898,7 +12898,7 @@
         "P2.T7.t5",
         "P3.T1.t1",
         "P3.T2.t2",
-        "P3.T8.t2"
+        "P3.T8.t7"
       ],
       "text": "Buffer III daemon/API logs in a bounded in-memory ring tagged with boot ID and monotonic timestamps",
       "title": "Clock handling on a power-cycled, sometimes-offline Pi"
@@ -13034,7 +13034,7 @@
         "P2.T7.t4",
         "P3.T1.t1",
         "P3.T2.t2",
-        "P3.T8.t2"
+        "P3.T8.t7"
       ],
       "text": "An authorized ground-control companion automatically invokes the same clock- sync operation when it discovers `iii.local`, independent of whether the GUI is open.",
       "title": "Clock handling on a power-cycled, sometimes-offline Pi"
@@ -13126,7 +13126,7 @@
         "P2.T7.t4",
         "P3.T1.t1",
         "P3.T2.t2",
-        "P3.T8.t3"
+        "P3.T8.t7"
       ],
       "text": "The receiver owns the narrow privileged clock-set operation over its authenticated SSH/local-socket control path",
       "title": "Clock handling on a power-cycled, sometimes-offline Pi"
@@ -13171,7 +13171,7 @@
         "P2.T7.t3",
         "P3.T1.t1",
         "P3.T2.t2",
-        "P3.T8.t2"
+        "P3.T8.t8"
       ],
       "text": "never expose clock setting through the unauthenticated plain-HTTP LAN API.",
       "title": "Clock handling on a power-cycled, sometimes-offline Pi"
@@ -13261,7 +13261,7 @@
         "P2.T7.t2",
         "P3.T1.t1",
         "P3.T2.t2",
-        "P3.T8.t6"
+        "P3.T8.t8"
       ],
       "text": "Correctness-critical identities and ordering still use boot ID plus monotonic revisions rather than wall time.",
       "title": "Clock handling on a power-cycled, sometimes-offline Pi"
@@ -13592,7 +13592,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P3.T9.t4"
       ],
       "text": "Settled.",
@@ -13628,7 +13628,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t8",
         "P3.T9.t4"
       ],
       "text": "Current GC v2 is a ROS-free React frontend plus thin FastAPI discovery/proxy, packaged through Docker Compose and started by a workspace script with a manually provisioned environment file.",
@@ -13665,7 +13665,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P3.T9.t1"
       ],
       "text": "QGroundControl assets/configuration and CLI setup are separate, and there is no converged GC-host installer, service baseline, offline update transaction, or integrated tuning-mirror/clock-sync companion.",
@@ -13701,7 +13701,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P3.T9.t2"
       ],
       "text": "Make GC provisioning a first-class target of this same in-repository deployment system.",
@@ -13810,7 +13810,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t3",
+        "P3.T8.t8",
         "P3.T9.t3"
       ],
       "text": "Separate this into an operational GC base role and an optional development/ cross-build role, but install both on the current GC laptop; this preserves a future source-repo-independent field computer without requiring it now.",
@@ -13883,7 +13883,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P3.T9.t4"
       ],
       "text": "For this sweep, assume every GC computer has this workspace cloned locally.",
@@ -13920,7 +13920,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P3.T9.t4"
       ],
       "text": "Install and run QGroundControl natively on the host through the same in-repository GC provisioning path for field and simulation; remove the devcontainer-owned QGroundControl AppImage/path and have simulation interoperate with the host process.",
@@ -14191,7 +14191,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P3.T9.t4"
       ],
       "text": "Settled.",
@@ -14228,7 +14228,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P3.T8.t5",
+        "P3.T8.t8",
         "P3.T9.t4"
       ],
       "text": "Install the GC proxy/static frontend, discovery, tuning mirror, and clock-sync companion as managed user-session services that start automatically when the operator logs into the graphical Ubuntu session, restart on failure, and remain available without opening a browser.",
@@ -14300,7 +14300,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t1",
+        "P3.T8.t8",
         "P3.T9.t1"
       ],
       "text": "A `sim` target explicitly skips clock alignment and never enters the Pi-specific clock gate.",
@@ -14337,7 +14337,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P3.T8.t4",
+        "P3.T8.t8",
         "P3.T9.t4"
       ],
       "text": "Do not automatically launch a browser window or QGroundControl.",
@@ -14374,7 +14374,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P3.T8.t4",
+        "P3.T8.t8",
         "P3.T9.t3"
       ],
       "text": "Expose an III GUI desktop launcher plus `iii gc open/start/stop/restart/status` for the GC stack, and a separate QGroundControl launcher plus `iii qgc start/stop/restart/status` for host-native QGC.",
@@ -15414,7 +15414,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "Settled.",
       "title": "Starting point for GC host provisioning"
@@ -15448,7 +15448,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "Support a clean, normally installed Ubuntu 22.04 or 24.04 x86_64 system with a graphical user account and this repository clone as the GC provisioning boundary.",
       "title": "Starting point for GC host provisioning"
@@ -15517,7 +15517,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P3.T8.t2"
+        "P3.T8.t7"
       ],
       "text": "Do not automate workstation disk partitioning, Ubuntu installation, full-disk encryption, proprietary hardware drivers, or vendor firmware in this sweep; inspect and report those prerequisites instead.",
       "title": "Starting point for GC host provisioning"
@@ -15553,7 +15553,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T3.t1",
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "Settled.",
       "title": "Enrolling credentials on additional GC/operator computers"
@@ -15809,7 +15809,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T3.t1",
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "The accepted plain-HTTP LAN risk remains explicit.",
       "title": "Enrolling credentials on additional GC/operator computers"
@@ -16532,9 +16532,9 @@
         "P1.T0.t6",
         "P1.T2.t8",
         "P2.T6.t8",
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P3.T9.t4",
-        "P5.T0.t2"
+        "P5.T0.t8"
       ],
       "text": "Settled.",
       "title": "Offline field-readiness preparation"
@@ -16724,7 +16724,7 @@
         "P1.T3.t6",
         "P1.T5.t6",
         "P2.T6.t8",
-        "P5.T0.t2"
+        "P5.T0.t8"
       ],
       "text": "Settled.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -16769,7 +16769,7 @@
         "P1.T3.t6",
         "P1.T5.t6",
         "P2.T6.t8",
-        "P5.T0.t7"
+        "P5.T0.t8"
       ],
       "text": "Do not implement mocap transport, frames, estimator tuning, or OptiTrack-server provisioning in this sweep.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -16997,7 +16997,7 @@
         "P1.T3.t5",
         "P1.T5.t3",
         "P2.T6.t4",
-        "P5.T0.t2"
+        "P5.T0.t8"
       ],
       "text": "Display the active profile prominently.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -17088,7 +17088,7 @@
         "P1.T3.t5",
         "P1.T5.t3",
         "P2.T6.t4",
-        "P5.T0.t2"
+        "P5.T0.t8"
       ],
       "text": "Keep the profile and artifact boundaries extensible for the later integration change.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -22362,7 +22362,7 @@
         "P0.T2.t1",
         "P1.T3.t5",
         "P2.T6.t8",
-        "P3.T7.t1",
+        "P3.T7.t5",
         "P3.T10.t2"
       ],
       "text": "Encode profile composition explicitly rather than branching on `profile == sim`.",
@@ -22455,7 +22455,7 @@
         "P0.T2.t1",
         "P1.T3.t6",
         "P2.T6.t8",
-        "P3.T7.t4",
+        "P3.T7.t6",
         "P3.T10.t5"
       ],
       "text": "Still apply onboard/real policies for deployment receiver, clock gate, credentials, hardware-host identity, logging, and maintenance safety because III runs on the Pi.",
@@ -24036,10 +24036,10 @@
       "test_refs": [
         "P3.T1.t1",
         "P3.T5.t4",
-        "P3.T6.t5",
+        "P3.T6.t8",
         "P3.T9.t4",
         "P3.T10.t5",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Settled.",
       "title": "Provisioned versus commissioned host state"
@@ -24085,10 +24085,10 @@
       "test_refs": [
         "P3.T1.t1",
         "P3.T5.t2",
-        "P3.T6.t4",
+        "P3.T6.t8",
         "P3.T9.t4",
         "P3.T10.t3",
-        "P5.T1.t2"
+        "P5.T1.t5"
       ],
       "text": "Report `provisioned` when raw-image/cloud-init/Ansible convergence, credentials, sanitization, receiver recovery, storage, network, clock tooling, and host inspection pass.",
       "title": "Provisioned versus commissioned host state"
@@ -24135,7 +24135,7 @@
       "test_refs": [
         "P3.T1.t1",
         "P3.T5.t3",
-        "P3.T6.t3",
+        "P3.T6.t10",
         "P3.T9.t4",
         "P3.T10.t3",
         "P5.T1.t2"
@@ -24183,10 +24183,10 @@
       "test_refs": [
         "P3.T1.t1",
         "P3.T5.t2",
-        "P3.T6.t3",
+        "P3.T6.t8",
         "P3.T9.t4",
         "P3.T10.t5",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Field- development bundles may run on a provisioned test host, but cannot create a production commissioning record.",
       "title": "Provisioned versus commissioned host state"
@@ -24222,7 +24222,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T8.t5",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Settled.",
       "title": "Commissioning-record identity, signing, and retention"
@@ -24296,7 +24296,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T8.t3",
-        "P5.T1.t3"
+        "P5.T1.t7"
       ],
       "text": "Sign it with the commissioning computer's authorized field-signing key, retain a verified copy onboard and content-addressed under local Git-ignored `.iii/commissioning/`, and support verify/export/import.",
       "title": "Commissioning-record identity, signing, and retention"
@@ -24406,7 +24406,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T4.t4",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Settled.",
       "title": "Commissioning validity after system changes"
@@ -24442,7 +24442,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T4.t4",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Compute current commissioning status against the latest accepted commissioning record.",
       "title": "Commissioning validity after system changes"
@@ -24480,7 +24480,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P3.T4.t4",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Host-baseline, boot-policy, hardware-role mapping/device, PX4 firmware/required parameters, trust-root, or qualified-anchor changes mark it `recommission_required` until the affected acceptance subset and recovery tests produce a new signed record.",
       "title": "Commissioning validity after system changes"
@@ -24588,7 +24588,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T4.t4",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Ordinary tuned III values within the valid schema do not invalidate commissioning; their journal/capture provenance remains separate.",
       "title": "Commissioning validity after system changes"
@@ -24624,7 +24624,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T5.t4",
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Settled.",
       "title": "Hardware-device replacement workflow"
@@ -24660,7 +24660,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T5.t2",
-        "P5.T1.t4"
+        "P5.T1.t6"
       ],
       "text": "If a replacement device still matches the shared role manifest unambiguously, require role-specific inspection/functional acceptance and a refreshed commissioning record, but no source-manifest change.",
       "title": "Hardware-device replacement workflow"
@@ -24698,7 +24698,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P3.T5.t2",
-        "P5.T1.t4"
+        "P5.T1.t6"
       ],
       "text": "If it does not match, `iii host hardware inspect` reports the unmatched observations and can export a reviewable capture; updating match rules/serial allowlists occurs only through a feature-branch source change, tests, Ansible convergence, and recommissioning.",
       "title": "Hardware-device replacement workflow"
@@ -24734,7 +24734,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T5.t4",
-        "P5.T1.t3"
+        "P5.T1.t6"
       ],
       "text": "Never auto-learn a new serial or rewrite udev policy from the connected device.",
       "title": "Hardware-device replacement workflow"
@@ -24970,7 +24970,7 @@
       "test_refs": [
         "P0.T12.t1",
         "P2.T2.t6",
-        "P2.T3.t5",
+        "P2.T3.t17",
         "P2.T6.t8"
       ],
       "text": "Settled.",
@@ -25140,7 +25140,7 @@
       "test_refs": [
         "P0.T12.t1",
         "P2.T2.t6",
-        "P2.T3.t5",
+        "P2.T3.t9",
         "P2.T6.t8"
       ],
       "text": "Local build/package phases may be cancelled and later resumed from verified cache state.",
@@ -25879,7 +25879,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t2"
+        "P5.T0.t8"
       ],
       "text": "Settled.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26080,7 +26080,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t4",
-        "P5.T0.t2"
+        "P5.T0.t8"
       ],
       "text": "CI verifies evidence identity/required categories but does not contact the aircraft.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26238,7 +26238,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t2"
+        "P5.T0.t8"
       ],
       "text": "PR text is untrusted transport",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26277,7 +26277,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t2",
-        "P5.T0.t5"
+        "P5.T0.t8"
       ],
       "text": "the signature, source identity, schema, required categories, and trusted signer are what the required `promotion-evidence` check validates.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26355,7 +26355,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t6"
+        "P5.T0.t8"
       ],
       "text": "Promotion tooling proves that mechanical submodule merge commits/gitlink-lock refresh preserve the tested source-content identity.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26394,7 +26394,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t7"
+        "P5.T0.t8"
       ],
       "text": "`main -> release` reuses the still-valid attestation and requires its own lightweight verification; changed content or policy requires recollection.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26811,7 +26811,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t2"
+        "P5.T0.t8"
       ],
       "text": "Settled.",
       "title": "Authority for required validation categories"
@@ -26969,7 +26969,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t1",
-        "P5.T0.t5"
+        "P5.T0.t8"
       ],
       "text": "Keep the policy conservative but coarse enough for this research system.",
       "title": "Authority for required validation categories"
@@ -27008,7 +27008,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t2"
+        "P5.T0.t8"
       ],
       "text": "Settled.",
       "title": "Validation-waiver limits"
@@ -27727,7 +27727,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T6.t8",
-        "P5.T0.t7"
+        "P5.T0.t8"
       ],
       "text": "This is the canonical connected-system pre-field checklist, but its record is evidence rather than a reusable authorization token: every later safety-sensitive operation still validates live state.",
       "title": "One connected-system field-readiness command"
@@ -27846,7 +27846,7 @@
       "test_refs": [
         "P0.T12.t1",
         "P2.T6.t8",
-        "P5.T0.t6"
+        "P5.T0.t8"
       ],
       "text": "`FAIL` covers conditions that make the declared field workflow unsafe or non-recoverable: invalid commissioning without an allowed field overlay, incompatible GC/drone components, invalid clock gate, unavailable receiver/control plane, required hardware or PX4 mismatch, unresolved parameter reconciliation/reintroduction, invalid selected mission, or violated storage/ rollback reserve.",
       "title": "Field-readiness severity and enforcement"
@@ -27965,7 +27965,7 @@
       "test_refs": [
         "P0.T12.t1",
         "P2.T6.t6",
-        "P5.T0.t2"
+        "P5.T0.t8"
       ],
       "text": "A runtime-only computer may produce a checksummed diagnostic record; release/commissioning evidence requires signature by an authorized field-signing key.",
       "title": "Field-readiness severity and enforcement"
@@ -28043,7 +28043,7 @@
       "test_refs": [
         "P0.T12.t1",
         "P2.T6.t6",
-        "P5.T0.t2"
+        "P5.T0.t8"
       ],
       "text": "Failures cannot be waived by readiness tooling.",
       "title": "Field-readiness severity and enforcement"
@@ -28331,7 +28331,7 @@
         "P2.T0.t3",
         "P2.T6.t6",
         "P3.T4.t4",
-        "P5.T0.t4"
+        "P5.T0.t8"
       ],
       "text": "Its non-SemVer protected tag points at the trusted workflow revision and never triggers a bundle build.",
       "title": "Withdrawal of a previously qualified release"
@@ -28427,7 +28427,7 @@
         "P2.T0.t5",
         "P2.T6.t8",
         "P3.T4.t4",
-        "P5.T0.t3"
+        "P5.T0.t8"
       ],
       "text": "`withdrawn` blocks new download/install/activation but does not trigger an automatic switch.",
       "title": "Withdrawal of a previously qualified release"
@@ -28477,7 +28477,7 @@
         "P2.T0.t5",
         "P2.T6.t3",
         "P3.T4.t4",
-        "P5.T0.t2"
+        "P5.T0.t8"
       ],
       "text": "`unsafe` additionally invalidates commissioning and blocks flight-capable operation.",
       "title": "Withdrawal of a previously qualified release"
@@ -28527,7 +28527,7 @@
         "P2.T0.t6",
         "P2.T6.t4",
         "P3.T4.t4",
-        "P5.T0.t4"
+        "P5.T0.t8"
       ],
       "text": "Revocation never switches code while the aircraft may be operating.",
       "title": "Withdrawal of a previously qualified release"
@@ -28668,7 +28668,7 @@
       "test_refs": [
         "P2.T5.t3",
         "P3.T3.t1",
-        "P3.T8.t5",
+        "P3.T8.t7",
         "P3.T11.t3",
         "P5.T0.t5"
       ],
@@ -28852,7 +28852,7 @@
       "test_refs": [
         "P2.T5.t3",
         "P3.T3.t1",
-        "P3.T8.t2",
+        "P3.T8.t7",
         "P3.T11.t4",
         "P5.T0.t7"
       ],
@@ -28943,7 +28943,7 @@
       "test_refs": [
         "P2.T5.t8",
         "P3.T3.t1",
-        "P3.T8.t3",
+        "P3.T8.t7",
         "P3.T11.t3",
         "P5.T0.t7"
       ],
@@ -29126,7 +29126,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P2.T8.t5",
-        "P5.T0.t7"
+        "P5.T0.t8"
       ],
       "text": "Exclude all SSH/signing private keys, runtime credentials, Wi-Fi secrets, and machine identity.",
       "title": "Disaster recovery for local evidence and operator state"
@@ -29587,7 +29587,7 @@
       "test_refs": [
         "P0.T4.t1",
         "P5.T0.t5",
-        "P5.T1.t2",
+        "P5.T1.t6",
         "P5.T6.t6"
       ],
       "text": "Settled by delegated authority.",
@@ -29675,7 +29675,7 @@
       "test_refs": [
         "P0.T4.t1",
         "P5.T0.t7",
-        "P5.T1.t3",
+        "P5.T1.t6",
         "P5.T6.t5"
       ],
       "text": "The matrix must be executable from the automation-ready runbooks, retain machine-verifiable evidence, and prove that no supported path needs the old repository, onboard Docker, password SSH, source synchronization, or direct aircraft filesystem mutation.",
@@ -29717,7 +29717,7 @@
       "test_refs": [
         "P0.T4.t1",
         "P5.T0.t4",
-        "P5.T1.t2",
+        "P5.T1.t5",
         "P5.T6.t5"
       ],
       "text": "Archive the legacy repository read-only with a pointer to replacement commands",
@@ -29758,8 +29758,8 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T4.t1",
-        "P5.T0.t2",
-        "P5.T1.t2",
+        "P5.T0.t8",
+        "P5.T1.t6",
         "P5.T6.t6"
       ],
       "text": "do not delete its history.",
@@ -29832,7 +29832,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T0.t1",
-        "P5.T0.t7"
+        "P5.T0.t8"
       ],
       "text": "The architecture is closed for implementation after the integrity sweep in this backlog.",
       "title": "Deployment-redesign scope closure"
@@ -29906,7 +29906,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T0.t1",
-        "P5.T0.t2"
+        "P5.T0.t8"
       ],
       "text": "This sweep may add only the schemas and boundaries already specified for those futures.",
       "title": "Deployment-redesign scope closure"
@@ -34794,7 +34794,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P2.T3",
       "test_refs": [
-        "P2.T3.t4"
+        "P2.T3.t10"
       ],
       "text": "Receiver payloads are separately identified/signed, extracted into an inactive slot, and cannot overwrite active/fallback/bootstrap content.",
       "title": "Implement Transactional Receiver A/B Self-Update"
@@ -34995,7 +34995,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P2.T3",
       "test_refs": [
-        "P2.T3.t5"
+        "P2.T3.t17"
       ],
       "text": "Ordinary receiver payloads cannot modify bootstrap code, systemd recovery unit, trust roots, selector fallback, or host-maintenance policy.",
       "title": "Implement Transactional Receiver A/B Self-Update"
@@ -39337,7 +39337,7 @@
       "required_evidence": "junit",
       "task": "P3.T7",
       "test_refs": [
-        "P3.T7.t5"
+        "P3.T7.t3"
       ],
       "text": "Ethernet DHCP remains usable after broken Wi-Fi configuration.",
       "title": "Provision Transactional Operator Networking"
@@ -39371,7 +39371,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P3.T8",
       "test_refs": [
-        "P3.T8.t5"
+        "P3.T8.t7"
       ],
       "text": "`iii gc provision` converges stock Ubuntu 22.04/24.04 plus a local clone in online or prepared-offline mode and reports excluded disk/OS/vendor prerequisites.",
       "title": "Provision The Ground-Control Host Baseline"
@@ -39571,7 +39571,7 @@
       "required_evidence": "junit",
       "task": "P3.T8",
       "test_refs": [
-        "P3.T8.t4"
+        "P3.T8.t8"
       ],
       "text": "User-login starts required GC companions without opening browser/QGC; logout stops only local graphical/user services and never affects the drone.",
       "title": "Provision The Ground-Control Host Baseline"
@@ -41695,7 +41695,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T0",
       "test_refs": [
-        "P5.T0.t7"
+        "P5.T0.t8"
       ],
       "text": "CI runs all hardware-independent tests.",
       "title": "Build The Deployment Verification Matrix"
@@ -41931,7 +41931,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T0",
       "test_refs": [
-        "P5.T0.t7"
+        "P5.T0.t8"
       ],
       "text": "Release-status tests cover Q127 withdrawal/unsafe propagation online and offline, no automatic in-operation switch, blocked flight, retained evidence, last-resort maintenance recovery, and qualified replacement.",
       "title": "Build The Deployment Verification Matrix"
@@ -41998,7 +41998,7 @@
       "required_evidence": "junit",
       "task": "P5.T0",
       "test_refs": [
-        "P5.T0.t7"
+        "P5.T0.t8"
       ],
       "text": "P2.T8 record/archive tests prove a clean replacement GC can recover all declared non-secret local state from a verified external archive while generating new identity and keys.",
       "title": "Build The Deployment Verification Matrix"
@@ -42101,7 +42101,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T1",
       "test_refs": [
-        "P5.T1.t4"
+        "P5.T1.t6"
       ],
       "text": "PX4, mmWave, camera, charger/gripper, runtime API, logs, and configuration pass acceptance.",
       "title": "Commission The First Aircraft From Raw Image"
@@ -42136,7 +42136,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T1",
       "test_refs": [
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Recovery from deliberately interrupted activation is demonstrated.",
       "title": "Commission The First Aircraft From Raw Image"
@@ -42171,7 +42171,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T1",
       "test_refs": [
-        "P5.T1.t2"
+        "P5.T1.t6"
       ],
       "text": "Power interruption is injected at each durable receiver/application selector boundary and boot reconciliation always reaches the specified old/new pair.",
       "title": "Commission The First Aircraft From Raw Image"
@@ -42241,7 +42241,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T1",
       "test_refs": [
-        "P5.T1.t2"
+        "P5.T1.t9"
       ],
       "text": "A native-QGC GC performs qualified deployment, dirty/untracked field deployment, parameter/PX4/QGC capture, log/diagnostic pull, and fully offline rollback using only prepared caches.",
       "title": "Commission The First Aircraft From Raw Image"
@@ -42311,7 +42311,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T1",
       "test_refs": [
-        "P5.T1.t2"
+        "P5.T1.t8"
       ],
       "text": "Commissioning records and live validity follow Q109\u2013Q110, including signed local/onboard evidence, invalidation by contract-changing maintenance, and a visible field-development overlay that preserves the qualified anchor.",
       "title": "Commission The First Aircraft From Raw Image"
@@ -43424,7 +43424,7 @@
       "required_evidence": "signed-local-acceptance",
       "scenario": "configuration",
       "test_refs": [
-        "P5.T0.t6",
+        "P5.T0.t8",
         "P5.T6.t5"
       ],
       "text": "Real and simulation tuning, cold restart, capture, reconciliation, comparison, deliberate promotion, release deployment, and rollback preserve exact provenance.",
@@ -43518,7 +43518,7 @@
       "required_evidence": "signed-local-acceptance",
       "scenario": "evidence",
       "test_refs": [
-        "P5.T0.t7",
+        "P5.T0.t8",
         "P5.T6.t6"
       ],
       "text": "A replacement GC verifies, restores, and rearchives all declared non-secret records while new machine identity and credentials are generated.",
@@ -43565,7 +43565,7 @@
       "required_evidence": "signed-local-acceptance",
       "scenario": "factory",
       "test_refs": [
-        "P5.T0.t2",
+        "P5.T0.t8",
         "P5.T6.t4"
       ],
       "text": "A raw supported image reaches provisioned and then separately commissioned state with exact first-boot, Ansible, identity, release, and recovery evidence.",
