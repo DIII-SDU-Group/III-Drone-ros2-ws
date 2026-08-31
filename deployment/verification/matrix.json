@@ -1,5 +1,5 @@
 {
-  "matrix_id": "6a434ecb974fdea7de05cb4154233f14e4be1f252ece12dec6cc5e3f27fd032e",
+  "matrix_id": "9ec809935aa41dc1d0b428b588a27aae6dfe598848b7cdd992dfad37aee65bec",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -1183,7 +1183,7 @@
       "test_refs": [
         "P2.T2.t6",
         "P3.T1.t1",
-        "P5.T1.t6"
+        "P5.T1.t12"
       ],
       "text": "Install a narrow root-owned deployment helper and grant the `iii` account passwordless sudo only for that helper and explicitly necessary systemd operations.",
       "title": "Deployment privilege"
@@ -42066,7 +42066,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T1",
       "test_refs": [
-        "P5.T1.t4"
+        "P5.T1.t12"
       ],
       "text": "A wiped target reaches a healthy inactive real-profile runtime using only documented inputs.",
       "title": "Commission The First Aircraft From Raw Image"

@@ -3307,6 +3307,23 @@ Implementation notes (2026-08-26):
   `04fe9d53f3d71639e29569154f31dbb023133ff433ff11d2a151065c17cac0b1`.
   This is the retained candidate for the deferred physical flash; physical A/B
   switch and forced-fallback evidence remain open.
+- The no-touch source-invocation correction at committed workspace source
+  `600c16f` and CLI source `46e05b0` produced clean-source r12 provisioning
+  record `70b1b8eafebedf54cdbb44e2fb6946a5037dd04745ddb01450d07a79163fd59e`
+  with generation-1 receiver
+  `1ad612f9721827ebcc1136866982d049509ff286ed2cef22fb7d61bbbd775bb3`.
+  Its separately planned generation-2 update record
+  `b39ec223567135afd47d2005259a297b850afc283222b945efa0c142878126f9`
+  committed receiver
+  `dbbc7eef5b69c1c47a4d7bc1ca13af60097428e5ad96dba89184fc3bf7971892`
+  to slot B while retaining slot A as fallback. Both complete signed slot trees
+  verified, and all three selector-local launchers executed natively under the
+  isolated AArch64 runtime with networking disabled and a read-only active-slot
+  mount. The slot remained bytecode-free. Evidence
+  `.iii/evidence/pseudo-flash-r12-arm64-20260831.json` has SHA-256
+  `3a487fd75fe66fcbc74c3aa956137af18d4a0130069623a8a20bfaba82528596`.
+  R12 supersedes r11 as the deferred physical-flash candidate; it is still
+  target-equivalent evidence and does not claim physical commissioning.
 - The first remote workspace CI run exposed that the host-finalization fixture
   always requested root-owned runtime projections, even on an unprivileged
   GitHub runner. The fixture now retains the production root/group ownership
@@ -5357,6 +5374,17 @@ Implementation notes (software boundary, 2026-08-27):
   backup, receiver switch, reboot, configuration change, or other aircraft
   mutation was claimed. The pinned Ubuntu image, documentation, 1,197-row matrix,
   local GC boundary, and legacy-retirement audit all passed read-only inspection.
+- Clean-source r12 then passed the isolated signed generation-1 install,
+  generation-2 A/B commit, fallback retention, complete slot verification,
+  native AArch64 launcher execution, and zero-bytecode mutation gate described
+  in P2.T3. The drone was not contacted during this pseudo-flash, and r12 now
+  replaces r11 as the exact candidate reserved for the deferred physical flash.
+- The no-touch phase regression passed all 655 deployment tests with the five
+  explicitly gated target/systemd matrices skipped, plus all 230 CLI tests after
+  the III configuration package was built and its installed ament index sourced.
+  Focused documentation, verification-matrix, legacy-retirement, workspace
+  source-setup, and SSH-manager coverage passed 49/49; the submodule lock and
+  whitespace audits also passed.
 
 #### P5.T2: Establish Automation-Ready Documentation Architecture And Validation
 
