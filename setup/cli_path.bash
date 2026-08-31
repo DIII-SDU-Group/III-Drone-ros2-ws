@@ -2,6 +2,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 WORKSPACE_DIR="$(dirname "$SCRIPT_DIR")"
 CLI_DIR="$WORKSPACE_DIR/tools/III-Drone-CLI"
 CLI_BIN_DIR="$CLI_DIR/bin"
+DEPLOYMENT_SRC_DIR="$WORKSPACE_DIR/deployment/src"
 
 prepend_path() {
     local path_entry="$1"
@@ -34,6 +35,10 @@ if [ -d "$HOME/.local/bin" ]; then
 fi
 
 prepend_pythonpath "$CLI_DIR"
+if [ -d "$DEPLOYMENT_SRC_DIR" ]; then
+    prepend_pythonpath "$DEPLOYMENT_SRC_DIR"
+fi
 
 unset -f prepend_path
 unset -f prepend_pythonpath
+unset DEPLOYMENT_SRC_DIR

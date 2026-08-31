@@ -4482,6 +4482,15 @@ for the unchecked physical replacement-laptop enrollment or login/logout drill.
   zero-drift, injected-drift, repair, prepared-offline, permissions, and
   user-session ownership matrices in 132.49 and 152.28 seconds respectively.
   The two physical replacement/login acceptance items remain unchanged.
+- The 2026-08-31 no-touch pre-flash audit found two canonical workstation
+  invocation gaps: `setup/cli_path.bash` exposed the source CLI without its
+  workspace-owned `iii_deployment` library, and the CLI default SSH identity
+  disagreed with the key path installed and verified by GC provisioning. The
+  setup now exposes `deployment/src`, and the CLI defaults to
+  `.config/iii/keys/ssh/id_ed25519`; isolated source-environment and default-key
+  regressions plus all 17 focused setup/SSH-manager tests pass. The currently
+  enrolled provisioning key remains an explicit override until the physical GC
+  key enrollment drill, so no authority was silently transferred.
 
 #### P3.T9: Install And Transactionally Update GC/QGroundControl Applications
 
@@ -5338,6 +5347,16 @@ Implementation notes (software boundary, 2026-08-27):
   and downstream systemd/application/field/recovery gates recorded in P2.T3 and
   P5.T0. It remains provisioned-but-not-commissioned evidence: no attached-device,
   power-interruption, native-QGC, flight, or signed physical Q131 row is claimed.
+- A 2026-08-31 authenticated no-touch inspection retained under
+  `.iii/evidence/preflash-20260831/` proved Ethernet/mDNS access, one active
+  machine credential, no pending host-maintenance transaction, and the expected
+  old-generation `[pi3+]` parser rejection. Only charger/gripper was attached;
+  camera, FMU, and both mmWave interfaces were correctly reported missing. The
+  r11 receiver bundle and target-bound dry-run plan verified without apply. A
+  portable-backup plan refused the old receiver's noncanonical live state, so no
+  backup, receiver switch, reboot, configuration change, or other aircraft
+  mutation was claimed. The pinned Ubuntu image, documentation, 1,197-row matrix,
+  local GC boundary, and legacy-retirement audit all passed read-only inspection.
 
 #### P5.T2: Establish Automation-Ready Documentation Architecture And Validation
 

@@ -227,7 +227,11 @@ are never overwritten on reconvergence. The browser secret remains an independen
 human secret. Runtime credentials and signing keys are enrolled through
 `iii access`; the provisioning role never fabricates, copies, or archives them.
 It creates a fresh owner-only machine identity and per-computer SSH key when they
-are absent.
+are absent. The SSH key is `~/.config/iii/keys/ssh/id_ed25519`, which is also the
+CLI's default deployment identity. Before that key completes the explicit
+`iii access enroll add`/`prove` sequence, an already authorized provisioning
+computer must select its own retained key with `III_SSH_IDENTITY_FILE`; creating
+the GC key never grants it aircraft authority implicitly.
 
 For a replacement computer, import the verified P2.T8 archive before enrollment:
 
