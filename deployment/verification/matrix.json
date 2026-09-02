@@ -1,5 +1,5 @@
 {
-  "matrix_id": "f266f4fb6e4af512deece9ad2746b4a8d125dd48b9f0ed13e157c0bdce43a130",
+  "matrix_id": "1c8d711d7fe8fe1bc6136fbedf761da056b6b1c5e4b2535a44c217bb2a402dc6",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -1183,7 +1183,7 @@
       "test_refs": [
         "P2.T2.t6",
         "P3.T1.t1",
-        "P5.T1.t12"
+        "P5.T1.t13"
       ],
       "text": "Install a narrow root-owned deployment helper and grant the `iii` account passwordless sudo only for that helper and explicitly necessary systemd operations.",
       "title": "Deployment privilege"
@@ -34794,7 +34794,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P2.T3",
       "test_refs": [
-        "P2.T3.t10"
+        "P2.T3.t20"
       ],
       "text": "Receiver payloads are separately identified/signed, extracted into an inactive slot, and cannot overwrite active/fallback/bootstrap content.",
       "title": "Implement Transactional Receiver A/B Self-Update"
@@ -42066,7 +42066,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T1",
       "test_refs": [
-        "P5.T1.t12"
+        "P5.T1.t13"
       ],
       "text": "A wiped target reaches a healthy inactive real-profile runtime using only documented inputs.",
       "title": "Commission The First Aircraft From Raw Image"

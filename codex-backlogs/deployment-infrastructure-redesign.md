@@ -3325,6 +3325,23 @@ Implementation notes (2026-08-26):
   `3a487fd75fe66fcbc74c3aa956137af18d4a0130069623a8a20bfaba82528596`.
   R12 supersedes r11 as the deferred physical-flash candidate; it is still
   target-equivalent evidence and does not claim physical commissioning.
+- The physical-topology correction at committed workspace source `e8d3a1c` and
+  unchanged CLI source `46e05b0` produced clean-source r13 provisioning record
+  `3e8ee2884e193012e52c0cbd923fd61a0f17eddf5200e8848afc53466601fd71`
+  with generation-1 receiver
+  `2ff8ee5c9097368cdbb78683ffcd2cb140cbb075b6076c4ddc2c3d4e9f2af5c9`.
+  Its separately planned generation-2 update record
+  `1b7ea921ccdcb252363ee734240e24503b088c92e2d327781befa280bb897691`
+  committed receiver
+  `2eb98bf3f0be75da74b0abd7ee9cd279ac337f2574a0c6d99f34e07be1b91c6f`
+  to slot B while retaining verified slot A as fallback. Both signed slots
+  verified; all three selector-local launchers executed under native AArch64
+  emulation with networking disabled and the active slot mounted read-only; the
+  slot remained bytecode-free. Evidence
+  `.iii/evidence/pseudo-flash-r13-arm64-20260902.json` has SHA-256
+  `8e5b53740d3f5aa14a4bf10640ec6f2c6f1d498837557b8f4ad17a0403573e34`.
+  R13 supersedes r12 for the final physical flash, but remains target-equivalent
+  evidence and does not claim a physical receiver switch or commissioning.
 - The first remote workspace CI run exposed that the host-finalization fixture
   always requested root-owned runtime projections, even on an unprivileged
   GitHub runner. The fixture now retains the production root/group ownership
@@ -5403,6 +5420,11 @@ Implementation notes (software boundary, 2026-08-27):
   native AArch64 launcher execution, and zero-bytecode mutation gate described
   in P2.T3. The drone was not contacted during this pseudo-flash, and r12 now
   replaces r11 as the exact candidate reserved for the deferred physical flash.
+- After live topology discovery removed the false PX4 USB-role requirement,
+  clean-source r13 repeated the signed generation-1 install, generation-2 A/B
+  commit, verified fallback retention, native AArch64 launcher execution, and
+  zero-bytecode gate described in P2.T3. The drone was not mutated; r13 now
+  supersedes r12 as the candidate for the final physical flash.
 - The no-touch phase regression passed all 655 deployment tests with the five
   explicitly gated target/systemd matrices skipped, plus all 230 CLI tests after
   the III configuration package was built and its installed ament index sourced.
