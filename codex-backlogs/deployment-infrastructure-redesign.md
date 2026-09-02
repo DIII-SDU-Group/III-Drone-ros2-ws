@@ -5495,6 +5495,28 @@ Implementation notes (software boundary, 2026-08-27):
   host still cannot acquire that root-owned Netplan/firewall baseline. A physical
   canonical reimage remains required before ping, MAVLink heartbeat, uXRCE-DDS,
   or any physical Q131 row may be claimed.
+- The release-owned PX4 network correction at workspace commit `3c1294c` now
+  binds the static `10.41.10.1/24` companion and `10.41.10.2/24` FMU pair, exact
+  `net.cfg`/`extras.txt` artifacts, dual MAVLink/uXRCE-DDS startup, firmware
+  compatibility, and the real parameter manifest under one authenticated
+  baseline. An authenticated read-only pull through the still-running old
+  receiver reached no PX4 snapshot within 45 seconds, confirming that the
+  unfixed onboard host cannot provide transport evidence through the new path.
+- The first clean-source artifact attempt (`.iii/host-provision-r15`, record
+  `6ae4fb84e08bd8bd6e87bd1e5592a5fbfef7b98e10605139a7c774d0f59dc508`)
+  is permanently rejected: the host's legacy pip frontend emitted an
+  `UNKNOWN-0.0.0` wheel and omitted required receiver dependencies. Commit
+  `5323500` adds fail-closed exact local-distribution and runtime-closure checks;
+  focused provisioning coverage passed 11 tests. A pinned pip 26.2/setuptools
+  80.9.0/wheel 0.45.1 builder then produced complete clean-source r15b:
+  generation-1 provisioning record
+  `8cedcf67ff9dd2d4ca3e39821864ec51de3abe9222208e60c35e64e15bdd1793`
+  with receiver `a6e09fe2a50d1566cad6aa45292e59e05994018b5ab68c6f7db52e83e53b199b`,
+  and generation-2 update record
+  `2c79a28ba512ab7de1cd34e83830160128c20389f3d6c110932cb1b6a152a5d4`
+  with receiver `923023f4463d8c53fc09814cb5eb51f8849b6c631b163a8834c4198577b7080d`.
+  R15b supersedes r14 for the physical flash, but has not been written to media;
+  no physical PX4 connection or commissioning row is claimed.
 
 #### P5.T2: Establish Automation-Ready Documentation Architecture And Validation
 

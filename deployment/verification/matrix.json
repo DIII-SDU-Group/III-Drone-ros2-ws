@@ -1,5 +1,5 @@
 {
-  "matrix_id": "36c792cd70978d8895b181ff9411f49f1116046a3e25518e91511f65907157fa",
+  "matrix_id": "e8f4e29f1901de8e626f43eb2b8ccf001f74786ec118fbe9c965d013cc81b9ec",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -5161,7 +5161,7 @@
         "P2.T2.t6",
         "P2.T4.t6",
         "P2.T5.t8",
-        "P5.T1.t14"
+        "P5.T1.t16"
       ],
       "text": "Target restoration of the previous accepted pair within another 60 seconds.",
       "title": "Field activation downtime"
@@ -6008,7 +6008,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T5.t5",
-        "P5.T1.t14"
+        "P5.T1.t17"
       ],
       "text": "Prefer vendor/product/interface and stable device properties; add exact serial allowlists only where needed to distinguish ambiguous or safety-critical devices.",
       "title": "Physical device role matching"
@@ -6156,7 +6156,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P3.T5.t5",
-        "P5.T1.t8"
+        "P5.T1.t17"
       ],
       "text": "Resolve the conflicting legacy/current serial literals through physical commissioning.",
       "title": "Physical device role matching"
@@ -24370,7 +24370,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T8.t5",
-        "P5.T1.t15"
+        "P5.T1.t17"
       ],
       "text": "Do not commit records to Git or publish them automatically.",
       "title": "Commissioning-record identity, signing, and retention"
@@ -24552,7 +24552,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T4.t4",
-        "P5.T1.t2"
+        "P5.T1.t17"
       ],
       "text": "Returning exactly to the commissioned anchor clears that overlay.",
       "title": "Commissioning validity after system changes"
@@ -29717,7 +29717,7 @@
       "test_refs": [
         "P0.T4.t1",
         "P5.T0.t4",
-        "P5.T1.t10",
+        "P5.T1.t17",
         "P5.T6.t5"
       ],
       "text": "Archive the legacy repository read-only with a pointer to replacement commands",
@@ -42239,7 +42239,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T1",
       "test_refs": [
-        "P5.T1.t14"
+        "P5.T1.t16"
       ],
       "text": "Power interruption is injected at each durable receiver/application selector boundary and boot reconciliation always reaches the specified old/new pair.",
       "title": "Commission The First Aircraft From Raw Image"
