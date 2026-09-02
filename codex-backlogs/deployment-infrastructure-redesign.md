@@ -5432,6 +5432,24 @@ Implementation notes (software boundary, 2026-08-27):
   pseudo-flash. Focused documentation, verification-matrix, legacy-retirement,
   workspace source-setup, and SSH-manager coverage passed 49/49; the submodule
   lock and whitespace audits also passed.
+- Physical PX4 connection discovery on 2026-09-02 found a host-networking defect:
+  the image requested DHCP on every Ethernet device and therefore never assigned
+  the Pi built-in link the PX4-default peer address. The corrected v2 cloud-init
+  profile and converged Ansible baseline reserve USB Ethernet (`enx*`) for
+  DHCP operator/recovery access, reserve built-in `eth0` as `10.41.10.1/24`
+  toward PX4 `10.41.10.2`, allow only MAVLink `14540/UDP` and uXRCE-DDS
+  `8888/UDP` from that subnet, and bind the runtime MAVSDK listener explicitly.
+  The repair also closed stale host-unit/target identity propagation exposed by
+  the runtime environment change. Focused red/green verification passed 38
+  imaging/network/Ansible tests and 76 unit-contract/target/maintenance/release
+  tests. The old onboard image cannot consume host-level Netplan or firewall
+  changes through an application receiver update, so live IP/protocol evidence
+  remains pending the newly governed physical flash; no PX4 connection or
+  commissioning acceptance is claimed yet. The phase gate then passed all 656
+  deployment tests with five intentionally opt-in system/GC matrices skipped.
+  The relevant ARM64 target-equivalent first convergence, zero-drift repeat,
+  injected-drift repair, finalization, and permanent receiver-access matrix
+  passed all three scenarios in 667.87 seconds.
 
 #### P5.T2: Establish Automation-Ready Documentation Architecture And Validation
 

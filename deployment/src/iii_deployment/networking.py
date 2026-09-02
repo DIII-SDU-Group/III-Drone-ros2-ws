@@ -85,7 +85,7 @@ def validate_network_input(value: Mapping[str, Any]) -> None:
     if set(value) != {"schema", "ethernet_dhcp4", "wifi"}:
         raise NetworkError("network input fields do not match the fixed contract")
     if value.get("schema") != INPUT_SCHEMA or value.get("ethernet_dhcp4") is not True:
-        raise NetworkError("network input must preserve Ethernet DHCP")
+        raise NetworkError("network input must preserve operator USB Ethernet DHCP")
     wifi = value.get("wifi")
     if not isinstance(wifi, list) or len(wifi) > 16:
         raise NetworkError("network input must contain zero to sixteen Wi-Fi profiles")
@@ -122,8 +122,8 @@ def render_netplan(value: Mapping[str, Any]) -> bytes:
         "network": {
             "version": 2,
             "ethernets": {
-                "ethernet-recovery": {
-                    "match": {"name": "e*"},
+                "operator-usb-ethernet": {
+                    "match": {"name": "enx*"},
                     "dhcp4": True,
                     "optional": True,
                 }
@@ -241,7 +241,7 @@ class NetworkController:
                 "iii-network-revert@.timer",
             ],
             "required_checks": [
-                "Ethernet DHCP remains enabled",
+                "operator USB Ethernet DHCP remains enabled",
                 "netplan generate succeeds before apply",
                 "onboard monotonic rollback timer is armed before detachment",
             ],

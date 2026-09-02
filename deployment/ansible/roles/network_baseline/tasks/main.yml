@@ -21,6 +21,15 @@
     enabled: true
   when: not ansible_check_mode
 
+- name: Install the host-owned PX4 Ethernet link
+  ansible.builtin.template:
+    src: 80-iii-px4.yaml.j2
+    dest: /etc/netplan/80-iii-px4.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Apply host-owned PX4 Ethernet
+
 - name: Record host-owned operator networking policy
   ansible.builtin.template:
     src: network-policy.json.j2

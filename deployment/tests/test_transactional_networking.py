@@ -65,8 +65,8 @@ class Harness:
 
 def test_ethernet_only_and_multiple_wifi_render_without_access_point() -> None:
     ethernet = json.loads(render_netplan(_profile()))
-    assert ethernet["network"]["ethernets"]["ethernet-recovery"] == {
-        "match": {"name": "e*"},
+    assert ethernet["network"]["ethernets"]["operator-usb-ethernet"] == {
+        "match": {"name": "enx*"},
         "dhcp4": True,
         "optional": True,
     }
@@ -197,7 +197,7 @@ def test_unconfirmed_profile_reverts_previous_configuration(tmp_path: Path) -> N
     assert harness.installed.read_bytes() == previous
     assert (
         json.loads(harness.installed.read_text())["network"]["ethernets"][
-            "ethernet-recovery"
+            "operator-usb-ethernet"
         ]["dhcp4"]
         is True
     )

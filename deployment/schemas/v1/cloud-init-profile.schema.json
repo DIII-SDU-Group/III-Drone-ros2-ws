@@ -4,7 +4,7 @@
   "title": "III first-boot cloud-init profile",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "profile_id", "image_source_id", "datasource", "bootstrap_user", "password_authentication", "root_login", "ethernet_recovery", "wifi_interface", "application_installation", "diagnostics", "sanitization_contract"],
+  "required": ["schema", "profile_id", "image_source_id", "datasource", "bootstrap_user", "password_authentication", "root_login", "ethernet_recovery", "px4_ethernet", "wifi_interface", "application_installation", "diagnostics", "sanitization_contract"],
   "properties": {
     "schema": {"const": "iii.cloud-init-profile/v1"},
     "profile_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{7,127}$"},
@@ -13,7 +13,8 @@
     "bootstrap_user": {"const": "iii-bootstrap"},
     "password_authentication": {"const": false},
     "root_login": {"const": false},
-    "ethernet_recovery": {"type": "object", "additionalProperties": false, "required": ["required", "match_name", "dhcp4"], "properties": {"required": {"const": true}, "match_name": {"const": "e*"}, "dhcp4": {"const": true}}},
+    "ethernet_recovery": {"type": "object", "additionalProperties": false, "required": ["required", "match_name", "dhcp4"], "properties": {"required": {"const": true}, "match_name": {"const": "enx*"}, "dhcp4": {"const": true}}},
+    "px4_ethernet": {"type": "object", "additionalProperties": false, "required": ["required", "match_name", "address", "peer_address", "mavlink_udp_port", "uxrce_dds_udp_port"], "properties": {"required": {"const": true}, "match_name": {"const": "eth0"}, "address": {"const": "10.41.10.1/24"}, "peer_address": {"const": "10.41.10.2"}, "mavlink_udp_port": {"const": 14540}, "uxrce_dds_udp_port": {"const": 8888}}},
     "wifi_interface": {"const": "wlan0"},
     "application_installation": {"const": false},
     "diagnostics": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^/"}, "required": ["cloud_init_log", "cloud_init_output_log", "iii_bootstrap_log", "iii_bootstrap_status"]},

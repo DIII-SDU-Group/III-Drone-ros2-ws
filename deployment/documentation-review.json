@@ -387,7 +387,7 @@
       ],
       "path": "deployment/CONTEXT.md",
       "repository": "workspace",
-      "sha256": "5057c52678b4d78b80eb12dec4f6f2a7b20e613c3964798af192aaf11909bb23",
+      "sha256": "a9bab6e916484f15c4e625b496f1cc2e1b8a38b86fad747d336253e7c13a3af6",
       "status": "passed"
     },
     {
@@ -699,7 +699,7 @@
       ],
       "path": "docs/deployment-hardware-roles.md",
       "repository": "workspace",
-      "sha256": "4c624b2581306e6b81d8e9115416b107da08874ef35e8d86cf6271d181d07862",
+      "sha256": "e57d5ae726ede06e56bb829f6dd22c30e4f27f09640952e93510d92cdd2fe9ee",
       "status": "passed"
     },
     {
@@ -764,7 +764,7 @@
       ],
       "path": "docs/generated/deployment-schema-reference.md",
       "repository": "workspace",
-      "sha256": "21f3251006e39938935f15c10b2a5940b8823a415b6ab4feeadcf439ad8db71d",
+      "sha256": "7932db528d809285287d2c8a57353331db40fc804e8e4edd98cdb58b2785c1c2",
       "status": "passed"
     },
     {
@@ -842,7 +842,7 @@
       ],
       "path": "docs/host-imaging-and-first-boot.md",
       "repository": "workspace",
-      "sha256": "fa4b25019dd33845521d8d51be1f71d5b67453716a9582393b54df214ad44ce1",
+      "sha256": "ac412d37f4647bdce2feca614d07d534a010527e10337cd14778b8f078224793",
       "status": "passed"
     },
     {
@@ -1197,8 +1197,8 @@
       "status": "passed"
     }
   ],
-  "manifest_id": "068476c2a1afc95e91551725caaa879b8e1302670f09ac865d0b45ec9c1dbbba",
-  "review_id": "a93a44a122d37f551b1ce65540004d840f38e4a02d0ddf4dfed69ca28c59c015",
-  "reviewer": "codex-deployment-infrastructure-redesign",
+  "manifest_id": "30667e95326d8dcde00e0938dac73cb28bd7e4ae2d2d27e58b67f6bb6ae6033b",
+  "review_id": "45575f27dd7226259bb2e0859c88fe4f82c7c705c41b5a07a8cdff985c01c016",
+  "reviewer": "codex",
   "schema": "iii.documentation-review/v1"
 }

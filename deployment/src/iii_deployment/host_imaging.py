@@ -277,11 +277,18 @@ def render_nocloud_seed(
     network: dict[str, Any] = {
         "version": 2,
         "ethernets": {
-            "ethernet-recovery": {
+            "operator-usb-ethernet": {
                 "match": {"name": profile["ethernet_recovery"]["match_name"]},
                 "dhcp4": True,
                 "optional": True,
-            }
+            },
+            "px4-ethernet": {
+                "match": {"name": profile["px4_ethernet"]["match_name"]},
+                "addresses": [profile["px4_ethernet"]["address"]],
+                "dhcp4": False,
+                "link-local": [],
+                "optional": True,
+            },
         },
     }
     if access_points:

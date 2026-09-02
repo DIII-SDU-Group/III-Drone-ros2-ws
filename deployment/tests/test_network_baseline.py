@@ -30,6 +30,46 @@ def test_avahi_publishes_iii_local_without_fixed_ip_or_reflector() -> None:
     assert "mdns_fqdn': 'iii.local'" in policy
     assert "'fixed_ip': false" in policy
     assert "'onboard_access_point': false" in policy
+    assert "'operator_interface_match': iii_operator_interface_match" in policy
+    assert "'px4_interface': iii_px4_interface" in policy
+    assert "'px4_host_address': iii_px4_host_address" in policy
+    assert "'px4_peer_address': iii_px4_peer_address" in policy
+    assert variables["iii_operator_interface_match"] == "enx*"
+    assert variables["iii_px4_interface"] == "eth0"
+    assert variables["iii_px4_host_address"] == "10.41.10.1/24"
+    assert variables["iii_px4_peer_address"] == "10.41.10.2"
+
+
+def test_px4_ethernet_is_host_owned_and_firewall_limited_to_protocol_ports() -> None:
+    tasks = (
+        ROOT / "deployment/ansible/roles/network_baseline/tasks/main.yml"
+    ).read_text()
+    netplan = (
+        ROOT / "deployment/ansible/roles/network_baseline/templates/80-iii-px4.yaml.j2"
+    ).read_text()
+    firewall = (
+        ROOT / "deployment/ansible/roles/firewall/templates/nftables.conf.j2"
+    ).read_text()
+    runtime = (
+        ROOT / "deployment/ansible/roles/runtime_control_plane/templates/runtime.env.j2"
+    ).read_text()
+    assert "dest: /etc/netplan/80-iii-px4.yaml" in tasks
+    assert "match:" in netplan and 'name: "{{ iii_px4_interface }}"' in netplan
+    assert 'addresses: ["{{ iii_px4_host_address }}"]' in netplan
+    assert "dhcp4: false" in netplan
+    assert "link-local: []" in netplan
+    assert (
+        "ip saddr {{ iii_px4_subnet }} udp dport {{ iii_px4_mavlink_udp_port }} accept"
+        in firewall
+    )
+    assert (
+        "ip saddr {{ iii_px4_subnet }} udp dport {{ iii_px4_uxrce_dds_udp_port }} accept"
+        in firewall
+    )
+    assert (
+        "III_RUNTIME_API_PX4_MAVLINK_ENDPOINT=udpin://0.0.0.0:{{ iii_px4_mavlink_udp_port }}"
+        in runtime
+    )
 
 
 def test_network_baseline_precedes_firewall_receiver_and_runtime() -> None:

@@ -27,6 +27,7 @@
     - /etc/iii/host-unit-contract.json
     - /etc/iii/host-maintenance-policy.json
     - /etc/iii/network-policy.json
+    - /etc/netplan/80-iii-px4.yaml
     - /etc/avahi/avahi-daemon.conf
     - /usr/share/iii/host-maintenance/aircraft-maintenance.yml
     - /etc/iii/runtime.env

@@ -157,6 +157,15 @@ def test_tracked_source_and_cloud_init_profiles_validate_and_preserve_upstream_l
     }
     assert profile["application_installation"] is False
     assert profile["wifi_interface"] == "wlan0"
+    assert profile["ethernet_recovery"]["match_name"] == "enx*"
+    assert profile["px4_ethernet"] == {
+        "required": True,
+        "match_name": "eth0",
+        "address": "10.41.10.1/24",
+        "peer_address": "10.41.10.2",
+        "mavlink_udp_port": 14540,
+        "uxrce_dds_udp_port": 8888,
+    }
     assert profile["sanitization_contract"]["failure_blocks_commissioning"] is True
 
 
@@ -175,7 +184,20 @@ def test_owner_only_bootstrap_input_renders_recovery_ethernet_and_diagnosable_se
     assert b"a_secure_one_time_bootstrap_token_1234" not in all_seed
     assert b"BEGIN PRIVATE KEY" not in all_seed
     assert "ssh_pwauth" in user_data and "bootstrap-cloud-init.log" in user_data
-    assert "ethernet-recovery" in network and '"dhcp4": true' in network
+    assert "operator-usb-ethernet" in network and '"dhcp4": true' in network
+    parsed_network = yaml.safe_load(network)
+    assert parsed_network["ethernets"]["operator-usb-ethernet"] == {
+        "match": {"name": "enx*"},
+        "dhcp4": True,
+        "optional": True,
+    }
+    assert parsed_network["ethernets"]["px4-ethernet"] == {
+        "match": {"name": "eth0"},
+        "addresses": ["10.41.10.1/24"],
+        "dhcp4": False,
+        "link-local": [],
+        "optional": True,
+    }
     assert "field-net" in network and "not-a-real-secret" in network
     assert "wlan0" in network
     assert seed["contains_network_secret"] is True
@@ -220,7 +242,8 @@ def test_ethernet_only_and_multiple_wifi_bootstrap_profiles(tmp_path: Path) -> N
         "field-a",
         "field-b",
     }
-    assert network["ethernets"]["ethernet-recovery"]["dhcp4"] is True
+    assert network["ethernets"]["operator-usb-ethernet"]["dhcp4"] is True
+    assert network["ethernets"]["px4-ethernet"]["addresses"] == ["10.41.10.1/24"]
     assert all(
         "field-secret" not in json.dumps(row) for row in multiple["file_evidence"]
     )

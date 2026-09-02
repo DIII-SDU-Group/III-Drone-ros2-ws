@@ -1,6 +1,6 @@
 {
   "schema": "iii.cloud-init-profile/v1",
-  "profile_id": "iii-raspberry-pi-5-noble-v1",
+  "profile_id": "iii-raspberry-pi-5-noble-v2",
   "image_source_id": "ubuntu-24.04.4-preinstalled-server-arm64-raspi",
   "datasource": "NoCloud",
   "bootstrap_user": "iii-bootstrap",
@@ -8,8 +8,16 @@
   "root_login": false,
   "ethernet_recovery": {
     "required": true,
-    "match_name": "e*",
+    "match_name": "enx*",
     "dhcp4": true
+  },
+  "px4_ethernet": {
+    "required": true,
+    "match_name": "eth0",
+    "address": "10.41.10.1/24",
+    "peer_address": "10.41.10.2",
+    "mavlink_udp_port": 14540,
+    "uxrce_dds_udp_port": 8888
   },
   "wifi_interface": "wlan0",
   "application_installation": false,

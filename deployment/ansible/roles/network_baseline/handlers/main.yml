@@ -4,3 +4,9 @@
     name: avahi-daemon.service
     state: restarted
   when: not ansible_check_mode
+
+- name: Apply host-owned PX4 Ethernet
+  ansible.builtin.command:
+    argv: [/usr/sbin/netplan, apply]
+  changed_when: true
+  when: not ansible_check_mode

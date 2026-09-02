@@ -1,0 +1,10 @@
+network:
+  version: 2
+  ethernets:
+    px4-ethernet:
+      match:
+        name: "{{ iii_px4_interface }}"
+      addresses: ["{{ iii_px4_host_address }}"]
+      dhcp4: false
+      link-local: []
+      optional: true

@@ -47,8 +47,11 @@ a private SSH/signing key, runtime credential, or reusable login password in it.
 chmod 0600 .iii/bootstrap-input.json
 ```
 
-Ethernet DHCP is always rendered as the physical recovery path, including when
-Wi-Fi profiles are present. The command rejects non-owner input permissions and
+The USB Ethernet adapter (`enx*`) always retains DHCP as the physical operator
+and recovery path, including when Wi-Fi profiles are present. The Raspberry
+Pi's built-in `eth0` is reserved for PX4 and receives `10.41.10.1/24`; PX4's
+documented fallback peer address is `10.41.10.2`. These roles must not be
+interchanged. The command rejects non-owner input permissions and
 private-key markers. Structured output contains hashes and a boolean indicating
 whether network secrets exist, never SSIDs, passphrases, or the one-time value.
 
@@ -116,7 +119,8 @@ it create a content-addressed `iii.host-image-record/v1` file.
 
 ## First Boot And Recovery Boundary
 
-Boot the Pi with Ethernet attached. The bootstrap account has only the first
+Boot the Pi with the operator computer attached through the Pi-side USB Ethernet
+adapter. Connect the Pi's built-in Ethernet port to PX4. The bootstrap account has only the first
 public key and temporary passwordless Ansible authority; password login and root
 login are disabled. A successful first boot writes:
 
@@ -188,8 +192,11 @@ the emitted `iii host network confirm` command. Confirmation is authenticated,
 nonce-bound to the original pending operation, stops the timer, and records the
 current profile identity durably. Timeout, link loss, receiver restart after the
 timeout, or reboot before confirmation restores the prior file and reapplies it.
-Every candidate and restored profile retains wildcard Ethernet DHCP as the
-physical recovery path. Inspect the durable outcome with:
+Every candidate and restored profile retains USB-Ethernet DHCP as the physical
+operator recovery path. The separately host-owned
+`/etc/netplan/80-iii-px4.yaml` keeps `eth0` at `10.41.10.1/24`, so an operator
+Wi-Fi change cannot overwrite the flight-controller link. Inspect the durable
+outcome with:
 
 ```bash
 iii host network status \
@@ -198,10 +205,11 @@ iii host network status \
 ```
 
 Host convergence installs `avahi-daemon`, fixes the host name to `iii`, and
-publishes its active interface addresses as `iii.local` on mDNS. It assigns no
-fixed address and provisions no onboard AP. Test `getent hosts iii.local` from a
-supported operator LAN; if multicast is filtered, use Ethernet and correct the
-LAN rather than adding an unmanaged static address.
+publishes its active operator-interface addresses as `iii.local` on mDNS. It
+assigns no fixed operator address and provisions no onboard AP. The only fixed
+address is the isolated PX4 peer link. Test `getent hosts iii.local` from a
+supported operator LAN; if multicast is filtered, use the USB Ethernet adapter
+and correct the LAN rather than adding an unmanaged operator address.
 
 The upstream Raspberry Pi boot partition and auto-expanded ext4 root filesystem
 remain unchanged. This design intentionally adds no data partition, LVM,

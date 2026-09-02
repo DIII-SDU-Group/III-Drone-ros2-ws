@@ -12,6 +12,8 @@ table inet iii_filter {
     ip saddr {{ iii_provisioning_inputs.operator_cidr }} tcp dport 22 accept comment "forced-command SSH and bootstrap Ansible"
     ip saddr {{ iii_provisioning_inputs.operator_cidr }} tcp dport {{ iii_runtime_api_port }} accept comment "plain HTTP and WebSocket runtime API"
     ip saddr {{ iii_provisioning_inputs.operator_cidr }} udp dport {{ iii_mdns_port }} accept comment "mDNS"
+    ip saddr {{ iii_px4_subnet }} udp dport {{ iii_px4_mavlink_udp_port }} accept comment "PX4 MAVLink from flight controller Ethernet"
+    ip saddr {{ iii_px4_subnet }} udp dport {{ iii_px4_uxrce_dds_udp_port }} accept comment "PX4 uXRCE-DDS from flight controller Ethernet"
   }
 
   chain forward {

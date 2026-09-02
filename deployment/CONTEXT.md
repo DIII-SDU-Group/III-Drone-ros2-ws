@@ -242,7 +242,9 @@ _Avoid_: Removing old scripts first
   claims the plaintext into root-only state and invokes a fixed privileged helper;
   the private-network receiver never writes Netplan directly. A systemd monotonic
   timer restores the exact prior profile after 90 seconds unless a separately
-  nonce-bound confirmation commits it. Every candidate retains Ethernet DHCP,
+  nonce-bound confirmation commits it. Every candidate retains USB-Ethernet
+  operator/recovery DHCP; the built-in Ethernet PX4 link is a separate
+  host-owned static baseline,
   application/receiver-update payloads cannot modify host network policy, and
   Avahi publishes `iii.local` without a fixed IP or onboard access point.
 - Normal activation requires a content-identified runtime observation proving the

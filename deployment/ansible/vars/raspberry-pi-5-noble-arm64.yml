@@ -1,8 +1,8 @@
 ---
 iii_baseline_schema: iii.ansible-host-baseline/v1
-iii_baseline_id: 98a97d7971c84fb1f96a1ee77bad9610e8d49a8bad121ca33116c3f349fab27d
-iii_unit_contract_id: a44b9176c01344aaa3f4e105ccb14eafd6cca67f423a4c43a31d4cde534236fe
-iii_target_definition_id: 5d8d216a38ac182f80cfe9926bf4ba96ff9f83a36787368f8c971611d0876975
+iii_baseline_id: 46e038aa7a442fafbd62289f7527f347b467c8102367ba80853fd2895645c023
+iii_unit_contract_id: 33a2777fd109e9cd245fafcd13d253dec45ec67a805032adc37b52873a3a926d
+iii_target_definition_id: 8d02216380ffdc0c15cc96852dd0f87c0cc21b43a2b26ab307d7c83eae6c6294
 iii_expected_distribution: Ubuntu
 iii_expected_release: "24.04"
 iii_expected_codename: noble
@@ -16,6 +16,13 @@ iii_runtime_group_effective: "{{ (iii_runtime_gid | string) if ansible_check_mod
 iii_runtime_api_port: 8765
 iii_mdns_port: 5353
 iii_hostname_manage: true
+iii_operator_interface_match: "enx*"
+iii_px4_interface: eth0
+iii_px4_host_address: 10.41.10.1/24
+iii_px4_peer_address: 10.41.10.2
+iii_px4_subnet: 10.41.10.0/24
+iii_px4_mavlink_udp_port: 14540
+iii_px4_uxrce_dds_udp_port: 8888
 iii_shared_target_profile_id: a14f199fd5a75f0b60f17f35eb52a69405ef1de89a0b6983224edf52b959cf33
 iii_boot_profile_id: 3a2147e380558975eb301c2af6a425919fac6be6b2312570cbb70f03032b5f31
 iii_boot_files_required: true
