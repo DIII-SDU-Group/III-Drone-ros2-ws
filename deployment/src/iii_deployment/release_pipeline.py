@@ -39,6 +39,7 @@ from .qualified_release import (
 )
 from .qualification import REQUIRED_QUALIFICATION_CHECKS
 from .mission_catalog import verify_mission_catalog
+from .px4_network import PX4NetworkBaselineError, validate_network_baseline
 from .signers import load_private_key, signer_id_for_public_key
 from .source import verify_source_snapshot
 from .target import load_target_definition
@@ -657,6 +658,16 @@ def assemble_release_manifest(
         raise ContractError(
             "PX4 release input must contain exactly one reference snapshot"
         )
+    if len(inputs["px4_network"]) != 1:
+        raise ContractError(
+            "PX4 release input must contain exactly one network baseline"
+        )
+    network_path = root / inputs["px4_network"][0]
+    px4_network = _json(network_path, canonical=True)
+    try:
+        validate_network_baseline(px4_network, registry)
+    except PX4NetworkBaselineError as exc:
+        raise ContractError(str(exc)) from exc
     reference_path = root / inputs["px4_reference"][0]
     px4_reference = _json(reference_path, canonical=True)
     registry.validate("px4-parameter-snapshot", px4_reference)
@@ -696,6 +707,18 @@ def assemble_release_manifest(
                 f"PX4 {profile} manifest is not bound to the reference snapshot"
             )
         px4_manifests[profile] = document
+    if (
+        px4_manifests["real"]["network_baseline_id"] != px4_network["baseline_id"]
+        or px4_manifests["sim"]["network_baseline_id"] is not None
+        or px4_network["firmware"]["compatible_range"]
+        != metadata["px4"]["firmware_range"]
+        or not px4_network["firmware"]["reference_commit"].startswith(
+            px4_reference["target"]["firmware_commit"]
+        )
+    ):
+        raise ContractError(
+            "PX4 network baseline is not bound to the real parameter manifest"
+        )
     if not re.fullmatch(r"[a-f0-9]{64}", source_content_identity):
         raise ContractError("governed source-content identity is invalid")
     source = _source_manifest(
@@ -778,6 +801,8 @@ def assemble_release_manifest(
                 profile: px4_manifests[profile]["manifest_id"]
                 for profile in ("real", "sim")
             },
+            "network_baseline_id": px4_network["baseline_id"],
+            "network_baseline_sha256": _sha256(network_path),
             "reference_snapshot_id": px4_reference["snapshot_id"],
             "reference_snapshot_sha256": _sha256(reference_path),
             "firmware_range": metadata["px4"]["firmware_range"],

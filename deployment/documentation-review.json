@@ -673,7 +673,7 @@
       ],
       "path": "docs/deployment-and-field-operations.md",
       "repository": "workspace",
-      "sha256": "b5e575c6660e6f128ddf4e933783696f38aa9a0fb6396b868a865192b3ddb7ec",
+      "sha256": "f7587bedf620699176a796e2a76216d8986daa22ba8d902933ef5cc410da76d6",
       "status": "passed"
     },
     {
@@ -699,7 +699,7 @@
       ],
       "path": "docs/deployment-hardware-roles.md",
       "repository": "workspace",
-      "sha256": "e57d5ae726ede06e56bb829f6dd22c30e4f27f09640952e93510d92cdd2fe9ee",
+      "sha256": "311da2934d7c0f7fd940f6e5d4e86645613b6af4f87630da1e1dd295f33710a1",
       "status": "passed"
     },
     {
@@ -764,7 +764,7 @@
       ],
       "path": "docs/generated/deployment-schema-reference.md",
       "repository": "workspace",
-      "sha256": "7932db528d809285287d2c8a57353331db40fc804e8e4edd98cdb58b2785c1c2",
+      "sha256": "d3e4536bf6d33c3adeccf750eedea33b488b71105f9f2103c56dd5e5feb59257",
       "status": "passed"
     },
     {
@@ -1197,8 +1197,8 @@
       "status": "passed"
     }
   ],
-  "manifest_id": "6fec52fd24683b1fc87cce538411ece3b1ca5e78093717844e24b713c88dd9df",
-  "review_id": "2cac12759836378bef813a76ce037c40d2170ed28c764bfab48173e3392852a6",
+  "manifest_id": "e7500826e17f0b47e134c5455e79d4601b7bc5532a21fb36bc094a3f41f599cf",
+  "review_id": "a90db988aa9fff36a803ca05ae8ec280694c740405810ec144677471a76bc5d1",
   "reviewer": "codex",
   "schema": "iii.documentation-review/v1"
 }

@@ -961,7 +961,7 @@
       "qualified_release_inclusion": false,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "4aa2acdde27d32f43ee85a16e630e435edad31c026a24970d0b73d489aadf648",
+      "sha256": "df6f2ea825de8d1f9671206982fdd664f12bf562b31783b412cdd71829842be0",
       "source_of_truth": "codex-backlogs/deployment-infrastructure-redesign.md"
     },
     {
@@ -1585,7 +1585,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "b5e575c6660e6f128ddf4e933783696f38aa9a0fb6396b868a865192b3ddb7ec",
+      "sha256": "f7587bedf620699176a796e2a76216d8986daa22ba8d902933ef5cc410da76d6",
       "source_of_truth": "docs/deployment-and-field-operations.md"
     },
     {
@@ -1617,7 +1617,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "e57d5ae726ede06e56bb829f6dd22c30e4f27f09640952e93510d92cdd2fe9ee",
+      "sha256": "311da2934d7c0f7fd940f6e5d4e86645613b6af4f87630da1e1dd295f33710a1",
       "source_of_truth": "docs/deployment-hardware-roles.md"
     },
     {
@@ -1697,7 +1697,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "7932db528d809285287d2c8a57353331db40fc804e8e4edd98cdb58b2785c1c2",
+      "sha256": "d3e4536bf6d33c3adeccf750eedea33b488b71105f9f2103c56dd5e5feb59257",
       "source_of_truth": "deployment/scripts/update_documentation_references.py"
     },
     {
@@ -2309,7 +2309,7 @@
       "source_of_truth": "tools/III-Drone-MCP/README.md"
     }
   ],
-  "manifest_id": "6fec52fd24683b1fc87cce538411ece3b1ca5e78093717844e24b713c88dd9df",
+  "manifest_id": "e7500826e17f0b47e134c5455e79d4601b7bc5532a21fb36bc094a3f41f599cf",
   "policy_schema": "iii.documentation-policy/v1",
   "schema": "iii.documentation-manifest/v1"
 }

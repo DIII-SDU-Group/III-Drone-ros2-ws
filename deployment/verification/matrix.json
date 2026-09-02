@@ -1,5 +1,5 @@
 {
-  "matrix_id": "27836042b67d2dd386386d1ed9c688cb6a0beaecfa5cfc0d848b9c6ebb63e058",
+  "matrix_id": "36c792cd70978d8895b181ff9411f49f1116046a3e25518e91511f65907157fa",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -2904,7 +2904,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T2.t1",
-        "P3.T10.t5"
+        "P3.T10.t6"
       ],
       "text": "Settled.",
       "title": "PX4 firmware ownership"
@@ -2912,7 +2912,7 @@
     {
       "acceptance_refs": [
         "P0.T2.a5",
-        "P3.T10.a5"
+        "P3.T10.a13"
       ],
       "blocking": true,
       "ci": false,
@@ -2942,7 +2942,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P0.T2.t1",
-        "P3.T10.t2"
+        "P3.T10.t6"
       ],
       "text": "PX4 remains independently commissioned flight-controller firmware.",
       "title": "PX4 firmware ownership"
@@ -2950,7 +2950,7 @@
     {
       "acceptance_refs": [
         "P0.T2.a6",
-        "P3.T10.a6"
+        "P3.T10.a14"
       ],
       "blocking": true,
       "ci": false,
@@ -3053,7 +3053,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P0.T2.t1",
-        "P3.T10.t5"
+        "P3.T10.t6"
       ],
       "text": "The III CLI may inspect and report PX4 state and may perform the separately confirmed, backup-first parameter workflow in Q65, but firmware flashing remains a separate explicit maintenance workflow until flight-controller recovery and rollback are designed.",
       "title": "PX4 firmware ownership"
@@ -14447,7 +14447,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T9.t4",
-        "P3.T10.t5"
+        "P3.T10.t6"
       ],
       "text": "Settled.",
       "title": "QGroundControl version and update ownership"
@@ -14484,7 +14484,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P3.T9.t4",
-        "P3.T10.t5"
+        "P3.T10.t6"
       ],
       "text": "Treat the host- native QGroundControl AppImage as a pinned, checksum-verified GC dependency owned by the in-repository deployment path, not as an independently self-updating application.",
       "title": "QGroundControl version and update ownership"
@@ -14492,7 +14492,7 @@
     {
       "acceptance_refs": [
         "P3.T9.a7",
-        "P3.T10.a1"
+        "P3.T10.a13"
       ],
       "blocking": true,
       "ci": true,
@@ -14520,7 +14520,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T9.t4",
-        "P3.T10.t3"
+        "P3.T10.t6"
       ],
       "text": "Cache/install versioned binaries, select one active version atomically, retain the previous known-good version, and update only through a tested GC release or explicit GC host-maintenance operation.",
       "title": "QGroundControl version and update ownership"
@@ -14592,7 +14592,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P1.T3.t6",
-        "P3.T10.t5"
+        "P3.T10.t6"
       ],
       "text": "Settled.",
       "title": "Release-owned PX4 parameters and QGroundControl configuration"
@@ -14629,7 +14629,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P1.T3.t5",
-        "P3.T10.t2"
+        "P3.T10.t6"
       ],
       "text": "Add versioned declarative manifests for the complete expected real and sim PX4 parameter sets and a sanitized QGroundControl managed- settings baseline.",
       "title": "Release-owned PX4 parameters and QGroundControl configuration"
@@ -14637,7 +14637,7 @@
     {
       "acceptance_refs": [
         "P1.T3.a7",
-        "P3.T10.a1"
+        "P3.T10.a13"
       ],
       "blocking": true,
       "ci": false,
@@ -14704,7 +14704,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P1.T3.t6",
-        "P3.T10.t5"
+        "P3.T10.t6"
       ],
       "text": "Classify PX4 keys as release-required, operator-tunable, or hardware calibration/identity.",
       "title": "Release-owned PX4 parameters and QGroundControl configuration"
@@ -14886,7 +14886,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T8.t5",
-        "P3.T10.t5"
+        "P3.T10.t6"
       ],
       "text": "Settled.",
       "title": "Capturing PX4 changes made through QGroundControl"
@@ -14894,7 +14894,7 @@
     {
       "acceptance_refs": [
         "P2.T8.a2",
-        "P3.T10.a4"
+        "P3.T10.a13"
       ],
       "blocking": true,
       "ci": false,
@@ -14923,7 +14923,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P2.T8.t9",
-        "P3.T10.t5"
+        "P3.T10.t6"
       ],
       "text": "After real- target clock sync and while disarmed, the GC companion automatically downloads a complete PX4 baseline with firmware/schema identity.",
       "title": "Capturing PX4 changes made through QGroundControl"
@@ -14960,7 +14960,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P2.T8.t3",
-        "P3.T10.t3"
+        "P3.T10.t6"
       ],
       "text": "Monitor MAVLink parameter updates and periodically reconcile the complete set; when its content hash changes, mark PX4 configuration modified and mirror an immutable revision locally without claiming QGC-originated edits are III GUI transactions.",
       "title": "Capturing PX4 changes made through QGroundControl"
@@ -15070,7 +15070,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T8.t5",
-        "P3.T10.t5"
+        "P3.T10.t6"
       ],
       "text": "Never auto-commit, auto-promote, or overwrite the FMU during deployment.",
       "title": "Capturing PX4 changes made through QGroundControl"
@@ -15107,7 +15107,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P2.T8.t4",
-        "P3.T10.t5"
+        "P3.T10.t6"
       ],
       "text": "Use the same workflow against simulated PX4, skipping the real-target clock gate.",
       "title": "Capturing PX4 changes made through QGroundControl"
@@ -15145,7 +15145,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T8.t5",
-        "P3.T10.t5",
+        "P3.T10.t6",
         "P4.T4.t6"
       ],
       "text": "Settled.",
@@ -15184,7 +15184,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T8.t5",
-        "P3.T10.t4",
+        "P3.T10.t6",
         "P4.T4.t6"
       ],
       "text": "Maintain a schema-versioned allowlist of release-managed QGC keys plus explicit classes for local preference, generated/cache, sensitive, and prohibited keys.",
@@ -15271,7 +15271,7 @@
     {
       "acceptance_refs": [
         "P2.T8.a6",
-        "P3.T10.a4",
+        "P3.T10.a13",
         "P4.T4.a5"
       ],
       "blocking": true,
@@ -15301,7 +15301,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T8.t5",
-        "P3.T10.t3",
+        "P3.T10.t6",
         "P4.T4.t6"
       ],
       "text": "Runtime user settings remain untouched until a later GC release transactionally merges the promoted baseline.",
@@ -15380,7 +15380,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P2.T8.t9",
-        "P3.T10.t5",
+        "P3.T10.t6",
         "P4.T4.t6"
       ],
       "text": "All QGroundControl- specific installation, lifecycle, status, configuration, and maintenance commands live under `iii qgc`; `iii gc` is reserved for the III frontend/proxy, discovery, mirror, clock companion, and browser-facing ground-control stack.",
@@ -22318,7 +22318,7 @@
         "P1.T3.t6",
         "P2.T6.t8",
         "P3.T7.t4",
-        "P3.T10.t5"
+        "P3.T10.t6"
       ],
       "text": "Settled.",
       "title": "HIL composition across non-mission configuration domains"
@@ -22409,7 +22409,7 @@
         "P1.T3.t2",
         "P2.T6.t4",
         "P3.T7.t4",
-        "P3.T10.t5"
+        "P3.T10.t6"
       ],
       "text": "For reserved HIL, use the `sim` III parameter baseline and simulated-PX4 expectation/airframe baseline, plus the common QGroundControl baseline with its sim-specific overlay.",
       "title": "HIL composition across non-mission configuration domains"
@@ -22420,7 +22420,7 @@
         "P1.T3.a7",
         "P2.T6.a13",
         "P3.T7.a4",
-        "P3.T10.a9"
+        "P3.T10.a13"
       ],
       "blocking": true,
       "ci": false,
@@ -22456,7 +22456,7 @@
         "P1.T3.t6",
         "P2.T6.t8",
         "P3.T7.t6",
-        "P3.T10.t5"
+        "P3.T10.t6"
       ],
       "text": "Still apply onboard/real policies for deployment receiver, clock gate, credentials, hardware-host identity, logging, and maintenance safety because III runs on the Pi.",
       "title": "HIL composition across non-mission configuration domains"
@@ -22501,7 +22501,7 @@
         "P1.T3.t2",
         "P2.T6.t4",
         "P3.T7.t4",
-        "P3.T10.t4"
+        "P3.T10.t6"
       ],
       "text": "Mission compatibility remains independently declared as `hil` in CMake.",
       "title": "HIL composition across non-mission configuration domains"
@@ -22546,7 +22546,7 @@
         "P1.T3.t6",
         "P2.T6.t8",
         "P3.T7.t4",
-        "P3.T10.t2"
+        "P3.T10.t6"
       ],
       "text": "This is schema preparation only; HIL stays non-bootable in this sweep.",
       "title": "HIL composition across non-mission configuration domains"
@@ -24038,7 +24038,7 @@
         "P3.T5.t5",
         "P3.T6.t8",
         "P3.T9.t4",
-        "P3.T10.t5",
+        "P3.T10.t6",
         "P5.T1.t14"
       ],
       "text": "Settled.",
@@ -24137,7 +24137,7 @@
         "P3.T5.t5",
         "P3.T6.t10",
         "P3.T9.t4",
-        "P3.T10.t3",
+        "P3.T10.t6",
         "P5.T1.t14"
       ],
       "text": "Reserve `commissioned` for a provisioned host that has a qualified release installed as protected anchor, complete hardware-role and PX4 compatibility evidence, successful activation/rollback and power-cycle tests, verified GC connection/QGC baseline, and a fresh portable backup.",
@@ -24185,7 +24185,7 @@
         "P3.T5.t5",
         "P3.T6.t8",
         "P3.T9.t4",
-        "P3.T10.t5",
+        "P3.T10.t6",
         "P5.T1.t6"
       ],
       "text": "Field- development bundles may run on a provisioned test host, but cannot create a production commissioning record.",
@@ -37403,7 +37403,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P3.T10",
       "test_refs": [
-        "P3.T10.t3"
+        "P3.T10.t6"
       ],
       "text": "QGroundControl release configuration contains only declared stable managed keys; merge is transactional with backup and preserves unowned user state.",
       "title": "Inventory And Manage PX4/QGroundControl Release Configuration"
@@ -37571,6 +37571,74 @@
         "P3.T10.t5"
       ],
       "text": "Sim and real use the same manifest schemas, inventory tooling, release provenance, and diff/report formats with profile-specific values.",
+      "title": "Inventory And Manage PX4/QGroundControl Release Configuration"
+    },
+    {
+      "acceptance_refs": [
+        "P3.T10.a13"
+      ],
+      "blocking": true,
+      "ci": false,
+      "digest": "f50712df02b59652948e7896a54ac71dae98831e01a3892ac2b83a5b26d75fdf",
+      "id": "P3.T10.a13",
+      "impact_categories": [
+        "provisioned-drone-bench-smoke"
+      ],
+      "kind": "task-acceptance",
+      "level": "target-equivalent",
+      "owner_command": [
+        "python3",
+        "deployment/scripts/run_target_equivalent_acceptance.py",
+        "--candidate-set",
+        "<candidate-set.json>",
+        "--signing-key",
+        "<workstation-field-key.pem>",
+        "--impact-category",
+        "provisioned-drone-bench-smoke"
+      ],
+      "owners": [
+        "P3.T10"
+      ],
+      "required_evidence": "signed-local-acceptance",
+      "task": "P3.T10",
+      "test_refs": [
+        "P3.T10.t6"
+      ],
+      "text": "The real release owns one authenticated PX4 Ethernet baseline binding the static `10.41.10.1/24` companion and `10.41.10.2/24` FMU pair, exact SD-card network/startup artifacts, dual MAVLink/uXRCE-DDS transport, and compatible firmware identity.",
+      "title": "Inventory And Manage PX4/QGroundControl Release Configuration"
+    },
+    {
+      "acceptance_refs": [
+        "P3.T10.a14"
+      ],
+      "blocking": true,
+      "ci": false,
+      "digest": "4b8a35dc0f9ecb174c0eb85607f23001df8d0a97db809c47db3fbe5d0e009320",
+      "id": "P3.T10.a14",
+      "impact_categories": [
+        "provisioned-drone-bench-smoke"
+      ],
+      "kind": "task-acceptance",
+      "level": "target-equivalent",
+      "owner_command": [
+        "python3",
+        "deployment/scripts/run_target_equivalent_acceptance.py",
+        "--candidate-set",
+        "<candidate-set.json>",
+        "--signing-key",
+        "<workstation-field-key.pem>",
+        "--impact-category",
+        "provisioned-drone-bench-smoke"
+      ],
+      "owners": [
+        "P3.T10"
+      ],
+      "required_evidence": "signed-local-acceptance",
+      "task": "P3.T10",
+      "test_refs": [
+        "P3.T10.t6"
+      ],
+      "text": "PX4 automatic Ethernet parameter owners are disabled so MAVLink and uXRCE-DDS are started together without an exclusive port-owner collision; release assembly rejects any baseline/real-manifest identity mismatch.",
       "title": "Inventory And Manage PX4/QGroundControl Release Configuration"
     },
     {

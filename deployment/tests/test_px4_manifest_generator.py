@@ -9,6 +9,7 @@ from iii_deployment.contracts import canonical_json, content_identity
 ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = ROOT / "scripts/build/generate_px4_parameter_manifests.py"
 REFERENCE = ROOT / "deployment/px4/reference-sitl-snapshot.json"
+NETWORK_BASELINE = ROOT / "deployment/px4/network-baseline.json"
 AIRFRAME = (
     ROOT
     / "PX4-Autopilot/ROMFS/px4fmu_common/init.d-posix/airframes/99999_gz_d4s_dc_drone"
@@ -24,6 +25,8 @@ def run_generator(inventory: Path, output: Path) -> subprocess.CompletedProcess[
             str(inventory),
             "--airframe",
             str(AIRFRAME),
+            "--network-baseline",
+            str(NETWORK_BASELINE),
             "--output",
             str(output),
         ],

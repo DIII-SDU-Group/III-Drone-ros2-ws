@@ -25,6 +25,7 @@
   "input_paths": {
     "configuration": ["src/III-Drone-Configuration/config"],
     "px4_real": ["deployment/px4/real.json"],
+    "px4_network": ["deployment/px4/network-baseline.json"],
     "px4_sim": ["deployment/px4/sim.json"],
     "px4_reference": ["deployment/px4/reference-sitl-snapshot.json"],
     "px4_interface": ["PX4-Autopilot/src/modules/uxrce_dds_client/dds_topics.yaml", "src/III-Drone-Interfaces"],

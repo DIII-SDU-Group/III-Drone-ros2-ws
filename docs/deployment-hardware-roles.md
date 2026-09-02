@@ -40,6 +40,17 @@ landed state. PX4 parameter or `net.cfg` changes are separate, explicit
 backup-first flight-controller operations and are never inferred from host
 convergence.
 
+The release-owned source of truth is
+`deployment/px4/network-baseline.json`. It binds the address pair, firmware
+range, parameter ownership, exact `net.cfg` and `etc/extras.txt` content hashes,
+and both transports under one content identity. PX4 uses a static address (not
+DHCP), has no default route or DNS on this point-to-point control link, and starts
+MAVLink and uXRCE-DDS explicitly from `extras.txt`. The parameter-managed
+Ethernet owners (`MAV_2_CONFIG` and `UXRCE_DDS_CFG`) remain disabled because PX4
+does not allow both applications to own the same parameter-configured Ethernet
+port. A release is invalid if its real parameter manifest does not name the same
+network-baseline identity.
+
 ## Inspection
 
 Use the authenticated receiver-backed inspection from the operator computer:

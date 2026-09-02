@@ -323,6 +323,44 @@ iii qgc config diff --capture-id <capture-id> --output=json
 The [configuration runbook](configuration-system.md) defines live edit,
 reconciliation, named set, reintroduction, PX4, and QGC promotion semantics.
 
+### PX4 Ethernet baseline
+
+The canonical real-aircraft network contract is
+`deployment/px4/network-baseline.json`:
+
+- Raspberry Pi built-in `eth0`: `10.41.10.1/24`;
+- PX4 Ethernet: `10.41.10.2/24`, static, with no gateway or DNS;
+- MAVLink: PX4 `14540/UDP` to Pi `14540/UDP`;
+- uXRCE-DDS: PX4 client to Pi agent `8888/UDP`.
+
+The PX4 SD card carries the rendered files at `/fs/microsd/net.cfg` and
+`/fs/microsd/etc/extras.txt`. The latter starts both transports explicitly. Do
+not set both `MAV_2_CONFIG=1000` and `UXRCE_DDS_CFG=1000`: PX4's automatic
+port-configuration mechanism gives one application exclusive ownership, so the
+release requires both values to be `0` and owns startup through `extras.txt`.
+Render a reviewable, idempotent staging tree with:
+
+```bash
+PYTHONPATH=deployment/src python3 \
+  deployment/scripts/render_px4_network_baseline.py \
+  --output .iii/evidence/px4-network-staging
+```
+
+The renderer authenticates the baseline and refuses to overwrite any file whose
+contents have drifted.
+
+Applying this baseline is a separate flight-controller maintenance operation,
+not a side effect of Pi provisioning or release activation. With the aircraft
+landed, disarmed, and propulsion made safe: capture the complete PX4 parameters
+and existing SD-card files first; compare their hashes with the release; copy
+only the reviewed rendered files; apply the separately planned exact PX4
+parameter changes; then reboot the flight controller. Acceptance requires all of
+the following—not merely a successful ping: `10.41.10.2` reachability from the
+Pi, a fresh MAVLink heartbeat on `14540/UDP`, uXRCE-DDS vehicle messages through
+the agent on `8888/UDP`, compatible firmware and exact required parameters, and
+fresh fused landed/disarmed telemetry. Restore the captured files and parameter
+backup if any post-reboot check fails.
+
 ## 8. Operate Offline And Switch Profiles
 
 Before leaving connected infrastructure, prepare every intended qualified release

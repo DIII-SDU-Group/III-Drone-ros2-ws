@@ -315,5 +315,5 @@ def test_result_and_junit_keep_not_run_rows_explicit() -> None:
     assert result["complete"] is False
     assert result["counts"]["not_run"] == len(matrix["rows"])
     xml = junit_xml(result)
-    assert b'tests="1197"' in xml
+    assert b'tests="1199"' in xml
     assert xml.count(b"<skipped") == len(matrix["rows"])

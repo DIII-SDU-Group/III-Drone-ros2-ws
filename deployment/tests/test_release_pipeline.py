@@ -135,6 +135,7 @@ def _metadata(root: Path) -> Path:
         "px4-real",
         "px4-sim",
         "px4-reference",
+        "px4-network",
         "px4-interface",
         "qgc",
         "mission",
@@ -147,6 +148,8 @@ def _metadata(root: Path) -> Path:
             payload = (
                 ROOT / "deployment/px4/reference-sitl-snapshot.json"
             ).read_bytes()
+        elif name == "px4-network":
+            payload = (ROOT / "deployment/px4/network-baseline.json").read_bytes()
         else:
             payload = (name + "\n").encode()
         _write(root / "inputs" / name, payload)
@@ -156,6 +159,7 @@ def _metadata(root: Path) -> Path:
         "px4_real": ["inputs/px4-real"],
         "px4_sim": ["inputs/px4-sim"],
         "px4_reference": ["inputs/px4-reference"],
+        "px4_network": ["inputs/px4-network"],
         "px4_interface": ["inputs/px4-interface"],
         "qgc_managed_settings": ["inputs/qgc"],
     }
@@ -581,6 +585,14 @@ def test_manifest_is_derived_from_pinned_payload_policy_and_signer(
     assert (
         manifest["px4"]["reference_snapshot_sha256"]
         == hashlib.sha256(canonical_json(reference) + b"\n").hexdigest()
+    )
+    network = json.loads(
+        (pipeline_case["root"] / "inputs/px4-network").read_text(encoding="utf-8")
+    )
+    assert manifest["px4"]["network_baseline_id"] == network["baseline_id"]
+    assert (
+        manifest["px4"]["network_baseline_sha256"]
+        == hashlib.sha256(canonical_json(network) + b"\n").hexdigest()
     )
     documentation = json.loads(
         pipeline_case["documentation_manifest"].read_text(encoding="utf-8")

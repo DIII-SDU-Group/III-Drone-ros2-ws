@@ -4673,6 +4673,13 @@ Acceptance:
       generated/cached and not treated as hand-maintained policy.
 - [x] Sim and real use the same manifest schemas, inventory tooling, release
       provenance, and diff/report formats with profile-specific values.
+- [x] The real release owns one authenticated PX4 Ethernet baseline binding the
+      static `10.41.10.1/24` companion and `10.41.10.2/24` FMU pair, exact SD-card
+      network/startup artifacts, dual MAVLink/uXRCE-DDS transport, and compatible
+      firmware identity.
+- [x] PX4 automatic Ethernet parameter owners are disabled so MAVLink and
+      uXRCE-DDS are started together without an exclusive port-owner collision;
+      release assembly rejects any baseline/real-manifest identity mismatch.
 
 Tests:
 
@@ -4683,7 +4690,7 @@ Tests:
 
 Implementation notes:
 
-- Added schema-validated, release-owned real/sim manifests with 1,022/1,021
+- Added schema-validated, release-owned real/sim manifests with 1,023/1,021
   classified parameters, respectively; the decoded reference SITL snapshot is
   retained by content identity and SHA-256. Release assembly authenticates the
   snapshot, both manifest identities, PX4 firmware version/40-bit commit prefix,
@@ -4706,6 +4713,16 @@ Implementation notes:
   proved a receiver-valid 1,021-parameter no-write activation inventory, the real
   companion entrypoint, and a backup-first 12.0→11.5→12.0 parameter write/restore
   drill whose final snapshot returned to the original zero-drift identity.
+- Added the schema-validated real-aircraft PX4 Ethernet baseline with static
+  `10.41.10.2/24`, companion `10.41.10.1/24`, no route/DNS, and authenticated
+  `net.cfg`/`extras.txt` renderings. The release now authenticates the baseline as
+  its own input, binds its identity to the real parameter manifest, disables the
+  colliding automatic Ethernet owners, and explicitly starts MAVLink `14540/UDP`
+  plus uXRCE-DDS `8888/UDP`. Focused PX4, release, bundle, QGC, and CLI verification
+  passed 77 tests, including exact/idempotent artifact rendering and drift refusal.
+  The phase gate passed 661 deployment tests with five explicit opt-in target
+  matrices skipped, plus all 230 CLI tests. Physical backup/apply/reboot/transport
+  proof remains in P5.T1.
 
 #### P3.T11: Implement Portable Host Backup And Reimage Restore
 

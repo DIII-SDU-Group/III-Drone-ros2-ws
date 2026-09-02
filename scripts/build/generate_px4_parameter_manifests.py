@@ -21,6 +21,7 @@ from iii_deployment.contracts import (  # noqa: E402
     canonical_json,
     content_identity,
 )
+from iii_deployment.px4_network import load_network_baseline  # noqa: E402
 
 MAV_TYPES = {"UINT32", "INT32", "REAL32"}
 REAL_REQUIRED = {
@@ -71,10 +72,16 @@ def airframe_required(path: Path) -> set[str]:
 
 
 def classified(
-    source: list[dict[str, Any]], *, profile: str, sim_required: set[str]
+    source: list[dict[str, Any]],
+    *,
+    profile: str,
+    sim_required: set[str],
+    network_required: dict[str, int],
 ) -> list[dict[str, Any]]:
     parameters = []
-    required = sim_required if profile == "sim" else REAL_REQUIRED
+    required = (
+        sim_required if profile == "sim" else REAL_REQUIRED | set(network_required)
+    )
     for item in source:
         name = item["name"]
         mav_type = item["mav_type"]
@@ -82,7 +89,7 @@ def classified(
         if name in required:
             classification = "release-required"
             enforcement = "exact"
-            expected = value
+            expected = network_required.get(name, value)
         elif any(pattern.search(name) for pattern in CALIBRATION_IDENTITY):
             classification = "calibration-identity"
             enforcement = "preserve"
@@ -101,19 +108,20 @@ def classified(
                 "tolerance": 1e-6 if mav_type == "REAL32" else 0,
             }
         )
-    if profile == "real" and "UXRCE_DDS_CFG" not in {
-        item["name"] for item in parameters
-    }:
-        parameters.append(
-            {
-                "name": "UXRCE_DDS_CFG",
-                "mav_type": "INT32",
-                "value": None,
-                "classification": "calibration-identity",
-                "enforcement": "preserve",
-                "tolerance": 0,
-            }
-        )
+    if profile == "real":
+        present = {item["name"] for item in parameters}
+        for name, expected in network_required.items():
+            if name not in present:
+                parameters.append(
+                    {
+                        "name": name,
+                        "mav_type": "INT32",
+                        "value": expected,
+                        "classification": "release-required",
+                        "enforcement": "exact",
+                        "tolerance": 0,
+                    }
+                )
     parameters.sort(key=lambda item: item["name"])
     return parameters
 
@@ -127,6 +135,7 @@ def main() -> int:
         help="canonical iii.px4-parameter-snapshot/v1 decoded from live MAVLink",
     )
     parser.add_argument("--airframe", type=Path, required=True)
+    parser.add_argument("--network-baseline", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--firmware-version")
     args = parser.parse_args()
@@ -135,6 +144,9 @@ def main() -> int:
     raw = args.inventory.read_bytes()
     value = json.loads(raw)
     registry = ContractRegistry(ROOT / "deployment/schemas/v1")
+    network_baseline = load_network_baseline(
+        args.network_baseline, schema_root=ROOT / "deployment/schemas/v1"
+    )
     registry.validate("px4-parameter-snapshot", value)
     source = value["parameters"]
     expected_snapshot_id = content_identity(
@@ -198,7 +210,8 @@ def main() -> int:
                 canonical_json(value) + b"\n"
             ).hexdigest(),
             "airframe_sha256": hashlib.sha256(args.airframe.read_bytes()).hexdigest(),
-            "classification_contract": "iii.px4-parameter-classification/v1",
+            "classification_contract": "iii.px4-parameter-classification/v2",
+            "network_baseline_id": network_baseline["baseline_id"],
             "px4_commit": commit,
         }
     )
@@ -207,11 +220,19 @@ def main() -> int:
         canonical_json(value) + b"\n"
     )
     for profile in ("real", "sim"):
-        parameters = classified(source, profile=profile, sim_required=sim_required)
+        parameters = classified(
+            source,
+            profile=profile,
+            sim_required=sim_required,
+            network_required=network_baseline["parameter_requirements"],
+        )
         manifest = {
             "schema": "iii.px4-parameter-manifest/v1",
             "manifest_id": "0" * 64,
             "profile": profile,
+            "network_baseline_id": (
+                network_baseline["baseline_id"] if profile == "real" else None
+            ),
             "firmware": {
                 "family": "PX4",
                 "compatible_range": ">=1.16.1,<1.17.0",

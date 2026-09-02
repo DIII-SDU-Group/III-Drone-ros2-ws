@@ -44,6 +44,7 @@ def manifest(profile: str) -> dict:
         "schema": "iii.px4-parameter-manifest/v1",
         "manifest_id": "0" * 64,
         "profile": profile,
+        "network_baseline_id": "3" * 64 if profile == "real" else None,
         "firmware": {
             "family": "PX4",
             "compatible_range": ">=1.16.1,<1.17.0",
