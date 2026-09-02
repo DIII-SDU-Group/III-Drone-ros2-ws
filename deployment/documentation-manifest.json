@@ -961,7 +961,7 @@
       "qualified_release_inclusion": false,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "f9610f8865dba383f248dd21a6787553da7ca3d06f1904fec5a35e385f1f56c0",
+      "sha256": "4aa2acdde27d32f43ee85a16e630e435edad31c026a24970d0b73d489aadf648",
       "source_of_truth": "codex-backlogs/deployment-infrastructure-redesign.md"
     },
     {
@@ -2309,7 +2309,7 @@
       "source_of_truth": "tools/III-Drone-MCP/README.md"
     }
   ],
-  "manifest_id": "30667e95326d8dcde00e0938dac73cb28bd7e4ae2d2d27e58b67f6bb6ae6033b",
+  "manifest_id": "6fec52fd24683b1fc87cce538411ece3b1ca5e78093717844e24b713c88dd9df",
   "policy_schema": "iii.documentation-policy/v1",
   "schema": "iii.documentation-manifest/v1"
 }

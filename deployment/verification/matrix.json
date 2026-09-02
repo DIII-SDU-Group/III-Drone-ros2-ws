@@ -1,5 +1,5 @@
 {
-  "matrix_id": "ee322205e79dd8c8c74e93a04ddc7f648a1ebaf7fe30046c8fcc11293bff5967",
+  "matrix_id": "27836042b67d2dd386386d1ed9c688cb6a0beaecfa5cfc0d848b9c6ebb63e058",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -24370,7 +24370,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T8.t5",
-        "P5.T1.t14"
+        "P5.T1.t15"
       ],
       "text": "Do not commit records to Git or publish them automatically.",
       "title": "Commissioning-record identity, signing, and retention"
@@ -42276,7 +42276,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T1",
       "test_refs": [
-        "P5.T1.t2"
+        "P5.T1.t15"
       ],
       "text": "Provisioned and commissioned states are distinct and the final Q108 commissioning evidence cannot be produced from a field-development bundle.",
       "title": "Commission The First Aircraft From Raw Image"

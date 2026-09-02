@@ -3342,6 +3342,25 @@ Implementation notes (2026-08-26):
   `8e5b53740d3f5aa14a4bf10640ec6f2c6f1d498837557b8f4ad17a0403573e34`.
   R13 supersedes r12 for the final physical flash, but remains target-equivalent
   evidence and does not claim a physical receiver switch or commissioning.
+- The dedicated PX4-Ethernet correction at committed workspace source `ee516ca`
+  and unchanged CLI source `46e05b0` produced clean-source r14 provisioning
+  record `4f9148197611d3f97a5b3047be6bdfefc2b587fb2323f1f822d1b38609aa6682`
+  with generation-1 receiver
+  `0c5960c47026aa009099ed87267d68ce964482dd8e30ac35850996e18e74a672`.
+  Its separately materialized generation-2 update record
+  `a7c9317f4f4d6821cf168a983af022be7ec1c2af14853f26cd827eea6759f181`
+  committed receiver
+  `b3da77cb978e8e68e71d63b276b36d75cb8d1f8b1cb3192fb99a28ef70990713`
+  to slot B while retaining verified slot A as fallback. Both signed slots
+  verified; all three selector-local launchers executed from both slots under
+  native AArch64 emulation with networking disabled; all fourteen native
+  extensions reported ELF machine 183 (AArch64), and both slots remained
+  bytecode-free. Evidence
+  `.iii/evidence/pseudo-flash-r14-arm64-20260902.json` has SHA-256
+  `a118f6af0ee2b69c848313bad3fa3b47bb8146cfbc040034d4375bd16fb71fff`.
+  R14 supersedes r13 for the final physical flash, but remains target-equivalent
+  evidence and does not claim a physical receiver switch, PX4 link, or
+  commissioning.
 - The first remote workspace CI run exposed that the host-finalization fixture
   always requested root-owned runtime projections, even on an unprivileged
   GitHub runner. The fixture now retains the production root/group ownership
@@ -5450,6 +5469,15 @@ Implementation notes (software boundary, 2026-08-27):
   The relevant ARM64 target-equivalent first convergence, zero-drift repeat,
   injected-drift repair, finalization, and permanent receiver-access matrix
   passed all three scenarios in 667.87 seconds.
+- Clean-source r14 then passed the isolated signed generation-1 install and
+  generation-2 A/B commit with verified fallback retention. All receiver
+  launchers executed from both immutable slots under native AArch64 emulation,
+  all native extensions were AArch64, and neither slot gained bytecode. The
+  retained evidence and identities are recorded in P2.T3. This closes the final
+  target-equivalent gate for the PX4-Ethernet correction, but the old onboard
+  host still cannot acquire that root-owned Netplan/firewall baseline. A physical
+  canonical reimage remains required before ping, MAVLink heartbeat, uXRCE-DDS,
+  or any physical Q131 row may be claimed.
 
 #### P5.T2: Establish Automation-Ready Documentation Architecture And Validation
 
