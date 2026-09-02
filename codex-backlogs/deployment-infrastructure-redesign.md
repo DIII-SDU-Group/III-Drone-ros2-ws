@@ -105,10 +105,14 @@ until field operators can work entirely from published release artifacts.
   operator computer. Cloud-init installs the first public key; an authenticated,
   audited deployment workflow can add and revoke public keys later. Private keys
   are never copied between the development workstation and ground-control computer.
-- The `iii` SSH account remains unprivileged. Passwordless elevation is limited
-  to a root-owned deployment helper and explicitly required systemd operations;
-  unrestricted `NOPASSWD:ALL` is prohibited. Broader bootstrap authority used
-  by initial Ansible provisioning is narrowed after convergence.
+- The `iii` SSH account remains an unprivileged forced-command automation
+  identity with no sudo path. A separate key-only `iii-maint` human account is
+  provisioned for development and field research, has an interactive shell and
+  explicit unrestricted passwordless sudo, and is never used by Ansible or the
+  deployment receiver. Password and root login remain disabled; forwarding and
+  tunneling remain disabled; the firewall limits SSH to the operator network.
+  Broader one-time bootstrap authority used by initial Ansible provisioning is
+  still removed after convergence.
 - Every qualified and field-development release bundle is cryptographically
   signed. The root deployment helper verifies a trusted signer and all content
   checksums before staging; unsigned, unknown-signer, or tampered bundles are rejected.
@@ -452,10 +456,16 @@ to collect, not an unresolved architecture choice.
   keypair per authorized computer. Provision the first public key via cloud-init
   and provide authenticated add/revoke/list workflows for later workstation or
   ground-control keys. Disable password login and never transfer private keys.
-- **Q9 — Deployment privilege:** Settled. Install a narrow root-owned deployment
-  helper and grant the `iii` account passwordless sudo only for that helper and
-  explicitly necessary systemd operations. Do not grant unrestricted sudo;
-  remove or narrow bootstrap authority after initial convergence.
+- **Q9 — Deployment and human maintenance privilege:** Settled. Keep the `iii`
+  deployment identity forced-command-only, unprivileged, and without sudo. Add
+  a separate key-only `iii-maint` account for attended development and field
+  research with an interactive shell and explicit `NOPASSWD: ALL` authority.
+  Give it an independently generated owner-controlled Ed25519 key, record that
+  public-key identity in provisioning evidence, and never select it as the
+  Ansible or receiver transport. Disable password/root login, SSH forwarding,
+  agent forwarding, X11, and tunnels; permit PTY; limit port 22 to the operator
+  CIDR. Remove the one-time `iii-bootstrap` account after convergence without
+  removing or weakening either permanent identity.
 - **Q10 — Release signing:** Settled. Require cryptographic signatures and
   content checksums for every qualified and dirty field-development bundle.
   Verify both before privileged staging and reject unsigned, unknown, or
@@ -3905,7 +3915,10 @@ remain mandatory commissioning evidence on applicable hardware.
 
 #### P3.T1: Implement Idempotent Ansible Host Roles
 
-**Status: Completed (2026-08-26).** Implemented a data-driven Raspberry Pi 5
+**Status: Completed (2026-09-02).** The completed 2026-08-26 host baseline now
+includes the separately keyed `iii-maint` human field-maintenance boundary while
+preserving the existing forced-command receiver and bootstrap-only Ansible
+identities. Implemented a data-driven Raspberry Pi 5
 host baseline under `deployment/ansible/`, the retained `iii host provision
 check/apply` workflow, signed receiver bootstrap/A/B recovery installation,
 permanent forced-command access, pinned Ubuntu/ROS package policy, UTC/slew-only
@@ -3958,6 +3971,21 @@ Acceptance:
 - [x] Runtime API firewall/service configuration exposes only the documented
       plain-HTTP/WS operator-LAN port and credentials, never privileged deployment
       operations; SSH/receiver transport remains the only deployment authority.
+- [x] A separately keyed `iii-maint` account accepts an interactive public-key
+      session from the operator CIDR and `sudo -n id -u` returns `0`, while the
+      `iii` receiver identity remains forced-command-only and Ansible continues
+      to use only the temporary `iii-bootstrap` identity.
+
+Maintenance-access extension verification (2026-09-02): 64 focused access,
+provisioning, documentation, receiver-policy, and matrix tests passed; 69 target,
+host-maintenance, release-pipeline, and staging tests passed; Ansible lint passed
+all 76 production-profile files with zero failures/warnings; the full deployment
+phase passed 667 tests with five explicit opt-in skips; and the final privileged
+target-equivalent boundary passed all three tests in 576.42 seconds. That run
+proved first convergence, zero drift, injected-drift repair, bootstrap revocation,
+fresh forced-command receiver access, a distinct `iii-maint` login, and
+`sudo -n id -u` returning `0`. Physical post-flash access remains a P5
+commissioning gate and is not inferred from target-equivalent evidence.
 
 Tests:
 
@@ -4043,7 +4071,9 @@ production unit namespace.
 
 #### P3.T3: Implement Shared Target Identity And Secret Provisioning
 
-**Status: Completed (2026-08-26).** Added one content-identified shared-aircraft
+**Status: Completed (2026-09-02).** The completed 2026-08-26 shared target
+identity now includes an independent retained maintenance-key identity and
+explicit separation from receiver enrollment/revocation. Added one content-identified shared-aircraft
 profile with stable `iii-aircraft` / `iii-aircraft-runtime` hardware-role IDs,
 public machine-enrollment records, receiver-derived SSH and Runtime verifier
 projections, independently revocable field-signing authority, and fail-closed
@@ -4084,6 +4114,18 @@ Acceptance:
       operator to backup inspection, physical reimage, restore, and recommission.
 - [x] Losing or revoking a field-signing key does not remove runtime-only access;
       signing and SSH authorities are reported and recovered independently.
+- [x] Provisioning binds the independent maintenance public key without copying
+      its private key, reports its SHA-256 client identity, and fails closed on
+      malformed, linked, changed, non-owner-controlled, or missing key input.
+
+Maintenance-identity extension verification (2026-09-02): the owner-only
+materializer accepts normal OpenSSH public-key comments but canonicalizes the
+installed identity to algorithm plus key bytes, includes its client ID in the
+retained artifact/plan, and never places the private key in provisioning output.
+Focused negative/identity tests and the final target-equivalent SSH/sudo proof
+passed. Host baseline `7aa1aba37ef813852929c2dd9e94e58be6db0b15d792f9d017840467614163c2`
+and target definition `da8c0e6aeef10e4c4d714bef53385fe6a9caf500a2d3fc909f2193410f809ce9`
+supersede the previous candidate identities.
 
 Tests:
 

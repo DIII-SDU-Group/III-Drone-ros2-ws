@@ -257,6 +257,9 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
     )
     ssh_key = tmp_path / "bootstrap"
     _run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(ssh_key)])
+    maintenance_key = tmp_path / "maintenance"
+    _run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(maintenance_key)])
+    maintenance_key.with_suffix(".pub").chmod(0o600)
     public_key = " ".join((ssh_key.with_suffix(".pub")).read_text().split()[:2])
     field_key = tmp_path / "field.pem"
     field_descriptor_path = tmp_path / "field-public.json"
@@ -368,6 +371,9 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
                     "release_status_trust_source": str(status_trust),
                     "receiver_update_trust_source": str(receiver_trust),
                     "operator_enrollment_source": str(operator_enrollment),
+                    "maintenance_ssh_public_key_source": str(
+                        maintenance_key.with_suffix(".pub")
+                    ),
                     "runtime_api_secret_source": str(runtime_secret),
                 },
                 sort_keys=True,
@@ -501,6 +507,7 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
         assert report["state"] == "provisioned"
         assert report["bootstrap_user_removed"] is True
         assert report["commissioned"] is False
+        assert report["maintenance_access"]["user"] == "iii-maint"
         permanent_access = subprocess.run(
             [
                 "ssh",
@@ -512,6 +519,8 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
                 "UserKnownHostsFile=/dev/null",
                 "-o",
                 "ConnectTimeout=3",
+                "-o",
+                "LogLevel=ERROR",
                 "-i",
                 str(ssh_key),
                 "-p",
@@ -530,6 +539,34 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
             "SSH command is outside the fixed deployment gateway"
             in permanent_access.stdout
         )
+        maintenance_access = subprocess.run(
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-o",
+                "UserKnownHostsFile=/dev/null",
+                "-o",
+                "ConnectTimeout=3",
+                "-o",
+                "LogLevel=ERROR",
+                "-i",
+                str(maintenance_key),
+                "-p",
+                port,
+                "iii-maint@127.0.0.1",
+                "sudo -n id -u",
+            ],
+            check=False,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        assert maintenance_access.returncode == 0, maintenance_access.stdout
+        assert maintenance_access.stdout.splitlines()[-1] == "0"
         assert (
             _run(
                 [

@@ -14,7 +14,7 @@ import tempfile
 from typing import Any, Mapping
 
 from iii_deployment.contracts import ContractError, ContractRegistry, content_identity
-
+from iii_deployment.identity import client_id_for_public_key
 
 INPUT_SCHEMA = "iii.host-provisioning-input/v1"
 PLAN_SCHEMA = "iii.host-provisioning-plan/v1"
@@ -24,6 +24,7 @@ FILE_INPUT_FIELDS = (
     "release_status_trust_source",
     "receiver_update_trust_source",
     "operator_enrollment_source",
+    "maintenance_ssh_public_key_source",
     "runtime_api_secret_source",
 )
 DIRECTORY_INPUT_FIELDS = ("receiver_bundle_source", "receiver_wheelhouse_source")
@@ -165,6 +166,27 @@ def load_input(path: Path, *, schema_root: Path) -> tuple[dict[str, Any], Path]:
         Path(value["operator_enrollment_source"]), ContractRegistry(schema_root)
     )
     try:
+        maintenance_key_parts = (
+            Path(value["maintenance_ssh_public_key_source"])
+            .read_text(encoding="ascii")
+            .strip()
+            .split()
+        )
+    except (OSError, UnicodeError) as exc:
+        raise HostProvisionError(
+            f"cannot read maintenance SSH public key: {exc}"
+        ) from exc
+    if len(maintenance_key_parts) < 2:
+        raise HostProvisionError(
+            "maintenance SSH public key must contain Ed25519 public material"
+        )
+    maintenance_key = " ".join(maintenance_key_parts[:2])
+    try:
+        client_id_for_public_key(maintenance_key)
+    except ContractError as exc:
+        raise HostProvisionError(str(exc)) from exc
+    value["maintenance_ssh_public_key"] = maintenance_key
+    try:
         secret_lines = (
             Path(value["runtime_api_secret_source"])
             .read_text(encoding="utf-8")
@@ -281,6 +303,7 @@ def build_plan(
             "first-convergence",
             "second-run-check-mode-zero-change",
             "receiver-readiness-and-recovery",
+            "maintenance-ssh-login-and-full-sudo",
             "bootstrap-sanitization-and-authority-revocation",
         ],
         "declared_permissions": [
@@ -288,12 +311,14 @@ def build_plan(
             "root-become",
             "host-package-and-policy-convergence",
             "receiver-initial-install",
+            "maintenance-account-full-sudo",
             "cloud-init-secret-sanitization",
             "bootstrap-user-removal",
         ],
         "mutations": [
             "converge pinned Ubuntu/ROS host baseline",
             "install signed receiver and forced-command operator access",
+            "install separate key-only iii-maint shell with unrestricted sudo",
             "install operator-LAN firewall and slew-only time policy",
             "preserve network state and remove first-boot authority/secrets",
         ],
@@ -374,7 +399,8 @@ def _run_ansible(
                     *DIRECTORY_INPUT_FIELDS,
                     *FILE_INPUT_FIELDS,
                 )
-            },
+            }
+            | {"maintenance_ssh_public_key": values["maintenance_ssh_public_key"]},
         }
         extra_vars.write_text(
             json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",

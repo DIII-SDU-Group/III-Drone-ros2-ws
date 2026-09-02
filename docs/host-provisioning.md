@@ -3,7 +3,8 @@
 This runbook continues from an authenticated, SSH-reachable bootstrap host and
 ends at a provisioned-but-not-commissioned III aircraft host. The workspace-owned
 Ansible project under `deployment/ansible/` owns the Ubuntu/ROS/hardware baseline,
-fixed receiver and recovery substrate, permanent forced-command access, firewall,
+fixed receiver and recovery substrate, permanent forced-command access, separate
+full-sudo human maintenance access, firewall,
 time policy, production daemon/API units, selector-aware launcher, and first-boot
 authority removal. Application releases do not own or modify those host resources.
 
@@ -42,6 +43,8 @@ Prepare these controller-side artifacts outside Git with owner-only permissions:
 - a complete offline wheelhouse and `receiver-requirements.txt` with hashes;
 - bundle, release-status, and receiver-update public trust stores;
 - one public `iii.machine-enrollment/v1` record for the provisioning computer;
+- one independently generated Ed25519 public key for the `iii-maint` human
+  maintenance account; and
 - the runtime API secret environment file containing only the solo-operator
   browser password.
 
@@ -58,6 +61,18 @@ iii access enroll prepare \
 
 Review the retained plan, then execute only the exact confirmed apply command
 returned by the CLI. Planning never creates credentials.
+
+Generate the maintenance key independently; never reuse the receiver enrollment
+key. Keep its private key on the operator computer only:
+
+```bash
+install -d -m 0700 "$XDG_CONFIG_HOME/iii/credentials/maintenance"
+ssh-keygen -t ed25519 -a 100 \
+  -f "$XDG_CONFIG_HOME/iii/credentials/maintenance/ssh_ed25519" \
+  -C iii-maint
+chmod 0600 "$XDG_CONFIG_HOME/iii/credentials/maintenance/ssh_ed25519" \
+  "$XDG_CONFIG_HOME/iii/credentials/maintenance/ssh_ed25519.pub"
+```
 
 The signing passphrase may instead be stored without entering it in shell
 history and retrieved from the desktop OS keyring:
@@ -86,6 +101,7 @@ deployment/scripts/prepare_host_provisioning_artifacts.py \
   --enrollment "$XDG_CONFIG_HOME/iii/credentials/provisioning/enrollment.json" \
   --runtime-token "$XDG_CONFIG_HOME/iii/credentials/provisioning/runtime-api-token" \
   --ssh-private-key "$XDG_CONFIG_HOME/iii/credentials/provisioning/ssh_ed25519" \
+  --maintenance-ssh-public-key "$XDG_CONFIG_HOME/iii/credentials/maintenance/ssh_ed25519.pub" \
   --known-hosts .iii/ssh/first-boot-known-hosts \
   --target 192.168.10.42 \
   --operator-cidr 192.168.10.0/24 \
@@ -95,7 +111,8 @@ deployment/scripts/prepare_host_provisioning_artifacts.py \
 ```
 
 The resulting `artifact-record.json` binds every wheel, signer, receiver,
-enrollment, inventory, and input identity without retaining secret values. Keep
+enrollment, independent maintenance-key client identity, inventory, and input
+identity without retaining secret values. Keep
 that record with the provisioning operation evidence. The receiver bundle and
 wheelhouse are recursively content-addressed again in the retained host plan.
 Symlinks, special files, empty trees, inputs writable by another identity, and
@@ -144,6 +161,7 @@ Git-ignored directory. Relative artifact paths are resolved against this file.
   "release_status_trust_source": "trust/release-status-signers.json",
   "receiver_update_trust_source": "trust/receiver-update-signers.json",
   "operator_enrollment_source": "access/provisioning-enrollment.json",
+  "maintenance_ssh_public_key_source": "access/maintenance-ssh-ed25519.pub",
   "runtime_api_secret_source": "secrets/runtime-api.env",
   "offline": false
 }
@@ -154,6 +172,7 @@ chmod 0700 .iii .iii/host-provision
 chmod 0600 .iii/host-provision/inputs.json \
   .iii/host-provision/trust/*.json \
   .iii/host-provision/access/provisioning-enrollment.json \
+  .iii/host-provision/access/maintenance-ssh-ed25519.pub \
   .iii/host-provision/secrets/runtime-api.env
 ```
 
@@ -228,7 +247,12 @@ The host uses UTC and normal chrony synchronization, with stepping disabled afte
 the receiver clock gate. Correctness-critical state is bound to boot identity and
 monotonic time. The runtime API is exposed only on its declared operator-LAN TCP
 port; receiver deployment authority remains the forced-command SSH/Unix-socket
-path and is never exposed through that API.
+path and is never exposed through that API. Human maintenance is deliberately a
+separate trust boundary: `iii-maint` has an interactive Bash shell and explicit
+unrestricted passwordless sudo, but public-key authentication is mandatory,
+root/password login and SSH forwarding/tunneling are disabled, and nftables
+accepts port 22 only from the configured operator CIDR. Neither provisioning nor
+routine Ansible inventory uses `iii-maint`.
 
 Finalization preserves the cloud-init netplan as root-only
 `/etc/netplan/90-iii-operator.yaml`, validates it, disables cloud-init reruns,
@@ -238,9 +262,25 @@ account, and verifies that permanent receiver-gateway keys remain with mode
 privileges. It also resolves the fixed gateway through the active signed receiver
 slot and verifies that the runtime identity can traverse every directory and
 execute the root-write-protected gateway before bootstrap authority is revoked.
-Target-equivalent acceptance opens a new permanent forced-command SSH session and
-requires the gateway itself to execute after bootstrap removal. There is no
-default password or bootstrap-key reinjection recovery.
+It also authenticates the independent maintenance public key, exact full-sudo
+fragment, account ownership, and retained client identity. Target-equivalent
+acceptance opens a new permanent forced-command SSH session, requires the gateway
+itself to execute after bootstrap removal, opens a separate maintenance session,
+and requires `sudo -n id -u` to return `0`. There is no default password or
+bootstrap-key reinjection recovery.
+
+For attended development or field maintenance after provisioning:
+
+```bash
+ssh -i "$XDG_CONFIG_HOME/iii/credentials/maintenance/ssh_ed25519" \
+  -o IdentitiesOnly=yes iii-maint@iii.local
+sudo -n id -u  # must print 0
+```
+
+This is deliberate root authority. Use it for research setup and diagnosis, not
+as a replacement for signed deployment, receiver operations, or Ansible
+convergence. Commands executed in this shell can invalidate commissioning and
+must be captured in the experiment/field log.
 
 ## Evidence And Recovery
 
@@ -286,7 +326,10 @@ field-signer checks may an active computer run
 
 The receiver keeps one state machine but reports the authorities independently:
 
-- SSH stores only public keys in forced-command `authorized_keys`;
+- receiver SSH stores only public keys in forced-command `authorized_keys`;
+- human maintenance SSH stores one separately managed public key in
+  `/home/iii-maint/.ssh/authorized_keys`; receiver enrollment/revocation does not
+  silently alter this root-capable authority;
 - the Runtime API stores only SHA-256 token verifiers for active machines;
 - field signing stores public Ed25519 verifiers and active/revoked state.
 

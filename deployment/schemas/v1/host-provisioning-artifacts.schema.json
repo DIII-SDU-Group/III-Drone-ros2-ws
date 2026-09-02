@@ -12,6 +12,7 @@
     "target",
     "operator_cidr",
     "enrollment_id",
+    "maintenance_ssh_client_id",
     "receiver_id",
     "signer_ids",
     "wheels",
@@ -26,6 +27,7 @@
     "target": {"type": "string", "minLength": 1},
     "operator_cidr": {"type": "string", "minLength": 1},
     "enrollment_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "maintenance_ssh_client_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "receiver_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "signer_ids": {
       "type": "object",

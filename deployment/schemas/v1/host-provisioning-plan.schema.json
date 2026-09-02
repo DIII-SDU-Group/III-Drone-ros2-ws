@@ -34,13 +34,14 @@
       "additionalProperties": false,
       "required": [
         "bundle_trust_source", "release_status_trust_source", "receiver_update_trust_source",
-        "operator_enrollment_source", "runtime_api_secret_source"
+        "operator_enrollment_source", "maintenance_ssh_public_key_source", "runtime_api_secret_source"
       ],
       "properties": {
         "bundle_trust_source": {"$ref": "#/definitions/fileIdentity"},
         "release_status_trust_source": {"$ref": "#/definitions/fileIdentity"},
         "receiver_update_trust_source": {"$ref": "#/definitions/fileIdentity"},
         "operator_enrollment_source": {"$ref": "#/definitions/fileIdentity"},
+        "maintenance_ssh_public_key_source": {"$ref": "#/definitions/fileIdentity"},
         "runtime_api_secret_source": {"$ref": "#/definitions/fileIdentity"}
       }
     },

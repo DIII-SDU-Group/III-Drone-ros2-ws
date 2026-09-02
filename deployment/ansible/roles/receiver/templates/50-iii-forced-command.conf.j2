@@ -9,3 +9,11 @@ Match User iii
     PermitTunnel no
     PermitTTY no
     X11Forwarding no
+
+Match User iii-maint
+    AuthenticationMethods publickey
+    AllowAgentForwarding no
+    AllowTcpForwarding no
+    PermitTunnel no
+    PermitTTY yes
+    X11Forwarding no

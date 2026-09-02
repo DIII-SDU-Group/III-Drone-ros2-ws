@@ -170,15 +170,33 @@
     },
     {
       "decision": "Q9",
-      "digest": "a5388a4b283ac4cc2b2a5e01ae81ac79884f69ca068bdbcf303eca07c74396e1",
+      "digest": "cb11b361246b10c28d33bb540a6e686a95badf879c59a98fd9cfd37d2fac9b92",
       "id": "Q9.c2",
-      "text": "Install a narrow root-owned deployment helper and grant the `iii` account passwordless sudo only for that helper and explicitly necessary systemd operations."
+      "text": "Keep the `iii` deployment identity forced-command-only, unprivileged, and without sudo."
     },
     {
       "decision": "Q9",
-      "digest": "96c8c5f7575989edd3e3ab1450f15492e18dfa2e29a2beaf41d78440f0a01ea3",
+      "digest": "f32ea3f60ac86150bda3942c97249577cfb8f8fa527b709be38fdd9943ccbad5",
       "id": "Q9.c3",
-      "text": "Do not grant unrestricted sudo; remove or narrow bootstrap authority after initial convergence."
+      "text": "Add a separate key-only `iii-maint` account for attended development and field research with an interactive shell and explicit `NOPASSWD: ALL` authority."
+    },
+    {
+      "decision": "Q9",
+      "digest": "013c01cf218277ee6f31312ee71af845ff30100f7a8bf1896d2b371b14652ede",
+      "id": "Q9.c4",
+      "text": "Give it an independently generated owner-controlled Ed25519 key, record that public-key identity in provisioning evidence, and never select it as the Ansible or receiver transport."
+    },
+    {
+      "decision": "Q9",
+      "digest": "a595a17ac38c08e1e740bf54f4140d67c4f8af182d0acc1a5f449a801baf4c7e",
+      "id": "Q9.c5",
+      "text": "Disable password/root login, SSH forwarding, agent forwarding, X11, and tunnels; permit PTY; limit port 22 to the operator CIDR."
+    },
+    {
+      "decision": "Q9",
+      "digest": "9eacffba5095f30995a5d3a23ca63e4d6346d0b00ee4ce4bf872b31f6b66c802",
+      "id": "Q9.c6",
+      "text": "Remove the one-time `iii-bootstrap` account after convergence without removing or weakening either permanent identity."
     },
     {
       "decision": "Q10",

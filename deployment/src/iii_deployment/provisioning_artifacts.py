@@ -21,6 +21,7 @@ from typing import Any, Callable, Mapping, Sequence
 from .contracts import ContractError, ContractRegistry, canonical_json, content_identity
 from .host_provision import load_input
 from .identity import load_machine_enrollment
+from .identity import client_id_for_public_key
 from .receiver.update import package_receiver_update, verify_receiver_update
 from .signers import (
     generate_signer,
@@ -127,6 +128,7 @@ def inspect_materialization(
     enrollment: Path,
     runtime_token: Path,
     ssh_private_key: Path,
+    maintenance_ssh_public_key: Path,
     known_hosts: Path,
     target: str,
     operator_cidr: str,
@@ -158,6 +160,26 @@ def inspect_materialization(
             "runtime API token is not one safe non-empty line"
         )
     ssh_key = _owner_file(ssh_private_key, label="bootstrap SSH private key")
+    maintenance_key_path = _owner_file(
+        maintenance_ssh_public_key, label="maintenance SSH public key"
+    )
+    try:
+        maintenance_key_parts = (
+            maintenance_key_path.read_text(encoding="ascii").strip().split()
+        )
+    except (OSError, UnicodeError) as exc:
+        raise ProvisioningArtifactError(
+            f"cannot read maintenance SSH public key: {exc}"
+        ) from exc
+    if len(maintenance_key_parts) < 2:
+        raise ProvisioningArtifactError(
+            "maintenance SSH public key must contain Ed25519 public material"
+        )
+    maintenance_key = " ".join(maintenance_key_parts[:2])
+    try:
+        maintenance_client_id = client_id_for_public_key(maintenance_key)
+    except ContractError as exc:
+        raise ProvisioningArtifactError(str(exc)) from exc
     host_keys = known_hosts.expanduser().resolve()
     if known_hosts.is_symlink() or not host_keys.is_file():
         raise ProvisioningArtifactError("known-hosts evidence must be a regular file")
@@ -180,6 +202,8 @@ def inspect_materialization(
         "enrollment_id": enrollment_value["enrollment_id"],
         "runtime_token": str(token_path),
         "ssh_private_key": str(ssh_key),
+        "maintenance_ssh_public_key": str(maintenance_key_path),
+        "maintenance_ssh_client_id": maintenance_client_id,
         "known_hosts": str(host_keys),
         "target": str(address),
         "operator_cidr": str(network),
@@ -514,6 +538,17 @@ def materialize(
         enrollment.parent.mkdir(parents=True, mode=0o700)
         shutil.copy2(Path(str(inspection["enrollment"])), enrollment)
         enrollment.chmod(0o600)
+        maintenance_key = partial / "access/maintenance-ssh-ed25519.pub"
+        source_key_parts = (
+            Path(str(inspection["maintenance_ssh_public_key"]))
+            .read_text(encoding="ascii")
+            .strip()
+            .split()
+        )
+        maintenance_key.write_text(
+            " ".join(source_key_parts[:2]) + "\n", encoding="ascii"
+        )
+        maintenance_key.chmod(0o600)
         token = (
             Path(str(inspection["runtime_token"])).read_text(encoding="ascii").strip()
         )
@@ -535,6 +570,7 @@ def materialize(
             "release_status_trust_source": "trust/release-status-signers.json",
             "receiver_update_trust_source": "trust/receiver-update-signers.json",
             "operator_enrollment_source": "access/provisioning-enrollment.json",
+            "maintenance_ssh_public_key_source": "access/maintenance-ssh-ed25519.pub",
             "runtime_api_secret_source": "secrets/runtime-api.env",
             "offline": False,
         }
@@ -590,6 +626,7 @@ def materialize(
             "target": inspection["target"],
             "operator_cidr": inspection["operator_cidr"],
             "enrollment_id": inspection["enrollment_id"],
+            "maintenance_ssh_client_id": inspection["maintenance_ssh_client_id"],
             "receiver_id": manifest["receiver_id"],
             "signer_ids": {
                 "bundle": bundle_signer,

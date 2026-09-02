@@ -99,6 +99,10 @@ Remote runtime-control commands use `iii-runtime-api` with
 commands over SSH. Deployment SSH is limited to key-only `iii@iii.local`, the
 fixed receiver gateway, and resumable SFTP uploads. Legacy install, workspace
 synchronization, arbitrary SSH, SCP, rsync, and source pull commands are absent.
+The separately keyed `iii-maint@iii.local` shell is the explicit attended
+development/field-maintenance exception. It provides full sudo, is limited to the
+operator network with forwarding disabled, and is never invoked by the CLI,
+receiver, or Ansible inventory.
 
 Use the process-local field defaults and explicit target/profile overrides:
 

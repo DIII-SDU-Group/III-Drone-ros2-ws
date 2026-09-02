@@ -26,6 +26,7 @@ def main() -> int:
     parser.add_argument("--enrollment", type=Path, required=True)
     parser.add_argument("--runtime-token", type=Path, required=True)
     parser.add_argument("--ssh-private-key", type=Path, required=True)
+    parser.add_argument("--maintenance-ssh-public-key", type=Path, required=True)
     parser.add_argument("--known-hosts", type=Path, required=True)
     parser.add_argument("--target", required=True)
     parser.add_argument("--operator-cidr", required=True)
@@ -40,6 +41,7 @@ def main() -> int:
             enrollment=args.enrollment,
             runtime_token=args.runtime_token,
             ssh_private_key=args.ssh_private_key,
+            maintenance_ssh_public_key=args.maintenance_ssh_public_key,
             known_hosts=args.known_hosts,
             target=args.target,
             operator_cidr=args.operator_cidr,

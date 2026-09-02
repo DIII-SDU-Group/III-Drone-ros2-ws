@@ -621,7 +621,7 @@
       ],
       "path": "docs/build-and-environments.md",
       "repository": "workspace",
-      "sha256": "b2bed2e3ac6ec5f1083272b4bfe7e369ab9dde60a4fb07796ff1424e0c634454",
+      "sha256": "b46170e16289415a05ce16ce39556d059119bd62dc98749207319f1db688f0e0",
       "status": "passed"
     },
     {
@@ -673,7 +673,7 @@
       ],
       "path": "docs/deployment-and-field-operations.md",
       "repository": "workspace",
-      "sha256": "f7587bedf620699176a796e2a76216d8986daa22ba8d902933ef5cc410da76d6",
+      "sha256": "b95b71fe6727c6a4b2240ffedd8a2c3424069b92fa97024119f98926b83755ec",
       "status": "passed"
     },
     {
@@ -764,7 +764,7 @@
       ],
       "path": "docs/generated/deployment-schema-reference.md",
       "repository": "workspace",
-      "sha256": "d3e4536bf6d33c3adeccf750eedea33b488b71105f9f2103c56dd5e5feb59257",
+      "sha256": "11f1a8ecac3eea73f40a009f300dc36a104ff6c459ce1c4d336cb2d128adcc12",
       "status": "passed"
     },
     {
@@ -790,7 +790,7 @@
       ],
       "path": "docs/ground-control-and-operator-tools.md",
       "repository": "workspace",
-      "sha256": "485c1838ff9a7e36b1987ea29c1fb878ec6d4558d0c643373882c24d44e321cd",
+      "sha256": "bcc05a5afd44deabf0059f57f6b239b61064eb02ea6cd6a2983b55c3fedfe9e3",
       "status": "passed"
     },
     {
@@ -868,7 +868,7 @@
       ],
       "path": "docs/host-provisioning.md",
       "repository": "workspace",
-      "sha256": "939e51d322b6c1112f3ba07b0b624121bf1c4f02399f6080964821a2392242cd",
+      "sha256": "90067c1f0833d3cfe9f8b4924c7c946a40115cc9e196f49186ca12e9e62293b4",
       "status": "passed"
     },
     {
@@ -907,7 +907,7 @@
       ],
       "path": "docs/legacy-deployment-retirement.md",
       "repository": "workspace",
-      "sha256": "f2b415d4e6b96fd0270b5d40f1ed27ee78c74bb9dca7fcbcee27dfe2ba609c3a",
+      "sha256": "db6208f6ef21d5d23efea1408abb66081259aea87af818b5e8c52838ce4d6dce",
       "status": "passed"
     },
     {
@@ -1197,8 +1197,8 @@
       "status": "passed"
     }
   ],
-  "manifest_id": "c4158c032e922ab90d708557ea1f30f68a07cfce918ebbbd9535c34c10776eed",
-  "review_id": "bbab3df32e0c9a1ffc085a8f94bca57af0274439ac0d571ff1580af95df171dc",
-  "reviewer": "codex",
+  "manifest_id": "ef3c73a8e115957c1658b5e85c6dd6ab5fe24e7f8e8098abdef3159aaad58a35",
+  "review_id": "27ee8a0cecc35e22b456337df167291349366857e531fac04217452359dc7def",
+  "reviewer": "codex-maintenance-ssh-contract",
   "schema": "iii.documentation-review/v1"
 }

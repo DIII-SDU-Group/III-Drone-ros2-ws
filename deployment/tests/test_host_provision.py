@@ -55,6 +55,7 @@ def _fixture(tmp_path: Path) -> dict[str, Path]:
         "release_status_trust_source",
         "receiver_update_trust_source",
         "operator_enrollment_source",
+        "maintenance_ssh_public_key_source",
         "runtime_api_secret_source",
     ]
     source_paths = {}
@@ -87,6 +88,10 @@ def _fixture(tmp_path: Path) -> dict[str, Path]:
     )
     Path(source_paths["operator_enrollment_source"]).write_bytes(
         canonical_json(enrollment) + b"\n"
+    )
+    Path(source_paths["maintenance_ssh_public_key_source"]).write_text(
+        "ssh-ed25519 " + base64.b64encode(ssh_blob).decode("ascii") + "\n",
+        encoding="ascii",
     )
     inputs = tmp_path / "inputs.json"
     inputs.write_text(
@@ -149,6 +154,8 @@ def test_plan_binds_repositories_permissions_and_every_input(tmp_path: Path) -> 
     assert len(plan["repositories"]) == 2
     assert all(row["old_sha"] == row["new_sha"] for row in plan["repositories"])
     assert "bootstrap-user-removal" in plan["declared_permissions"]
+    assert "maintenance-account-full-sudo" in plan["declared_permissions"]
+    assert "maintenance_ssh_public_key_source" in plan["controller_inputs"]
     assert set(plan["artifacts"]) == {
         "receiver_bundle_source",
         "receiver_wheelhouse_source",
@@ -204,9 +211,7 @@ def test_apply_runs_converge_check_finalize_in_order(
         ("aircraft-finalize.yml", False),
     ]
     assert report["state"] == "provisioned"
-    assert set(report["runs"]["first_convergence"]["categories"]) == {
-        "operational"
-    }
+    assert set(report["runs"]["first_convergence"]["categories"]) == {"operational"}
     assert len(report["report_id"]) == 64
 
 

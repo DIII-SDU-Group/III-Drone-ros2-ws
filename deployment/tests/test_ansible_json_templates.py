@@ -5,7 +5,6 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-
 ROOT = Path(__file__).resolve().parents[2]
 ANSIBLE = ROOT / "deployment/ansible"
 
@@ -34,6 +33,10 @@ def test_ansible_json_templates_emit_only_canonical_json_and_one_newline() -> No
         "iii_runtime_uid": 1100,
         "iii_runtime_gid": 1100,
         "iii_runtime_api_port": 8765,
+        "iii_maintenance_user": "iii-maint",
+        "iii_maintenance_uid": 1101,
+        "iii_maintenance_gid": 1101,
+        "iii_maintenance_ssh_client_id": "9" * 64,
         "iii_mdns_port": 5353,
         "iii_ubuntu_snapshot": "https://snapshot.ubuntu.com/ubuntu/example",
         "iii_ros_snapshot": "http://snapshots.ros.org/jazzy/example/ubuntu",
@@ -45,7 +48,10 @@ def test_ansible_json_templates_emit_only_canonical_json_and_one_newline() -> No
         "iii_health_readiness": {"receiver_id": "c" * 64, "generation": 1},
         "iii_receiver_manifest": {"receiver_id": "c" * 64, "generation": 1},
         "iii_health_package_versions": {"chrony": ["4.5-1"]},
-        "iii_provisioning_inputs": {"operator_cidr": "192.168.10.0/24"},
+        "iii_provisioning_inputs": {
+            "operator_cidr": "192.168.10.0/24",
+            "maintenance_ssh_public_key_source": "/controller/maintenance.pub",
+        },
     }
     templates = (
         "roles/apt_baseline/templates/host-package-policy.json.j2",

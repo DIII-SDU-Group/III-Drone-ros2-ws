@@ -16,6 +16,7 @@
     "release_status_trust_source",
     "receiver_update_trust_source",
     "operator_enrollment_source",
+    "maintenance_ssh_public_key_source",
     "runtime_api_secret_source"
   ],
   "properties": {
@@ -30,6 +31,7 @@
     "release_status_trust_source": {"type": "string", "minLength": 1},
     "receiver_update_trust_source": {"type": "string", "minLength": 1},
     "operator_enrollment_source": {"type": "string", "minLength": 1},
+    "maintenance_ssh_public_key_source": {"type": "string", "minLength": 1},
     "runtime_api_secret_source": {"type": "string", "minLength": 1},
     "offline": {"type": "boolean", "default": false}
   }

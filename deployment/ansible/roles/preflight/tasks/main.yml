@@ -22,6 +22,8 @@
       - iii_provisioning_inputs.release_status_trust_source is string
       - iii_provisioning_inputs.receiver_update_trust_source is string
       - iii_provisioning_inputs.operator_enrollment_source is string
+      - iii_provisioning_inputs.maintenance_ssh_public_key_source is string
+      - iii_provisioning_inputs.maintenance_ssh_public_key is match('^ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI[A-Za-z0-9+/]{43}$')
       - iii_provisioning_inputs.runtime_api_secret_source is string
     fail_msg: Supply all host inputs through an owner-only Git-ignored extra-vars file.
   no_log: true
@@ -80,6 +82,7 @@
     - "{{ iii_provisioning_inputs.release_status_trust_source }}"
     - "{{ iii_provisioning_inputs.receiver_update_trust_source }}"
     - "{{ iii_provisioning_inputs.operator_enrollment_source }}"
+    - "{{ iii_provisioning_inputs.maintenance_ssh_public_key_source }}"
     - "{{ iii_provisioning_inputs.runtime_api_secret_source }}"
   register: iii_controller_files
   delegate_to: localhost
@@ -95,6 +98,12 @@
       - (item.stat.mode | int(base=8)) % 64 == 0
     fail_msg: A required controller input is missing, linked, or writable by other users.
   loop: "{{ iii_controller_files.results }}"
+  no_log: true
+
+- name: Identify the independent maintenance SSH key
+  ansible.builtin.set_fact:
+    iii_maintenance_ssh_client_id: >-
+      {{ iii_provisioning_inputs.maintenance_ssh_public_key | hash('sha256') }}
   no_log: true
 
 - name: Inspect receiver bundle and wheelhouse sources

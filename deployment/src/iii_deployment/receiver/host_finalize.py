@@ -12,6 +12,7 @@ import subprocess
 from typing import Any, Callable, Mapping, Sequence
 
 from iii_deployment.contracts import ContractError, canonical_json, content_identity
+from iii_deployment.identity import client_id_for_public_key
 from iii_deployment.receiver.state import atomic_bytes, atomic_document
 
 BOOTSTRAP_USER = "iii-bootstrap"
@@ -98,9 +99,7 @@ def _runtime_has_mode(path: Path, *, uid: int, gid: int, required: int) -> bool:
     return granted & required == required
 
 
-def _require_runtime_gateway(
-    root: Path, *, slot: str, uid: int, gid: int
-) -> None:
+def _require_runtime_gateway(root: Path, *, slot: str, uid: int, gid: int) -> None:
     gateway = _under(root, Path("/usr/bin/iii-deployment-ssh-gateway"))
     if not gateway.is_symlink():
         raise ContractError("permanent forced-command gateway is not a symbolic link")
@@ -111,9 +110,7 @@ def _require_runtime_gateway(
         raise ContractError(
             "permanent forced-command gateway does not use the active receiver selector"
         )
-    relative = Path(
-        f"opt/iii/receiver/slots/{slot}/bin/iii-deployment-ssh-gateway"
-    )
+    relative = Path(f"opt/iii/receiver/slots/{slot}/bin/iii-deployment-ssh-gateway")
     target = root / relative
     current = root
     for part in relative.parts[:-1]:
@@ -129,7 +126,9 @@ def _require_runtime_gateway(
     if target.is_symlink() or not target.is_file():
         raise ContractError("permanent forced-command gateway target is unsafe")
     if not _runtime_has_mode(target, uid=uid, gid=gid, required=0o1):
-        raise ContractError("permanent forced-command gateway is not runtime-executable")
+        raise ContractError(
+            "permanent forced-command gateway is not runtime-executable"
+        )
 
 
 def _sanitize_sudoers(root: Path, run: Callable[[Sequence[str]], None]) -> list[str]:
@@ -163,6 +162,64 @@ def _sanitize_sudoers(root: Path, run: Callable[[Sequence[str]], None]) -> list[
     return changed
 
 
+def _validate_maintenance_access(
+    root: Path, evidence: Mapping[str, Any]
+) -> dict[str, Any]:
+    required = {
+        "user",
+        "uid",
+        "gid",
+        "client_id",
+        "authentication",
+        "sudo",
+        "operator_cidr",
+        "ansible_transport",
+    }
+    if (
+        set(evidence) != required
+        or evidence.get("user") != "iii-maint"
+        or evidence.get("authentication") != "publickey-only"
+        or evidence.get("sudo") != "unrestricted-nopasswd"
+        or evidence.get("ansible_transport") is not False
+        or not isinstance(evidence.get("uid"), int)
+        or isinstance(evidence.get("uid"), bool)
+        or not isinstance(evidence.get("gid"), int)
+        or isinstance(evidence.get("gid"), bool)
+    ):
+        raise ContractError("maintenance SSH evidence is incomplete or unsafe")
+    authorized_keys = _under(root, Path("/home/iii-maint/.ssh/authorized_keys"))
+    if authorized_keys.is_symlink() or not authorized_keys.is_file():
+        raise ContractError("maintenance SSH authorized_keys is absent or linked")
+    metadata = authorized_keys.stat(follow_symlinks=False)
+    if (
+        metadata.st_uid != evidence["uid"]
+        or metadata.st_gid != evidence["gid"]
+        or metadata.st_mode & 0o077
+    ):
+        raise ContractError("maintenance SSH key ownership or permissions are unsafe")
+    key_lines = [
+        line
+        for line in authorized_keys.read_text(encoding="ascii").splitlines()
+        if line
+    ]
+    if len(key_lines) != 1:
+        raise ContractError("maintenance SSH must contain exactly one public key")
+    try:
+        observed_client_id = client_id_for_public_key(key_lines[0])
+    except ContractError as exc:
+        raise ContractError("maintenance SSH public key is invalid") from exc
+    if observed_client_id != evidence.get("client_id"):
+        raise ContractError("maintenance SSH public key identity mismatch")
+    sudoers = _under(root, Path("/etc/sudoers.d/90-iii-maintenance"))
+    if sudoers.is_symlink() or not sudoers.is_file():
+        raise ContractError("maintenance sudo policy is absent or linked")
+    if sudoers.read_bytes() != b"iii-maint ALL=(ALL:ALL) NOPASSWD: ALL\n":
+        raise ContractError("maintenance sudo policy differs from full human authority")
+    if sudoers.stat(follow_symlinks=False).st_mode & 0o027:
+        raise ContractError("maintenance sudo policy permissions are unsafe")
+    return dict(evidence)
+
+
 def finalize_host(
     *,
     baseline_id: str,
@@ -190,6 +247,7 @@ def finalize_host(
             raise ContractError("existing host provisioning report is invalid")
         if user_exists(BOOTSTRAP_USER):
             raise ContractError("bootstrap user reappeared after host finalization")
+        _validate_maintenance_access(root, existing.get("maintenance_access", {}))
         permanent_network = _under(root, Path("/etc/netplan/90-iii-operator.yaml"))
         if permanent_network.is_symlink() or not permanent_network.is_file():
             raise ContractError(
@@ -216,6 +274,9 @@ def finalize_host(
         raise ContractError("host health report is not converged")
     if health.get("baseline_id") != baseline_id:
         raise ContractError("host health report belongs to another baseline")
+    maintenance_access = _validate_maintenance_access(
+        root, health.get("maintenance_access", {})
+    )
     shared_target_profile_id = health.get("shared_target_profile_id")
     if (
         not isinstance(shared_target_profile_id, str)
@@ -384,9 +445,7 @@ def finalize_host(
         raise ContractError(
             "initial receiver current and recovery fallback selectors differ"
         )
-    _require_runtime_gateway(
-        root, slot=current_slot, uid=runtime_uid, gid=runtime_gid
-    )
+    _require_runtime_gateway(root, slot=current_slot, uid=runtime_uid, gid=runtime_gid)
 
     target_network = _under(root, Path("/etc/netplan/90-iii-operator.yaml"))
     source_network = _under(root, Path("/etc/netplan/50-cloud-init.yaml"))
@@ -453,6 +512,7 @@ def finalize_host(
         "active_operator_machines": sorted(
             record["machine_id"] for record in clients.values()
         ),
+        "maintenance_access": maintenance_access,
         "network_configuration": "/etc/netplan/90-iii-operator.yaml",
         "cloud_init_disabled": True,
         "secret_bearing_seed_and_instance_data_removed": True,

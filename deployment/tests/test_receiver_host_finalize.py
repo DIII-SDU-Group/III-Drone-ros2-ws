@@ -54,6 +54,16 @@ def _root(tmp_path: Path) -> Path:
         "logical_target": "drone",
         "profile": "real",
         "receiver": {"receiver_id": RECEIVER_ID, "generation": 1},
+        "maintenance_access": {
+            "user": "iii-maint",
+            "uid": runtime_uid,
+            "gid": runtime_gid,
+            "client_id": CLIENT_ID,
+            "authentication": "publickey-only",
+            "sudo": "unrestricted-nopasswd",
+            "operator_cidr": "10.42.0.0/24",
+            "ansible_transport": False,
+        },
     }
     readiness = {
         "schema": "iii.receiver-readiness/v1",
@@ -126,6 +136,19 @@ def _root(tmp_path: Path) -> Path:
         tmp_path / "etc/sudoers.d/90-cloud-init-users",
         b"iii-bootstrap ALL=(ALL) NOPASSWD:ALL\n",
     )
+    _write(
+        tmp_path / "home/iii-maint/.ssh/authorized_keys",
+        (SSH_PUBLIC_KEY + "\n").encode("ascii"),
+    )
+    maintenance_authorized_keys = tmp_path / "home/iii-maint/.ssh/authorized_keys"
+    maintenance_authorized_keys.chmod(0o600)
+    if os.geteuid() == 0:
+        os.chown(maintenance_authorized_keys, runtime_uid, runtime_gid)
+    _write(
+        tmp_path / "etc/sudoers.d/90-iii-maintenance",
+        b"iii-maint ALL=(ALL:ALL) NOPASSWD: ALL\n",
+    )
+    (tmp_path / "etc/sudoers.d/90-iii-maintenance").chmod(0o440)
     return tmp_path
 
 
@@ -151,6 +174,7 @@ def test_finalize_preserves_network_revokes_bootstrap_and_is_resumable(
 
     assert result["state"] == "provisioned"
     assert result["commissioned"] is False
+    assert result["maintenance_access"]["sudo"] == "unrestricted-nopasswd"
     assert (
         root / "etc/netplan/90-iii-operator.yaml"
     ).read_text() == "network:\n  version: 2\n"
@@ -181,6 +205,23 @@ def test_finalize_refuses_missing_permanent_network_before_sanitization(
     (root / "etc/netplan/50-cloud-init.yaml").unlink()
 
     with pytest.raises(ContractError, match="no cloud-init network"):
+        finalize_host(
+            baseline_id=BASELINE_ID,
+            root=root,
+            run=lambda _argv: None,
+            user_exists=lambda _name: True,
+        )
+
+    assert (root / "boot/firmware/user-data").is_file()
+
+
+def test_finalize_refuses_missing_maintenance_authority_before_revocation(
+    tmp_path: Path,
+) -> None:
+    root = _root(tmp_path)
+    (root / "etc/sudoers.d/90-iii-maintenance").unlink()
+
+    with pytest.raises(ContractError, match="maintenance sudo policy is absent"):
         finalize_host(
             baseline_id=BASELINE_ID,
             root=root,

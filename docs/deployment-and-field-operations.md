@@ -122,6 +122,28 @@ authority and records `commissioned: false`: **provisioned is not commissioned**
 The complete three-run convergence, access enrollment, fixed service/network
 boundary, and failure recovery are in [aircraft host provisioning](host-provisioning.md).
 
+### Attended Root Maintenance Shell
+
+The provisioned aircraft has two permanent SSH identities with deliberately
+different authority. `iii@iii.local` remains the non-interactive receiver
+gateway used by canonical automation. `iii-maint@iii.local` is the separately
+keyed attended development and field-research shell with unrestricted
+passwordless sudo. It is not used by Ansible, the receiver, or routine CLI
+commands.
+
+```bash
+ssh -i "$XDG_CONFIG_HOME/iii/credentials/maintenance/ssh_ed25519" \
+  -o IdentitiesOnly=yes iii-maint@iii.local
+sudo -n id -u
+```
+
+The second command must print `0`. Password/root login, TCP/agent/X11 forwarding,
+and tunnels remain disabled, and the firewall accepts SSH only from the operator
+CIDR. Treat every command in this shell as a potential commissioning-invalidating
+host mutation: keep the aircraft physically safe, record changes, and return to
+the retained Ansible/commissioning flow before flight. Never point an Ansible
+inventory at this account.
+
 ### Update The Deployment Receiver
 
 Receiver updates are signed host-control artifacts, not application releases.

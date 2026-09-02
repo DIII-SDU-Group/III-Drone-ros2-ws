@@ -1,8 +1,8 @@
 ---
 iii_baseline_schema: iii.ansible-host-baseline/v1
-iii_baseline_id: 46e038aa7a442fafbd62289f7527f347b467c8102367ba80853fd2895645c023
+iii_baseline_id: 7aa1aba37ef813852929c2dd9e94e58be6db0b15d792f9d017840467614163c2
 iii_unit_contract_id: 33a2777fd109e9cd245fafcd13d253dec45ec67a805032adc37b52873a3a926d
-iii_target_definition_id: 8d02216380ffdc0c15cc96852dd0f87c0cc21b43a2b26ab307d7c83eae6c6294
+iii_target_definition_id: da8c0e6aeef10e4c4d714bef53385fe6a9caf500a2d3fc909f2193410f809ce9
 iii_expected_distribution: Ubuntu
 iii_expected_release: "24.04"
 iii_expected_codename: noble
@@ -11,6 +11,12 @@ iii_runtime_user: iii
 iii_runtime_group: iii
 iii_runtime_uid: 1100
 iii_runtime_gid: 1100
+iii_maintenance_user: iii-maint
+iii_maintenance_group: iii-maint
+iii_maintenance_uid: 1101
+iii_maintenance_gid: 1101
+iii_maintenance_owner_effective: "{{ (iii_maintenance_uid | string) if ansible_check_mode else iii_maintenance_user }}"
+iii_maintenance_group_effective: "{{ (iii_maintenance_gid | string) if ansible_check_mode else iii_maintenance_group }}"
 iii_runtime_owner_effective: "{{ (iii_runtime_uid | string) if ansible_check_mode else iii_runtime_user }}"
 iii_runtime_group_effective: "{{ (iii_runtime_gid | string) if ansible_check_mode else iii_runtime_group }}"
 iii_runtime_api_port: 8765

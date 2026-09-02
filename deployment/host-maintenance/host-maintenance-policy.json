@@ -1,1 +1,84 @@
-{"application_deployment_may_manage_packages":false,"boot":{"application_release_may_mutate":false,"backup_paths":["/etc/iii/boot-profile.json","/boot/firmware/cmdline.txt","/boot/firmware/config.txt"],"changes_require_reboot":true,"cmdline_path":"/boot/firmware/cmdline.txt","config_path":"/boot/firmware/config.txt","installed_profile_path":"/etc/iii/boot-profile.json"},"governed_packages":["ansible-core","avahi-daemon","ca-certificates","chrony","curl","gnupg","jq","netplan.io","nftables","openssh-server","python3","python3-apt","python3-pip","python3-venv","ros-jazzy-generate-parameter-library-py=0.7.3-1noble.20260514.121849","ros-jazzy-generate-parameter-library=0.7.3-1noble.20260612.124157","ros-jazzy-parameter-traits=0.7.3-1noble.20260612.123910","ros-jazzy-rmw-cyclonedds-cpp=2.2.3-1noble.20260612.091852","ros-jazzy-ros-base","ros-jazzy-usb-cam=0.8.1-1noble.20260614.090116","rsync","sudo","udev","usbutils","util-linux","v4l-utils","xz-utils"],"host_contract":{"baseline_id":"46e038aa7a442fafbd62289f7527f347b467c8102367ba80853fd2895645c023","shared_target_profile_id":"a14f199fd5a75f0b60f17f35eb52a69405ef1de89a0b6983224edf52b959cf33","target_definition_id":"8d02216380ffdc0c15cc96852dd0f87c0cc21b43a2b26ab307d7c83eae6c6294","unit_contract_id":"33a2777fd109e9cd245fafcd13d253dec45ec67a805032adc37b52873a3a926d"},"platform":{"architecture":"aarch64","codename":"noble","distribution":"Ubuntu","release":"24.04","ros_distro":"jazzy"},"policy_id":"bd41a2580d600bc6cafefff3ca6547ddef0e793e6a0a67739ae59714b09b21a1","reboot":{"automatic":false,"package_prefixes":["linux-","raspberrypi-firmware"],"required_marker":"/var/run/reboot-required"},"schema":"iii.host-maintenance-policy/v1","snapshots":{"ros":"http://snapshots.ros.org/jazzy/2026-06-18/ubuntu","ros_key_fingerprint":"4B63CF8FDE49746E98FA01DDAD19BAB3CBF125EA","ros_key_sha256":"6d2ff4af9d56b304213de7664551f6986174a68bae76476b7ad21469b27a28c4","ubuntu":"https://snapshot.ubuntu.com/ubuntu/20260801T000000Z"},"target_class":"raspberry-pi-5-noble-arm64","trust":{"bundle":{"path":"/etc/iii/trust/bundle-signers.json","required_authority":"ci-qualified"},"release_status":{"path":"/etc/iii/trust/release-status-signers.json","required_authority":"release-status"}}}
+{
+  "application_deployment_may_manage_packages": false,
+  "boot": {
+    "application_release_may_mutate": false,
+    "backup_paths": [
+      "/etc/iii/boot-profile.json",
+      "/boot/firmware/cmdline.txt",
+      "/boot/firmware/config.txt"
+    ],
+    "changes_require_reboot": true,
+    "cmdline_path": "/boot/firmware/cmdline.txt",
+    "config_path": "/boot/firmware/config.txt",
+    "installed_profile_path": "/etc/iii/boot-profile.json"
+  },
+  "governed_packages": [
+    "ansible-core",
+    "avahi-daemon",
+    "ca-certificates",
+    "chrony",
+    "curl",
+    "gnupg",
+    "jq",
+    "netplan.io",
+    "nftables",
+    "openssh-server",
+    "python3",
+    "python3-apt",
+    "python3-pip",
+    "python3-venv",
+    "ros-jazzy-generate-parameter-library-py=0.7.3-1noble.20260514.121849",
+    "ros-jazzy-generate-parameter-library=0.7.3-1noble.20260612.124157",
+    "ros-jazzy-parameter-traits=0.7.3-1noble.20260612.123910",
+    "ros-jazzy-rmw-cyclonedds-cpp=2.2.3-1noble.20260612.091852",
+    "ros-jazzy-ros-base",
+    "ros-jazzy-usb-cam=0.8.1-1noble.20260614.090116",
+    "rsync",
+    "sudo",
+    "udev",
+    "usbutils",
+    "util-linux",
+    "v4l-utils",
+    "xz-utils"
+  ],
+  "host_contract": {
+    "baseline_id": "7aa1aba37ef813852929c2dd9e94e58be6db0b15d792f9d017840467614163c2",
+    "shared_target_profile_id": "a14f199fd5a75f0b60f17f35eb52a69405ef1de89a0b6983224edf52b959cf33",
+    "target_definition_id": "8d02216380ffdc0c15cc96852dd0f87c0cc21b43a2b26ab307d7c83eae6c6294",
+    "unit_contract_id": "33a2777fd109e9cd245fafcd13d253dec45ec67a805032adc37b52873a3a926d"
+  },
+  "platform": {
+    "architecture": "aarch64",
+    "codename": "noble",
+    "distribution": "Ubuntu",
+    "release": "24.04",
+    "ros_distro": "jazzy"
+  },
+  "policy_id": "290b1833a23d4a486134b29fdcadee528ae41639ad79338e97e42f87bc024a9a",
+  "reboot": {
+    "automatic": false,
+    "package_prefixes": [
+      "linux-",
+      "raspberrypi-firmware"
+    ],
+    "required_marker": "/var/run/reboot-required"
+  },
+  "schema": "iii.host-maintenance-policy/v1",
+  "snapshots": {
+    "ros": "http://snapshots.ros.org/jazzy/2026-06-18/ubuntu",
+    "ros_key_fingerprint": "4B63CF8FDE49746E98FA01DDAD19BAB3CBF125EA",
+    "ros_key_sha256": "6d2ff4af9d56b304213de7664551f6986174a68bae76476b7ad21469b27a28c4",
+    "ubuntu": "https://snapshot.ubuntu.com/ubuntu/20260801T000000Z"
+  },
+  "target_class": "raspberry-pi-5-noble-arm64",
+  "trust": {
+    "bundle": {
+      "path": "/etc/iii/trust/bundle-signers.json",
+      "required_authority": "ci-qualified"
+    },
+    "release_status": {
+      "path": "/etc/iii/trust/release-status-signers.json",
+      "required_authority": "release-status"
+    }
+  }
+}

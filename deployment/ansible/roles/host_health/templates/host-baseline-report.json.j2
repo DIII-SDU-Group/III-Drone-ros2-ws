@@ -19,5 +19,15 @@
     'independent_recovery': true
   },
   'runtime_api': {'port': iii_runtime_api_port, 'operator_cidr': iii_provisioning_inputs.operator_cidr},
+  'maintenance_access': {
+    'user': iii_maintenance_user,
+    'uid': iii_maintenance_uid,
+    'gid': iii_maintenance_gid,
+    'client_id': iii_maintenance_ssh_client_id,
+    'authentication': 'publickey-only',
+    'sudo': 'unrestricted-nopasswd',
+    'operator_cidr': iii_provisioning_inputs.operator_cidr,
+    'ansible_transport': false
+  },
   'packages': iii_health_package_versions | default({})
 } | iii_canonical_json }}

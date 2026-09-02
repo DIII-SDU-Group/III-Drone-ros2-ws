@@ -1,4 +1,40 @@
 {
-  "migrations": [],
+  "migrations": [
+    {
+      "new_digest": "cb11b361246b10c28d33bb540a6e686a95badf879c59a98fd9cfd37d2fac9b92",
+      "new_id": "Q9.c2",
+      "old_digest": "a5388a4b283ac4cc2b2a5e01ae81ac79884f69ca068bdbcf303eca07c74396e1",
+      "old_id": "Q9.c2",
+      "rationale": "Separate constrained receiver automation from the newly authorized full-sudo human maintenance account."
+    },
+    {
+      "new_digest": "f32ea3f60ac86150bda3942c97249577cfb8f8fa527b709be38fdd9943ccbad5",
+      "new_id": "Q9.c3",
+      "old_digest": "96c8c5f7575989edd3e3ab1450f15492e18dfa2e29a2beaf41d78440f0a01ea3",
+      "old_id": "Q9.c3",
+      "rationale": "Authorize an explicit attended research and field-maintenance shell without weakening receiver policy."
+    },
+    {
+      "new_digest": "013c01cf218277ee6f31312ee71af845ff30100f7a8bf1896d2b371b14652ede",
+      "new_id": "Q9.c4",
+      "old_digest": "",
+      "old_id": "",
+      "rationale": "Add independent key identity and transport-separation requirements for root-capable maintenance access."
+    },
+    {
+      "new_digest": "a595a17ac38c08e1e740bf54f4140d67c4f8af182d0acc1a5f449a801baf4c7e",
+      "new_id": "Q9.c5",
+      "old_digest": "",
+      "old_id": "",
+      "rationale": "Retain network and OpenSSH hardening around the newly authorized interactive shell."
+    },
+    {
+      "new_digest": "9eacffba5095f30995a5d3a23ca63e4d6346d0b00ee4ce4bf872b31f6b66c802",
+      "new_id": "Q9.c6",
+      "old_digest": "",
+      "old_id": "",
+      "rationale": "Preserve bootstrap revocation while retaining both permanent and intentionally distinct SSH identities."
+    }
+  ],
   "schema": "iii.deployment-clause-migrations/v1"
 }

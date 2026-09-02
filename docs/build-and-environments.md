@@ -48,7 +48,10 @@ The workspace defines explicit runtime modes via shell profiles:
   credential. Deployment uses a dedicated per-computer Ed25519 key with key-only
   SSH to `iii@iii.local`; its forced gateway permits canonical receiver requests
   and fixed-root resumable SFTP only. It is not a workspace synchronization or
-  administrative shell. Server host-key authentication is intentionally absent
+  administrative shell. Attended development and field maintenance instead use
+  the separately keyed `iii-maint@iii.local` account, whose interactive shell has
+  full passwordless sudo but no forwarding/tunneling and is not an Ansible or
+  receiver transport. Server host-key authentication is intentionally absent
   in the initial local-network model and remains an explicitly reported
   spoofing/MITM risk.
 

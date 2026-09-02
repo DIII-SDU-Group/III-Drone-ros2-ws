@@ -57,7 +57,14 @@ def test_all_decisions_and_tasks_are_parseable() -> None:
 def test_clause_baseline_is_current() -> None:
     backlog = parse_backlog(BACKLOG)
     assert verify_clause_baseline(backlog, BASELINE, MIGRATIONS) == []
-    assert load_clause_migrations(MIGRATIONS)["migrations"] == []
+    migrations = load_clause_migrations(MIGRATIONS)["migrations"]
+    assert {row["new_id"] for row in migrations} == {
+        "Q9.c2",
+        "Q9.c3",
+        "Q9.c4",
+        "Q9.c5",
+        "Q9.c6",
+    }
 
 
 def test_clause_change_requires_reviewed_baseline(tmp_path: Path) -> None:
@@ -315,5 +322,5 @@ def test_result_and_junit_keep_not_run_rows_explicit() -> None:
     assert result["complete"] is False
     assert result["counts"]["not_run"] == len(matrix["rows"])
     xml = junit_xml(result)
-    assert b'tests="1199"' in xml
+    assert b'tests="1204"' in xml
     assert xml.count(b"<skipped") == len(matrix["rows"])

@@ -43,3 +43,48 @@
     group: root
     mode: "0440"
     validate: /usr/sbin/visudo -cf %s
+
+- name: Create the dedicated human maintenance group
+  ansible.builtin.group:
+    name: "{{ iii_maintenance_group }}"
+    gid: "{{ iii_maintenance_gid }}"
+    system: false
+    state: present
+
+- name: Create the key-only human maintenance account
+  ansible.builtin.user:
+    name: "{{ iii_maintenance_user }}"
+    uid: "{{ iii_maintenance_uid }}"
+    group: "{{ iii_maintenance_group }}"
+    create_home: true
+    home: /home/iii-maint
+    shell: /bin/bash
+    password_lock: true
+    system: false
+    state: present
+
+- name: Create the maintenance SSH directory
+  ansible.builtin.file:
+    path: /home/iii-maint/.ssh
+    state: directory
+    owner: "{{ iii_maintenance_owner_effective }}"
+    group: "{{ iii_maintenance_group_effective }}"
+    mode: "0700"
+
+- name: Install the independent maintenance SSH public key
+  ansible.builtin.copy:
+    content: "{{ iii_provisioning_inputs.maintenance_ssh_public_key }}\n"
+    dest: /home/iii-maint/.ssh/authorized_keys
+    owner: "{{ iii_maintenance_owner_effective }}"
+    group: "{{ iii_maintenance_group_effective }}"
+    mode: "0600"
+  no_log: true
+
+- name: Grant the human maintenance account explicit full sudo
+  ansible.builtin.template:
+    src: 90-iii-maintenance.sudoers.j2
+    dest: /etc/sudoers.d/90-iii-maintenance
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s

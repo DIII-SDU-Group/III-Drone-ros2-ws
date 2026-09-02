@@ -109,6 +109,12 @@ def test_materializer_produces_complete_signed_owner_controlled_input(
     ssh_key = tmp_path / "ssh-key"
     ssh_key.write_text("fixture-private-key\n", encoding="utf-8")
     ssh_key.chmod(0o600)
+    maintenance_key = tmp_path / "maintenance-key.pub"
+    maintenance_key.write_text(
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI" + "b" * 43 + " iii-maint\n",
+        encoding="ascii",
+    )
+    maintenance_key.chmod(0o600)
     known_hosts = tmp_path / "known-hosts"
     known_hosts.write_text("10.42.0.70 fixture-host-key\n", encoding="utf-8")
     python_link = tmp_path / "build-python"
@@ -120,6 +126,7 @@ def test_materializer_produces_complete_signed_owner_controlled_input(
         enrollment=_enrollment(tmp_path / "enrollment.json"),
         runtime_token=token,
         ssh_private_key=ssh_key,
+        maintenance_ssh_public_key=maintenance_key,
         known_hosts=known_hosts,
         target="10.42.0.70",
         operator_cidr="10.42.0.0/24",
@@ -141,6 +148,16 @@ def test_materializer_produces_complete_signed_owner_controlled_input(
     values, source = load_input(output / "inputs.json", schema_root=SCHEMAS)
     assert source == output / "inputs.json"
     assert values["operator_cidr"] == "10.42.0.0/24"
+    assert values["maintenance_ssh_public_key"].startswith("ssh-ed25519 ")
+    assert (
+        stored["maintenance_ssh_client_id"]
+        == hashlib.sha256(
+            " ".join(maintenance_key.read_text(encoding="ascii").split()[:2]).encode(
+                "ascii"
+            )
+        ).hexdigest()
+    )
+    assert (output / "access/maintenance-ssh-ed25519.pub").read_text().count(" ") == 1
     verified = verify_receiver_update(
         output / "artifacts/receiver-bundle",
         trust=output / "trust/receiver-update-signers.json",
