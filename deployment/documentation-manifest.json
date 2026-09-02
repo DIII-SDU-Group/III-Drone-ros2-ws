@@ -961,7 +961,7 @@
       "qualified_release_inclusion": false,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "9d8e9e621781c20280e14dc7e472ab3956bfce637e2ca0dba185eddde5f023b5",
+      "sha256": "ebc4906e0ee1a88837ff8754082136d65d4e239b9d7632f7b4dd33ff216d59e9",
       "source_of_truth": "codex-backlogs/deployment-infrastructure-redesign.md"
     },
     {
@@ -1617,7 +1617,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "1d11bfb0f6fd15b08a182e05c07cb1555513d6a64efc5a120fd8bdf449bc34fd",
+      "sha256": "4c624b2581306e6b81d8e9115416b107da08874ef35e8d86cf6271d181d07862",
       "source_of_truth": "docs/deployment-hardware-roles.md"
     },
     {
@@ -2309,7 +2309,7 @@
       "source_of_truth": "tools/III-Drone-MCP/README.md"
     }
   ],
-  "manifest_id": "5a7782489d8c17971f1746b46922fd8cd78cbf5e634483bb5cd7044beaabb216",
+  "manifest_id": "fced9d279aa508c71198cba890f5135b1e6130096047f1862d005f5d4a82effc",
   "policy_schema": "iii.documentation-policy/v1",
   "schema": "iii.documentation-manifest/v1"
 }

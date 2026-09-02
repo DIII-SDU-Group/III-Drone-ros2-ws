@@ -1,5 +1,5 @@
 {
-  "matrix_id": "9ec809935aa41dc1d0b428b588a27aae6dfe598848b7cdd992dfad37aee65bec",
+  "matrix_id": "f266f4fb6e4af512deece9ad2746b4a8d125dd48b9f0ed13e157c0bdce43a130",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -35,7 +35,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T2.t1",
-        "P3.T5.t4",
+        "P3.T5.t5",
         "P5.T1.t10"
       ],
       "text": "Settled.",
@@ -76,7 +76,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P0.T2.t1",
-        "P3.T5.t4",
+        "P3.T5.t5",
         "P5.T1.t6"
       ],
       "text": "Raspberry Pi 5 Model B booting from an SD card.",
@@ -115,7 +115,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T2.t1",
-        "P3.T5.t4",
+        "P3.T5.t5",
         "P5.T1.t6"
       ],
       "text": "RAM is intentionally not inventoried or used as a compatibility discriminator.",
@@ -709,7 +709,7 @@
       "test_refs": [
         "P0.T2.t1",
         "P3.T3.t1",
-        "P3.T5.t4"
+        "P3.T5.t5"
       ],
       "text": "Settled.",
       "title": "Aircraft inventory scope"
@@ -791,7 +791,7 @@
       "test_refs": [
         "P0.T2.t1",
         "P3.T3.t1",
-        "P3.T5.t3"
+        "P3.T5.t5"
       ],
       "text": "Do not distinguish physical aircraft in deployment inventory; all use the same setup, runtime identity, credentials, and configuration, with at most one connected at a time.",
       "title": "Aircraft inventory scope"
@@ -5933,7 +5933,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T5.t4",
+        "P3.T5.t5",
         "P5.T1.t10"
       ],
       "text": "Settled.",
@@ -5947,7 +5947,7 @@
       "blocking": true,
       "ci": false,
       "decision": "Q34",
-      "digest": "3076bb284ea10fd1d628abbc1d47db280dc5793c549d5e52b75fa8e75f6a94c0",
+      "digest": "56e6fd1366c4a2bd02fc513c9406faf6e501f9b7f3cd14b42007683859969924",
       "id": "Q34.c2",
       "impact_categories": [
         "field-flight",
@@ -5971,10 +5971,10 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P3.T5.t2",
+        "P3.T5.t5",
         "P5.T1.t10"
       ],
-      "text": "Define one committed, ambiguity-aware shared hardware-role manifest for FMU, mmWave CLI/data, charger/gripper, and cable camera.",
+      "text": "Define one committed, ambiguity-aware shared USB hardware-role manifest for mmWave CLI/data, charger/gripper, and cable camera, while PX4 remains an independent fail-closed Ethernet transport and telemetry gate.",
       "title": "Physical device role matching"
     },
     {
@@ -6007,7 +6007,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T5.t1",
+        "P3.T5.t5",
         "P5.T1.t9"
       ],
       "text": "Prefer vendor/product/interface and stable device properties; add exact serial allowlists only where needed to distinguish ambiguous or safety-critical devices.",
@@ -6043,7 +6043,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T5.t4",
+        "P3.T5.t5",
         "P5.T1.t6"
       ],
       "text": "Generate stable `/dev/iii/*` role paths and provide `iii host inspect`.",
@@ -6079,7 +6079,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T5.t1",
+        "P3.T5.t5",
         "P5.T1.t10"
       ],
       "text": "Missing or ambiguous required roles block real- runtime health acceptance.",
@@ -6117,7 +6117,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P3.T5.t4",
+        "P3.T5.t5",
         "P5.T1.t10"
       ],
       "text": "Do not create per-aircraft inventory.",
@@ -6155,7 +6155,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P3.T5.t1",
+        "P3.T5.t5",
         "P5.T1.t8"
       ],
       "text": "Resolve the conflicting legacy/current serial literals through physical commissioning.",
@@ -24035,7 +24035,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T1.t1",
-        "P3.T5.t4",
+        "P3.T5.t5",
         "P3.T6.t8",
         "P3.T9.t4",
         "P3.T10.t5",
@@ -24134,7 +24134,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P3.T1.t1",
-        "P3.T5.t3",
+        "P3.T5.t5",
         "P3.T6.t10",
         "P3.T9.t4",
         "P3.T10.t3",
@@ -24182,7 +24182,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P3.T1.t1",
-        "P3.T5.t2",
+        "P3.T5.t5",
         "P3.T6.t8",
         "P3.T9.t4",
         "P3.T10.t5",
@@ -24623,7 +24623,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T5.t4",
+        "P3.T5.t5",
         "P5.T1.t10"
       ],
       "text": "Settled.",
@@ -24659,7 +24659,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T5.t2",
+        "P3.T5.t6",
         "P5.T1.t6"
       ],
       "text": "If a replacement device still matches the shared role manifest unambiguously, require role-specific inspection/functional acceptance and a refreshed commissioning record, but no source-manifest change.",
@@ -24697,7 +24697,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P3.T5.t2",
+        "P3.T5.t5",
         "P5.T1.t6"
       ],
       "text": "If it does not match, `iii host hardware inspect` reports the unmatched observations and can export a reviewable capture; updating match rules/serial allowlists occurs only through a feature-branch source change, tests, Ansible convergence, and recommissioning.",
@@ -24733,7 +24733,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P3.T5.t4",
+        "P3.T5.t5",
         "P5.T1.t10"
       ],
       "text": "Never auto-learn a new serial or rewrite udev policy from the connected device.",
@@ -38736,7 +38736,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P3.T5",
       "test_refs": [
-        "P3.T5.t2"
+        "P3.T5.t5"
       ],
       "text": "One committed manifest, not per-aircraft inventory, declares required and optional roles and the evidence used to match each role.",
       "title": "Implement And Commission The Shared Hardware-Role Manifest"
@@ -38803,7 +38803,7 @@
       "required_evidence": "junit",
       "task": "P3.T5",
       "test_refs": [
-        "P3.T5.t4"
+        "P3.T5.t6"
       ],
       "text": "`iii host inspect` reports raw device evidence, resolved roles, missing roles, and ambiguity without exposing unrelated sensitive host data.",
       "title": "Implement And Commission The Shared Hardware-Role Manifest"
@@ -38836,7 +38836,7 @@
       "required_evidence": "junit",
       "task": "P3.T5",
       "test_refs": [
-        "P3.T5.t1"
+        "P3.T5.t6"
       ],
       "text": "Required missing/ambiguous roles block real-profile health acceptance; optional-device absence is reported without pretending it is present.",
       "title": "Implement And Commission The Shared Hardware-Role Manifest"
@@ -38869,7 +38869,7 @@
       "required_evidence": "junit",
       "task": "P3.T5",
       "test_refs": [
-        "P3.T5.t4"
+        "P3.T5.t6"
       ],
       "text": "Camera selection does not rely on unstable `/dev/video0` enumeration.",
       "title": "Implement And Commission The Shared Hardware-Role Manifest"

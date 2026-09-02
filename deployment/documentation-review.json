@@ -699,7 +699,7 @@
       ],
       "path": "docs/deployment-hardware-roles.md",
       "repository": "workspace",
-      "sha256": "1d11bfb0f6fd15b08a182e05c07cb1555513d6a64efc5a120fd8bdf449bc34fd",
+      "sha256": "4c624b2581306e6b81d8e9115416b107da08874ef35e8d86cf6271d181d07862",
       "status": "passed"
     },
     {
@@ -1197,8 +1197,8 @@
       "status": "passed"
     }
   ],
-  "manifest_id": "5a7782489d8c17971f1746b46922fd8cd78cbf5e634483bb5cd7044beaabb216",
-  "review_id": "6369c4531842e2ae50186b8872bbd5dccf129ec02507e392defb523c3410e54e",
+  "manifest_id": "fced9d279aa508c71198cba890f5135b1e6130096047f1862d005f5d4a82effc",
+  "review_id": "64e5c3504ff506a83c9a0108d328f5f7248b25c36ccd78f58dc82d1240fa3521",
   "reviewer": "codex-deployment-infrastructure-redesign",
   "schema": "iii.documentation-review/v1"
 }

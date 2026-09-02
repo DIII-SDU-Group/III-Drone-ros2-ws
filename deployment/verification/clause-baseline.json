@@ -938,9 +938,9 @@
     },
     {
       "decision": "Q34",
-      "digest": "3076bb284ea10fd1d628abbc1d47db280dc5793c549d5e52b75fa8e75f6a94c0",
+      "digest": "56e6fd1366c4a2bd02fc513c9406faf6e501f9b7f3cd14b42007683859969924",
       "id": "Q34.c2",
-      "text": "Define one committed, ambiguity-aware shared hardware-role manifest for FMU, mmWave CLI/data, charger/gripper, and cable camera."
+      "text": "Define one committed, ambiguity-aware shared USB hardware-role manifest for mmWave CLI/data, charger/gripper, and cable camera, while PX4 remains an independent fail-closed Ethernet transport and telemetry gate."
     },
     {
       "decision": "Q34",

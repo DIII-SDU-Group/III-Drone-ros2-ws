@@ -13,7 +13,6 @@ The declared real-aircraft paths are:
 | --- | --- | --- | --- |
 | cable camera | required | `/dev/iii/cable-camera` | the single USB V4L2 capture node (`index=0`), never `/dev/video0` |
 | charger/gripper | required | `/dev/iii/charger-gripper` | USB vendor/product; a second match is ambiguity |
-| FMU | required | `/dev/iii/fmu` | USB vendor/product; a second match is ambiguity |
 | mmWave CLI | required | `/dev/iii/mmwave-cli` | USB vendor/product/interface 00 |
 | mmWave data | required | `/dev/iii/mmwave-data` | USB vendor/product/interface 01 |
 
@@ -22,6 +21,12 @@ hardware class has no optional attached-device role. Absence of a future optiona
 role will remain visible as `missing` but will not be treated as presence or block
 health. Every missing, duplicate, ambiguous, or incorrectly resolved required
 role blocks activation health for `real` and `opti_track`.
+
+PX4 is not a USB hardware role. The production FCU link uses the Raspberry Pi's
+built-in Ethernet interface and exposes MAVLink plus uXRCE-DDS. Its link,
+protocol, compatibility, and fresh fused landed/disarmed state are independently
+required by activation and field safety; USB-role acceptance cannot substitute
+for PX4 transport evidence.
 
 ## Inspection
 

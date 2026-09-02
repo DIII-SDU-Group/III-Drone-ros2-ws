@@ -64,16 +64,15 @@ def _exact_devices(*, port_suffix: str = "") -> list[dict]:
         _device(
             "ttyACM0", vendor="2341", product="8054", port="usb-charger" + port_suffix
         ),
-        _device("ttyUSB0", vendor="0403", product="6015", port="usb-fmu" + port_suffix),
         _device(
-            "ttyUSB1",
+            "ttyUSB0",
             vendor="10c4",
             product="ea70",
             interface="00",
             port="usb-mmwave" + port_suffix,
         ),
         _device(
-            "ttyUSB2",
+            "ttyUSB1",
             vendor="10c4",
             product="ea70",
             interface="01",
@@ -101,6 +100,14 @@ def test_manifest_schema_identity_and_generated_rule_golden() -> None:
     assert all(item["match"]["serial_allowlist"] == [] for item in manifest["roles"])
     assert generate_udev_rules(manifest) == RULES_PATH.read_bytes()
     assert b"/dev/video0" not in generate_udev_rules(manifest)
+    assert "fmu" not in manifest["requirements"]["required"]
+    assert all(item["role"] != "fmu" for item in manifest["roles"])
+    metadata = json.loads((ROOT / "release-metadata.json").read_text())
+    for profile in metadata["profiles"]:
+        if profile["id"] in {"real", "opti_track"}:
+            assert profile["health"]["required_hardware_roles"] == manifest[
+                "requirements"
+            ]["required"]
 
 
 def test_ansible_installs_one_source_manifest_and_does_not_preempt_retirement() -> None:
@@ -127,12 +134,12 @@ def test_exact_missing_ambiguous_duplicate_and_changed_port_resolution() -> None
 
     duplicate = _exact_devices()
     duplicate.append(
-        _device("ttyUSB9", vendor="0403", product="6015", port="usb-second-fmu")
+        _device("ttyUSB9", vendor="2341", product="8054", port="usb-second-charger")
     )
     ambiguous = _inspect(manifest, duplicate)
     assert ambiguous["accepted"] is False
-    assert ambiguous["roles"]["fmu"]["state"] == "ambiguous"
-    assert len(ambiguous["roles"]["fmu"]["matched_device_ids"]) == 2
+    assert ambiguous["roles"]["charger_gripper"]["state"] == "ambiguous"
+    assert len(ambiguous["roles"]["charger_gripper"]["matched_device_ids"]) == 2
 
     moved = _inspect(manifest, _exact_devices(port_suffix="-other-port"))
     assert moved["accepted"] is True
@@ -142,7 +149,7 @@ def test_exact_missing_ambiguous_duplicate_and_changed_port_resolution() -> None
 def test_optional_absence_is_honest_and_does_not_block() -> None:
     manifest = deepcopy(load_manifest(MANIFEST_PATH, REGISTRY))
     optional = deepcopy(
-        next(item for item in manifest["roles"] if item["role"] == "fmu")
+        next(item for item in manifest["roles"] if item["role"] == "charger_gripper")
     )
     optional.update(
         role="optional_debug_adapter",
@@ -257,5 +264,5 @@ def test_commissioning_requires_every_phase_and_a_distinct_reboot() -> None:
                 )
                 for phase in phases
             },
-            functional_evidence={"fmu": "f" * 64},
+            functional_evidence={"mmwave_cli": "f" * 64},
         )

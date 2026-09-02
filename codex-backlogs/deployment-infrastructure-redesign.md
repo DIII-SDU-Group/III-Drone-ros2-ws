@@ -635,8 +635,9 @@ to collect, not an unresolved architecture choice.
   fallback receivers. Fail before runtime mutation with an occupancy report if
   the reserve cannot be met.
 - **Q34 — Physical device role matching:** Settled. Define one committed,
-  ambiguity-aware shared hardware-role manifest for FMU, mmWave CLI/data,
-  charger/gripper, and cable camera. Prefer vendor/product/interface and stable
+  ambiguity-aware shared USB hardware-role manifest for mmWave CLI/data,
+  charger/gripper, and cable camera, while PX4 remains an independent fail-closed
+  Ethernet transport and telemetry gate. Prefer vendor/product/interface and stable
   device properties; add exact serial allowlists only where needed to distinguish
   ambiguous or safety-critical devices. Generate stable `/dev/iii/*` role paths
   and provide `iii host inspect`. Missing or ambiguous required roles block real-
@@ -4140,8 +4141,10 @@ Implementation notes and verification:
 **Status: In-Progress.**
 
 Description:
-Define the shared Raspberry Pi 5 attached-device contract for FMU, mmWave CLI/
-data interfaces, charger/gripper, and cable camera. Generate udev rules and
+Define the shared Raspberry Pi 5 attached-device contract for mmWave CLI/data
+interfaces, charger/gripper, and cable camera. Keep the PX4 MAVLink/uXRCE-DDS
+transport on the Raspberry Pi's built-in Ethernet interface as an independent
+fail-closed activation and field-safety gate. Generate udev rules and
 stable `/dev/iii/*` paths from ambiguity-aware vendor/product/interface/stable-
 property matching, using exact serial allowlists only when commissioning proves
 they are necessary. Add host inspection and runtime health integration. Reconcile
@@ -4194,6 +4197,27 @@ Implementation notes and verification:
   retirement are not claimed. The manifest remains
   `retained-pending-physical-evidence`, the old Core rule remains untouched, and
   this task stays In-Progress while later software tasks continue.
+- Physical discovery on 2026-09-02 proved the operator link over the Pi's USB
+  Ethernet adapter and exposed that the old manifest incorrectly modeled the
+  PX4 as a required USB serial role. The authoritative runtime architecture uses
+  the Pi's built-in Ethernet interface for MAVLink and uXRCE-DDS, with fresh
+  PX4 compatibility and fused landed/disarmed evidence checked independently.
+  The manifest, generated udev rules, production-profile metadata, tests, and
+  operator documentation now remove only the false `/dev/iii/fmu` role; they do
+  not relax or substitute for the PX4 Ethernet safety gate. Focused red/green
+  verification passed all 33 hardware-role, host-inspection, release-pipeline,
+  and documentation-contract tests.
+- Authenticated immutable captures under `.iii/evidence/physical-20260902/`
+  proved the charger/gripper Arduino once at `/dev/ttyACM0` with stable
+  `/dev/iii/charger-gripper`, while camera checks were explicitly deferred for
+  its battery dependency. Replugging the mmWave device and trying two USB cables
+  still produced no USB tty device and neither `mmwave_cli` nor `mmwave_data`.
+  The latest capture is
+  `hardware-after-mmwave-second-cable-old-policy.json` (SHA-256
+  `a8e717193f79340e631282d5fad600780b5e31f429818010373419d2c34da793`).
+  This is negative enumeration evidence, not functional or commissioning
+  acceptance; unplug/replug, reboot, port swap, simultaneous enumeration, and
+  legacy-rule retirement remain open.
 
 #### P3.T6: Manage The Raspberry Pi Boot Baseline
 

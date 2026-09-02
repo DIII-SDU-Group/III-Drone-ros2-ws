@@ -1,7 +1,6 @@
 # Generated from iii.hardware-role-manifest/v1; DO NOT EDIT.
-# manifest_id=c9747ca81771a92ea172cf9214c0da96f9e91db36947339b474933bca264e4a1
+# manifest_id=0ab6a3682257c58fca52baa017216e6be6f0b9ff46a4815035d2aa0999c7973f
 SUBSYSTEM=="video4linux", ATTR{index}=="0", ENV{ID_BUS}=="usb", ENV{ID_V4L_CAPABILITIES}=="*:capture:*", SYMLINK+="iii/cable-camera", GROUP="video", MODE="0660", TAG+="systemd"
 SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="8054", SYMLINK+="iii/charger-gripper", GROUP="dialout", MODE="0660", TAG+="systemd"
-SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6015", SYMLINK+="iii/fmu", GROUP="dialout", MODE="0660", TAG+="systemd"
 SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea70", ENV{ID_USB_INTERFACE_NUM}=="00", SYMLINK+="iii/mmwave-cli", GROUP="dialout", MODE="0660", TAG+="systemd"
 SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea70", ENV{ID_USB_INTERFACE_NUM}=="01", SYMLINK+="iii/mmwave-data", GROUP="dialout", MODE="0660", TAG+="systemd"
