@@ -37,6 +37,20 @@ LOCAL_PROJECTS = (
     "tools/III-Drone-CLI",
     "deployment",
 )
+LOCAL_DISTRIBUTIONS = {
+    "iii",
+    "iii-deployment",
+    "iii-drone-configuration",
+    "iii-drone-contracts",
+}
+RECEIVER_REQUIRED_DISTRIBUTIONS = LOCAL_DISTRIBUTIONS | {
+    "argcomplete",
+    "cryptography",
+    "jsonschema",
+    "pydantic",
+    "pyyaml",
+    "zstandard",
+}
 COMPATIBILITY = {
     "activation_health_evidence_schemas": ["iii.activation-health/v1"],
     "activation_health_transaction_schemas": ["iii.activation-health-transaction/v1"],
@@ -212,6 +226,12 @@ def build_receiver_wheelhouse(
     local_wheels = sorted(local.glob("*.whl"), key=lambda item: item.name)
     if len(local_wheels) != len(LOCAL_PROJECTS):
         raise ProvisioningArtifactError("local receiver wheel build is incomplete")
+    local_identities = {_wheel_identity(path)[0] for path in local_wheels}
+    if local_identities != LOCAL_DISTRIBUTIONS:
+        raise ProvisioningArtifactError(
+            "local receiver wheel identities differ from the governed projects: "
+            f"expected {sorted(LOCAL_DISTRIBUTIONS)}, observed {sorted(local_identities)}"
+        )
     destination.mkdir(mode=0o700)
     _run(
         [
@@ -238,33 +258,43 @@ def build_receiver_wheelhouse(
         ]
     )
     shutil.rmtree(local)
-    return write_receiver_requirements(destination)
+    return write_receiver_requirements(
+        destination, required_distributions=RECEIVER_REQUIRED_DISTRIBUTIONS
+    )
 
 
-def write_receiver_requirements(wheelhouse: Path) -> list[dict[str, Any]]:
+def _wheel_identity(wheel: Path) -> tuple[str, str]:
+    with zipfile.ZipFile(wheel) as archive:
+        names = [
+            name
+            for name in archive.namelist()
+            if name.endswith(".dist-info/METADATA") and name.count("/") == 1
+        ]
+        if len(names) != 1:
+            raise ProvisioningArtifactError(
+                f"wheel metadata is ambiguous: {wheel.name}"
+            )
+        metadata = Parser().parsestr(archive.read(names[0]).decode("utf-8"))
+    name, version = metadata.get("Name"), metadata.get("Version")
+    if not name or not version:
+        raise ProvisioningArtifactError(f"wheel identity is incomplete: {wheel.name}")
+    normalized = re.sub(r"[-_.]+", "-", name).lower()
+    if normalized == "unknown" or version == "0.0.0" and normalized == "unknown":
+        raise ProvisioningArtifactError(f"wheel identity is invalid: {wheel.name}")
+    return normalized, version
+
+
+def write_receiver_requirements(
+    wheelhouse: Path, *, required_distributions: set[str] | None = None
+) -> list[dict[str, Any]]:
     evidence: list[dict[str, Any]] = []
     rows: list[tuple[str, str]] = []
     for wheel in sorted(wheelhouse.glob("*.whl"), key=lambda item: item.name):
-        with zipfile.ZipFile(wheel) as archive:
-            names = [
-                name
-                for name in archive.namelist()
-                if name.endswith(".dist-info/METADATA") and name.count("/") == 1
-            ]
-            if len(names) != 1:
-                raise ProvisioningArtifactError(
-                    f"wheel metadata is ambiguous: {wheel.name}"
-                )
-            metadata = Parser().parsestr(archive.read(names[0]).decode("utf-8"))
-        name, version = metadata.get("Name"), metadata.get("Version")
-        if not name or not version:
-            raise ProvisioningArtifactError(
-                f"wheel identity is incomplete: {wheel.name}"
-            )
+        name, version = _wheel_identity(wheel)
         digest = _sha256(wheel)
         rows.append(
             (
-                name.lower().replace("_", "-"),
+                name,
                 f"{name}=={version} --hash=sha256:{digest}",
             )
         )
@@ -273,6 +303,12 @@ def write_receiver_requirements(wheelhouse: Path) -> list[dict[str, Any]]:
         )
     if not rows:
         raise ProvisioningArtifactError("receiver wheelhouse is empty")
+    observed = {name for name, _row in rows}
+    missing = (required_distributions or set()) - observed
+    if missing:
+        raise ProvisioningArtifactError(
+            f"receiver wheelhouse is missing required distributions: {sorted(missing)}"
+        )
     requirements = wheelhouse / "receiver-requirements.txt"
     requirements.write_text(
         "\n".join(row for _name, row in sorted(rows)) + "\n", encoding="utf-8"

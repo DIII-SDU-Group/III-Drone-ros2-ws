@@ -79,6 +79,27 @@ def _fake_wheelhouse(destination: Path, **_kwargs) -> list[dict]:
     return write_receiver_requirements(destination)
 
 
+def test_receiver_requirements_reject_unknown_or_incomplete_distribution_set(
+    tmp_path: Path,
+) -> None:
+    unknown = tmp_path / "unknown"
+    unknown.mkdir()
+    with zipfile.ZipFile(unknown / "UNKNOWN-0.0.0-py3-none-any.whl", "w") as archive:
+        archive.writestr(
+            "UNKNOWN-0.0.0.dist-info/METADATA",
+            "Metadata-Version: 2.1\nName: UNKNOWN\nVersion: 0.0.0\n",
+        )
+    with pytest.raises(ProvisioningArtifactError, match="identity is invalid"):
+        write_receiver_requirements(unknown)
+
+    incomplete = tmp_path / "incomplete"
+    _fake_wheelhouse(incomplete)
+    with pytest.raises(ProvisioningArtifactError, match="missing required"):
+        write_receiver_requirements(
+            incomplete, required_distributions={"fixture-runtime", "iii-deployment"}
+        )
+
+
 def test_materializer_produces_complete_signed_owner_controlled_input(
     tmp_path: Path,
 ) -> None:
