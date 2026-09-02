@@ -5428,9 +5428,10 @@ Implementation notes (software boundary, 2026-08-27):
 - The no-touch phase regression passed all 655 deployment tests with the five
   explicitly gated target/systemd matrices skipped, plus all 230 CLI tests after
   the III configuration package was built and its installed ament index sourced.
-  Focused documentation, verification-matrix, legacy-retirement, workspace
-  source-setup, and SSH-manager coverage passed 49/49; the submodule lock and
-  whitespace audits also passed.
+  The same 655/5 and 230 phase gates passed again after r13 materialization and
+  pseudo-flash. Focused documentation, verification-matrix, legacy-retirement,
+  workspace source-setup, and SSH-manager coverage passed 49/49; the submodule
+  lock and whitespace audits also passed.
 
 #### P5.T2: Establish Automation-Ready Documentation Architecture And Validation
 
