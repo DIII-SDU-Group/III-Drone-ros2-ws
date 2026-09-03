@@ -3135,11 +3135,11 @@ Implementation notes:
 
 #### P2.T3: Implement Transactional Receiver A/B Self-Update
 
-**Status: In-Progress.** The A/B package, slot, compatibility, bootstrap, and
-reconciliation internals are complete, but the first finalized physical host
-proved that no receiver protocol/upload/CLI path can submit a signed update to
-those internals. The missing production invocation surface is being added before
-this task can return to Completed.
+**Status: In-Progress.** The A/B package, slot, compatibility, bootstrap,
+reconciliation, receiver protocol/upload, and CLI invocation surfaces are
+complete and target-equivalent evidence is green. Physical A/B switching and
+forced-fallback evidence on the intended aircraft remain required before this
+task can return to Completed.
 
 Description:
 Implement the Q32/Q49 receiver update path on top of P2.T2 without coupling it to
