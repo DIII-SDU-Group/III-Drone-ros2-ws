@@ -110,6 +110,7 @@ class ReceiverEngine:
         log_transfer: LogTransferStore | None = None,
         host_maintenance: Any | None = None,
         hardware_inspector: Any | None = None,
+        px4_inspector: Any | None = None,
         host_inspector: Any | None = None,
         network_controller: Any | None = None,
         backup_controller: Any | None = None,
@@ -147,6 +148,7 @@ class ReceiverEngine:
         self.log_transfer = log_transfer
         self.host_maintenance = host_maintenance
         self.hardware_inspector = hardware_inspector
+        self.px4_inspector = px4_inspector
         self.host_inspector = host_inspector
         self.network_controller = network_controller
         self.backup_controller = backup_controller
@@ -237,6 +239,18 @@ class ReceiverEngine:
             if self.hardware_inspector is None:
                 raise ContractError("receiver hardware inspection is unavailable")
             return self._result(request, inspection=self.hardware_inspector.inspect())
+        if request.action == Action.PX4_AUDIT:
+            self.access.require_active(request.client_id)
+            if self.px4_inspector is None:
+                raise ContractError("receiver PX4 inspection is unavailable")
+            release_id = request.payload["release_id"]
+            release_root = self.release_store.authenticated_release_root(release_id)
+            return self._result(
+                request,
+                px4_release=self.px4_inspector.audit(
+                    release_id=release_id, release_root=release_root
+                ),
+            )
         if request.action == Action.HOST_INSPECT:
             self.access.require_active(request.client_id)
             if self.host_inspector is None:

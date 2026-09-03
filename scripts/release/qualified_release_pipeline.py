@@ -261,6 +261,8 @@ def manifest(args: argparse.Namespace) -> dict[str, Any]:
         built_at=args.built_at,
         source_date_epoch=args.source_date_epoch,
         source_content_identity=governed_source_identity(ROOT),
+        px4_build_record_path=args.px4_build_record,
+        px4_firmware_path=args.px4_firmware,
         registry=REGISTRY,
     )
     write_canonical(args.output, value)
@@ -296,6 +298,8 @@ def sign_release(args: argparse.Namespace) -> dict[str, Any]:
         run_attempt=args.run_attempt,
         created_at=args.created_at,
         registry=REGISTRY,
+        px4_build_record_path=args.px4_build_record,
+        px4_firmware_path=args.px4_firmware,
     )
     publish_assets = args.output / "publication-assets"
     publish_assets.mkdir(mode=0o700)
@@ -417,6 +421,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     item.add_argument("--component", action="append", required=True)
     item.add_argument("--build-record", action="append", required=True)
+    item.add_argument("--px4-build-record", type=Path, required=True)
+    item.add_argument("--px4-firmware", type=Path, required=True)
     item.add_argument("--private-key", type=Path, required=True)
     item.add_argument("--builder-id", required=True)
     item.add_argument("--built-at", required=True)
@@ -431,6 +437,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     item.add_argument("--component", action="append", required=True)
     item.add_argument("--build-record", action="append", required=True)
+    item.add_argument("--px4-build-record", type=Path, required=True)
+    item.add_argument("--px4-firmware", type=Path, required=True)
     item.add_argument("--check", action="append", required=True)
     item.add_argument("--qualification-evidence", type=Path, required=True)
     item.add_argument("--promotion-attestation", type=Path, required=True)

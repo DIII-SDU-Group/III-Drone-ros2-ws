@@ -5958,6 +5958,83 @@ Implementation notes (reversible boundary, 2026-08-27):
 
 ## In-Progress
 
+#### P3.T12: Bind And Verify The Exact PX4 Release
+
+**Status: In-Progress.** Added 2026-09-03 after physical USB inventory showed
+that compatible-version ranges alone cannot prove the FMU has the release-owned
+firmware, DDS interface, network baseline, and complete parameter defaults.
+
+**Description:**
+
+Make the real-aircraft PX4 firmware a first-class, exact companion of every III
+release without allowing an ordinary III deployment to write the flight
+controller. Build and cache the pinned V6X firmware offboard, bind its full Git
+commit/version/board/artifact identity, normalized uXRCE-DDS topic set, network
+baseline, and complete real parameter manifest into the signed release. After
+the III component is staged, query the FMU through the Raspberry Pi's dedicated
+Ethernet link. Activation proceeds only when the FMU is reachable, disarmed,
+and matches every observable release-owned invariant. Otherwise retain exact
+read-only evidence and return a dedicated PX4-release-required result with a
+separate, explicit manual firmware/configuration remediation workflow. Rerunning
+the same III deployment must be idempotent for an already-staged/current Pi
+release while always repeating the PX4 audit.
+
+Acceptance:
+
+- [x] One canonical PX4 release contract binds the exact 40-character Git commit,
+      semantic firmware version, V6X board target, firmware artifact hash, build
+      recipe/cache identity, normalized uXRCE-DDS publications/subscriptions,
+      network baseline identity, and complete real parameter-manifest identity.
+- [x] The qualified release pipeline builds or reuses a content-addressed cached
+      PX4 firmware artifact and rejects stale, dirty, wrong-board, wrong-commit,
+      malformed, or unbound build evidence.
+- [x] The signed III release manifest and bundle carry the exact PX4 contract and
+      flashable artifact; version ranges cannot substitute for exact identity.
+- [x] A receiver-owned, read-only Ethernet audit distinguishes unreachable PX4,
+      firmware/version mismatch, topic-contract mismatch, network mismatch, and
+      complete parameter drift; it performs zero FMU writes and retains evidence.
+- [x] III activation fails closed with a stable PX4-release-required result and
+      actionable separate-flow instructions, while a matching rerun is a Pi
+      no-op and repeats the PX4 audit before activation.
+- [x] Operators can pull a complete disarmed FMU parameter inventory and promote
+      it as reviewed repository defaults only when its exact firmware contract
+      matches; calibration identity remains explicitly preserved.
+- [x] The separate PX4 release flow prepares authenticated firmware, `net.cfg`,
+      `extras.txt`, and parameter-default artifacts, clearly separates USB
+      firmware upload from microSD network/startup installation, and verifies
+      the result read-only before III activation.
+- [x] Focused unit/integration tests cover cache hits, all mismatch classes,
+      hostile evidence, no-write behavior, idempotent redeploy, and generated
+      artifact drift; the Phase 3 suite and target-equivalent checks pass.
+- [ ] Final physical acceptance flashes the prepared PX4 candidate, installs its
+      microSD files, reruns the already-staged III release, and records a healthy
+      Pi-to-PX4 Ethernet audit plus fresh uXRCE-DDS delivery while disarmed.
+
+Tests:
+
+- Focused PX4 contract, build-cache, release-media, receiver-protocol, deployment,
+  parameter, network, documentation, and qualified-release tests.
+- Full deployment and CLI phase regression suites after the implementation is
+  complete.
+- Real `px4_fmu-v6x_multicopter` build at the pinned source commit, followed by
+  first-build/cache-hit and prepared-media verification.
+- Final physical USB/microSD update and Pi-to-PX4 Ethernet audit remain required
+  before the final acceptance item can close.
+- Passed the real `px4_fmu-v6x_multicopter` build at
+  `7f41496535c54924dfb33a25a27be88b4b134a30`; the resulting 1,771,162-byte
+  image has SHA-256 `f6ac33e8d5372bc7884e15d07e9e448211cd301baea56809a1cb985c91532620`.
+  A clean-cache build reported `cache_hit=false`; an identical second build
+  reported `cache_hit=true` with the same build identity.
+- Exercised `iii px4 release prepare` against that exact image. It created the
+  firmware, 915-value QGroundControl parameter export (with 108 calibration and
+  identity values preserved rather than overwritten), `net.cfg`,
+  `etc/extras.txt`, canonical release record, and instructions with zero FMU
+  writes.
+- Passed 682 deployment tests with five explicit target opt-ins skipped and all
+  232 CLI tests. The Docker-capable host then passed all three aircraft
+  target-equivalent first-convergence, idempotence, and drift-repair checks in
+  623.98 seconds.
+
 ## Completed
 
 ### P0: Resolve Architecture And Contracts

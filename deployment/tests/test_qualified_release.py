@@ -118,6 +118,7 @@ def _qualification(manifest: Mapping[str, Any]) -> dict[str, Any]:
                     "gc-tests",
                     "governance-audit",
                     "promotion-evidence",
+                    "px4-build",
                 ),
                 start=1,
             )

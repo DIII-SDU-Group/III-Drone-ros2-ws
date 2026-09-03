@@ -28,6 +28,7 @@ iii_px4_host_address: 10.41.10.1/24
 iii_px4_peer_address: 10.41.10.2
 iii_px4_subnet: 10.41.10.0/24
 iii_px4_mavlink_udp_port: 14540
+iii_px4_mavlink_audit_udp_port: 14541
 iii_px4_uxrce_dds_udp_port: 8888
 iii_shared_target_profile_id: 89b5c1422a2296799f87a5dbc6d06b1f0868cc860ce28c669f52616ba2135cd2
 iii_boot_profile_id: 3a2147e380558975eb301c2af6a425919fac6be6b2312570cbb70f03032b5f31

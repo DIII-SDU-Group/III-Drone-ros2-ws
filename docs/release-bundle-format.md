@@ -37,6 +37,15 @@ All remaining entries are signed content-index paths below `payload/`. Links,
 device nodes, FIFOs, sockets, PAX extensions, absolute or escaping paths, archive
 hooks, extra files, and source/build roots are rejected.
 
+Each component also carries the same signed PX4 companion payload below
+`payload/px4/`: the verified `px4_fmu-v6x_multicopter.px4` image and its
+canonical build record. The release manifest binds the full 40-character PX4
+source commit, semantic firmware version, board target, firmware hash, normalized
+uXRCE-DDS topic-contract identity, network-baseline identity, and real/simulation
+parameter-manifest identities. PX4's MAVLink version message exposes only the
+first 40 bits of the source commit; release construction proves the full commit
+from the clean source checkout and the firmware image's Git-describe metadata.
+
 ## Limits and atomicity
 
 Packaging and streaming verification enforce both signed actual limits and the

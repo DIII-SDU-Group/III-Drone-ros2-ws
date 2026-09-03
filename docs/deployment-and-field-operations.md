@@ -336,6 +336,8 @@ iii px4 params capture --snapshot <px4-snapshot> \
   --name <capture-name> --description <purpose> \
   --dry-run --operation-id capture-px4-params --output=json
 iii px4 params plan --profile real --snapshot <px4-snapshot> --output=json
+iii px4 params promote --capture-id <capture-id> --all-defaults \
+  --dry-run --operation-id promote-px4-defaults --output=json
 iii qgc config capture --release-id <release-id> \
   --qgc-version <pinned-version> --clean-exit \
   --dry-run --operation-id capture-qgc-settings --output=json
@@ -352,7 +354,8 @@ The canonical real-aircraft network contract is
 
 - Raspberry Pi built-in `eth0`: `10.41.10.1/24`;
 - PX4 Ethernet: `10.41.10.2/24`, static, with no gateway or DNS;
-- MAVLink: PX4 `14540/UDP` to Pi `14540/UDP`;
+- runtime/QGC MAVLink: PX4 `14540/UDP` to Pi `14540/UDP`;
+- receiver release-audit MAVLink: PX4 `14541/UDP` to Pi `14541/UDP`;
 - uXRCE-DDS: PX4 client to Pi agent `8888/UDP`.
 
 The PX4 SD card carries the rendered files at `/fs/microsd/net.cfg` and
@@ -372,16 +375,27 @@ The renderer authenticates the baseline and refuses to overwrite any file whose
 contents have drifted.
 
 Applying this baseline is a separate flight-controller maintenance operation,
-not a side effect of Pi provisioning or release activation. With the aircraft
-landed, disarmed, and propulsion made safe: capture the complete PX4 parameters
-and existing SD-card files first; compare their hashes with the release; copy
-only the reviewed rendered files; apply the separately planned exact PX4
-parameter changes; then reboot the flight controller. Acceptance requires all of
-the following—not merely a successful ping: `10.41.10.2` reachability from the
-Pi, a fresh MAVLink heartbeat on `14540/UDP`, uXRCE-DDS vehicle messages through
-the agent on `8888/UDP`, compatible firmware and exact required parameters, and
-fresh fused landed/disarmed telemetry. Restore the captured files and parameter
-backup if any post-reboot check fails.
+not a side effect of Pi provisioning or release activation. III deployment first
+stages the Pi release idempotently. Before activation, the root-owned receiver
+then listens on the dedicated `14541/UDP` path and performs a zero-write audit of
+the disarmed PX4: semantic version and advertised 40-bit commit prefix, complete
+parameter inventory, release-required values, Ethernet owner parameters, and the
+exact microSD `net.cfg` and `extras.txt` bytes. Matching the exact firmware commit
+also proves the normalized uXRCE-DDS compile-time topic set; an advertised DDS
+endpoint alone is not evidence that any topic is delivering messages.
+
+Any mismatch returns `III_PX4_RELEASE_REQUIRED` and leaves the staged Pi release
+inactive. Prepare the paired update media with `iii px4 release prepare`, remove
+propellers, flash its custom firmware over USB in QGroundControl, import its
+non-calibration parameter defaults, power down, copy the two prepared files onto
+the PX4 microSD card, reinstall the card, and reconnect the built-in Pi Ethernet
+port to PX4. Rerun the same III deployment: staging is a no-op when identical,
+while the complete PX4 audit always runs again. Firmware or parameter writes are
+never performed implicitly by `iii deploy`.
+
+Final physical acceptance additionally requires fresh uXRCE-DDS messages through
+the agent on `8888/UDP` and fresh fused landed/disarmed telemetry. Restore the
+captured files and parameter backup if any post-reboot check fails.
 
 ## 8. Operate Offline And Switch Profiles
 

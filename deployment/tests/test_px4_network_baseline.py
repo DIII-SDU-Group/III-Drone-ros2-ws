@@ -71,6 +71,7 @@ def test_release_px4_network_baseline_renders_exact_sd_card_artifacts() -> None:
         == (
             "set +e\n"
             "mavlink start -x -u 14540 -o 14540 -t 10.41.10.1 -m onboard -r 100000\n"
+            "mavlink start -x -u 14541 -o 14541 -t 10.41.10.1 -m onboard -r 100000\n"
             "uxrce_dds_client start -t udp -p 8888 -h 10.41.10.1\n"
             "set -e\n"
         ).encode()

@@ -164,6 +164,7 @@ def test_tracked_source_and_cloud_init_profiles_validate_and_preserve_upstream_l
         "address": "10.41.10.1/24",
         "peer_address": "10.41.10.2",
         "mavlink_udp_port": 14540,
+        "mavlink_audit_udp_port": 14541,
         "uxrce_dds_udp_port": 8888,
     }
     assert profile["sanitization_contract"]["failure_blocks_commissioning"] is True

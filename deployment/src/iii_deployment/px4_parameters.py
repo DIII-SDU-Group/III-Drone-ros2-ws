@@ -846,7 +846,7 @@ class PX4ParameterMonitor:
 
 
 class MavlinkParameterAdapter:
-    """pymavlink adapter for QGC's loopback forwarding endpoint."""
+    """pymavlink adapter for an explicitly selected serial or network endpoint."""
 
     def __init__(
         self,
@@ -957,6 +957,52 @@ class MavlinkParameterAdapter:
             "firmware_commit": commit,
         }
         return dict(self._status)
+
+    def read_text_file(self, path: str) -> bytes:
+        """Read one fixed PX4 SD configuration file through the MAVLink shell."""
+
+        if path not in {"/fs/microsd/net.cfg", "/fs/microsd/etc/extras.txt"}:
+            raise PX4ParameterError("PX4 shell read path is not release-owned")
+        begin, end = "III_FILE_BEGIN", "III_FILE_END"
+        command = f"echo {begin}; cat {path}; echo {end}\n"
+        flags = (
+            self.mavutil.mavlink.SERIAL_CONTROL_FLAG_EXCLUSIVE
+            | self.mavutil.mavlink.SERIAL_CONTROL_FLAG_RESPOND
+        )
+        self.connection.mav.serial_control_send(10, flags, 0, 0, 1, [10] + [0] * 69)
+        for offset in range(0, len(command), 70):
+            block = command[offset : offset + 70].encode("ascii")
+            self.connection.mav.serial_control_send(
+                10,
+                flags,
+                0,
+                0,
+                len(block),
+                list(block) + [0] * (70 - len(block)),
+            )
+        deadline = time.monotonic() + min(self.timeout, 8)
+        output = bytearray()
+        try:
+            while time.monotonic() < deadline:
+                message = self.connection.recv_match(
+                    type="SERIAL_CONTROL", blocking=True, timeout=0.2
+                )
+                if message is None or int(message.count) == 0:
+                    continue
+                output.extend(bytes(message.data[: int(message.count)]))
+                normalized = bytes(output).replace(b"\r\n", b"\n")
+                begin_marker = (begin + "\n").encode()
+                if begin_marker in normalized and (
+                    "\n" + end
+                ).encode() in normalized.split(begin_marker, 1)[1]:
+                    break
+        finally:
+            self.connection.mav.serial_control_send(10, 0, 0, 0, 0, [0] * 70)
+        normalized = bytes(output).replace(b"\r\n", b"\n")
+        begin_marker, end_marker = (begin + "\n").encode(), ("\n" + end).encode()
+        if begin_marker not in normalized or end_marker not in normalized:
+            raise PX4ParameterError("PX4 SD configuration read timed out")
+        return normalized.split(begin_marker, 1)[1].split(end_marker, 1)[0] + b"\n"
 
     def pull_all(self) -> Sequence[Mapping[str, Any]]:
         self.connection.mav.param_request_list_send(

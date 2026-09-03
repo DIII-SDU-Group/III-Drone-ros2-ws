@@ -97,11 +97,16 @@ Do not edit by hand. Schemas are Draft 7 contracts under `deployment/schemas/v1`
 | `preclock-flush.schema.json` | `iii.preclock-flush/v1` | `schema`, `records_flushed`, `dropped_records` |
 | `promotion-evidence.schema.json` | `1` | `schema_version`, `attestation_id`, `workspace_commit`, `source_content_identity`, `dependency_lock_sha256`, `policy_sha256`, `categories`, `waivers`, `artifacts`, `signer_id`, `signature` |
 | `px4-activation-evidence.schema.json` | `iii.px4-activation-evidence/v1` | `schema`, `evidence_id`, `captured_at`, `release_id`, `profile`, `manifest_id`, `snapshot`, `comparison`, `healthy`, `writes_performed` |
+| `px4-dds-topics.schema.json` | `iii.px4-dds-topics/v1` | `schema`, `contract_id`, `firmware_commit`, `source`, `publications`, `subscriptions`, `subscriptions_multi` |
+| `px4-firmware-build.schema.json` | `iii.px4-firmware-build/v1` | `schema`, `build_id`, `spec_id`, `cache_key`, `firmware`, `source`, `toolchain`, `cache_hit` |
+| `px4-firmware-spec.schema.json` | `iii.px4-firmware-spec/v1` | `schema`, `spec_id`, `family`, `version`, `git_commit`, `advertised_commit`, `board`, `source`, `build`, `dds_topics_id`, `network_baseline_id`, `parameter_manifest_id` |
 | `px4-network-baseline.schema.json` | `iii.px4-network-baseline/v1` | `schema`, `baseline_id`, `profile`, `firmware`, `network`, `transports`, `parameter_requirements`, `artifacts` |
 | `px4-parameter-capture.schema.json` | `iii.px4-parameter-capture/v1` | `schema`, `capture_id`, `snapshot_id`, `short_name`, `description`, `created_at` |
 | `px4-parameter-manifest.schema.json` | `iii.px4-parameter-manifest/v1` | `schema`, `manifest_id`, `profile`, `network_baseline_id`, `firmware`, `inventory`, `parameters` |
 | `px4-parameter-plan.schema.json` | `iii.px4-parameter-plan/v1` | `schema`, `plan_id`, `created_at`, `profile`, `manifest_id`, `snapshot_id`, `target`, `changes` |
 | `px4-parameter-snapshot.schema.json` | `iii.px4-parameter-snapshot/v1` | `schema`, `snapshot_id`, `captured_at`, `profile`, `provenance`, `target`, `complete`, `parameter_count`, `parameters` |
+| `px4-release-audit.schema.json` | `iii.px4-release-audit/v1` | `schema`, `audit_id`, `release_id`, `spec_id`, `provenance`, `status`, `snapshot_id`, `parameter_manifest_id`, `network_baseline_id`, `dds_topics_id`, `dds_topics_observation`, `findings`, `healthy`, `writes_performed` |
+| `px4-release-media.schema.json` | `iii.px4-release-media/v1` | `schema`, `media_id`, `spec_id`, `version`, `git_commit`, `advertised_commit`, `board_target`, `build_id`, `dds_topics_id`, `network_baseline_id`, `parameter_manifest_id`, `files`, `writes_performed` |
 | `python-wheel-lock.schema.json` | `iii.python-wheel-lock/v1` | `schema`, `python_abi`, `platform`, `resolver`, `requirements_sha256`, `wheels`, `imports` |
 | `qgc-config-capture.schema.json` | `iii.qgc-config-capture/v1` | `schema`, `capture_id`, `captured_at`, `clean_exit`, `release_id`, `qgc_version`, `policy_id`, `baseline_id`, `managed`, `classification`, `violations` |
 | `qgc-generated-cache.schema.json` | `iii.qgc-generated-cache/v1` | `schema`, `cache_id`, `qgc_version`, `px4_firmware`, `parameter_manifest_id`, `entries` |

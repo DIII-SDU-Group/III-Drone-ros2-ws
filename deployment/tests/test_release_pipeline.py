@@ -104,6 +104,7 @@ def _checks(tmp_path: Path, lock: Path) -> tuple[dict[str, Path], Path]:
         "gc-tests",
         "governance-audit",
         "promotion-evidence",
+        "px4-build",
     ):
         log = _write(tmp_path / f"{check_id}.log", f"PASS {check_id}\n".encode())
         output = _write(tmp_path / f"{check_id}.output", b"evidence\n")
@@ -137,6 +138,8 @@ def _metadata(root: Path) -> Path:
         "px4-reference",
         "px4-network",
         "px4-interface",
+        "px4-firmware",
+        "px4-dds-topics",
         "qgc",
         "mission",
     ):
@@ -150,6 +153,10 @@ def _metadata(root: Path) -> Path:
             ).read_bytes()
         elif name == "px4-network":
             payload = (ROOT / "deployment/px4/network-baseline.json").read_bytes()
+        elif name == "px4-firmware":
+            payload = (ROOT / "deployment/px4/firmware.json").read_bytes()
+        elif name == "px4-dds-topics":
+            payload = (ROOT / "deployment/px4/dds-topics.json").read_bytes()
         else:
             payload = (name + "\n").encode()
         _write(root / "inputs" / name, payload)
@@ -161,9 +168,44 @@ def _metadata(root: Path) -> Path:
         "px4_reference": ["inputs/px4-reference"],
         "px4_network": ["inputs/px4-network"],
         "px4_interface": ["inputs/px4-interface"],
+        "px4_firmware": ["inputs/px4-firmware"],
+        "px4_dds_topics": ["inputs/px4-dds-topics"],
         "qgc_managed_settings": ["inputs/qgc"],
     }
     return _canonical(root / "release-metadata.json", value)
+
+
+def _px4_build(root: Path) -> tuple[Path, Path]:
+    spec = json.loads((ROOT / "deployment/px4/firmware.json").read_text())
+    dds = json.loads((ROOT / "deployment/px4/dds-topics.json").read_text())
+    firmware = _write(root / "px4_fmu-v6x_multicopter.px4", b"firmware\n")
+    body = {
+        "schema": "iii.px4-firmware-build/v1",
+        "spec_id": spec["spec_id"],
+        "cache_key": "8" * 64,
+        "firmware": {
+            "filename": firmware.name,
+            "sha256": hashlib.sha256(firmware.read_bytes()).hexdigest(),
+            "bytes": firmware.stat().st_size,
+            "magic": "PX4FWv1",
+            "board_id": 53,
+            "git_identity": "v1.16.1-2-g" + spec["git_commit"][:10],
+        },
+        "source": {
+            "git_commit": spec["git_commit"],
+            "git_describe": "v1.16.1-2-g" + spec["git_commit"][:10],
+            "submodules_sha256": "9" * 64,
+            "dds_topics_id": dds["contract_id"],
+        },
+        "toolchain": {
+            "compiler": "arm-none-eabi-gcc",
+            "compiler_version": "9.3.1",
+            "compiler_sha256": "7" * 64,
+        },
+        "cache_hit": False,
+    }
+    record = {"build_id": content_identity({key: item for key, item in body.items() if key != "cache_hit"}), **body}
+    return _canonical(root / "px4-firmware-build.json", record), firmware
 
 
 def _documentation(root: Path) -> tuple[Path, Path, Path]:
@@ -469,6 +511,7 @@ def pipeline_case(tmp_path: Path) -> dict:
     expected_catalog = _mission_catalog(drone)
     gc = tmp_path / "payloads/gc"
     records = _build_records(tmp_path, snapshot, drone, gc, check_paths)
+    px4_record, px4_firmware = _px4_build(tmp_path)
     key_path = tmp_path / "qualified.pem"
     public_path = tmp_path / "qualified.public.json"
     generate_signer(key_path, public_path, authority="ci-qualified", registry=REGISTRY)
@@ -492,6 +535,8 @@ def pipeline_case(tmp_path: Path) -> dict:
         built_at="2026-08-26T12:00:00Z",
         source_date_epoch=1787745600,
         source_content_identity="6" * 64,
+        px4_build_record_path=px4_record,
+        px4_firmware_path=px4_firmware,
         registry=REGISTRY,
     )
     return {
@@ -509,6 +554,8 @@ def pipeline_case(tmp_path: Path) -> dict:
         "drone": drone,
         "gc": gc,
         "records": records,
+        "px4_record": px4_record,
+        "px4_firmware": px4_firmware,
         "key": key_path,
         "manifest": manifest,
         "catalog": expected_catalog,
@@ -525,6 +572,7 @@ def test_check_records_are_source_bound_and_evidence_requires_complete_set(
         "arm64-build",
         "arm64-tests",
         "promotion-evidence",
+        "px4-build",
     }
     with pytest.raises(ContractError, match="incomplete"):
         assemble_qualification_evidence(
@@ -643,6 +691,8 @@ def test_manifest_refuses_dirty_or_changed_candidate(pipeline_case: dict) -> Non
             source_date_epoch=1787745600,
             registry=REGISTRY,
             source_content_identity="6" * 64,
+            px4_build_record_path=pipeline_case["px4_record"],
+            px4_firmware_path=pipeline_case["px4_firmware"],
         )
 
 
@@ -675,6 +725,8 @@ def test_manifest_refuses_tampered_build_record_or_payload(pipeline_case: dict) 
             source_date_epoch=1787745600,
             registry=REGISTRY,
             source_content_identity="6" * 64,
+            px4_build_record_path=pipeline_case["px4_record"],
+            px4_firmware_path=pipeline_case["px4_firmware"],
         )
 
 
@@ -735,6 +787,8 @@ def test_full_signed_release_record_binds_every_published_asset(
         run_attempt=1,
         created_at="2026-08-26T12:00:00Z",
         registry=REGISTRY,
+        px4_build_record_path=pipeline_case["px4_record"],
+        px4_firmware_path=pipeline_case["px4_firmware"],
     )
     publication = json.loads(assets["release-publication.json"].read_text())
     record = json.loads(assets["release-record.json"].read_text())
@@ -746,6 +800,22 @@ def test_full_signed_release_record_binds_every_published_asset(
         path.name for path in pipeline_case["checks"].values()
     }
     assert len([name for name in assets if name.endswith("bundle.tar.zst")]) == 2
+    assert "px4-firmware-build.json" in assets
+    assert "px4_fmu-v6x_multicopter.px4" in assets
+    assert {
+        "firmware.json",
+        "dds-topics.json",
+        "network-baseline.json",
+        "real.json",
+        "sim.json",
+    } <= set(assets)
+    bundle = next(path for name, path in assets.items() if name.endswith("bundle.tar.zst"))
+    with bundle.open("rb") as raw:
+        with zstandard.ZstdDecompressor().stream_reader(raw) as decoded:
+            with tarfile.open(fileobj=decoded, mode="r|") as archive:
+                bundle_names = {member.name for member in archive}
+    assert "payload/px4/px4-firmware-build.json" in bundle_names
+    assert "payload/px4/px4_fmu-v6x_multicopter.px4" in bundle_names
     assert DOCUMENTATION_ASSET in assets
     assert DOCUMENTATION_ASSET in {item["name"] for item in record["artifacts"]}
     with assets[DOCUMENTATION_ASSET].open("rb") as raw:
@@ -843,5 +913,7 @@ def test_signing_failure_leaves_no_partial_release(pipeline_case: dict) -> None:
             run_attempt=1,
             created_at="2026-08-26T12:00:00Z",
             registry=REGISTRY,
+            px4_build_record_path=pipeline_case["px4_record"],
+            px4_firmware_path=pipeline_case["px4_firmware"],
         )
     assert not output.exists()

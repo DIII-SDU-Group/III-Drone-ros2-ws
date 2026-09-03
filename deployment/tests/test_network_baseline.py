@@ -63,6 +63,10 @@ def test_px4_ethernet_is_host_owned_and_firewall_limited_to_protocol_ports() -> 
         in firewall
     )
     assert (
+        "ip saddr {{ iii_px4_subnet }} udp dport {{ iii_px4_mavlink_audit_udp_port }} accept"
+        in firewall
+    )
+    assert (
         "ip saddr {{ iii_px4_subnet }} udp dport {{ iii_px4_uxrce_dds_udp_port }} accept"
         in firewall
     )

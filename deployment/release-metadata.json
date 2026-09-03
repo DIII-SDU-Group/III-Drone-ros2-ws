@@ -9,7 +9,7 @@
     "schema_ranges": {"configuration": ">=1,<2", "mission_catalog": ">=1,<2"}
   },
   "configuration": {"schema_version": 1, "compatible_from": [1], "capture_contract": "iii.capture/v1"},
-  "px4": {"firmware_range": ">=1.16.1,<1.17.0"},
+  "px4": {"firmware_range": ">=1.16.1,<1.17.0", "firmware_version": "1.16.1", "firmware_commit": "7f41496535c54924dfb33a25a27be88b4b134a30"},
   "qgc": {"compatible_versions": ["5.0.8"]},
   "profiles": [
     {"id": "real", "status": "commissioned", "bootable": true, "parameter_profile": "real", "capabilities": ["flight"], "default_mission": "inspection-production", "health": {"schema": "iii.activation-health-policy/v1", "required_hardware_roles": ["cable_camera", "charger_gripper", "mmwave_cli", "mmwave_data"], "optional_hardware_roles": [], "required_services": ["micro_ros_agent"], "optional_services": [], "required_managed_nodes": {"cable_camera": "active", "charger_gripper": "active", "configuration_server": "active", "custom_operation": "active", "hough_transformer": "active", "maneuver_controller": "active", "mission_executor": "active", "mmwave": "active", "pl_dir_computer": "active", "pl_mapper": "active", "powerline_overview_provider": "active", "pylon_overview_provider": "active", "rosbag_recorder": "active", "tf": "active", "trajectory_generator": "active"}, "optional_managed_nodes": {}, "required_systemd_units": ["iii-runtime-api.service", "iii-system-daemon.service"]}},
@@ -29,6 +29,8 @@
     "px4_sim": ["deployment/px4/sim.json"],
     "px4_reference": ["deployment/px4/reference-sitl-snapshot.json"],
     "px4_interface": ["PX4-Autopilot/src/modules/uxrce_dds_client/dds_topics.yaml", "src/III-Drone-Interfaces"],
+    "px4_firmware": ["deployment/px4/firmware.json"],
+    "px4_dds_topics": ["deployment/px4/dds-topics.json"],
     "qgc_managed_settings": ["deployment/qgc/key-policy.json", "deployment/qgc/managed-settings.json"]
   }
 }

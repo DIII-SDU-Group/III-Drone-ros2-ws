@@ -30,8 +30,12 @@
       }
     },
     "px4": {
-      "type": "object", "additionalProperties": false, "required": ["firmware_range"],
-      "properties": {"firmware_range": {"type": "string", "minLength": 1}}
+      "type": "object", "additionalProperties": false, "required": ["firmware_range", "firmware_version", "firmware_commit"],
+      "properties": {
+        "firmware_range": {"type": "string", "minLength": 1},
+        "firmware_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "firmware_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"}
+      }
     },
     "qgc": {
       "type": "object", "additionalProperties": false, "required": ["compatible_versions"],
@@ -67,7 +71,7 @@
     },
     "input_paths": {
       "type": "object", "additionalProperties": false,
-      "required": ["configuration", "px4_real", "px4_sim", "px4_reference", "px4_network", "px4_interface", "qgc_managed_settings"],
+      "required": ["configuration", "px4_real", "px4_sim", "px4_reference", "px4_network", "px4_interface", "px4_firmware", "px4_dds_topics", "qgc_managed_settings"],
       "properties": {
         "configuration": {"$ref": "#/definitions/paths"},
         "px4_real": {"$ref": "#/definitions/paths"},
@@ -75,6 +79,8 @@
         "px4_reference": {"$ref": "#/definitions/paths"},
         "px4_network": {"$ref": "#/definitions/paths"},
         "px4_interface": {"$ref": "#/definitions/paths"},
+        "px4_firmware": {"$ref": "#/definitions/paths"},
+        "px4_dds_topics": {"$ref": "#/definitions/paths"},
         "qgc_managed_settings": {"$ref": "#/definitions/paths"}
       }
     }

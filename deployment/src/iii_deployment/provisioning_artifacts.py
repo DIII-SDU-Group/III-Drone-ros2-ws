@@ -49,6 +49,7 @@ RECEIVER_REQUIRED_DISTRIBUTIONS = LOCAL_DISTRIBUTIONS | {
     "cryptography",
     "jsonschema",
     "pydantic",
+    "pymavlink",
     "pyyaml",
     "zstandard",
 }

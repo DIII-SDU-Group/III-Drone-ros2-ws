@@ -29,8 +29,8 @@ required by activation and field safety; USB-role acceptance cannot substitute
 for PX4 transport evidence.
 
 The host owns `eth0` as `10.41.10.1/24`; the expected PX4 peer is
-`10.41.10.2`. Host firewall policy accepts only PX4-originated MAVLink on
-`14540/UDP` and uXRCE-DDS on `8888/UDP`. The runtime API listens for MAVLink on
+`10.41.10.2`. Host firewall policy accepts only PX4-originated runtime MAVLink on
+`14540/UDP`, receiver-audit MAVLink on `14541/UDP`, and uXRCE-DDS on `8888/UDP`. The runtime API listens for MAVLink on
 `udpin://0.0.0.0:14540`, while the daemon-managed micro-ROS agent owns the DDS
 port when the application graph is started. The Pi-side USB Ethernet adapter
 matches `enx*` and remains the DHCP operator/recovery link. A ping proves only

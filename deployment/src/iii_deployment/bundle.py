@@ -334,7 +334,9 @@ def _write_archive(
     content: list[dict[str, Any]],
     manifest_bytes: bytes,
     release_bytes: bytes,
+    additional_sources: Mapping[str, Path] | None = None,
 ) -> None:
+    additional_sources = additional_sources or {}
     with destination.open("xb") as raw:
         compressor = zstandard.ZstdCompressor(
             level=19, write_checksum=True, write_content_size=False, threads=0
@@ -352,7 +354,9 @@ def _write_archive(
                     )
                 for entry in content:
                     relative = PurePosixPath(entry["path"]).relative_to("payload")
-                    source = root.joinpath(*relative.parts)
+                    source = additional_sources.get(
+                        entry["path"], root.joinpath(*relative.parts)
+                    )
                     if entry["type"] == "directory":
                         metadata = source.lstat()
                         if not stat.S_ISDIR(metadata.st_mode) or source.is_symlink():
@@ -408,6 +412,7 @@ def package_bundle_set(
     *,
     registry: ContractRegistry,
     host_limits: Mapping[str, int],
+    shared_files: Mapping[str, Path] | None = None,
 ) -> dict[str, BundlePaths]:
     """Atomically create paired release components with identical shared evidence."""
     try:
@@ -431,6 +436,29 @@ def package_bundle_set(
         component: _index_payload(Path(component_roots[component]), host_limits)
         for component in release["components"]
     }
+    shared_sources: dict[str, Path] = {}
+    for raw_name, source in sorted((shared_files or {}).items()):
+        relative = PurePosixPath(raw_name)
+        if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+            raise ContractError("shared bundle payload path is unsafe")
+        archive_name = (PurePosixPath("payload") / relative).as_posix()
+        _validate_path(archive_name, host_limits)
+        path = Path(source)
+        if path.is_symlink() or not path.is_file():
+            raise ContractError("shared bundle payload is missing or linked")
+        shared_sources[archive_name] = path
+        entry = {
+            "path": archive_name,
+            "type": "file",
+            "mode": 0o644,
+            "size": path.stat().st_size,
+            "sha256": _sha256_file(path),
+        }
+        for component in release["components"]:
+            if any(item["path"] == archive_name for item in indexed[component]):
+                raise ContractError("shared bundle payload collides with component content")
+            indexed[component].append(entry)
+            indexed[component].sort(key=lambda item: item["path"])
     payloads = {
         component: _payload_identity(indexed[component])
         for component in release["components"]
@@ -486,6 +514,7 @@ def package_bundle_set(
                 indexed[component],
                 manifest_bytes,
                 release_bytes,
+                shared_sources,
             )
             archive_sha = _sha256_file(paths.archive)
             paths.checksum.write_text(

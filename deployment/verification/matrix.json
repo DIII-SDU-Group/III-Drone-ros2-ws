@@ -1,5 +1,5 @@
 {
-  "matrix_id": "bcd60741357cd3ce113b1309dc7350e10c91e7fd17a308598029194e3032fa2c",
+  "matrix_id": "d1c414b2f61468890b9221f9c8f9f5291a0a4a870c58514d6087f18fdaa2fc96",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -38134,6 +38134,311 @@
       ],
       "text": "A successful salvage records source block-device identity, filesystem/layout evidence, recoverable domains, omissions, transaction consistency, hashes, and a prominent statement that fresh credentials and recommissioning remain mandatory.",
       "title": "Implement Portable Host Backup And Reimage Restore"
+    },
+    {
+      "acceptance_refs": [
+        "P3.T12.a1"
+      ],
+      "blocking": true,
+      "ci": false,
+      "digest": "e7df65f29cfba8270e6a7cb660c98f268d4ca93e490897a47cee2b58374874b2",
+      "id": "P3.T12.a1",
+      "impact_categories": [
+        "provisioned-drone-bench-smoke"
+      ],
+      "kind": "task-acceptance",
+      "level": "target-equivalent",
+      "owner_command": [
+        "python3",
+        "deployment/scripts/run_target_equivalent_acceptance.py",
+        "--candidate-set",
+        "<candidate-set.json>",
+        "--signing-key",
+        "<workstation-field-key.pem>",
+        "--impact-category",
+        "provisioned-drone-bench-smoke"
+      ],
+      "owners": [
+        "P3.T12"
+      ],
+      "required_evidence": "signed-local-acceptance",
+      "task": "P3.T12",
+      "test_refs": [
+        "P3.T12.t6"
+      ],
+      "text": "One canonical PX4 release contract binds the exact 40-character Git commit, semantic firmware version, V6X board target, firmware artifact hash, build recipe/cache identity, normalized uXRCE-DDS publications/subscriptions, network baseline identity, and complete real parameter-manifest identity.",
+      "title": "Bind And Verify The Exact PX4 Release"
+    },
+    {
+      "acceptance_refs": [
+        "P3.T12.a2"
+      ],
+      "blocking": true,
+      "ci": false,
+      "digest": "807146b2d7af3d586adbd0f0888843c207dd2335891f251ca6f7695100181c38",
+      "id": "P3.T12.a2",
+      "impact_categories": [
+        "provisioned-drone-bench-smoke"
+      ],
+      "kind": "task-acceptance",
+      "level": "target-equivalent",
+      "owner_command": [
+        "python3",
+        "deployment/scripts/run_target_equivalent_acceptance.py",
+        "--candidate-set",
+        "<candidate-set.json>",
+        "--signing-key",
+        "<workstation-field-key.pem>",
+        "--impact-category",
+        "provisioned-drone-bench-smoke"
+      ],
+      "owners": [
+        "P3.T12"
+      ],
+      "required_evidence": "signed-local-acceptance",
+      "task": "P3.T12",
+      "test_refs": [
+        "P3.T12.t6"
+      ],
+      "text": "The qualified release pipeline builds or reuses a content-addressed cached PX4 firmware artifact and rejects stale, dirty, wrong-board, wrong-commit, malformed, or unbound build evidence.",
+      "title": "Bind And Verify The Exact PX4 Release"
+    },
+    {
+      "acceptance_refs": [
+        "P3.T12.a3"
+      ],
+      "blocking": true,
+      "ci": false,
+      "digest": "4321356ead6ef95cfd790cd5692d28c4a14198bf01dc880365da0b2b00f0c263",
+      "id": "P3.T12.a3",
+      "impact_categories": [
+        "provisioned-drone-bench-smoke"
+      ],
+      "kind": "task-acceptance",
+      "level": "target-equivalent",
+      "owner_command": [
+        "python3",
+        "deployment/scripts/run_target_equivalent_acceptance.py",
+        "--candidate-set",
+        "<candidate-set.json>",
+        "--signing-key",
+        "<workstation-field-key.pem>",
+        "--impact-category",
+        "provisioned-drone-bench-smoke"
+      ],
+      "owners": [
+        "P3.T12"
+      ],
+      "required_evidence": "signed-local-acceptance",
+      "task": "P3.T12",
+      "test_refs": [
+        "P3.T12.t6"
+      ],
+      "text": "The signed III release manifest and bundle carry the exact PX4 contract and flashable artifact; version ranges cannot substitute for exact identity.",
+      "title": "Bind And Verify The Exact PX4 Release"
+    },
+    {
+      "acceptance_refs": [
+        "P3.T12.a4"
+      ],
+      "blocking": true,
+      "ci": false,
+      "digest": "9635d870b4658d75edf373d3f9e8a2aa9f590a6fa323e18304f13b71f9a06bda",
+      "id": "P3.T12.a4",
+      "impact_categories": [
+        "provisioned-drone-bench-smoke"
+      ],
+      "kind": "task-acceptance",
+      "level": "target-equivalent",
+      "owner_command": [
+        "python3",
+        "deployment/scripts/run_target_equivalent_acceptance.py",
+        "--candidate-set",
+        "<candidate-set.json>",
+        "--signing-key",
+        "<workstation-field-key.pem>",
+        "--impact-category",
+        "provisioned-drone-bench-smoke"
+      ],
+      "owners": [
+        "P3.T12"
+      ],
+      "required_evidence": "signed-local-acceptance",
+      "task": "P3.T12",
+      "test_refs": [
+        "P3.T12.t6"
+      ],
+      "text": "A receiver-owned, read-only Ethernet audit distinguishes unreachable PX4, firmware/version mismatch, topic-contract mismatch, network mismatch, and complete parameter drift; it performs zero FMU writes and retains evidence.",
+      "title": "Bind And Verify The Exact PX4 Release"
+    },
+    {
+      "acceptance_refs": [
+        "P3.T12.a5"
+      ],
+      "blocking": true,
+      "ci": false,
+      "digest": "8ee6fe6c55444f45ecb43496ff801d68229e3d27d440ca2fd502b276c27ebf31",
+      "id": "P3.T12.a5",
+      "impact_categories": [
+        "provisioned-drone-bench-smoke"
+      ],
+      "kind": "task-acceptance",
+      "level": "target-equivalent",
+      "owner_command": [
+        "python3",
+        "deployment/scripts/run_target_equivalent_acceptance.py",
+        "--candidate-set",
+        "<candidate-set.json>",
+        "--signing-key",
+        "<workstation-field-key.pem>",
+        "--impact-category",
+        "provisioned-drone-bench-smoke"
+      ],
+      "owners": [
+        "P3.T12"
+      ],
+      "required_evidence": "signed-local-acceptance",
+      "task": "P3.T12",
+      "test_refs": [
+        "P3.T12.t6"
+      ],
+      "text": "III activation fails closed with a stable PX4-release-required result and actionable separate-flow instructions, while a matching rerun is a Pi no-op and repeats the PX4 audit before activation.",
+      "title": "Bind And Verify The Exact PX4 Release"
+    },
+    {
+      "acceptance_refs": [
+        "P3.T12.a6"
+      ],
+      "blocking": true,
+      "ci": true,
+      "digest": "a18e1b6c0217d038df7092ca35e3db51211caf34aa132264560b21871c373650",
+      "id": "P3.T12.a6",
+      "impact_categories": [
+        "static-unit",
+        "local-simulation"
+      ],
+      "kind": "task-acceptance",
+      "level": "host-independent",
+      "owner_command": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "deployment/tests",
+        "tools/III-Drone-CLI/test"
+      ],
+      "owners": [
+        "P3.T12"
+      ],
+      "required_evidence": "junit",
+      "task": "P3.T12",
+      "test_refs": [
+        "P3.T12.t6"
+      ],
+      "text": "Operators can pull a complete disarmed FMU parameter inventory and promote it as reviewed repository defaults only when its exact firmware contract matches; calibration identity remains explicitly preserved.",
+      "title": "Bind And Verify The Exact PX4 Release"
+    },
+    {
+      "acceptance_refs": [
+        "P3.T12.a7"
+      ],
+      "blocking": true,
+      "ci": false,
+      "digest": "05647545439d33b6b8aef101267cb393cc7f1646bcc3a77b7ccb415fddaafcc0",
+      "id": "P3.T12.a7",
+      "impact_categories": [
+        "provisioned-drone-bench-smoke"
+      ],
+      "kind": "task-acceptance",
+      "level": "target-equivalent",
+      "owner_command": [
+        "python3",
+        "deployment/scripts/run_target_equivalent_acceptance.py",
+        "--candidate-set",
+        "<candidate-set.json>",
+        "--signing-key",
+        "<workstation-field-key.pem>",
+        "--impact-category",
+        "provisioned-drone-bench-smoke"
+      ],
+      "owners": [
+        "P3.T12"
+      ],
+      "required_evidence": "signed-local-acceptance",
+      "task": "P3.T12",
+      "test_refs": [
+        "P3.T12.t6"
+      ],
+      "text": "The separate PX4 release flow prepares authenticated firmware, `net.cfg`, `extras.txt`, and parameter-default artifacts, clearly separates USB firmware upload from microSD network/startup installation, and verifies the result read-only before III activation.",
+      "title": "Bind And Verify The Exact PX4 Release"
+    },
+    {
+      "acceptance_refs": [
+        "P3.T12.a8"
+      ],
+      "blocking": true,
+      "ci": true,
+      "digest": "092af09af9ee40e343fcc52672c79cd20b5641c73912be5d7552bad153f20e69",
+      "id": "P3.T12.a8",
+      "impact_categories": [
+        "static-unit",
+        "local-simulation"
+      ],
+      "kind": "task-acceptance",
+      "level": "host-independent",
+      "owner_command": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "deployment/tests",
+        "tools/III-Drone-CLI/test"
+      ],
+      "owners": [
+        "P3.T12"
+      ],
+      "required_evidence": "junit",
+      "task": "P3.T12",
+      "test_refs": [
+        "P3.T12.t7"
+      ],
+      "text": "Focused unit/integration tests cover cache hits, all mismatch classes, hostile evidence, no-write behavior, idempotent redeploy, and generated artifact drift; the Phase 3 suite and target-equivalent checks pass.",
+      "title": "Bind And Verify The Exact PX4 Release"
+    },
+    {
+      "acceptance_refs": [
+        "P3.T12.a9"
+      ],
+      "blocking": true,
+      "ci": false,
+      "digest": "50fac4f1455844bea467675683cc33ae41ff7045c9b2de2f052756c3da421214",
+      "id": "P3.T12.a9",
+      "impact_categories": [
+        "field-flight",
+        "opti-track"
+      ],
+      "kind": "task-acceptance",
+      "level": "physical",
+      "owner_command": [
+        "python3",
+        "deployment/scripts/commission_aircraft.py",
+        "--candidate-set",
+        "<candidate-set.json>",
+        "--signing-key",
+        "<workstation-field-key.pem>",
+        "--impact-category",
+        "field-flight"
+      ],
+      "owners": [
+        "P3.T12"
+      ],
+      "required_evidence": "signed-local-acceptance",
+      "task": "P3.T12",
+      "test_refs": [
+        "P3.T12.t4"
+      ],
+      "text": "Final physical acceptance flashes the prepared PX4 candidate, installs its microSD files, reruns the already-staged III release, and records a healthy Pi-to-PX4 Ethernet audit plus fresh uXRCE-DDS delivery while disarmed.",
+      "title": "Bind And Verify The Exact PX4 Release"
     },
     {
       "acceptance_refs": [

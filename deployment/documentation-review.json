@@ -387,7 +387,7 @@
       ],
       "path": "deployment/CONTEXT.md",
       "repository": "workspace",
-      "sha256": "fa752cf5f2dfdbe0c64ea104ff7dfd1b0fa9d2a006eb2ed16ff8f339ac743563",
+      "sha256": "668feba9954487a6d6675bdd28ffefa344ae2877488be9e883d78bd15b00eafd",
       "status": "passed"
     },
     {
@@ -673,7 +673,7 @@
       ],
       "path": "docs/deployment-and-field-operations.md",
       "repository": "workspace",
-      "sha256": "4858b9fb8d62c4bad8cef02e2f26dfbb14aa77ff33b8802599da6fe8b681aeaa",
+      "sha256": "fb51979d8f3691e959bb716f608e3e33786b010420ddac4d8b09ad880e4e978c",
       "status": "passed"
     },
     {
@@ -699,7 +699,7 @@
       ],
       "path": "docs/deployment-hardware-roles.md",
       "repository": "workspace",
-      "sha256": "311da2934d7c0f7fd940f6e5d4e86645613b6af4f87630da1e1dd295f33710a1",
+      "sha256": "23ecf538666c6bbd7b5fe74b4dde07e4226643f0fdc937f2139ae35b85f1b23a",
       "status": "passed"
     },
     {
@@ -764,7 +764,7 @@
       ],
       "path": "docs/generated/deployment-schema-reference.md",
       "repository": "workspace",
-      "sha256": "d7a17f8715ca25f9a280033907e4c905f421a2548c800c622a51a0240a0f35e9",
+      "sha256": "ff02d0b529009d634cff816a24f01689efc40f94bcdd20cd0a0c505d14a6926a",
       "status": "passed"
     },
     {
@@ -777,7 +777,7 @@
       ],
       "path": "docs/generated/iii-command-reference.md",
       "repository": "workspace",
-      "sha256": "9ccad21bb78d88024f357d15bc3d2dee8e90659be1d8279e96d25c5dfe7b3a9a",
+      "sha256": "2fb42c293cb4b3aaddaa064df0c44cfb76974364f75bf2c44d1eb69b7748eebd",
       "status": "passed"
     },
     {
@@ -1024,7 +1024,7 @@
       ],
       "path": "docs/qualified-release-pipeline.md",
       "repository": "workspace",
-      "sha256": "662923c75cf716f53b6949ece16461ec568deeaa4ec4162384a786559d550f54",
+      "sha256": "24aee138541f7476ad6d617082606c3293d9b2a39b157bad18c8a36fc0f3f316",
       "status": "passed"
     },
     {
@@ -1063,7 +1063,7 @@
       ],
       "path": "docs/release-bundle-format.md",
       "repository": "workspace",
-      "sha256": "4a1436f32c878fbcf6f8f25f67b6478ff1c400119f0a3ff91647009a1520ad65",
+      "sha256": "19cb87f4e309e527258b87cb1a6168a5834e774cc5853feacec15648db63fbc5",
       "status": "passed"
     },
     {
@@ -1197,8 +1197,8 @@
       "status": "passed"
     }
   ],
-  "manifest_id": "dee1214ef92909e692f92df46f273812971ed013dda5900f1aceffa041f1d3d5",
-  "review_id": "d368feba4352e79f451ca21c351667edc461c314937216b93304dfc1945bf9b6",
-  "reviewer": "codex-ssh-account-separation",
+  "manifest_id": "32cd993ee96f3076cabd13e97f06d709148ed3f36b4296584b589b6c6342ab76",
+  "review_id": "fb7a79a029a2b0859b100e6d6c89307670c5168d150f3662e38e89673d861f98",
+  "reviewer": "codex-px4-release-pairing",
   "schema": "iii.documentation-review/v1"
 }

@@ -249,6 +249,14 @@ _Avoid_: Removing old scripts first
   host-owned static baseline,
   application/receiver-update payloads cannot modify host network policy, and
   Avahi publishes `iii.local` without a fixed IP or onboard access point.
+- Every III release owns one exact PX4 companion: full source commit and version,
+  V6X multicopter firmware/build identities, normalized compile-time uXRCE-DDS
+  topics, Ethernet baseline, and complete parameter defaults. Qualified builds
+  cache only that authenticated identity. The receiver's `px4-audit` action reads
+  the staged release and the disarmed FMU over dedicated Ethernet MAVLink without
+  writes. Deployment stages the Pi first but refuses activation with
+  `III_PX4_RELEASE_REQUIRED` until firmware, parameters, and microSD artifacts all
+  match; PX4 installation remains a separate explicit USB/microSD operation.
 - Normal activation requires a content-identified runtime observation proving the
   configured logical target/profile, fresh runtime and PX4 state, three continuous
   seconds landed/disarmed/failsafe-clear in a maintenance-safe navigation state,

@@ -1544,12 +1544,15 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii px4 params promote [-h] --capture-id CAPTURE_ID --key KEY
+usage: iii px4 params promote [-h] --capture-id CAPTURE_ID
+                              (--key KEY | --all-defaults)
 
 options:
   -h, --help            show this help message and exit
   --capture-id CAPTURE_ID
   --key KEY
+  --all-defaults        promote every non-calibration manifest value from the
+                        complete capture
 ```
 
 ## `iii px4 params pull`
@@ -1589,6 +1592,34 @@ usage: iii px4 params verify [-h] --plan-id PLAN_ID
 options:
   -h, --help         show this help message and exit
   --plan-id PLAN_ID
+```
+
+## `iii px4 release audit`
+
+- Mutating: `no`
+- Interactive terminal: `no`
+
+```text
+usage: iii px4 release audit [-h] --release-id RELEASE_ID
+
+options:
+  -h, --help            show this help message and exit
+  --release-id RELEASE_ID
+```
+
+## `iii px4 release prepare`
+
+- Mutating: `yes`
+- Interactive terminal: `no`
+
+```text
+usage: iii px4 release prepare [-h] --release-directory RELEASE_DIRECTORY
+                               --destination DESTINATION
+
+options:
+  -h, --help            show this help message and exit
+  --release-directory RELEASE_DIRECTORY
+  --destination DESTINATION
 ```
 
 ## `iii qgc config apply`

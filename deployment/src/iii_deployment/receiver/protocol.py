@@ -46,6 +46,7 @@ class Action(str, Enum):
     RECEIVER_UPDATE = "receiver-update"
     HOST_MAINTENANCE_STATUS = "host-maintenance-status"
     HARDWARE_INSPECT = "hardware-inspect"
+    PX4_AUDIT = "px4-audit"
     HOST_INSPECT = "host-inspect"
     NETWORK_PLAN = "network-plan"
     NETWORK_APPLY = "network-apply"
@@ -80,6 +81,7 @@ READ_ONLY_ACTIONS = frozenset(
         Action.ACCESS_LIST,
         Action.HOST_MAINTENANCE_STATUS,
         Action.HARDWARE_INSPECT,
+        Action.PX4_AUDIT,
         Action.HOST_INSPECT,
         Action.NETWORK_PLAN,
         Action.NETWORK_CONFIRM_PLAN,
@@ -307,7 +309,8 @@ def validate_px4_activation_evidence(value: Any) -> None:
     if (
         snapshot["schema"] != "iii.px4-parameter-snapshot/v1"
         or snapshot["profile"] != value["profile"]
-        or snapshot["provenance"] != "qgc-forwarded-mavlink-observation"
+        or snapshot["provenance"]
+        not in {"qgc-forwarded-mavlink-observation", "receiver-px4-ethernet"}
         or snapshot["complete"] is not True
         or not isinstance(snapshot["parameter_count"], int)
         or isinstance(snapshot["parameter_count"], bool)
@@ -1038,6 +1041,10 @@ def validate_request_payload(request: Request) -> None:
         Action.BACKUP_STATUS,
     }:
         _exact(payload, set(), label=f"{request.action.value} payload")
+        return
+    if request.action == Action.PX4_AUDIT:
+        _exact(payload, {"release_id"}, label="px4-audit payload")
+        _identity(payload["release_id"], label="PX4 audit release")
         return
     if request.action == Action.BACKUP_SHOW:
         _exact(payload, {"backup_id"}, label="backup-show payload")

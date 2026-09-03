@@ -365,6 +365,19 @@ class ReleaseStore:
                 raise ContractError("active release manifest identity mismatch")
             return manifest
 
+    def authenticated_release_root(self, release_id: str) -> Path:
+        """Return an immutable staged/active root after full signed-tree verification."""
+
+        with self._locked():
+            state = self._load_state()
+            if release_id not in state["releases"]:
+                raise ContractError("requested release is not staged on this target")
+            root = self.releases_root / release_id
+            receipt = self._verify_release_tree(root)
+            if receipt["release_id"] != release_id:
+                raise ContractError("authenticated release root identity mismatch")
+            return root
+
     def _commit_state(self, state: dict[str, Any]) -> dict[str, Any]:
         state["generation"] = int(state["generation"]) + 1
         state["state_id"] = _state_identity(state)

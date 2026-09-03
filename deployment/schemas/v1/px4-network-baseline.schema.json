@@ -32,7 +32,7 @@
     },
     "transports": {
       "type": "object", "additionalProperties": false,
-      "required": ["mavlink", "uxrce_dds"],
+      "required": ["mavlink", "mavlink_audit", "uxrce_dds"],
       "properties": {
         "mavlink": {
           "type": "object", "additionalProperties": false,
@@ -41,6 +41,19 @@
             "startup_owner": {"const": "extras.txt"},
             "local_port": {"const": 14540},
             "remote_port": {"const": 14540},
+            "remote_address": {"const": "10.41.10.1"},
+            "mode": {"const": "onboard"},
+            "max_rate_bytes_s": {"const": 100000},
+            "ftp_enabled": {"const": true}
+          }
+        },
+        "mavlink_audit": {
+          "type": "object", "additionalProperties": false,
+          "required": ["startup_owner", "local_port", "remote_port", "remote_address", "mode", "max_rate_bytes_s", "ftp_enabled"],
+          "properties": {
+            "startup_owner": {"const": "extras.txt"},
+            "local_port": {"const": 14541},
+            "remote_port": {"const": 14541},
             "remote_address": {"const": "10.41.10.1"},
             "mode": {"const": "onboard"},
             "max_rate_bytes_s": {"const": 100000},

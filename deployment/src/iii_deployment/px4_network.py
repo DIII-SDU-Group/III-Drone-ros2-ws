@@ -32,6 +32,7 @@ def render_extras(baseline: Mapping[str, Any]) -> bytes:
     """Render startup commands that share Ethernet without serial-owner clashes."""
 
     mavlink = baseline["transports"]["mavlink"]
+    audit = baseline["transports"]["mavlink_audit"]
     dds = baseline["transports"]["uxrce_dds"]
     ftp = " -x" if mavlink["ftp_enabled"] else ""
     return (
@@ -39,6 +40,10 @@ def render_extras(baseline: Mapping[str, Any]) -> bytes:
         f"mavlink start{ftp} -u {mavlink['local_port']} "
         f"-o {mavlink['remote_port']} -t {mavlink['remote_address']} "
         f"-m {mavlink['mode']} -r {mavlink['max_rate_bytes_s']}\n"
+        f"mavlink start{' -x' if audit['ftp_enabled'] else ''} "
+        f"-u {audit['local_port']} -o {audit['remote_port']} "
+        f"-t {audit['remote_address']} -m {audit['mode']} "
+        f"-r {audit['max_rate_bytes_s']}\n"
         f"uxrce_dds_client start -t udp -p {dds['agent_port']} "
         f"-h {dds['agent_address']}\n"
         "set -e\n"

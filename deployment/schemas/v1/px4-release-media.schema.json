@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/px4-release-media.schema.json",
+  "title": "Prepared PX4 manual update media",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "media_id", "spec_id", "version", "git_commit", "advertised_commit", "board_target", "build_id", "dds_topics_id", "network_baseline_id", "parameter_manifest_id", "files", "writes_performed"],
+  "properties": {
+    "schema": {"const": "iii.px4-release-media/v1"},
+    "media_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "spec_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "git_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "advertised_commit": {"type": "string", "pattern": "^[a-f0-9]{10}$"},
+    "board_target": {"const": "px4_fmu-v6x_multicopter"},
+    "build_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "dds_topics_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "network_baseline_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "parameter_manifest_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "files": {
+      "type": "object", "additionalProperties": false,
+      "required": ["firmware", "net_cfg", "extras", "parameters"],
+      "properties": {
+        "firmware": {"$ref": "#/definitions/file"}, "net_cfg": {"$ref": "#/definitions/file"},
+        "extras": {"$ref": "#/definitions/file"}, "parameters": {"$ref": "#/definitions/file"}
+      }
+    },
+    "writes_performed": {"const": 0}
+  },
+  "definitions": {
+    "file": {
+      "type": "object", "additionalProperties": false, "required": ["path", "sha256"],
+      "properties": {"path": {"type": "string", "minLength": 1}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+    }
+  }
+}

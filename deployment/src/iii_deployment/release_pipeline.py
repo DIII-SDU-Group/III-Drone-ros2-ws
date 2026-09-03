@@ -40,6 +40,12 @@ from .qualified_release import (
 from .qualification import REQUIRED_QUALIFICATION_CHECKS
 from .mission_catalog import verify_mission_catalog
 from .px4_network import PX4NetworkBaselineError, validate_network_baseline
+from .px4_release import (
+    PX4ReleaseError,
+    load_dds_contract,
+    load_firmware_spec,
+    validate_release_inputs,
+)
 from .signers import load_private_key, signer_id_for_public_key
 from .source import verify_source_snapshot
 from .target import load_target_definition
@@ -593,6 +599,8 @@ def assemble_release_manifest(
     built_at: str,
     source_date_epoch: int,
     source_content_identity: str,
+    px4_build_record_path: Path,
+    px4_firmware_path: Path,
     registry: ContractRegistry,
 ) -> dict[str, Any]:
     if not SEMVER.fullmatch(version):
@@ -649,6 +657,10 @@ def assemble_release_manifest(
         load_private_key(private_key_path).public_key()
     )
     inputs = metadata["input_paths"]
+    if len(inputs["px4_firmware"]) != 1 or len(inputs["px4_dds_topics"]) != 1:
+        raise ContractError("PX4 exact firmware and DDS inputs must be singular")
+    px4_spec = load_firmware_spec(root / inputs["px4_firmware"][0], registry)
+    px4_dds = load_dds_contract(root / inputs["px4_dds_topics"][0], registry)
     for profile in ("real", "sim"):
         if len(inputs[f"px4_{profile}"]) != 1:
             raise ContractError(
@@ -719,6 +731,44 @@ def assemble_release_manifest(
         raise ContractError(
             "PX4 network baseline is not bound to the real parameter manifest"
         )
+    try:
+        validate_release_inputs(
+            spec=px4_spec,
+            dds=px4_dds,
+            network=px4_network,
+            parameters=px4_manifests["real"],
+            registry=registry,
+        )
+    except PX4ReleaseError as exc:
+        raise ContractError(str(exc)) from exc
+    if (
+        metadata["px4"]["firmware_version"] != px4_spec["version"]
+        or metadata["px4"]["firmware_commit"] != px4_spec["git_commit"]
+    ):
+        raise ContractError("release metadata differs from the exact PX4 firmware")
+    px4_build = _json(px4_build_record_path, canonical=True)
+    registry.validate("px4-firmware-build", px4_build)
+    expected_build_id = content_identity(
+        {
+            key: item
+            for key, item in px4_build.items()
+            if key not in {"build_id", "cache_hit"}
+        }
+    )
+    if (
+        px4_build["build_id"] != expected_build_id
+        or px4_build["spec_id"] != px4_spec["spec_id"]
+        or px4_build["source"]["git_commit"] != px4_spec["git_commit"]
+        or px4_build["source"]["dds_topics_id"] != px4_dds["contract_id"]
+        or px4_build["firmware"]["git_identity"]
+        != px4_build["source"]["git_describe"].lower()
+        or px4_build["firmware"]["filename"] != px4_firmware_path.name
+        or px4_firmware_path.is_symlink()
+        or not px4_firmware_path.is_file()
+        or px4_build["firmware"]["bytes"] != px4_firmware_path.stat().st_size
+        or px4_build["firmware"]["sha256"] != _sha256(px4_firmware_path)
+    ):
+        raise ContractError("PX4 firmware artifact differs from its exact build record")
     if not re.fullmatch(r"[a-f0-9]{64}", source_content_identity):
         raise ContractError("governed source-content identity is invalid")
     source = _source_manifest(
@@ -787,6 +837,8 @@ def assemble_release_manifest(
                 f"records/{component}.json": _sha256(build_records[component])
                 for component in ("drone", "gc")
             },
+            "records/px4-firmware-build.json": _sha256(px4_build_record_path),
+            f"px4/{px4_firmware_path.name}": _sha256(px4_firmware_path),
         },
         "configuration": {
             **metadata["configuration"],
@@ -807,6 +859,19 @@ def assemble_release_manifest(
             "reference_snapshot_sha256": _sha256(reference_path),
             "firmware_range": metadata["px4"]["firmware_range"],
             "interface_sha256": _hash_inputs(root, inputs["px4_interface"]),
+            "spec_id": px4_spec["spec_id"],
+            "firmware_version": px4_spec["version"],
+            "firmware_commit": px4_spec["git_commit"],
+            "advertised_commit": px4_spec["advertised_commit"],
+            "board_target": px4_spec["board"]["target"],
+            "dds_topics_id": px4_dds["contract_id"],
+            "dds_topics_sha256": _sha256(root / inputs["px4_dds_topics"][0]),
+            "firmware_build_id": px4_build["build_id"],
+            "firmware_cache_key": px4_build["cache_key"],
+            "firmware_artifact": {
+                key: px4_build["firmware"][key]
+                for key in ("filename", "sha256", "bytes")
+            },
         },
         "qgc": {
             "managed_settings_sha256": _hash_inputs(
@@ -879,6 +944,8 @@ def assemble_signed_release(
     run_attempt: int,
     created_at: str,
     registry: ContractRegistry,
+    px4_build_record_path: Path,
+    px4_firmware_path: Path,
 ) -> dict[str, Path]:
     if output.exists() or output.is_symlink():
         raise ContractError("signed release output already exists")
@@ -893,6 +960,10 @@ def assemble_signed_release(
             bundle_root,
             registry=registry,
             host_limits=load_bundle_limits(root / "deployment/operational-policy.json"),
+            shared_files={
+                "px4/px4-firmware-build.json": px4_build_record_path,
+                f"px4/{px4_firmware_path.name}": px4_firmware_path,
+            },
         )
         notes = create_release_notes(
             manifest,
@@ -926,6 +997,18 @@ def assemble_signed_release(
             PROMOTION_NAME: promotion_attestation_path,
             NOTES_NAME: notes_path,
             DOCUMENTATION_ASSET: documentation_path,
+            "px4-firmware-build.json": px4_build_record_path,
+            px4_firmware_path.name: px4_firmware_path,
+            **{
+                name: root / "deployment/px4" / name
+                for name in (
+                    "firmware.json",
+                    "dds-topics.json",
+                    "network-baseline.json",
+                    "real.json",
+                    "sim.json",
+                )
+            },
             **named_bundle_paths,
         }
         key = load_private_key(private_key_path)

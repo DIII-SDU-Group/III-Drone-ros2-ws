@@ -325,8 +325,54 @@ jobs:
           overwrite: false
           retention-days: 90
 
+  px4-build:
+    needs: eligibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout immutable tag and exact PX4 source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          submodules: recursive
+      - name: Install PX4 build toolchain
+        run: bash PX4-Autopilot/Tools/setup/ubuntu.sh --no-sim-tools
+      - name: Restore exact PX4 firmware cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .qualification/cache/px4
+          key: px4-${{ runner.os }}-${{ hashFiles('deployment/px4/firmware.json', 'deployment/px4/dds-topics.json', 'PX4-Autopilot/.git', 'deps/submodule-lock.txt') }}
+      - name: Build or authenticate cached V6X multicopter firmware
+        run: |
+          mkdir -p .qualification/px4 .qualification/cache/px4
+          started="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/build/generate_px4_release_contract.py --check
+          python scripts/build/build_px4_firmware.py \
+            --cache-root .qualification/cache/px4 \
+            --output .qualification/px4 2>&1 | tee .qualification/px4/build.log
+          finished="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/release/qualified_release_pipeline.py check-record \
+            --check-id px4-build --source-commit "$GITHUB_SHA" --version "$RELEASE_VERSION" \
+            --started-at "$started" --finished-at "$finished" \
+            --command-json '["python","scripts/build/build_px4_firmware.py"]' \
+            --log .qualification/px4/build.log \
+            --output-file firmware=.qualification/px4/px4_fmu-v6x_multicopter.px4 \
+            --output-file build-record=.qualification/px4/px4-firmware-build.json \
+            --output .qualification/px4/px4-build.json
+      - name: Retain exact PX4 build evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: qualified-px4
+          path: .qualification/px4
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 365
+
   sign:
-    needs: [eligibility, deployment-contracts, gc-tests, arm64-build, gc-build]
+    needs: [eligibility, deployment-contracts, gc-tests, arm64-build, gc-build, px4-build]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: qualified-signing
@@ -350,6 +396,8 @@ jobs:
         with: {name: qualified-arm64, path: .qualification/arm64}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with: {name: qualified-gc, path: .qualification/gc}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {name: qualified-px4, path: .qualification/px4}
       - name: Assemble evidence, paired bundles, record, and signatures
         env:
           QUALIFIED_SIGNING_KEY: ${{ secrets.III_QUALIFIED_SIGNING_KEY_PEM }}
@@ -370,6 +418,7 @@ jobs:
             --check gc-tests=.qualification/gc-tests/gc-tests.json
             --check governance-audit=.qualification/source/governance-audit-check.json
             --check promotion-evidence=.qualification/source/promotion-evidence-check.json
+            --check px4-build=.qualification/px4/px4-build.json
           )
           python scripts/release/qualified_release_pipeline.py evidence \
             --version "$RELEASE_VERSION" --source-commit "$GITHUB_SHA" \
@@ -386,6 +435,8 @@ jobs:
             --component gc=.qualification/gc-payload \
             --build-record drone=.qualification/drone-payload/build-record.json \
             --build-record gc=.qualification/gc-payload/build-record.json \
+            --px4-build-record .qualification/px4/px4-firmware-build.json \
+            --px4-firmware .qualification/px4/px4_fmu-v6x_multicopter.px4 \
             --private-key "$RUNNER_TEMP/qualified-signing.pem" \
             --builder-id "github-actions:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT" \
             --built-at "$built_at" --source-date-epoch "$source_epoch" \
@@ -396,6 +447,8 @@ jobs:
             --component gc=.qualification/gc-payload \
             --build-record drone=.qualification/drone-payload/build-record.json \
             --build-record gc=.qualification/gc-payload/build-record.json \
+            --px4-build-record .qualification/px4/px4-firmware-build.json \
+            --px4-firmware .qualification/px4/px4_fmu-v6x_multicopter.px4 \
             "${check_args[@]}" \
             --qualification-evidence .qualification/qualification-evidence.json \
             --promotion-attestation .qualification/source/promotion-attestation.json \

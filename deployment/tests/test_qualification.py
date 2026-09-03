@@ -48,6 +48,7 @@ def _evidence(path: Path, repo: Path, version: str = "v1.2.3", **updates) -> Pat
                 "gc-tests",
                 "governance-audit",
                 "promotion-evidence",
+                "px4-build",
             )
         ],
         "evidence_complete": True,

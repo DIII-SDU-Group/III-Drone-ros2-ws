@@ -35,6 +35,7 @@ from iii_deployment.boot_baseline import BootInspector
 from iii_deployment.host_inspection import HostInspector
 from iii_deployment.networking import NetworkController
 from iii_deployment.portable_state import PortableBackupController
+from iii_deployment.px4_inspection import PX4ReleaseInspector
 from iii_deployment.receiver.access import AccessManager
 from iii_deployment.receiver.config import (
     AUDIT_PATH,
@@ -375,6 +376,10 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         log_transfer=log_transfer,
         host_maintenance=host_maintenance,
         hardware_inspector=hardware_inspector,
+        px4_inspector=PX4ReleaseInspector(
+            schema_root=SCHEMA_ROOT,
+            state_root=STATE_ROOT / "px4-release-audits",
+        ),
         host_inspector=host_inspector,
         network_controller=network_controller,
         backup_controller=backup_controller,

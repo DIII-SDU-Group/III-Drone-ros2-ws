@@ -229,6 +229,37 @@ def test_px4_autopilot_version_recovers_five_byte_git_prefix_after_vendor_overla
     assert MavlinkParameterAdapter._decode_firmware_commit(transmitted) == "7f41496535"
 
 
+def test_mavlink_shell_reads_only_fixed_release_owned_sd_files():
+    from types import SimpleNamespace
+    from iii_deployment.px4_parameters import MavlinkParameterAdapter
+
+    sent = []
+    messages = [
+        SimpleNamespace(
+            count=len(chunk), data=list(chunk) + [0] * (70 - len(chunk))
+        )
+        for chunk in (
+            b"nsh> echo III_FILE_BEGIN; cat /fs/microsd/net.cfg; echo III_FILE_END\r\nIII_FILE_BEGIN\r\n",
+            b"DEVICE=eth0\r\nIII_FILE_END\r\n",
+        )
+    ]
+    adapter = object.__new__(MavlinkParameterAdapter)
+    adapter.timeout = 1
+    adapter.mavutil = SimpleNamespace(
+        mavlink=SimpleNamespace(
+            SERIAL_CONTROL_FLAG_EXCLUSIVE=1, SERIAL_CONTROL_FLAG_RESPOND=2
+        )
+    )
+    adapter.connection = SimpleNamespace(
+        mav=SimpleNamespace(serial_control_send=lambda *args: sent.append(args)),
+        recv_match=lambda **_kwargs: messages.pop(0) if messages else None,
+    )
+    assert adapter.read_text_file("/fs/microsd/net.cfg") == b"DEVICE=eth0\n"
+    assert sent[-1][1] == 0
+    with pytest.raises(PX4ParameterError, match="not release-owned"):
+        adapter.read_text_file("/fs/microsd/../../etc/passwd")
+
+
 def test_plan_apply_verify_uses_fresh_full_backup_and_exact_confirmation(tmp_path):
     subject, adapter = make_store(tmp_path)
     snapshot = subject.pull("sim")

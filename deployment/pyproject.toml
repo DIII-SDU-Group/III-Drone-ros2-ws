@@ -12,6 +12,7 @@ dependencies = [
   "iii-drone-configuration==2.2.0",
   "cryptography==45.0.6",
   "jsonschema==4.25.1",
+  "pymavlink==2.4.49",
   "PyYAML==6.0.2",
   "zstandard==0.23.0"
 ]

@@ -42,7 +42,11 @@ retained automation plan and current authenticated references.
 
 Every release must retain these exact passing checks: dependency lock,
 governance audit, promotion evidence, deployment contracts, GC tests, GC build,
-ARM64 build, and ARM64 target tests. The pipeline packages one pinned ARM64 drone
+ARM64 build, ARM64 target tests, and the exact PX4 firmware build. The PX4 job
+normalizes and checks the uXRCE-DDS generator input, verifies the clean pinned
+PX4 commit and nested-submodule state, builds `px4_fmu-v6x_multicopter`, validates
+the firmware container metadata, and reuses only a cache keyed by the complete
+source/specification/toolchain identity. The pipeline packages one pinned ARM64 drone
 tree and two pinned x86_64 GC OCI images. It then records source and dependency
 identity, check logs and output hashes, build records, manifests, paired artifact
 identity, signer identity, run identity, and exact publication bytes.
@@ -64,6 +68,24 @@ iii release verify v1.2.3
 iii release cache v1.2.3
 iii release deploy v1.2.3 --destination /secure/handoff/v1.2.3
 ```
+
+The separately published PX4 artifact can be converted into reviewable update
+media without contacting the flight controller:
+
+```bash
+iii px4 release prepare \
+  --release-directory /secure/handoff/v1.2.3 \
+  --destination /secure/handoff/v1.2.3/px4-media \
+  --dry-run --operation-id prepare-px4-v1-2-3 --output=json
+iii px4 release prepare \
+  --release-directory /secure/handoff/v1.2.3 \
+  --destination /secure/handoff/v1.2.3/px4-media \
+  --operation-id prepare-px4-v1-2-3 --confirm --output=json
+```
+
+The output contains the exact custom firmware, a QGroundControl-compatible
+non-calibration parameter file, the two microSD network/startup files, hashes,
+and an offline procedure. Preparation performs zero flight-controller writes.
 
 `fetch` verifies current signed status and refuses withdrawn or unsafe releases.
 Explicit offline cache/deploy verifies the complete cached status chain and

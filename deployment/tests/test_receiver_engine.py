@@ -133,6 +133,10 @@ class FakeReleaseStore:
             "recovery": {"recovery_only": False, "flight_capable": True, "reason": None}
         }
 
+    def authenticated_release_root(self, release_id: str) -> Path:
+        assert release_id == "a" * 64
+        return self.releases_root / release_id
+
     def stage(self, component: Path, *, status_index, staged_at: str) -> StageResult:
         self.stage_calls.append((component, status_index, staged_at))
         release_id = __import__("json").loads(
@@ -270,6 +274,7 @@ def receiver(tmp_path: Path):
         log_transfer=None,
         host_maintenance=None,
         hardware_inspector=None,
+        px4_inspector=None,
         host_inspector=None,
         network_controller=None,
         backup_controller=None,
@@ -296,6 +301,7 @@ def receiver(tmp_path: Path):
             log_transfer=log_transfer,
             host_maintenance=host_maintenance,
             hardware_inspector=hardware_inspector,
+            px4_inspector=px4_inspector,
             host_inspector=host_inspector,
             network_controller=network_controller,
             backup_controller=backup_controller,
@@ -708,6 +714,31 @@ def test_receiver_update_schedule_failure_aborts_before_selector_and_releases_le
     assert "could not be scheduled" in journal["failure"]["message"]
     assert slots.state["stage"] == "reverted"
     assert receiver.control.load()["lease"] is None
+
+
+def test_px4_audit_is_read_only_and_bound_to_authenticated_release(receiver):
+    class Inspector:
+        def __init__(self):
+            self.calls = []
+
+        def audit(self, *, release_id, release_root):
+            self.calls.append((release_id, release_root))
+            return {"audit": {"healthy": False, "writes_performed": 0}}
+
+    inspector = Inspector()
+    engine = receiver.build(px4_inspector=inspector)
+    result = engine.handle(
+        request(
+            "px4-audit",
+            "px4-audit-test",
+            receiver.operator_id,
+            {"release_id": "a" * 64},
+        )
+    )
+    assert result["px4_release"]["audit"]["writes_performed"] == 0
+    assert inspector.calls == [
+        ("a" * 64, receiver.store.releases_root / ("a" * 64))
+    ]
 
 
 def test_clock_sync_uses_receiver_plan_nonce_and_detached_journal(receiver) -> None:

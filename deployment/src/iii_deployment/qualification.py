@@ -22,6 +22,7 @@ REQUIRED_QUALIFICATION_CHECKS = frozenset(
         "gc-tests",
         "governance-audit",
         "promotion-evidence",
+        "px4-build",
     }
 )
 

@@ -36,7 +36,7 @@ def test_qualified_workflow_retains_exact_complete_check_matrix_and_failure_atte
     text = QUALIFIED.read_text(encoding="utf-8")
     for check in (
         "arm64-build", "arm64-tests", "dependency-lock", "deployment-contracts",
-        "gc-build", "gc-tests", "governance-audit", "promotion-evidence",
+        "gc-build", "gc-tests", "governance-audit", "promotion-evidence", "px4-build",
     ):
         assert f"--check {check}=" in text
     assert "--qualified-paired" in text
