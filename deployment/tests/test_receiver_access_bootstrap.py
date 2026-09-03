@@ -109,7 +109,7 @@ def test_access_bootstrap_projects_authorized_keys_to_runtime_owner(
     )
 
     access_bootstrap.reconcile(
-        [source], schema_root=SCHEMAS, runtime_uid=1100, runtime_gid=1100
+        [source], schema_root=SCHEMAS, transport_uid=1100, transport_gid=1100
     )
 
     assert (tmp_path / "authorized_keys", 1100, 1100) in ownership

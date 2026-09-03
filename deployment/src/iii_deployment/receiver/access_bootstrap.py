@@ -55,8 +55,8 @@ def reconcile(
     paths: list[Path],
     *,
     schema_root: Path = SCHEMA_ROOT,
-    runtime_uid: int | None = None,
-    runtime_gid: int | None = None,
+    transport_uid: int | None = None,
+    transport_gid: int | None = None,
 ) -> dict:
     registry = ContractRegistry(schema_root)
     enrollments = [load_machine_enrollment(path, registry) for path in paths]
@@ -66,8 +66,8 @@ def reconcile(
         registry=registry,
         runtime_verifiers_path=RUNTIME_VERIFIERS_PATH,
         field_signers_path=FIELD_SIGNERS_PATH,
-        runtime_uid=runtime_uid,
-        runtime_gid=runtime_gid,
+        transport_uid=transport_uid,
+        transport_gid=transport_gid,
     )
     before_projection = _projection()
     before = manager.load()
@@ -91,8 +91,8 @@ def reconcile(
 def main() -> int:
     parser = argparse.ArgumentParser(prog="iii-receiver-access-bootstrap")
     parser.add_argument("--enrollment", type=Path, action="append", required=True)
-    parser.add_argument("--runtime-uid", type=int, required=True)
-    parser.add_argument("--runtime-gid", type=int, required=True)
+    parser.add_argument("--transport-uid", type=int, required=True)
+    parser.add_argument("--transport-gid", type=int, required=True)
     parser.add_argument("--schema-root", type=Path, default=SCHEMA_ROOT)
     arguments = parser.parse_args()
     try:
@@ -101,8 +101,8 @@ def main() -> int:
         result = reconcile(
             arguments.enrollment,
             schema_root=arguments.schema_root,
-            runtime_uid=arguments.runtime_uid,
-            runtime_gid=arguments.runtime_gid,
+            transport_uid=arguments.transport_uid,
+            transport_gid=arguments.transport_gid,
         )
     except (ContractError, OSError, UnicodeError) as exc:
         parser.error(str(exc))

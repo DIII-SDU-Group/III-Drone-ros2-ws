@@ -43,7 +43,7 @@ Prepare these controller-side artifacts outside Git with owner-only permissions:
 - a complete offline wheelhouse and `receiver-requirements.txt` with hashes;
 - bundle, release-status, and receiver-update public trust stores;
 - one public `iii.machine-enrollment/v1` record for the provisioning computer;
-- one independently generated Ed25519 public key for the `iii-maint` human
+- one independently generated Ed25519 public key for the `iii` human
   maintenance account; and
 - the runtime API secret environment file containing only the solo-operator
   browser password.
@@ -69,7 +69,7 @@ key. Keep its private key on the operator computer only:
 install -d -m 0700 "$XDG_CONFIG_HOME/iii/credentials/maintenance"
 ssh-keygen -t ed25519 -a 100 \
   -f "$XDG_CONFIG_HOME/iii/credentials/maintenance/ssh_ed25519" \
-  -C iii-maint
+  -C iii
 chmod 0600 "$XDG_CONFIG_HOME/iii/credentials/maintenance/ssh_ed25519" \
   "$XDG_CONFIG_HOME/iii/credentials/maintenance/ssh_ed25519.pub"
 ```
@@ -248,11 +248,12 @@ the receiver clock gate. Correctness-critical state is bound to boot identity an
 monotonic time. The runtime API is exposed only on its declared operator-LAN TCP
 port; receiver deployment authority remains the forced-command SSH/Unix-socket
 path and is never exposed through that API. Human maintenance is deliberately a
-separate trust boundary: `iii-maint` has an interactive Bash shell and explicit
+separate trust boundary: `iii` has an interactive Bash shell and explicit
 unrestricted passwordless sudo, but public-key authentication is mandatory,
 root/password login and SSH forwarding/tunneling are disabled, and nftables
 accepts port 22 only from the configured operator CIDR. Neither provisioning nor
-routine Ansible inventory uses `iii-maint`.
+routine Ansible inventory uses `iii`; permanent deployment automation uses the
+separate forced-command-only `iii-deploy` account.
 
 Finalization preserves the cloud-init netplan as root-only
 `/etc/netplan/90-iii-operator.yaml`, validates it, disables cloud-init reruns,
@@ -273,7 +274,7 @@ For attended development or field maintenance after provisioning:
 
 ```bash
 ssh -i "$XDG_CONFIG_HOME/iii/credentials/maintenance/ssh_ed25519" \
-  -o IdentitiesOnly=yes iii-maint@iii.local
+  -o IdentitiesOnly=yes iii@iii.local
 sudo -n id -u  # must print 0
 ```
 
@@ -328,7 +329,8 @@ The receiver keeps one state machine but reports the authorities independently:
 
 - receiver SSH stores only public keys in forced-command `authorized_keys`;
 - human maintenance SSH stores one separately managed public key in
-  `/home/iii-maint/.ssh/authorized_keys`; receiver enrollment/revocation does not
+  `/home/iii/.ssh/authorized_keys`; receiver enrollment/revocation instead owns
+  `/home/iii-deploy/.ssh/authorized_keys` and does not
   silently alter this root-capable authority;
 - the Runtime API stores only SHA-256 token verifiers for active machines;
 - field signing stores public Ed25519 verifiers and active/revoked state.

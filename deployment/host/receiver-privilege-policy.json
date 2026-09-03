@@ -1,6 +1,6 @@
 {
   "schema": "iii.receiver-privilege-policy/v1",
-  "runtime_user": "iii",
+  "deployment_transport_user": "iii-deploy",
   "final_passwordless_sudo_commands": [],
   "bootstrap_authority": {
     "owner": "ansible",

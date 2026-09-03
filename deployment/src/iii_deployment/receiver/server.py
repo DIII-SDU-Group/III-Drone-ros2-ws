@@ -176,8 +176,8 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         registry=registry,
         runtime_verifiers_path=RUNTIME_VERIFIERS_PATH,
         field_signers_path=FIELD_SIGNERS_PATH,
-        runtime_uid=config.runtime_uid,
-        runtime_gid=config.runtime_gid,
+        transport_uid=config.transport_uid,
+        transport_gid=config.transport_gid,
     )
     control_plane = OnboardControlPlane()
     safety_provider = OnboardSafetyProvider()
@@ -443,8 +443,8 @@ def main() -> int:
             return 0
         server = UnixReceiverServer(
             socket_path=SOCKET_PATH,
-            runtime_uid=config.runtime_uid,
-            runtime_gid=config.runtime_gid,
+            transport_uid=config.transport_uid,
+            transport_gid=config.transport_gid,
             handler=engine.handle,
             rejection_logger=lambda code, _pid, _uid: engine.audit.append(
                 event="transport",

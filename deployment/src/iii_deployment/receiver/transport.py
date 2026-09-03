@@ -11,7 +11,6 @@ from typing import Callable
 from iii_deployment.contracts import ContractError, canonical_json
 from iii_deployment.receiver.protocol import Request
 
-
 MAXIMUM_REQUEST_BYTES = 1024 * 1024
 
 
@@ -35,7 +34,9 @@ def authenticate_forced_ssh_peer(pid: int, uid: int, client_id: str) -> None:
         raise ContractError("cannot authenticate receiver peer command") from exc
     expected = [b"--client-id", client_id.encode("ascii")]
     if len(arguments) < 3 or arguments[-3:-1] != expected or arguments[-1] != b"":
-        raise ContractError("receiver peer was not invoked for the authenticated client")
+        raise ContractError(
+            "receiver peer was not invoked for the authenticated client"
+        )
     current = pid
     for _ in range(12):
         current = _process_parent(current)
@@ -48,7 +49,9 @@ def authenticate_forced_ssh_peer(pid: int, uid: int, client_id: str) -> None:
             continue
         if executable.name == "sshd" and owner == 0:
             return
-    raise ContractError("receiver peer is not descended from an authenticated sshd session")
+    raise ContractError(
+        "receiver peer is not descended from an authenticated sshd session"
+    )
 
 
 class UnixReceiverServer:
@@ -56,15 +59,17 @@ class UnixReceiverServer:
         self,
         *,
         socket_path: Path,
-        runtime_uid: int,
-        runtime_gid: int,
+        transport_uid: int,
+        transport_gid: int,
         handler: Callable[[Request], dict],
-        peer_authenticator: Callable[[int, int, str], None] = authenticate_forced_ssh_peer,
+        peer_authenticator: Callable[
+            [int, int, str], None
+        ] = authenticate_forced_ssh_peer,
         rejection_logger: Callable[[str, int, int], None] | None = None,
     ) -> None:
         self.socket_path = socket_path
-        self.runtime_uid = runtime_uid
-        self.runtime_gid = runtime_gid
+        self.transport_uid = transport_uid
+        self.transport_gid = transport_gid
         self.handler = handler
         self.peer_authenticator = peer_authenticator
         self.rejection_logger = rejection_logger or (lambda _code, _pid, _uid: None)
@@ -74,14 +79,16 @@ class UnixReceiverServer:
         self.socket_path.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
         if self.socket_path.exists() or self.socket_path.is_symlink():
             if self.socket_path.is_symlink() or not self.socket_path.is_socket():
-                raise ContractError("receiver socket path is occupied by an unsafe entry")
+                raise ContractError(
+                    "receiver socket path is occupied by an unsafe entry"
+                )
             self.socket_path.unlink()
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             listener.bind(str(self.socket_path))
             os.chmod(self.socket_path, 0o660)
             if os.geteuid() == 0:
-                os.chown(self.socket_path, 0, self.runtime_gid)
+                os.chown(self.socket_path, 0, self.transport_gid)
             listener.listen(16)
         except Exception:
             listener.close()
@@ -99,9 +106,11 @@ class UnixReceiverServer:
                 socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")
             )
             pid, uid, _gid = struct.unpack("3i", credentials)
-            if uid not in {0, self.runtime_uid}:
+            if uid not in {0, self.transport_uid}:
                 self.rejection_logger("peer-uid-rejected", pid, uid)
-                self._send_error(connection, "peer-uid-rejected", "receiver peer UID is unauthorized")
+                self._send_error(
+                    connection, "peer-uid-rejected", "receiver peer UID is unauthorized"
+                )
                 return
             try:
                 raw = self._receive(connection)
@@ -117,7 +126,11 @@ class UnixReceiverServer:
             else:
                 try:
                     result = self.handler(request)
-                    response = {"schema": "iii.receiver-response/v1", "ok": True, "result": result}
+                    response = {
+                        "schema": "iii.receiver-response/v1",
+                        "ok": True,
+                        "result": result,
+                    }
                 except ContractError as exc:
                     response = {
                         "schema": "iii.receiver-response/v1",
@@ -142,7 +155,9 @@ class UnixReceiverServer:
                 break
         raw = b"".join(blocks)
         if not raw.endswith(b"\n") or raw.count(b"\n") != 1:
-            raise ContractError("receiver transport requires one newline-terminated request")
+            raise ContractError(
+                "receiver transport requires one newline-terminated request"
+            )
         return raw[:-1]
 
     @staticmethod

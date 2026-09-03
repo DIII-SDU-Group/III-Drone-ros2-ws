@@ -46,10 +46,10 @@ The workspace defines explicit runtime modes via shell profiles:
 - Checkout-local operator profile for deployment. Remote runtime-control commands use
   `iii-runtime-api` with `III_RUNTIME_API_URL` and the per-computer runtime
   credential. Deployment uses a dedicated per-computer Ed25519 key with key-only
-  SSH to `iii@iii.local`; its forced gateway permits canonical receiver requests
+  SSH to `iii-deploy@iii.local`; its forced gateway permits canonical receiver requests
   and fixed-root resumable SFTP only. It is not a workspace synchronization or
   administrative shell. Attended development and field maintenance instead use
-  the separately keyed `iii-maint@iii.local` account, whose interactive shell has
+  the separately keyed `iii@iii.local` account, whose interactive shell has
   full passwordless sudo but no forwarding/tunneling and is not an Ansible or
   receiver transport. Server host-key authentication is intentionally absent
   in the initial local-network model and remains an explicitly reported

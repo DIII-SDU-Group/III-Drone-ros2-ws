@@ -317,8 +317,8 @@ def build_plan(
         ],
         "mutations": [
             "converge pinned Ubuntu/ROS host baseline",
-            "install signed receiver and forced-command operator access",
-            "install separate key-only iii-maint shell with unrestricted sudo",
+            "install signed receiver and forced-command iii-deploy access",
+            "install key-only iii human shell with unrestricted sudo",
             "install operator-LAN firewall and slew-only time policy",
             "preserve network state and remove first-boot authority/secrets",
         ],

@@ -34,7 +34,6 @@ from iii_deployment.verification.matrix import (
 )
 from iii_deployment.signers import signer_id_for_public_key
 
-
 ROOT = Path(__file__).resolve().parents[2]
 BACKLOG = ROOT / "codex-backlogs" / "deployment-infrastructure-redesign.md"
 BASELINE = ROOT / "deployment" / "verification" / "clause-baseline.json"
@@ -64,6 +63,9 @@ def test_clause_baseline_is_current() -> None:
         "Q9.c4",
         "Q9.c5",
         "Q9.c6",
+        "Q91.c3",
+        "Q91.c4",
+        "Q91.c5",
     }
 
 
@@ -322,5 +324,5 @@ def test_result_and_junit_keep_not_run_rows_explicit() -> None:
     assert result["complete"] is False
     assert result["counts"]["not_run"] == len(matrix["rows"])
     xml = junit_xml(result)
-    assert b'tests="1204"' in xml
+    assert f'tests="{len(matrix["rows"])}"'.encode("ascii") in xml
     assert xml.count(b"<skipped") == len(matrix["rows"])

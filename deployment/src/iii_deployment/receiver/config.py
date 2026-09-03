@@ -20,7 +20,7 @@ STATE_ROOT = Path("/var/lib/iii/deployment")
 INCOMING_ROOT = Path("/var/lib/iii/incoming")
 RECEIVER_ROOT = Path("/opt/iii/receiver")
 RELEASE_ROOT = Path("/opt/iii/releases")
-AUTHORIZED_KEYS_PATH = Path("/home/iii/.ssh/authorized_keys")
+AUTHORIZED_KEYS_PATH = Path("/home/iii-deploy/.ssh/authorized_keys")
 BUNDLE_TRUST_PATH = Path("/etc/iii/trust/bundle-signers.json")
 STATUS_TRUST_PATH = Path("/etc/iii/trust/release-status-signers.json")
 RECEIVER_UPDATE_TRUST_PATH = Path("/etc/iii/trust/receiver-update-signers.json")
@@ -63,8 +63,8 @@ class ReceiverConfig:
     receiver_generation: int
     logical_target: str
     profile: str
-    runtime_uid: int
-    runtime_gid: int
+    transport_uid: int
+    transport_gid: int
 
     @classmethod
     def load(cls, path: Path, *, production: bool = True) -> "ReceiverConfig":
@@ -91,8 +91,8 @@ class ReceiverConfig:
                 "receiver_generation",
                 "logical_target",
                 "profile",
-                "runtime_uid",
-                "runtime_gid",
+                "transport_uid",
+                "transport_gid",
             }
             or value["schema"] != CONFIG_SCHEMA
         ):
@@ -110,15 +110,15 @@ class ReceiverConfig:
             value["profile"]
         ):
             raise ContractError("receiver profile is invalid")
-        for field in ("runtime_uid", "runtime_gid"):
+        for field in ("transport_uid", "transport_gid"):
             if not isinstance(value[field], int) or value[field] <= 0:
                 raise ContractError(f"receiver {field} is invalid")
         return cls(
             receiver_generation=value["receiver_generation"],
             logical_target=value["logical_target"],
             profile=value["profile"],
-            runtime_uid=value["runtime_uid"],
-            runtime_gid=value["runtime_gid"],
+            transport_uid=value["transport_uid"],
+            transport_gid=value["transport_gid"],
         )
 
 

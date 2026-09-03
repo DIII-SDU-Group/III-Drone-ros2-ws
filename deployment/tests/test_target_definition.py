@@ -16,7 +16,6 @@ from iii_deployment.target import (
     verify_target_probe,
 )
 
-
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ContractRegistry(ROOT / "deployment/schemas/v1")
 DEFINITION_PATH = ROOT / "deployment/targets/v1/raspberry-pi-5-noble-arm64.json"
@@ -163,6 +162,12 @@ def test_production_ansible_baseline_is_derived_from_target_definition(
     assert variables["iii_target_definition_id"] == definition["definition_id"]
     assert variables["iii_baseline_id"] == definition["host_baseline"]["contract_id"]
     assert variables["iii_target_definition_id"] != variables["iii_baseline_id"]
+    assert {
+        "path": "/opt/iii",
+        "owner": "root",
+        "group": "root",
+        "mode": "0755",
+    } in variables["iii_filesystem_directories"]
     assert variables["iii_expected_release"] == target["os_version"]
     assert variables["iii_expected_codename"] == target["os_codename"]
     assert variables["iii_expected_architecture"] == target["architecture"]

@@ -5,10 +5,10 @@
       - /opt/iii/receiver/bootstrap/bin/iii-receiver-access-bootstrap
       - --enrollment
       - /etc/iii/bootstrap-machine-enrollment.json
-      - --runtime-uid
-      - "{{ iii_runtime_uid | string }}"
-      - --runtime-gid
-      - "{{ iii_runtime_gid | string }}"
+      - --transport-uid
+      - "{{ iii_deployment_uid | string }}"
+      - --transport-gid
+      - "{{ iii_deployment_gid | string }}"
   register: iii_finalize_access
   changed_when: false
   check_mode: false

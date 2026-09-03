@@ -111,7 +111,7 @@ def test_materializer_produces_complete_signed_owner_controlled_input(
     ssh_key.chmod(0o600)
     maintenance_key = tmp_path / "maintenance-key.pub"
     maintenance_key.write_text(
-        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI" + "b" * 43 + " iii-maint\n",
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI" + "b" * 43 + " iii\n",
         encoding="ascii",
     )
     maintenance_key.chmod(0o600)

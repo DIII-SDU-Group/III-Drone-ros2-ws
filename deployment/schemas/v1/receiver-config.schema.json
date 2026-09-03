@@ -4,13 +4,13 @@
   "title": "III deployment receiver host configuration",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "receiver_generation", "logical_target", "profile", "runtime_uid", "runtime_gid"],
+  "required": ["schema", "receiver_generation", "logical_target", "profile", "transport_uid", "transport_gid"],
   "properties": {
     "schema": {"const": "iii.receiver-config/v1"},
     "receiver_generation": {"type": "integer", "minimum": 1},
     "logical_target": {"type": "string", "pattern": "^[a-z][a-z0-9.-]{0,63}$"},
     "profile": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$"},
-    "runtime_uid": {"type": "integer", "minimum": 1},
-    "runtime_gid": {"type": "integer", "minimum": 1}
+    "transport_uid": {"type": "integer", "minimum": 1},
+    "transport_gid": {"type": "integer", "minimum": 1}
   }
 }

@@ -192,7 +192,7 @@ _Avoid_: Removing old scripts first
 
 ### Receiver transaction boundary
 
-- Key-only SSH to the fixed `iii@iii.local` endpoint carries files only into the
+- Key-only SSH to the fixed `iii-deploy@iii.local` endpoint carries files only into the
   unprivileged, content-addressed incoming area. The initial local-network model
   intentionally does not authenticate the server host key; the CLI reports that
   accepted spoofing/MITM risk and never presents logical runtime identity as
@@ -218,7 +218,9 @@ _Avoid_: Removing old scripts first
   closed, but it never starts Mission Execution or any other autonomy.
 - Operator-key rotation is receiver-owned `add -> prove from a new SSH session ->
   revoke`. Pending keys can request only their own proof, and the final active key
-  cannot be revoked in band. Final host policy grants `iii` no passwordless sudo.
+  cannot be revoked in band. Final host policy grants `iii-deploy` no
+  passwordless sudo; the separately keyed human `iii` account deliberately has
+  full attended maintenance authority.
 - Normal application release operations cannot modify receiver bootstrap/fallback,
   stable receiver systemd units, or trust roots. Those belong to separately
   qualified host convergence or receiver A/B self-update transactions.

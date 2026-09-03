@@ -39,8 +39,8 @@ class AccessManager:
         registry: ContractRegistry,
         runtime_verifiers_path: Path | None = None,
         field_signers_path: Path | None = None,
-        runtime_uid: int | None = None,
-        runtime_gid: int | None = None,
+        transport_uid: int | None = None,
+        transport_gid: int | None = None,
         client_path: str = "/usr/bin/iii-deployment-ssh-gateway",
     ) -> None:
         if client_path != "/usr/bin/iii-deployment-ssh-gateway":
@@ -51,8 +51,8 @@ class AccessManager:
         self.authorized_keys_path = authorized_keys_path
         self.runtime_verifiers_path = runtime_verifiers_path
         self.field_signers_path = field_signers_path
-        self.runtime_uid = runtime_uid
-        self.runtime_gid = runtime_gid
+        self.transport_uid = transport_uid
+        self.transport_gid = transport_gid
         self.registry = registry
         self.client_path = client_path
 
@@ -481,11 +481,11 @@ class AccessManager:
             lines.append('restrict,command="' + command + '" ' + record["public_key"])
         raw = ("\n".join(lines) + ("\n" if lines else "")).encode("ascii")
         atomic_bytes(self.authorized_keys_path, raw, mode=0o600)
-        if self.runtime_uid is not None:
+        if self.transport_uid is not None:
             os.chown(
                 self.authorized_keys_path,
-                self.runtime_uid,
-                self.runtime_gid if self.runtime_gid is not None else -1,
+                self.transport_uid,
+                self.transport_gid if self.transport_gid is not None else -1,
                 follow_symlinks=False,
             )
 
@@ -543,8 +543,8 @@ class AccessManager:
             self._set_runtime_group(self.field_signers_path)
 
     def _set_runtime_group(self, path: Path) -> None:
-        if self.runtime_gid is not None:
-            os.chown(path, 0, self.runtime_gid, follow_symlinks=False)
+        if self.transport_gid is not None:
+            os.chown(path, 0, self.transport_gid, follow_symlinks=False)
 
     def _reconcile_state_permissions(self) -> None:
         os.chmod(self.state_path, 0o640, follow_symlinks=False)

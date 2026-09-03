@@ -18,7 +18,10 @@ from iii_deployment.contracts import (
 )
 from iii_deployment.identity import create_machine_enrollment
 from iii_deployment.receiver.access import AccessManager
-from iii_deployment.receiver.host_finalize import finalize_host
+from iii_deployment.receiver.host_finalize import (
+    _require_transport_gateway,
+    finalize_host,
+)
 from iii_deployment.signers import generate_signer
 
 BASELINE_ID = "a" * 64
@@ -43,8 +46,8 @@ def _write(path: Path, value: object | bytes) -> None:
 
 
 def _root(tmp_path: Path) -> Path:
-    runtime_uid = os.getuid() or 1100
-    runtime_gid = os.getgid() or 1100
+    transport_uid = os.getuid() or 1101
+    transport_gid = os.getgid() or 1101
     health = {
         "schema": "iii.host-baseline-report/v1",
         "state": "converged",
@@ -53,11 +56,17 @@ def _root(tmp_path: Path) -> Path:
         "shared_target_profile_id": "e" * 64,
         "logical_target": "drone",
         "profile": "real",
-        "receiver": {"receiver_id": RECEIVER_ID, "generation": 1},
+        "receiver": {
+            "receiver_id": RECEIVER_ID,
+            "generation": 1,
+            "ssh_user": "iii-deploy",
+            "uid": transport_uid,
+            "gid": transport_gid,
+        },
         "maintenance_access": {
-            "user": "iii-maint",
-            "uid": runtime_uid,
-            "gid": runtime_gid,
+            "user": "iii",
+            "uid": transport_uid,
+            "gid": transport_gid,
             "client_id": CLIENT_ID,
             "authentication": "publickey-only",
             "sudo": "unrestricted-nopasswd",
@@ -94,13 +103,13 @@ def _root(tmp_path: Path) -> Path:
             "receiver_generation": 1,
             "logical_target": "drone",
             "profile": "real",
-            "runtime_uid": runtime_uid,
-            "runtime_gid": runtime_gid,
+            "transport_uid": transport_uid,
+            "transport_gid": transport_gid,
         },
     )
     AccessManager(
         state_path=tmp_path / "var/lib/iii/deployment/access-state.json",
-        authorized_keys_path=tmp_path / "home/iii/.ssh/authorized_keys",
+        authorized_keys_path=tmp_path / "home/iii-deploy/.ssh/authorized_keys",
         registry=ContractRegistry(SCHEMAS),
         runtime_verifiers_path=(
             tmp_path / "var/lib/iii/deployment/runtime-api-client-verifiers.json"
@@ -108,12 +117,12 @@ def _root(tmp_path: Path) -> Path:
         field_signers_path=(
             tmp_path / "var/lib/iii/deployment/workstation-field-signers.json"
         ),
-        runtime_uid=runtime_uid,
+        transport_uid=transport_uid,
         # Production bootstrap runs as root and must establish root-owned,
         # runtime-group-readable verifier state.  An unprivileged test process
         # cannot change a file's owner to root; its temporary files already
-        # inherit runtime_gid, so omit the privileged reconciliation there.
-        runtime_gid=runtime_gid if os.geteuid() == 0 else None,
+        # inherit transport_gid, so omit the privileged reconciliation there.
+        transport_gid=transport_gid if os.geteuid() == 0 else None,
     ).bootstrap([enrollment])
     slots = tmp_path / "opt/iii/receiver/slots"
     gateway = slots / "a/bin/iii-deployment-ssh-gateway"
@@ -137,16 +146,16 @@ def _root(tmp_path: Path) -> Path:
         b"iii-bootstrap ALL=(ALL) NOPASSWD:ALL\n",
     )
     _write(
-        tmp_path / "home/iii-maint/.ssh/authorized_keys",
+        tmp_path / "home/iii/.ssh/authorized_keys",
         (SSH_PUBLIC_KEY + "\n").encode("ascii"),
     )
-    maintenance_authorized_keys = tmp_path / "home/iii-maint/.ssh/authorized_keys"
+    maintenance_authorized_keys = tmp_path / "home/iii/.ssh/authorized_keys"
     maintenance_authorized_keys.chmod(0o600)
     if os.geteuid() == 0:
-        os.chown(maintenance_authorized_keys, runtime_uid, runtime_gid)
+        os.chown(maintenance_authorized_keys, transport_uid, transport_gid)
     _write(
         tmp_path / "etc/sudoers.d/90-iii-maintenance",
-        b"iii-maint ALL=(ALL:ALL) NOPASSWD: ALL\n",
+        b"iii ALL=(ALL:ALL) NOPASSWD: ALL\n",
     )
     (tmp_path / "etc/sudoers.d/90-iii-maintenance").chmod(0o440)
     return tmp_path
@@ -261,8 +270,12 @@ def test_finalize_refuses_unreadable_authorized_keys_ownership_before_revocation
     root = _root(tmp_path)
     config_path = root / "etc/iii/deployment-receiver.json"
     config = json.loads(config_path.read_text())
-    config["runtime_uid"] = os.getuid() + 1
+    config["transport_uid"] = os.getuid() + 1
     _write(config_path, config)
+    health_path = root / "var/lib/iii/deployment/host-baseline-report.json"
+    health = json.loads(health_path.read_text())
+    health["receiver"]["uid"] = config["transport_uid"]
+    _write(health_path, health)
 
     with pytest.raises(ContractError, match="ownership is not SSH-readable"):
         finalize_host(
@@ -275,7 +288,7 @@ def test_finalize_refuses_unreadable_authorized_keys_ownership_before_revocation
     assert (root / "boot/firmware/user-data").is_file()
 
 
-def test_finalize_refuses_runtime_inaccessible_gateway_before_revocation(
+def test_finalize_refuses_transport_inaccessible_gateway_before_revocation(
     tmp_path: Path,
 ) -> None:
     root = _root(tmp_path)
@@ -284,7 +297,7 @@ def test_finalize_refuses_runtime_inaccessible_gateway_before_revocation(
     slot.chmod(0o000)
 
     try:
-        with pytest.raises(ContractError, match="gateway is not runtime-executable"):
+        with pytest.raises(ContractError, match="gateway is not transport-executable"):
             finalize_host(
                 baseline_id=BASELINE_ID,
                 root=root,
@@ -295,6 +308,26 @@ def test_finalize_refuses_runtime_inaccessible_gateway_before_revocation(
         slot.chmod(original_mode)
 
     assert (root / "boot/firmware/user-data").is_file()
+
+
+def test_transport_gateway_refuses_inaccessible_ancestor(
+    tmp_path: Path,
+) -> None:
+    root = _root(tmp_path)
+    receiver_root = root / "opt/iii"
+    original_mode = receiver_root.stat().st_mode & 0o777
+    receiver_root.chmod(0o700)
+
+    try:
+        with pytest.raises(ContractError, match="gateway is not transport-executable"):
+            _require_transport_gateway(
+                root,
+                slot="a",
+                uid=os.getuid() + 1,
+                gid=os.getgid() + 1,
+            )
+    finally:
+        receiver_root.chmod(original_mode)
 
 
 @pytest.mark.parametrize(

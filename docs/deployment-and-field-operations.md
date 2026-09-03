@@ -125,15 +125,15 @@ boundary, and failure recovery are in [aircraft host provisioning](host-provisio
 ### Attended Root Maintenance Shell
 
 The provisioned aircraft has two permanent SSH identities with deliberately
-different authority. `iii@iii.local` remains the non-interactive receiver
-gateway used by canonical automation. `iii-maint@iii.local` is the separately
+different authority. `iii-deploy@iii.local` is the non-interactive receiver
+gateway used by canonical automation. `iii@iii.local` is the separately
 keyed attended development and field-research shell with unrestricted
 passwordless sudo. It is not used by Ansible, the receiver, or routine CLI
 commands.
 
 ```bash
 ssh -i "$XDG_CONFIG_HOME/iii/credentials/maintenance/ssh_ed25519" \
-  -o IdentitiesOnly=yes iii-maint@iii.local
+  -o IdentitiesOnly=yes iii@iii.local
 sudo -n id -u
 ```
 

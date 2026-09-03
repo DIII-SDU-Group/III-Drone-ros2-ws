@@ -3,7 +3,7 @@
   ansible.builtin.group:
     name: "{{ iii_runtime_group }}"
     gid: "{{ iii_runtime_gid }}"
-    system: true
+    system: false
     state: present
 
 - name: Create the hardware-access supplementary groups
@@ -13,7 +13,7 @@
     state: present
   loop: "{{ iii_runtime_supplementary_groups }}"
 
-- name: Create the unprivileged III runtime and forced-command SSH user
+- name: Create the III runtime and human field-access user
   ansible.builtin.user:
     name: "{{ iii_runtime_user }}"
     uid: "{{ iii_runtime_uid }}"
@@ -24,10 +24,10 @@
     home: /home/iii
     shell: /bin/bash
     password_lock: true
-    system: true
+    system: false
     state: present
 
-- name: Create the III SSH directory
+- name: Create the human field-access SSH directory
   ansible.builtin.file:
     path: /home/iii/.ssh
     state: directory
@@ -35,7 +35,7 @@
     group: "{{ iii_runtime_group_effective }}"
     mode: "0700"
 
-- name: Install final no-sudo policy marker
+- name: Install final deployment-automation no-sudo policy marker
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../host/iii-deployment-final.sudoers"
     dest: /etc/sudoers.d/99-iii-deployment-final
@@ -44,43 +44,16 @@
     mode: "0440"
     validate: /usr/sbin/visudo -cf %s
 
-- name: Create the dedicated human maintenance group
-  ansible.builtin.group:
-    name: "{{ iii_maintenance_group }}"
-    gid: "{{ iii_maintenance_gid }}"
-    system: false
-    state: present
-
-- name: Create the key-only human maintenance account
-  ansible.builtin.user:
-    name: "{{ iii_maintenance_user }}"
-    uid: "{{ iii_maintenance_uid }}"
-    group: "{{ iii_maintenance_group }}"
-    create_home: true
-    home: /home/iii-maint
-    shell: /bin/bash
-    password_lock: true
-    system: false
-    state: present
-
-- name: Create the maintenance SSH directory
-  ansible.builtin.file:
-    path: /home/iii-maint/.ssh
-    state: directory
-    owner: "{{ iii_maintenance_owner_effective }}"
-    group: "{{ iii_maintenance_group_effective }}"
-    mode: "0700"
-
-- name: Install the independent maintenance SSH public key
+- name: Install the independent human field-access SSH public key
   ansible.builtin.copy:
     content: "{{ iii_provisioning_inputs.maintenance_ssh_public_key }}\n"
-    dest: /home/iii-maint/.ssh/authorized_keys
-    owner: "{{ iii_maintenance_owner_effective }}"
-    group: "{{ iii_maintenance_group_effective }}"
+    dest: /home/iii/.ssh/authorized_keys
+    owner: "{{ iii_runtime_owner_effective }}"
+    group: "{{ iii_runtime_group_effective }}"
     mode: "0600"
   no_log: true
 
-- name: Grant the human maintenance account explicit full sudo
+- name: Grant the III human account explicit full sudo
   ansible.builtin.template:
     src: 90-iii-maintenance.sudoers.j2
     dest: /etc/sudoers.d/90-iii-maintenance
@@ -88,3 +61,30 @@
     group: root
     mode: "0440"
     validate: /usr/sbin/visudo -cf %s
+
+- name: Create the dedicated deployment transport group
+  ansible.builtin.group:
+    name: "{{ iii_deployment_group }}"
+    gid: "{{ iii_deployment_gid }}"
+    system: false
+    state: present
+
+- name: Create the restricted deployment transport account
+  ansible.builtin.user:
+    name: "{{ iii_deployment_user }}"
+    uid: "{{ iii_deployment_uid }}"
+    group: "{{ iii_deployment_group }}"
+    create_home: true
+    home: /home/iii-deploy
+    shell: /bin/bash
+    password_lock: true
+    system: false
+    state: present
+
+- name: Create the deployment transport SSH directory
+  ansible.builtin.file:
+    path: /home/iii-deploy/.ssh
+    state: directory
+    owner: "{{ iii_deployment_owner_effective }}"
+    group: "{{ iii_deployment_group_effective }}"
+    mode: "0700"

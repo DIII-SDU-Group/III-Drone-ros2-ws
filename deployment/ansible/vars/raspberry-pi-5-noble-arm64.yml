@@ -1,8 +1,8 @@
 ---
 iii_baseline_schema: iii.ansible-host-baseline/v1
-iii_baseline_id: 7aa1aba37ef813852929c2dd9e94e58be6db0b15d792f9d017840467614163c2
+iii_baseline_id: ea7bde80411c155c80b84a575953d1b5752f8b21d798aa9210a57aa624ccd41d
 iii_unit_contract_id: 33a2777fd109e9cd245fafcd13d253dec45ec67a805032adc37b52873a3a926d
-iii_target_definition_id: da8c0e6aeef10e4c4d714bef53385fe6a9caf500a2d3fc909f2193410f809ce9
+iii_target_definition_id: ecc2e4e9dc553e1fa6fb30f350b3034db48262604ba9ca28c954cc0694b17b34
 iii_expected_distribution: Ubuntu
 iii_expected_release: "24.04"
 iii_expected_codename: noble
@@ -11,12 +11,12 @@ iii_runtime_user: iii
 iii_runtime_group: iii
 iii_runtime_uid: 1100
 iii_runtime_gid: 1100
-iii_maintenance_user: iii-maint
-iii_maintenance_group: iii-maint
-iii_maintenance_uid: 1101
-iii_maintenance_gid: 1101
-iii_maintenance_owner_effective: "{{ (iii_maintenance_uid | string) if ansible_check_mode else iii_maintenance_user }}"
-iii_maintenance_group_effective: "{{ (iii_maintenance_gid | string) if ansible_check_mode else iii_maintenance_group }}"
+iii_deployment_user: iii-deploy
+iii_deployment_group: iii-deploy
+iii_deployment_uid: 1101
+iii_deployment_gid: 1101
+iii_deployment_owner_effective: "{{ (iii_deployment_uid | string) if ansible_check_mode else iii_deployment_user }}"
+iii_deployment_group_effective: "{{ (iii_deployment_gid | string) if ansible_check_mode else iii_deployment_group }}"
 iii_runtime_owner_effective: "{{ (iii_runtime_uid | string) if ansible_check_mode else iii_runtime_user }}"
 iii_runtime_group_effective: "{{ (iii_runtime_gid | string) if ansible_check_mode else iii_runtime_group }}"
 iii_runtime_api_port: 8765
@@ -29,7 +29,7 @@ iii_px4_peer_address: 10.41.10.2
 iii_px4_subnet: 10.41.10.0/24
 iii_px4_mavlink_udp_port: 14540
 iii_px4_uxrce_dds_udp_port: 8888
-iii_shared_target_profile_id: a14f199fd5a75f0b60f17f35eb52a69405ef1de89a0b6983224edf52b959cf33
+iii_shared_target_profile_id: 89b5c1422a2296799f87a5dbc6d06b1f0868cc860ce28c669f52616ba2135cd2
 iii_boot_profile_id: 3a2147e380558975eb301c2af6a425919fac6be6b2312570cbb70f03032b5f31
 iii_boot_files_required: true
 iii_runtime_api_id: iii-aircraft-runtime
@@ -94,6 +94,7 @@ iii_bootstrap_seed_paths:
   - /var/lib/cloud/seed/nocloud-net
   - /var/lib/cloud/instances
 iii_filesystem_directories:
+  - {path: /opt/iii, owner: root, group: root, mode: "0755"}
   - {path: /opt/iii/releases, owner: root, group: iii, mode: "0750"}
   - {path: /opt/iii/receiver, owner: root, group: root, mode: "0755"}
   - {path: /opt/iii/receiver/slots, owner: root, group: root, mode: "0755"}

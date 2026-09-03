@@ -10,7 +10,7 @@
       ],
       "path": "README.md",
       "repository": "cli",
-      "sha256": "705b821974d1b98381703310f96d0325f383cf0c5da36f8a1b2857e952116bf0",
+      "sha256": "061043bbb5bff62a782bdb5fc380f8aa9330922db8a71ebf7b2eecca06317035",
       "status": "passed"
     },
     {
@@ -387,7 +387,7 @@
       ],
       "path": "deployment/CONTEXT.md",
       "repository": "workspace",
-      "sha256": "a9bab6e916484f15c4e625b496f1cc2e1b8a38b86fad747d336253e7c13a3af6",
+      "sha256": "fa752cf5f2dfdbe0c64ea104ff7dfd1b0fa9d2a006eb2ed16ff8f339ac743563",
       "status": "passed"
     },
     {
@@ -621,7 +621,7 @@
       ],
       "path": "docs/build-and-environments.md",
       "repository": "workspace",
-      "sha256": "b46170e16289415a05ce16ce39556d059119bd62dc98749207319f1db688f0e0",
+      "sha256": "44347d28e20a313bb166812ab8211013aea6efcfe8031873c5101d38801b2112",
       "status": "passed"
     },
     {
@@ -673,7 +673,7 @@
       ],
       "path": "docs/deployment-and-field-operations.md",
       "repository": "workspace",
-      "sha256": "b95b71fe6727c6a4b2240ffedd8a2c3424069b92fa97024119f98926b83755ec",
+      "sha256": "4858b9fb8d62c4bad8cef02e2f26dfbb14aa77ff33b8802599da6fe8b681aeaa",
       "status": "passed"
     },
     {
@@ -764,7 +764,7 @@
       ],
       "path": "docs/generated/deployment-schema-reference.md",
       "repository": "workspace",
-      "sha256": "11f1a8ecac3eea73f40a009f300dc36a104ff6c459ce1c4d336cb2d128adcc12",
+      "sha256": "d7a17f8715ca25f9a280033907e4c905f421a2548c800c622a51a0240a0f35e9",
       "status": "passed"
     },
     {
@@ -790,7 +790,7 @@
       ],
       "path": "docs/ground-control-and-operator-tools.md",
       "repository": "workspace",
-      "sha256": "bcc05a5afd44deabf0059f57f6b239b61064eb02ea6cd6a2983b55c3fedfe9e3",
+      "sha256": "00f2d3885f7ad17e0dcc0385e5122cc18a18216074acbfdfee53f47c2bf7e9bc",
       "status": "passed"
     },
     {
@@ -868,7 +868,7 @@
       ],
       "path": "docs/host-provisioning.md",
       "repository": "workspace",
-      "sha256": "90067c1f0833d3cfe9f8b4924c7c946a40115cc9e196f49186ca12e9e62293b4",
+      "sha256": "b5867d310bed3835a669a17194e10d992641419bf8ce40a095b0cbf3c5adb789",
       "status": "passed"
     },
     {
@@ -907,7 +907,7 @@
       ],
       "path": "docs/legacy-deployment-retirement.md",
       "repository": "workspace",
-      "sha256": "db6208f6ef21d5d23efea1408abb66081259aea87af818b5e8c52838ce4d6dce",
+      "sha256": "5dc7d029421c959600df6436eb95e827d3ccf59e3bfd7d2fea1ec9800598ded6",
       "status": "passed"
     },
     {
@@ -1197,8 +1197,8 @@
       "status": "passed"
     }
   ],
-  "manifest_id": "ef3c73a8e115957c1658b5e85c6dd6ab5fe24e7f8e8098abdef3159aaad58a35",
-  "review_id": "27ee8a0cecc35e22b456337df167291349366857e531fac04217452359dc7def",
-  "reviewer": "codex-maintenance-ssh-contract",
+  "manifest_id": "13a692dca5615c1203b0cf111ee17d1329dae7bcdef8ebdd8257974e0870ea24",
+  "review_id": "1e7f0d38c8ec8199ba594a78c9b9e55d8f5aa516012e20f15932043a74bc5be5",
+  "reviewer": "codex-ssh-account-separation",
   "schema": "iii.documentation-review/v1"
 }

@@ -320,18 +320,10 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
             .rsplit(":", 1)[1]
         )
         _wait_for_systemd(container)
-        _run(
-            [
-                "docker",
-                "cp",
-                str(ssh_key.with_suffix(".pub")),
-                f"{container}:/tmp/bootstrap.pub",
-            ]
-        )
         setup = (
             "useradd --create-home --shell /bin/bash iii-bootstrap; "
             "install -d -m 0700 -o iii-bootstrap -g iii-bootstrap /home/iii-bootstrap/.ssh; "
-            "awk '{print $1, $2}' /tmp/bootstrap.pub > /home/iii-bootstrap/.ssh/authorized_keys; "
+            "cat > /home/iii-bootstrap/.ssh/authorized_keys; "
             "chown iii-bootstrap:iii-bootstrap /home/iii-bootstrap/.ssh/authorized_keys; "
             "chmod 0600 /home/iii-bootstrap/.ssh/authorized_keys; "
             "printf '%s\\n' 'iii-bootstrap ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-cloud-init-users; "
@@ -344,7 +336,10 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
             "install -d -m 0755 /run/sshd; "
             "systemctl restart ssh.service"
         )
-        _run(["docker", "exec", container, "bash", "-lc", setup])
+        _run(
+            ["docker", "exec", "--interactive", container, "bash", "-lc", setup],
+            input=public_key + "\n",
+        )
         _wait_for_ssh(port, ssh_key)
 
         inventory = tmp_path / "inventory.yml"
@@ -507,7 +502,7 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
         assert report["state"] == "provisioned"
         assert report["bootstrap_user_removed"] is True
         assert report["commissioned"] is False
-        assert report["maintenance_access"]["user"] == "iii-maint"
+        assert report["maintenance_access"]["user"] == "iii"
         permanent_access = subprocess.run(
             [
                 "ssh",
@@ -525,7 +520,7 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
                 str(ssh_key),
                 "-p",
                 port,
-                "iii@127.0.0.1",
+                "iii-deploy@127.0.0.1",
                 "true",
             ],
             check=False,
@@ -556,7 +551,7 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
                 str(maintenance_key),
                 "-p",
                 port,
-                "iii-maint@127.0.0.1",
+                "iii@127.0.0.1",
                 "sudo -n id -u",
             ],
             check=False,

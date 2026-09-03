@@ -170,15 +170,15 @@
     },
     {
       "decision": "Q9",
-      "digest": "cb11b361246b10c28d33bb540a6e686a95badf879c59a98fd9cfd37d2fac9b92",
+      "digest": "b86ad2bca862044da05240880919fda10567c5620651ef3fdfa6a1d5319c4f6f",
       "id": "Q9.c2",
-      "text": "Keep the `iii` deployment identity forced-command-only, unprivileged, and without sudo."
+      "text": "Keep the `iii-deploy` deployment identity forced-command-only, unprivileged, and without sudo."
     },
     {
       "decision": "Q9",
-      "digest": "f32ea3f60ac86150bda3942c97249577cfb8f8fa527b709be38fdd9943ccbad5",
+      "digest": "b580a90911d6ba8f99a49c8f001fd0492e39b23115aaf663b1e9bbf261568f81",
       "id": "Q9.c3",
-      "text": "Add a separate key-only `iii-maint` account for attended development and field research with an interactive shell and explicit `NOPASSWD: ALL` authority."
+      "text": "Use the key-only `iii` account for attended development and field research with an interactive shell and explicit `NOPASSWD: ALL` authority."
     },
     {
       "decision": "Q9",
@@ -3302,14 +3302,20 @@
     },
     {
       "decision": "Q91",
-      "digest": "a230132f4da2237ee3afd17f5f38790b438ca51849dc4ee921488125e73d86fd",
+      "digest": "944d783aeb49c6999bcef0e38da2e233ac89404bd0d29bd39867b8fc9c875ae4",
       "id": "Q91.c3",
-      "text": "Run the application and SSH account as unprivileged `iii`; only the narrow receiver/helper owns privileged selectors, host integration, and systemd transitions."
+      "text": "Run the application as `iii` and the forced-command deployment transport as unprivileged `iii-deploy`; only the narrow receiver/helper owns privileged selectors, host integration, and systemd transitions."
+    },
+    {
+      "decision": "Q91",
+      "digest": "b42c1aba759dc534d26d008629fae53448fffee7d0c05bf34bc0c91c0bc53375",
+      "id": "Q91.c4",
+      "text": "The separately keyed human `iii` SSH boundary has explicit attended full sudo."
     },
     {
       "decision": "Q91",
       "digest": "c38c39f03acef9c2fa89f6ef0980054931c6e3d625d5f866e44ad806dd48003b",
-      "id": "Q91.c4",
+      "id": "Q91.c5",
       "text": "No release may write into another release, `/etc/iii`, or arbitrary host paths."
     },
     {

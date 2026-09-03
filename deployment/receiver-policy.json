@@ -16,8 +16,8 @@
     "/var/lib/iii/portable-generations",
     "/var/lib/iii/portable-selector",
     "/var/log/iii",
-    "/home/iii/.ssh",
-    "/home/iii/.ssh/authorized_keys"
+    "/home/iii-deploy/.ssh",
+    "/home/iii-deploy/.ssh/authorized_keys"
   ],
   "normal_release_read_only_paths": [
     "/opt/iii/receiver"

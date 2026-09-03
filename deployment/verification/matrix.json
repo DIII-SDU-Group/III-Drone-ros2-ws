@@ -1,5 +1,5 @@
 {
-  "matrix_id": "232893e6a9c2e52809a9511be23b3c31e541bcfa220522f12861c2c0807f038a",
+  "matrix_id": "a4f04027da55e379a7916fe7839650ad619d714038ec9faaa05603e2a916dbbf",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -1157,7 +1157,7 @@
       "blocking": true,
       "ci": true,
       "decision": "Q9",
-      "digest": "cb11b361246b10c28d33bb540a6e686a95badf879c59a98fd9cfd37d2fac9b92",
+      "digest": "b86ad2bca862044da05240880919fda10567c5620651ef3fdfa6a1d5319c4f6f",
       "id": "Q9.c2",
       "impact_categories": [
         "static-unit",
@@ -1184,19 +1184,19 @@
         "P3.T1.t1",
         "P5.T1.t14"
       ],
-      "text": "Keep the `iii` deployment identity forced-command-only, unprivileged, and without sudo.",
+      "text": "Keep the `iii-deploy` deployment identity forced-command-only, unprivileged, and without sudo.",
       "title": "Deployment and human maintenance privilege"
     },
     {
       "acceptance_refs": [
-        "P2.T2.a4",
+        "P2.T2.a1",
         "P3.T1.a10",
         "P5.T1.a6"
       ],
       "blocking": true,
       "ci": true,
       "decision": "Q9",
-      "digest": "f32ea3f60ac86150bda3942c97249577cfb8f8fa527b709be38fdd9943ccbad5",
+      "digest": "b580a90911d6ba8f99a49c8f001fd0492e39b23115aaf663b1e9bbf261568f81",
       "id": "Q9.c3",
       "impact_categories": [
         "static-unit",
@@ -1223,7 +1223,7 @@
         "P3.T1.t1",
         "P5.T1.t14"
       ],
-      "text": "Add a separate key-only `iii-maint` account for attended development and field research with an interactive shell and explicit `NOPASSWD: ALL` authority.",
+      "text": "Use the key-only `iii` account for attended development and field research with an interactive shell and explicit `NOPASSWD: ALL` authority.",
       "title": "Deployment and human maintenance privilege"
     },
     {
@@ -5438,7 +5438,7 @@
     },
     {
       "acceptance_refs": [
-        "P2.T2.a6",
+        "P2.T2.a1",
         "P2.T5.a3"
       ],
       "blocking": true,
@@ -10100,7 +10100,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P1.T3.t6",
-        "P2.T5.t4"
+        "P2.T5.t2"
       ],
       "text": "Use resumable SFTP to a release-ID-specific unprivileged `.partial` path, resuming only when local/remote identity and size agree.",
       "title": "Field bundle transfer strategy"
@@ -20840,15 +20840,15 @@
     },
     {
       "acceptance_refs": [
-        "P0.T3.a6",
-        "P2.T0.a6",
-        "P2.T2.a4",
-        "P3.T1.a10"
+        "P0.T3.a5",
+        "P2.T0.a9",
+        "P2.T2.a1",
+        "P3.T1.a9"
       ],
       "blocking": true,
       "ci": false,
       "decision": "Q91",
-      "digest": "a230132f4da2237ee3afd17f5f38790b438ca51849dc4ee921488125e73d86fd",
+      "digest": "944d783aeb49c6999bcef0e38da2e233ac89404bd0d29bd39867b8fc9c875ae4",
       "id": "Q91.c3",
       "impact_categories": [
         "provisioned-drone-bench-smoke"
@@ -20874,11 +20874,54 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P0.T3.t1",
-        "P2.T0.t4",
+        "P2.T0.t6",
+        "P2.T2.t6",
+        "P3.T1.t1"
+      ],
+      "text": "Run the application as `iii` and the forced-command deployment transport as unprivileged `iii-deploy`; only the narrow receiver/helper owns privileged selectors, host integration, and systemd transitions.",
+      "title": "Final onboard filesystem and ownership boundary"
+    },
+    {
+      "acceptance_refs": [
+        "P0.T3.a1",
+        "P2.T0.a6",
+        "P2.T2.a1",
+        "P3.T1.a10"
+      ],
+      "blocking": true,
+      "ci": false,
+      "decision": "Q91",
+      "digest": "b42c1aba759dc534d26d008629fae53448fffee7d0c05bf34bc0c91c0bc53375",
+      "id": "Q91.c4",
+      "impact_categories": [
+        "provisioned-drone-bench-smoke"
+      ],
+      "kind": "decision-clause",
+      "level": "target-equivalent",
+      "owner_command": [
+        "python3",
+        "deployment/scripts/run_target_equivalent_acceptance.py",
+        "--candidate-set",
+        "<candidate-set.json>",
+        "--signing-key",
+        "<workstation-field-key.pem>",
+        "--impact-category",
+        "provisioned-drone-bench-smoke"
+      ],
+      "owners": [
+        "P0.T3",
+        "P2.T0",
+        "P2.T2",
+        "P3.T1"
+      ],
+      "required_evidence": "signed-local-acceptance",
+      "test_refs": [
+        "P0.T3.t1",
+        "P2.T0.t6",
         "P2.T2.t5",
         "P3.T1.t1"
       ],
-      "text": "Run the application and SSH account as unprivileged `iii`; only the narrow receiver/helper owns privileged selectors, host integration, and systemd transitions.",
+      "text": "The separately keyed human `iii` SSH boundary has explicit attended full sudo.",
       "title": "Final onboard filesystem and ownership boundary"
     },
     {
@@ -20892,7 +20935,7 @@
       "ci": true,
       "decision": "Q91",
       "digest": "c38c39f03acef9c2fa89f6ef0980054931c6e3d625d5f866e44ad806dd48003b",
-      "id": "Q91.c4",
+      "id": "Q91.c5",
       "impact_categories": [
         "static-unit",
         "local-simulation"
@@ -21918,7 +21961,7 @@
     },
     {
       "acceptance_refs": [
-        "P2.T2.a4",
+        "P2.T2.a1",
         "P3.T2.a4"
       ],
       "blocking": true,
@@ -25412,7 +25455,7 @@
     },
     {
       "acceptance_refs": [
-        "P2.T2.a5",
+        "P2.T2.a1",
         "P2.T6.a2"
       ],
       "blocking": true,
@@ -28921,7 +28964,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P2.T5.t4",
+        "P2.T5.t2",
         "P3.T3.t1",
         "P3.T8.t10",
         "P3.T11.t3",
@@ -34517,32 +34560,33 @@
         "P2.T2.a1"
       ],
       "blocking": true,
-      "ci": true,
-      "digest": "b4d940e817f5d17ed4a9e24993f1375ce2e51bd108ff1ca0e0d2132dceb88e4f",
+      "ci": false,
+      "digest": "defcaac7d5c067de4b80cb93fbfdd26b3775b9f0853860217329da256b69101e",
       "id": "P2.T2.a1",
       "impact_categories": [
-        "static-unit",
-        "local-simulation"
+        "provisioned-drone-bench-smoke"
       ],
       "kind": "task-acceptance",
-      "level": "host-independent",
+      "level": "target-equivalent",
       "owner_command": [
         "python3",
-        "-m",
-        "pytest",
-        "-q",
-        "deployment/tests",
-        "tools/III-Drone-CLI/test"
+        "deployment/scripts/run_target_equivalent_acceptance.py",
+        "--candidate-set",
+        "<candidate-set.json>",
+        "--signing-key",
+        "<workstation-field-key.pem>",
+        "--impact-category",
+        "provisioned-drone-bench-smoke"
       ],
       "owners": [
         "P2.T2"
       ],
-      "required_evidence": "junit",
+      "required_evidence": "signed-local-acceptance",
       "task": "P2.T2",
       "test_refs": [
         "P2.T2.t5"
       ],
-      "text": "`iii` has no unrestricted passwordless sudo path.",
+      "text": "`iii-deploy` has no unrestricted passwordless sudo path; receiver requests cannot reach the separately keyed human `iii` maintenance authority.",
       "title": "Implement The Onboard Deployment Receiver"
     },
     {
@@ -37294,7 +37338,7 @@
       ],
       "blocking": true,
       "ci": false,
-      "digest": "c033da0afd5e6b3a0ebd87d89942ccf3f4e7faa7999e3e1f6744605f92298346",
+      "digest": "6e20215122ae462a024147ae2a5a9097b3cb0b64c38cbb37d0d25ba5bffdc226",
       "id": "P3.T1.a10",
       "impact_categories": [
         "provisioned-drone-bench-smoke"
@@ -37319,7 +37363,7 @@
       "test_refs": [
         "P3.T1.t1"
       ],
-      "text": "A separately keyed `iii-maint` account accepts an interactive public-key session from the operator CIDR and `sudo -n id -u` returns `0`, while the `iii` receiver identity remains forced-command-only and Ansible continues to use only the temporary `iii-bootstrap` identity.",
+      "text": "A separately keyed `iii` account accepts an interactive public-key session from the operator CIDR and `sudo -n id -u` returns `0`, while the `iii-deploy` receiver identity remains forced-command-only and Ansible continues to use only the temporary `iii-bootstrap` identity.",
       "title": "Implement Idempotent Ansible Host Roles"
     },
     {

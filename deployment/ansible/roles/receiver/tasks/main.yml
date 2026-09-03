@@ -153,10 +153,10 @@
       - /opt/iii/receiver/bootstrap/bin/iii-receiver-access-bootstrap
       - --enrollment
       - /etc/iii/bootstrap-machine-enrollment.json
-      - --runtime-uid
-      - "{{ iii_runtime_uid | string }}"
-      - --runtime-gid
-      - "{{ iii_runtime_gid | string }}"
+      - --transport-uid
+      - "{{ iii_deployment_uid | string }}"
+      - --transport-gid
+      - "{{ iii_deployment_gid | string }}"
   register: iii_access_bootstrap
   changed_when: (iii_access_bootstrap.stdout | from_json).changed
   when: not ansible_check_mode
@@ -267,6 +267,13 @@
     timeout: 30
   when: not ansible_check_mode
 
+- name: Wait for authenticated receiver readiness evidence
+  ansible.builtin.wait_for:
+    path: /run/iii/receiver-readiness.json
+    state: present
+    timeout: 30
+  when: not ansible_check_mode
+
 - name: Inspect receiver readiness evidence
   ansible.builtin.slurp:
     src: /run/iii/receiver-readiness.json
@@ -283,10 +290,10 @@
       - (iii_receiver_readiness_raw.content | b64decode | from_json).self_tests_passed
   when: not ansible_check_mode
 
-- name: Verify final runtime account has no passwordless sudo grant
+- name: Verify deployment transport has no passwordless sudo grant
   ansible.builtin.command:
-    argv: [/usr/sbin/runuser, -u, iii, --, /usr/bin/sudo, -n, /usr/bin/true]
-  register: iii_runtime_sudo_probe
+    argv: [/usr/sbin/runuser, -u, iii-deploy, --, /usr/bin/sudo, -n, /usr/bin/true]
+  register: iii_deployment_sudo_probe
   changed_when: false
-  failed_when: iii_runtime_sudo_probe.rc == 0
+  failed_when: iii_deployment_sudo_probe.rc == 0
   check_mode: false

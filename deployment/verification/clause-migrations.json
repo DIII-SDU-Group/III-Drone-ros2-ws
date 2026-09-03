@@ -34,6 +34,41 @@
       "old_digest": "",
       "old_id": "",
       "rationale": "Preserve bootstrap revocation while retaining both permanent and intentionally distinct SSH identities."
+    },
+    {
+      "new_digest": "b86ad2bca862044da05240880919fda10567c5620651ef3fdfa6a1d5319c4f6f",
+      "new_id": "Q9.c2",
+      "old_digest": "cb11b361246b10c28d33bb540a6e686a95badf879c59a98fd9cfd37d2fac9b92",
+      "old_id": "Q9.c2",
+      "rationale": "Move forced-command deployment automation to the dedicated iii-deploy account."
+    },
+    {
+      "new_digest": "b580a90911d6ba8f99a49c8f001fd0492e39b23115aaf663b1e9bbf261568f81",
+      "new_id": "Q9.c3",
+      "old_digest": "f32ea3f60ac86150bda3942c97249577cfb8f8fa527b709be38fdd9943ccbad5",
+      "old_id": "Q9.c3",
+      "rationale": "Use the conventional iii identity for attended human field access and full sudo."
+    },
+    {
+      "new_digest": "944d783aeb49c6999bcef0e38da2e233ac89404bd0d29bd39867b8fc9c875ae4",
+      "new_id": "Q91.c3",
+      "old_digest": "a230132f4da2237ee3afd17f5f38790b438ca51849dc4ee921488125e73d86fd",
+      "old_id": "Q91.c3",
+      "rationale": "Separate the application owner from the restricted deployment SSH transport identity."
+    },
+    {
+      "new_digest": "b42c1aba759dc534d26d008629fae53448fffee7d0c05bf34bc0c91c0bc53375",
+      "new_id": "Q91.c4",
+      "old_digest": "",
+      "old_id": "",
+      "rationale": "Record the explicit attended sudo authority of the separately keyed human iii account."
+    },
+    {
+      "new_digest": "c38c39f03acef9c2fa89f6ef0980054931c6e3d625d5f866e44ad806dd48003b",
+      "new_id": "Q91.c5",
+      "old_digest": "c38c39f03acef9c2fa89f6ef0980054931c6e3d625d5f866e44ad806dd48003b",
+      "old_id": "Q91.c4",
+      "rationale": "Renumber the unchanged release write boundary after adding the human access clause."
     }
   ],
   "schema": "iii.deployment-clause-migrations/v1"

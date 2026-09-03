@@ -42,8 +42,8 @@
     "xz-utils"
   ],
   "host_contract": {
-    "baseline_id": "7aa1aba37ef813852929c2dd9e94e58be6db0b15d792f9d017840467614163c2",
-    "shared_target_profile_id": "a14f199fd5a75f0b60f17f35eb52a69405ef1de89a0b6983224edf52b959cf33",
+    "baseline_id": "ea7bde80411c155c80b84a575953d1b5752f8b21d798aa9210a57aa624ccd41d",
+    "shared_target_profile_id": "89b5c1422a2296799f87a5dbc6d06b1f0868cc860ce28c669f52616ba2135cd2",
     "target_definition_id": "8d02216380ffdc0c15cc96852dd0f87c0cc21b43a2b26ab307d7c83eae6c6294",
     "unit_contract_id": "33a2777fd109e9cd245fafcd13d253dec45ec67a805032adc37b52873a3a926d"
   },
@@ -54,7 +54,7 @@
     "release": "24.04",
     "ros_distro": "jazzy"
   },
-  "policy_id": "290b1833a23d4a486134b29fdcadee528ae41639ad79338e97e42f87bc024a9a",
+  "policy_id": "4302ef5a5c487fb62650c5f8410984047b7e451750655229966e2533095cf038",
   "reboot": {
     "automatic": false,
     "package_prefixes": [

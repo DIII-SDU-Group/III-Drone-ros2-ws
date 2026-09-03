@@ -17,7 +17,7 @@
     - /etc/iii/trust/release-status-signers.json
     - /etc/iii/trust/receiver-update-signers.json
     - /home/iii/.ssh/authorized_keys
-    - /home/iii-maint/.ssh/authorized_keys
+    - /home/iii-deploy/.ssh/authorized_keys
     - /etc/sudoers.d/90-iii-maintenance
     - /etc/iii/clock-policy.json
     - /etc/iii/firewall-policy.json
@@ -163,7 +163,7 @@
   check_mode: false
   when: not ansible_check_mode
 
-- name: Verify the maintenance sudo policy
+- name: Verify the human field-access sudo policy
   ansible.builtin.command:
     argv: [/usr/sbin/visudo, -cf, /etc/sudoers.d/90-iii-maintenance]
   changed_when: false

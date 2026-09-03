@@ -88,7 +88,7 @@ def _selector_slot(root: Path, selector: str) -> str:
     return relative.name
 
 
-def _runtime_has_mode(path: Path, *, uid: int, gid: int, required: int) -> bool:
+def _transport_has_mode(path: Path, *, uid: int, gid: int, required: int) -> bool:
     metadata = path.stat(follow_symlinks=False)
     if metadata.st_uid == uid:
         granted = metadata.st_mode >> 6
@@ -99,7 +99,7 @@ def _runtime_has_mode(path: Path, *, uid: int, gid: int, required: int) -> bool:
     return granted & required == required
 
 
-def _require_runtime_gateway(root: Path, *, slot: str, uid: int, gid: int) -> None:
+def _require_transport_gateway(root: Path, *, slot: str, uid: int, gid: int) -> None:
     gateway = _under(root, Path("/usr/bin/iii-deployment-ssh-gateway"))
     if not gateway.is_symlink():
         raise ContractError("permanent forced-command gateway is not a symbolic link")
@@ -118,16 +118,16 @@ def _require_runtime_gateway(root: Path, *, slot: str, uid: int, gid: int) -> No
         if (
             current.is_symlink()
             or not current.is_dir()
-            or not _runtime_has_mode(current, uid=uid, gid=gid, required=0o1)
+            or not _transport_has_mode(current, uid=uid, gid=gid, required=0o1)
         ):
             raise ContractError(
-                "permanent forced-command gateway is not runtime-executable"
+                "permanent forced-command gateway is not transport-executable"
             )
     if target.is_symlink() or not target.is_file():
         raise ContractError("permanent forced-command gateway target is unsafe")
-    if not _runtime_has_mode(target, uid=uid, gid=gid, required=0o1):
+    if not _transport_has_mode(target, uid=uid, gid=gid, required=0o1):
         raise ContractError(
-            "permanent forced-command gateway is not runtime-executable"
+            "permanent forced-command gateway is not transport-executable"
         )
 
 
@@ -177,7 +177,7 @@ def _validate_maintenance_access(
     }
     if (
         set(evidence) != required
-        or evidence.get("user") != "iii-maint"
+        or evidence.get("user") != "iii"
         or evidence.get("authentication") != "publickey-only"
         or evidence.get("sudo") != "unrestricted-nopasswd"
         or evidence.get("ansible_transport") is not False
@@ -187,7 +187,7 @@ def _validate_maintenance_access(
         or isinstance(evidence.get("gid"), bool)
     ):
         raise ContractError("maintenance SSH evidence is incomplete or unsafe")
-    authorized_keys = _under(root, Path("/home/iii-maint/.ssh/authorized_keys"))
+    authorized_keys = _under(root, Path("/home/iii/.ssh/authorized_keys"))
     if authorized_keys.is_symlink() or not authorized_keys.is_file():
         raise ContractError("maintenance SSH authorized_keys is absent or linked")
     metadata = authorized_keys.stat(follow_symlinks=False)
@@ -213,7 +213,7 @@ def _validate_maintenance_access(
     sudoers = _under(root, Path("/etc/sudoers.d/90-iii-maintenance"))
     if sudoers.is_symlink() or not sudoers.is_file():
         raise ContractError("maintenance sudo policy is absent or linked")
-    if sudoers.read_bytes() != b"iii-maint ALL=(ALL:ALL) NOPASSWD: ALL\n":
+    if sudoers.read_bytes() != b"iii ALL=(ALL:ALL) NOPASSWD: ALL\n":
         raise ContractError("maintenance sudo policy differs from full human authority")
     if sudoers.stat(follow_symlinks=False).st_mode & 0o027:
         raise ContractError("maintenance sudo policy permissions are unsafe")
@@ -341,27 +341,34 @@ def finalize_host(
         _under(root, Path("/etc/iii/deployment-receiver.json")),
         label="receiver configuration",
     )
-    runtime_uid = receiver_config.get("runtime_uid")
-    runtime_gid = receiver_config.get("runtime_gid")
+    transport_uid = receiver_config.get("transport_uid")
+    transport_gid = receiver_config.get("transport_gid")
+    receiver_health = health.get("receiver", {})
     if (
         receiver_config.get("schema") != "iii.receiver-config/v1"
-        or not isinstance(runtime_uid, int)
-        or isinstance(runtime_uid, bool)
-        or runtime_uid <= 0
-        or not isinstance(runtime_gid, int)
-        or isinstance(runtime_gid, bool)
-        or runtime_gid <= 0
+        or not isinstance(transport_uid, int)
+        or isinstance(transport_uid, bool)
+        or transport_uid <= 0
+        or not isinstance(transport_gid, int)
+        or isinstance(transport_gid, bool)
+        or transport_gid <= 0
+        or not isinstance(receiver_health, dict)
+        or receiver_health.get("ssh_user") != "iii-deploy"
+        or receiver_health.get("uid") != transport_uid
+        or receiver_health.get("gid") != transport_gid
     ):
-        raise ContractError("receiver configuration lacks runtime ownership")
-    authorized_keys = _under(root, Path("/home/iii/.ssh/authorized_keys"))
+        raise ContractError(
+            "receiver configuration lacks deployment transport ownership"
+        )
+    authorized_keys = _under(root, Path("/home/iii-deploy/.ssh/authorized_keys"))
     if authorized_keys.is_symlink() or not authorized_keys.is_file():
         raise ContractError(
             "permanent forced-command authorized_keys is absent or linked"
         )
     authorized_keys_metadata = authorized_keys.stat(follow_symlinks=False)
     if (
-        authorized_keys_metadata.st_uid != runtime_uid
-        or authorized_keys_metadata.st_gid != runtime_gid
+        authorized_keys_metadata.st_uid != transport_uid
+        or authorized_keys_metadata.st_gid != transport_gid
         or authorized_keys_metadata.st_mode & 0o077
     ):
         raise ContractError(
@@ -445,7 +452,9 @@ def finalize_host(
         raise ContractError(
             "initial receiver current and recovery fallback selectors differ"
         )
-    _require_runtime_gateway(root, slot=current_slot, uid=runtime_uid, gid=runtime_gid)
+    _require_transport_gateway(
+        root, slot=current_slot, uid=transport_uid, gid=transport_gid
+    )
 
     target_network = _under(root, Path("/etc/netplan/90-iii-operator.yaml"))
     source_network = _under(root, Path("/etc/netplan/50-cloud-init.yaml"))

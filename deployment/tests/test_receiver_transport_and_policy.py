@@ -44,8 +44,8 @@ def test_unix_socket_transport_is_bounded_canonical_and_has_no_tcp_listener(
     observed: list[Request] = []
     server = UnixReceiverServer(
         socket_path=tmp_path / "receiver.sock",
-        runtime_uid=os.getuid(),
-        runtime_gid=os.getgid(),
+        transport_uid=os.getuid(),
+        transport_gid=os.getgid(),
         handler=lambda request: observed.append(request) or {"state": "ok"},
         peer_authenticator=lambda _pid, _uid, _client_id: None,
     )
@@ -123,8 +123,8 @@ def test_receiver_config_and_live_state_are_fixed_canonical_contracts(
                 "receiver_generation": 1,
                 "logical_target": "drone",
                 "profile": "real",
-                "runtime_uid": 1000,
-                "runtime_gid": 1000,
+                "transport_uid": 1000,
+                "transport_gid": 1000,
             }
         )
         + b"\n"
@@ -157,7 +157,7 @@ def test_receiver_config_and_live_state_are_fixed_canonical_contracts(
         load_live_state(live_path, profile="real")
 
 
-def test_host_policy_has_no_unrestricted_sudo_and_protects_receiver_bootstrap() -> None:
+def test_deployment_policy_has_no_unrestricted_sudo_and_protects_bootstrap() -> None:
     privilege = json.loads(
         (ROOT / "deployment/host/receiver-privilege-policy.json").read_text(
             encoding="utf-8"
@@ -173,6 +173,7 @@ def test_host_policy_has_no_unrestricted_sudo_and_protects_receiver_bootstrap() 
         "receiver-policy", receiver_policy
     )
     assert privilege["final_passwordless_sudo_commands"] == []
+    assert privilege["deployment_transport_user"] == "iii-deploy"
     assert "NOPASSWD" not in sudoers and "ALL=(ALL)" not in sudoers
     assert privilege["complete_key_loss"]["in_band_bypass"] is False
     forbidden = set(receiver_policy["normal_release_forbidden_paths"])

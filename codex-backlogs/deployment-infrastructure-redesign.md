@@ -105,12 +105,12 @@ until field operators can work entirely from published release artifacts.
   operator computer. Cloud-init installs the first public key; an authenticated,
   audited deployment workflow can add and revoke public keys later. Private keys
   are never copied between the development workstation and ground-control computer.
-- The `iii` SSH account remains an unprivileged forced-command automation
-  identity with no sudo path. A separate key-only `iii-maint` human account is
-  provisioned for development and field research, has an interactive shell and
-  explicit unrestricted passwordless sudo, and is never used by Ansible or the
-  deployment receiver. Password and root login remain disabled; forwarding and
-  tunneling remain disabled; the firewall limits SSH to the operator network.
+- The `iii` SSH account is the key-only human development and field-research
+  identity. It has an interactive shell and explicit unrestricted passwordless
+  sudo and is never used by Ansible or the deployment receiver. The separate
+  `iii-deploy` identity is unprivileged, forced-command-only automation with no
+  sudo path. Password and root login remain disabled; forwarding and tunneling
+  remain disabled; the firewall limits SSH to the operator network.
   Broader one-time bootstrap authority used by initial Ansible provisioning is
   still removed after convergence.
 - Every qualified and field-development release bundle is cryptographically
@@ -456,9 +456,9 @@ to collect, not an unresolved architecture choice.
   keypair per authorized computer. Provision the first public key via cloud-init
   and provide authenticated add/revoke/list workflows for later workstation or
   ground-control keys. Disable password login and never transfer private keys.
-- **Q9 — Deployment and human maintenance privilege:** Settled. Keep the `iii`
-  deployment identity forced-command-only, unprivileged, and without sudo. Add
-  a separate key-only `iii-maint` account for attended development and field
+- **Q9 — Deployment and human maintenance privilege:** Settled. Keep the
+  `iii-deploy` deployment identity forced-command-only, unprivileged, and without
+  sudo. Use the key-only `iii` account for attended development and field
   research with an interactive shell and explicit `NOPASSWD: ALL` authority.
   Give it an independently generated owner-controlled Ed25519 key, record that
   public-key identity in provisioning evidence, and never select it as the
@@ -1336,9 +1336,11 @@ to collect, not an unresolved architecture choice.
   root-owned host policy/trust/environment under `/etc/iii/`; persistent mutable
   configuration, legacy shadow, journals, deployment state, and unprivileged
   incoming uploads under `/var/lib/iii/`; bounded logs/audits under `/var/log/iii/`;
-  and sockets/locks/transient state under `/run/iii/`. Run the application and SSH
-  account as unprivileged `iii`; only the narrow receiver/helper owns privileged
-  selectors, host integration, and systemd transitions. No release may write into
+  and sockets/locks/transient state under `/run/iii/`. Run the application as
+  `iii` and the forced-command deployment transport as unprivileged `iii-deploy`;
+  only the narrow receiver/helper owns privileged selectors, host integration,
+  and systemd transitions. The separately keyed human `iii` SSH boundary has
+  explicit attended full sudo. No release may write into
   another release, `/etc/iii`, or arbitrary host paths.
 - **Q92 — Colcon install layout inside immutable releases:** Settled. Preserve
   the current default isolated colcon layout inside each
@@ -3074,7 +3076,8 @@ elevation after this receiver is installed and verified.
 
 Acceptance:
 
-- [x] `iii` has no unrestricted passwordless sudo path.
+- [x] `iii-deploy` has no unrestricted passwordless sudo path; receiver requests
+      cannot reach the separately keyed human `iii` maintenance authority.
 - [x] Only declared III release paths and systemd units can be mutated.
 - [x] Requests and results are audit logged without secrets.
 - [x] Key-management uses add -> prove new credential -> revoke old sequencing and
@@ -3501,7 +3504,7 @@ Implementation notes (2026-08-26):
 
 - Replaced the password-file, interactive-password, agent-forwarding, SCP, rsync,
   and shell-interpolated adapter with argv-only key authentication to the fixed
-  unprivileged `iii@iii.local` endpoint. The adapter requires a current-user-owned
+  unprivileged `iii-deploy@iii.local` endpoint. The adapter requires a current-user-owned
   mode-0600 Ed25519 private key, derives the receiver client identity from its
   canonical public key, redacts credential paths from failures, disables every
   password and forwarding path, and explicitly reports that server host keys are
@@ -3916,8 +3919,8 @@ remain mandatory commissioning evidence on applicable hardware.
 #### P3.T1: Implement Idempotent Ansible Host Roles
 
 **Status: Completed (2026-09-02).** The completed 2026-08-26 host baseline now
-includes the separately keyed `iii-maint` human field-maintenance boundary while
-preserving the existing forced-command receiver and bootstrap-only Ansible
+includes the separately keyed `iii` human field-maintenance boundary while
+preserving the forced-command `iii-deploy` receiver and bootstrap-only Ansible
 identities. Implemented a data-driven Raspberry Pi 5
 host baseline under `deployment/ansible/`, the retained `iii host provision
 check/apply` workflow, signed receiver bootstrap/A/B recovery installation,
@@ -3971,9 +3974,9 @@ Acceptance:
 - [x] Runtime API firewall/service configuration exposes only the documented
       plain-HTTP/WS operator-LAN port and credentials, never privileged deployment
       operations; SSH/receiver transport remains the only deployment authority.
-- [x] A separately keyed `iii-maint` account accepts an interactive public-key
+- [x] A separately keyed `iii` account accepts an interactive public-key
       session from the operator CIDR and `sudo -n id -u` returns `0`, while the
-      `iii` receiver identity remains forced-command-only and Ansible continues
+      `iii-deploy` receiver identity remains forced-command-only and Ansible continues
       to use only the temporary `iii-bootstrap` identity.
 
 Maintenance-access extension verification (2026-09-02): 64 focused access,
@@ -3981,9 +3984,13 @@ provisioning, documentation, receiver-policy, and matrix tests passed; 69 target
 host-maintenance, release-pipeline, and staging tests passed; Ansible lint passed
 all 76 production-profile files with zero failures/warnings; the full deployment
 phase passed 667 tests with five explicit opt-in skips; and the final privileged
-target-equivalent boundary passed all three tests in 576.42 seconds. That run
+target-equivalent boundary passed all three tests in 722.44 seconds on the final
+2026-09-03 rerun. The rehearsal exposed and fixed two startup-order races (the
+test bootstrap key's transient `/tmp` handoff and readiness inspection before
+the receiver had written its evidence) plus an implicit `/opt/iii` parent mode;
+the parent is now an explicit root-owned `0755` filesystem contract. The run
 proved first convergence, zero drift, injected-drift repair, bootstrap revocation,
-fresh forced-command receiver access, a distinct `iii-maint` login, and
+fresh forced-command `iii-deploy` receiver access, a distinct `iii` login, and
 `sudo -n id -u` returning `0`. Physical post-flash access remains a P5
 commissioning gate and is not inferred from target-equivalent evidence.
 
@@ -4123,8 +4130,8 @@ materializer accepts normal OpenSSH public-key comments but canonicalizes the
 installed identity to algorithm plus key bytes, includes its client ID in the
 retained artifact/plan, and never places the private key in provisioning output.
 Focused negative/identity tests and the final target-equivalent SSH/sudo proof
-passed. Host baseline `7aa1aba37ef813852929c2dd9e94e58be6db0b15d792f9d017840467614163c2`
-and target definition `da8c0e6aeef10e4c4d714bef53385fe6a9caf500a2d3fc909f2193410f809ce9`
+passed. Host baseline `ea7bde80411c155c80b84a575953d1b5752f8b21d798aa9210a57aa624ccd41d`
+and target definition `ecc2e4e9dc553e1fa6fb30f350b3034db48262604ba9ca28c954cc0694b17b34`
 supersede the previous candidate identities.
 
 Tests:

@@ -96,13 +96,13 @@ iii system start
 
 Remote runtime-control commands use `iii-runtime-api` with
 `III_RUNTIME_API_URL` and `III_RUNTIME_API_CLI_TOKEN`; they never forward shell
-commands over SSH. Deployment SSH is limited to key-only `iii@iii.local`, the
+commands over SSH. Deployment SSH is limited to key-only `iii-deploy@iii.local`, the
 fixed receiver gateway, and resumable SFTP uploads. Legacy install, workspace
 synchronization, arbitrary SSH, SCP, rsync, and source pull commands are absent.
-The separately keyed `iii-maint@iii.local` shell is the explicit attended
+The separately keyed `iii@iii.local` shell is the explicit attended
 development/field-maintenance exception. It provides full sudo, is limited to the
 operator network with forwarding disabled, and is never invoked by the CLI,
-receiver, or Ansible inventory.
+`iii-deploy` receiver, or Ansible inventory.
 
 Use the process-local field defaults and explicit target/profile overrides:
 

@@ -15,7 +15,7 @@
     "endpoint": {
       "type": "object", "additionalProperties": false,
       "required": ["hostname", "ssh_user"],
-      "properties": {"hostname": {"const": "iii.local"}, "ssh_user": {"const": "iii"}}
+      "properties": {"hostname": {"const": "iii.local"}, "ssh_user": {"const": "iii-deploy"}}
     },
     "runtime": {
       "type": "object", "additionalProperties": false,
