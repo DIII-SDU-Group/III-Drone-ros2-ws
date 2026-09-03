@@ -3382,6 +3382,23 @@ Implementation notes (2026-08-26):
   tests pass on the host, the same 10 pass through the root devcontainer path,
   and the 117-test receiver-focused suite passes without weakening production
   ownership enforcement.
+- The final SSH-account correction at committed workspace source `af128c6` and
+  CLI source `4c60c7a` produced clean-source r17 provisioning record
+  `4d1f1171a39ce57009862a84752d9fd7708692335e9d457f6ac48bb77c0432a5`
+  with generation-1 receiver
+  `17fd233c8d581c49f2d8a68b33305bf55018426959c1d6ae3c4012cdc24e7cfd`.
+  Its generation-2 / `v1.0.3` update record
+  `7a5731a2d66e4d71a4d2bbb9715da6a6b4369ea2934d6fc7a4eb562429bfe5bf`
+  committed receiver
+  `f26eb475bbae3d06e5515b7745f2e7a2dcca904bbb81ada4fdce12e18704cddf`
+  to slot B while retaining verified slot A as fallback. Both signed slots,
+  every selector-local launcher from both generations, all fourteen AArch64
+  native extensions, immutable slot modes, and the zero-bytecode gate passed in
+  the isolated network-disabled ARM64 pseudo-flash. Evidence
+  `.iii/evidence/pseudo-flash-r17-arm64-20260903.json` has SHA-256
+  `6322256992266ee39aa6813ae30ac6b0aa5bfa33ebed5d4ceb2569d8c11db174`.
+  This is target-equivalent evidence only: the physical Pi was not flashed or
+  contacted, and physical A/B, forced fallback, and commissioning remain open.
 
 #### P2.T4: Implement Activation Health And Automatic Rollback
 
@@ -5566,6 +5583,16 @@ Implementation notes (software boundary, 2026-08-27):
   with receiver `923023f4463d8c53fc09814cb5eb51f8849b6c631b163a8834c4198577b7080d`.
   R15b supersedes r14 for the physical flash, but has not been written to media;
   no physical PX4 connection or commissioning row is claimed.
+- The corrected account model supersedes r15b with clean-source r17: `iii` is
+  the key-only interactive field/development administrator with unrestricted
+  passwordless sudo, `iii-deploy` is the unprivileged forced-command receiver
+  transport without sudo/PTY/forwarding, and temporary `iii-bootstrap` is
+  deleted after convergence. The exact signed generation-1 and generation-2
+  artifacts passed the ARM64 pseudo-flash retained in P2.T3, and the full Noble
+  target-equivalent lifecycle proved convergence, zero drift, drift repair,
+  bootstrap removal, receiver-command restriction, and `sudo -n id -u` returning
+  zero for `iii`. The physical card and aircraft remain unchanged; none of the
+  physical commissioning acceptance items is upgraded by this evidence.
 
 #### P5.T2: Establish Automation-Ready Documentation Architecture And Validation
 

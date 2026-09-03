@@ -1,5 +1,5 @@
 {
-  "matrix_id": "a4f04027da55e379a7916fe7839650ad619d714038ec9faaa05603e2a916dbbf",
+  "matrix_id": "bcd60741357cd3ce113b1309dc7350e10c91e7fd17a308598029194e3032fa2c",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -1182,7 +1182,7 @@
       "test_refs": [
         "P2.T2.t6",
         "P3.T1.t1",
-        "P5.T1.t14"
+        "P5.T1.t18"
       ],
       "text": "Keep the `iii-deploy` deployment identity forced-command-only, unprivileged, and without sudo.",
       "title": "Deployment and human maintenance privilege"
@@ -1221,7 +1221,7 @@
       "test_refs": [
         "P2.T2.t6",
         "P3.T1.t1",
-        "P5.T1.t14"
+        "P5.T1.t18"
       ],
       "text": "Use the key-only `iii` account for attended development and field research with an interactive shell and explicit `NOPASSWD: ALL` authority.",
       "title": "Deployment and human maintenance privilege"
@@ -1301,7 +1301,7 @@
       "test_refs": [
         "P2.T2.t3",
         "P3.T1.t1",
-        "P5.T1.t8"
+        "P5.T1.t18"
       ],
       "text": "Disable password/root login, SSH forwarding, agent forwarding, X11, and tunnels; permit PTY; limit port 22 to the operator CIDR.",
       "title": "Deployment and human maintenance privilege"
@@ -1340,7 +1340,7 @@
       "test_refs": [
         "P2.T2.t3",
         "P3.T1.t1",
-        "P5.T1.t14"
+        "P5.T1.t18"
       ],
       "text": "Remove the one-time `iii-bootstrap` account after convergence without removing or weakening either permanent identity.",
       "title": "Deployment and human maintenance privilege"
