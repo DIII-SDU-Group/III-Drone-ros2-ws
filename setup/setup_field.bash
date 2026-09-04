@@ -3,10 +3,14 @@
 # deployment/runtime command may still select its target/profile explicitly.
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+WORKSPACE_DIR="$(dirname "$SCRIPT_DIR")"
+export WORKSPACE_DIR
 
-# Reuse the supported workstation toolchain and installed workspace paths.
-# setup_dev does not mutate a target and all values below are process-local.
-source "$SCRIPT_DIR/setup_dev.bash"
+# A field operator shell controls installed remote services through the III CLI.
+# Do not source the development ROS overlay here: it may be absent or stale on a
+# field laptop and is not required for runtime API or receiver operations.
+source "$SCRIPT_DIR/cli_path.bash"
+source "$SCRIPT_DIR/paths.bash"
 
 export CLI_CONFIGURATION="remote"
 export SIMULATION="false"

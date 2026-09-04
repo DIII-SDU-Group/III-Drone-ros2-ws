@@ -673,7 +673,7 @@
       ],
       "path": "docs/deployment-and-field-operations.md",
       "repository": "workspace",
-      "sha256": "a7ca1c16843c3d1d31c823881ed9bcc1a04787fc1b18d5f308047ad796351b96",
+      "sha256": "ff2535febe3fb461ace263065e854f522feb505d7c6ac41a8af41f271bb8cdd6",
       "status": "passed"
     },
     {
@@ -777,7 +777,7 @@
       ],
       "path": "docs/generated/iii-command-reference.md",
       "repository": "workspace",
-      "sha256": "0f4dc99aee76eba8cc11b3136ddbe2eb4e33b0b799fc6aba2ef6534459f41ee3",
+      "sha256": "36b9585a161f784f9f50a0890e213c1dc41dab9d8a328a862ff5fdf32e0fcd0f",
       "status": "passed"
     },
     {
@@ -1197,8 +1197,8 @@
       "status": "passed"
     }
   ],
-  "manifest_id": "da9882697799e4991dbf963b923c6a68abbb5eeddcaeb357230e8612ad0133ca",
-  "review_id": "9033b7a2f63390094425414cdb0b63cdea1d355e583d9c81deaafc295b798ce1",
-  "reviewer": "codex-deployment-acceptance",
+  "manifest_id": "f77133f8d0f8a7d09be144043d4f96099889d7de3c6d7ca3a30a8e7f0ac61634",
+  "review_id": "8fc1daade6d4bff0588200bf7fb1d958cf4b342a14e8e5e74d3e9ea77a7afe4a",
+  "reviewer": "codex",
   "schema": "iii.documentation-review/v1"
 }

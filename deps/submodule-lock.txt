@@ -56,4 +56,4 @@ src/micro_ros_msgs e65ab21bd0733ebff2af6317d573cc584efa5893
 src/Micro-XRCE-DDS-Agent 73622810d984349b80bbac0ef55fc0b694d62222
 src/px4_msgs 5e0e33cc6f192c1ad10548ffb25473fb618b9858
 src/px4-ros2-interface-lib 789db75d5857c4f2bbfa981df5235ee6157b1d29
-tools/III-Drone-CLI a8e5564537da523115b421f98a464d7f7f39ce64
+tools/III-Drone-CLI 29fd0107f6aec3b07018d710abe93f0a52be0449

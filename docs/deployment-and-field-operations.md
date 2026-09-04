@@ -319,6 +319,7 @@ Capture named aircraft state and compare it without mutating source:
 
 ```bash
 iii config capture pull --target real \
+  --snapshot snapshots/<saved-set>.yaml \
   --name <capture-name> --description <purpose> \
   --dry-run --operation-id capture-aircraft-config --output=json
 iii config capture show <capture-id> --output=json

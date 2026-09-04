@@ -184,16 +184,18 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii config capture pull [-h] --target {real,sim} [--snapshot SNAPSHOT]
-                               [--name NAME] [--description DESCRIPTION]
+usage: iii config capture pull [-h] --target {real,sim} --snapshot SNAPSHOT
+                               --name NAME --description DESCRIPTION
                                [--capture-root CAPTURE_ROOT]
 
 options:
   -h, --help            show this help message and exit
   --target {real,sim}
-  --snapshot SNAPSHOT
-  --name NAME
+  --snapshot SNAPSHOT   saved target snapshot ID/path (repeat with --name and
+                        --description)
+  --name NAME           short display name paired with each --snapshot
   --description DESCRIPTION
+                        purpose paired with each --snapshot
   --capture-root CAPTURE_ROOT
 ```
 

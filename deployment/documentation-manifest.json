@@ -1585,7 +1585,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "a7ca1c16843c3d1d31c823881ed9bcc1a04787fc1b18d5f308047ad796351b96",
+      "sha256": "ff2535febe3fb461ace263065e854f522feb505d7c6ac41a8af41f271bb8cdd6",
       "source_of_truth": "docs/deployment-and-field-operations.md"
     },
     {
@@ -1713,7 +1713,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "0f4dc99aee76eba8cc11b3136ddbe2eb4e33b0b799fc6aba2ef6534459f41ee3",
+      "sha256": "36b9585a161f784f9f50a0890e213c1dc41dab9d8a328a862ff5fdf32e0fcd0f",
       "source_of_truth": "deployment/scripts/update_documentation_references.py"
     },
     {
@@ -2309,7 +2309,7 @@
       "source_of_truth": "tools/III-Drone-MCP/README.md"
     }
   ],
-  "manifest_id": "da9882697799e4991dbf963b923c6a68abbb5eeddcaeb357230e8612ad0133ca",
+  "manifest_id": "f77133f8d0f8a7d09be144043d4f96099889d7de3c6d7ca3a30a8e7f0ac61634",
   "policy_schema": "iii.documentation-policy/v1",
   "schema": "iii.documentation-manifest/v1"
 }
