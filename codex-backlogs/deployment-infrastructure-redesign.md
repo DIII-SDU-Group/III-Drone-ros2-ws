@@ -5474,6 +5474,22 @@ satisfy or reclassify the 119 physical matrix rows.
   the older active flight runtime remained unchanged. Missing local trust and a
   non-enrolled SSH identity each failed closed before transfer and were corrected
   by binding the target-enrolled trust projection and provisioning key.
+- The exact-current R59 robustness gate fixed a field shell that inherited stale
+  ROS overlays or selected an older user-installed CLI, made configuration-capture
+  metadata explicit at parse time, and preserved interrupted configuration
+  captures as integrity-checked registry records. The final Jazzy phase suites
+  passed 726 deployment/integration tests with five explicit target/privilege
+  skips and all 250 CLI tests; GC passed 73 backend and 128 frontend tests.
+  Signed release `12cbb19ae19d9e17af2c888e2ba1474ff80f0aa0f50b9696de485eed2bc00109`
+  passed ARM64 ABI/ELF closure, both component inspections, exact impact planning,
+  and GC-before-drone staging without activation or PX4 writes. The first stage
+  transferred 46,258,803 bytes and completed receiver work in 47.40 seconds; an
+  independently retained repeat transferred zero bytes and completed in 7.58
+  seconds, proving the intended idempotent field-update path. The aircraft stayed
+  disarmed, the paired PX4 audit matched, and `micro_ros_agent` settled to
+  `alive, ready`. The 19-finding readiness result remains a valid negative result
+  for deferred camera/mmWave/charger and commissioning gates, not a claimed
+  physical Q131 pass.
 
 #### P5.T1: Commission The First Aircraft From Raw Image
 
@@ -6022,11 +6038,11 @@ Implementation notes (reversible boundary, 2026-08-27):
   passed in 132.49/152.28 seconds, and systemd release switching/recovery passed
   in 12.80 seconds. No physical result is inferred from these suites.
 
-## In-Progress
+## Completed
 
 #### P3.T12: Bind And Verify The Exact PX4 Release
 
-**Status: In-Progress.** Added 2026-09-03 after physical USB inventory showed
+**Status: Completed.** Added 2026-09-03 after physical USB inventory showed
 that compatible-version ranges alone cannot prove the FMU has the release-owned
 firmware, DDS interface, network baseline, and complete parameter defaults.
 
@@ -6072,7 +6088,7 @@ Acceptance:
 - [x] Focused unit/integration tests cover cache hits, all mismatch classes,
       hostile evidence, no-write behavior, idempotent redeploy, and generated
       artifact drift; the Phase 3 suite and target-equivalent checks pass.
-- [ ] Final physical acceptance applies the prepared PX4 candidate through USB,
+- [x] Final physical acceptance applies the prepared PX4 candidate through USB,
       reruns the already-staged III release, and records a healthy Pi-to-PX4
       Ethernet audit plus fresh uXRCE-DDS delivery while disarmed.
 
@@ -6116,11 +6132,17 @@ Tests:
   `reach-charge-leave-experimental` mission. Planning succeeded only for that
   exact selection; omitting the experimental mission failed closed before any
   staging or activation. The full field command retained and validated its
-  operation plan without contacting the aircraft. Final physical USB application,
-  Pi-to-PX4 Ethernet verification, and fresh uXRCE-DDS delivery remain the sole
-  acceptance item left open for this task.
-
-## Completed
+  operation plan without contacting the aircraft. At that checkpoint, physical
+  USB application, Pi-to-PX4 Ethernet verification, and fresh uXRCE-DDS delivery
+  remained open.
+- The 2026-09-04 R59 completion reran the exact paired release audit after the
+  earlier USB firmware/configuration application. `iii px4 release audit` returned
+  `III_PX4_RELEASE_MATCH` while the FMU was disarmed; the receiver reported PX4
+  available/fresh with the expected identity, and a restarted micro-ROS agent
+  reached `alive, ready` over the dedicated Pi-to-PX4 Ethernet link. Two retained
+  no-activation deployments of the already-staged III release made zero PX4 writes;
+  the second transferred zero aircraft bytes. This closes the final acceptance
+  item without claiming camera, mmWave, charger-gripper, arming, or flight evidence.
 
 ### P0: Resolve Architecture And Contracts
 
