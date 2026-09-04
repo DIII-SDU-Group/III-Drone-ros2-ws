@@ -38,8 +38,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-git -C "$WORKSPACE_DIR" submodule status --recursive \
-  | sed -E 's/^[ +-U]?([0-9a-f]{40}) ([^ ]+).*/\2 \1/' \
+# Verify the checked-out submodule commits rather than the superproject index.
+# This prevents a locally advanced but unstaged gitlink from making a stale lock
+# appear valid.
+git -C "$WORKSPACE_DIR" submodule foreach --recursive --quiet \
+  'printf "%s %s\n" "$displaypath" "$(git rev-parse HEAD)"' \
   | sort > "$actual"
 
 grep -v '^#' "$LOCK_FILE" | sed '/^$/d' | sort > "$expected"

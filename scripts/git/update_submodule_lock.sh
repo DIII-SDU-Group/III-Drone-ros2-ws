@@ -34,8 +34,12 @@ fi
   echo "# Submodule dependency lock file for III-Drone-ros2-ws."
   echo "# Format: <path> <commit-sha>"
   echo "# Managed by scripts/git/update_submodule_lock.sh"
-  git -C "$WORKSPACE_DIR" submodule status --recursive \
-    | sed -E 's/^[ +-U]?([0-9a-f]{40}) ([^ ]+).*/\2 \1/' \
+  # `git submodule status` reports the superproject index SHA, even when an
+  # initialized submodule worktree has advanced and the gitlink has not yet
+  # been staged.  This command is explicitly an update-from-current-worktrees
+  # operation, so inventory each checked-out HEAD instead.
+  git -C "$WORKSPACE_DIR" submodule foreach --recursive --quiet \
+    'printf "%s %s\n" "$displaypath" "$(git rev-parse HEAD)"' \
     | sort
 } > "$LOCK_FILE"
 
