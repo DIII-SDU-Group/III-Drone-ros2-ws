@@ -13,6 +13,8 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
+import tempfile
 from typing import Any, Callable, Mapping, TextIO
 
 from iii_deployment.contracts import ContractError, canonical_json, content_identity
@@ -414,7 +416,13 @@ class ActivationTransactionStore:
     a selector document with a mixed tuple.
     """
 
-    def __init__(self, target_root: Path, *, enforce_host_contract: bool | None = None):
+    def __init__(
+        self,
+        target_root: Path,
+        *,
+        enforce_host_contract: bool | None = None,
+        selector_owner: tuple[int, int] | None = None,
+    ):
         self.target_root = target_root.resolve()
         self.enforce_host_contract = (
             self.target_root == Path("/")
@@ -429,9 +437,53 @@ class ActivationTransactionStore:
         self.configuration_selector = (
             self.target_root / "var/lib/iii/configuration/current"
         )
+        self.configuration_working_root = (
+            self.target_root / "var/lib/iii/configuration/working"
+        )
         self.state_root = self.target_root / "var/lib/iii/deployment"
         self.selector_path = self.state_root / "active-selector.json"
         self.transaction_root = self.state_root / "activation-transactions"
+        self.selector_owner = selector_owner
+
+    def _working_configuration(self, checkpoint: Path, checkpoint_id: str) -> Path:
+        """Return a durable writable copy while keeping its checkpoint immutable."""
+
+        destination = self.configuration_working_root / checkpoint_id
+        if destination.exists():
+            if destination.is_symlink() or not destination.is_dir():
+                raise ContractError("configuration working tree is unsafe")
+            return destination
+        self.configuration_working_root.mkdir(parents=True, exist_ok=True)
+        temporary = Path(
+            tempfile.mkdtemp(
+                prefix=f".{checkpoint_id}.", dir=self.configuration_working_root
+            )
+        )
+        try:
+            shutil.copytree(
+                checkpoint,
+                temporary,
+                dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns("checkpoint.json"),
+            )
+            owner = self.selector_owner
+            for path in temporary.rglob("*"):
+                if path.is_symlink():
+                    raise ContractError("configuration checkpoint contains a link")
+                path.chmod(0o770 if path.is_dir() else 0o660)
+                if owner is not None:
+                    os.chown(path, *owner)
+            temporary.chmod(0o770)
+            if owner is not None:
+                os.chown(temporary, *owner)
+            try:
+                os.replace(temporary, destination)
+            except FileExistsError:
+                shutil.rmtree(temporary)
+            return destination
+        except Exception:
+            shutil.rmtree(temporary, ignore_errors=True)
+            raise
 
     def _under(self, path_text: str, root: Path, *, label: str) -> Path:
         path = Path(path_text)
@@ -574,7 +626,12 @@ class ActivationTransactionStore:
             **asdict(selected),
         }
         value["selector_id"] = _identity(value, "selector_id")
-        atomic_document(self.selector_path, value, mode=0o640)
+        atomic_document(
+            self.selector_path,
+            value,
+            mode=0o640,
+            owner=self.selector_owner,
+        )
 
     def switch(
         self,
@@ -606,7 +663,10 @@ class ActivationTransactionStore:
             candidate=candidate,
             checkpoint="code-selector-switched",
         )
-        _atomic_symlink(self.configuration_selector, checkpoint)
+        working = self._working_configuration(
+            checkpoint, candidate.configuration_checkpoint_id
+        )
+        _atomic_symlink(self.configuration_selector, working)
         self._journal(
             operation_id=operation_id,
             previous=previous,
@@ -649,7 +709,10 @@ class ActivationTransactionStore:
             candidate=candidate,
             checkpoint="rollback-code-selector-switched",
         )
-        _atomic_symlink(self.configuration_selector, checkpoint)
+        working = self._working_configuration(
+            checkpoint, previous.configuration_checkpoint_id
+        )
+        _atomic_symlink(self.configuration_selector, working)
         self._write_selector(previous)
         return self._journal(
             operation_id=operation_id,

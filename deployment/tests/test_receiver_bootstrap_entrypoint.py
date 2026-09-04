@@ -37,30 +37,8 @@ def test_receiver_payload_module_entrypoints_invoke_main(
     assert completed.stderr == ""
 
 
-class Candidate:
-    def __init__(self) -> None:
-        self.running = True
-        self.terminated = 0
-        self.killed = 0
-
-    def poll(self):
-        return None if self.running else 0
-
-    def terminate(self):
-        self.terminated += 1
-        self.running = False
-
-    def wait(self, *, timeout):
-        assert timeout == 5
-        return 0
-
-    def kill(self):
-        self.killed += 1
-        self.running = False
-
-
-def test_apply_replaces_candidate_and_stops_final_child(monkeypatch, capsys):
-    candidates = [Candidate(), Candidate()]
+def test_apply_restarts_sandboxed_candidate_unit_and_stops_it(monkeypatch, capsys):
+    commands = []
 
     class Recovery:
         def __init__(self, *_args, restart_receiver, **_kwargs):
@@ -80,15 +58,33 @@ def test_apply_replaces_candidate_and_stops_final_child(monkeypatch, capsys):
         bootstrap, "ReceiverSlotStore", lambda *_args, **_kwargs: object()
     )
     monkeypatch.setattr(bootstrap, "ReceiverRecoveryBootstrap", Recovery)
-    monkeypatch.setattr(bootstrap, "_spawn_candidate", lambda: candidates.pop(0))
+    monkeypatch.setattr(
+        bootstrap.subprocess,
+        "run",
+        lambda command, **kwargs: commands.append((command, kwargs)),
+    )
     monkeypatch.setattr("sys.argv", ["iii-receiver-bootstrap", "--apply"])
 
-    first = candidates[0]
-    second = candidates[1]
     assert bootstrap.main() == 0
     assert json.loads(capsys.readouterr().out)["stage"] == "committed"
-    assert first.terminated == second.terminated == 1
-    assert first.killed == second.killed == 0
+    assert [command for command, _kwargs in commands] == [
+        [
+            "/usr/bin/systemctl",
+            "restart",
+            "iii-deployment-receiver-candidate.service",
+        ],
+        [
+            "/usr/bin/systemctl",
+            "restart",
+            "iii-deployment-receiver-candidate.service",
+        ],
+        [
+            "/usr/bin/systemctl",
+            "stop",
+            "iii-deployment-receiver-candidate.service",
+        ],
+    ]
+    assert all(kwargs == {"check": True} for _command, kwargs in commands)
 
 
 def test_prepare_never_spawns_candidate(monkeypatch, capsys):
@@ -107,7 +103,7 @@ def test_prepare_never_spawns_candidate(monkeypatch, capsys):
     monkeypatch.setattr(bootstrap, "ReceiverRecoveryBootstrap", Recovery)
     monkeypatch.setattr(
         bootstrap,
-        "_spawn_candidate",
+        "_restart_candidate",
         lambda: (_ for _ in ()).throw(
             AssertionError("candidate spawned during prepare")
         ),

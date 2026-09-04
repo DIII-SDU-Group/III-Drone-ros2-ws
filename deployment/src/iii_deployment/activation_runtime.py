@@ -154,12 +154,20 @@ class OnboardControlPlane:
 
     def stop_all_units(self) -> tuple[str, ...]:
         self._systemctl("stop", STOP_TARGET)
-        stopped: list[str] = []
-        for unit in (STOP_TARGET, *self.units):
-            if self.unit_state(unit) not in {"inactive", "failed"}:
-                raise ContractError(f"III unit did not stop: {unit}")
-            stopped.append(unit)
-        return tuple(sorted(stopped))
+        expected = (STOP_TARGET, *self.units)
+        deadline = self.monotonic() + 30.0
+        pending = expected
+        while pending and self.monotonic() < deadline:
+            pending = tuple(
+                unit
+                for unit in expected
+                if self.unit_state(unit) not in {"inactive", "failed"}
+            )
+            if pending:
+                self.sleep(0.1)
+        if pending:
+            raise ContractError("III units did not stop: " + ", ".join(pending))
+        return tuple(sorted(expected))
 
     def start(self, selected: ActivationTuple) -> ControlPlaneProof:
         selected.validate()

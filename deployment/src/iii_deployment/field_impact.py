@@ -108,6 +108,11 @@ def _mission_state(repo: Path, *, head: bool) -> dict[str, dict[str, Any]]:
     return registrations
 
 
+def mission_registry(workspace: Path) -> dict[str, dict[str, Any]]:
+    """Return the current source mission registry for deployment selection."""
+    return _mission_state(workspace / "src/III-Drone-Mission", head=False)
+
+
 def mission_impact(workspace: Path, changed_paths: Sequence[str]) -> dict[str, Any]:
     repo = workspace / "src/III-Drone-Mission"
     before = _mission_state(repo, head=True)

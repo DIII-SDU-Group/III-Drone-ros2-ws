@@ -19,6 +19,7 @@ from iii_deployment.receiver.update import (
     ARCHIVE_NAME,
     MANIFEST_NAME,
     READINESS_SCHEMA,
+    RECEIVER_UPDATE_FILES,
     SIGNATURE_DOMAIN,
     SIGNATURE_NAME,
     SIGNATURE_SCHEMA,
@@ -421,6 +422,25 @@ def test_installed_compatibility_inventory_uses_fixed_authenticated_protocols(tm
         boot_id=lambda: "boot-a",
         wall_clock_trusted=lambda: False,
     ).begin(upload_manifest, release_id="d" * 64, client_id="e" * 64)
+    receiver_id = "a" * 64
+    receiver_partial = (
+        root / "var/lib/iii/incoming" / f"receiver-{receiver_id}.partial"
+    )
+    (receiver_partial / "bundle").mkdir(parents=True)
+    receiver_upload = {
+        "schema": "iii.receiver-update-upload/v1",
+        "upload_id": "0" * 64,
+        "receiver_id": receiver_id,
+        "client_id": "e" * 64,
+        "files": [
+            {"path": f"bundle/{name}", "size": 1, "sha256": "f" * 64}
+            for name in sorted(RECEIVER_UPDATE_FILES)
+        ],
+    }
+    receiver_upload["upload_id"] = content_identity(
+        {key: value for key, value in receiver_upload.items() if key != "upload_id"}
+    )
+    atomic_document(receiver_partial / ".upload-manifest.json", receiver_upload)
     inventory = store.inspect_compatibility_inventory()
     assert inventory.bootstrap_protocol == "1"
     assert inventory.cli_protocol == "1"

@@ -155,6 +155,15 @@ def test_receiver_plans_read_only_then_reconciles_only_a_private_stage(tmp_path:
         tmp_path, contract, release_id=old_release, target_id=target
     )
     source_root = Path(source["path"])
+    working = tmp_path / "working"
+    shutil.copytree(source_root, working, ignore=shutil.ignore_patterns("checkpoint.json"))
+    for path in working.rglob("*"):
+        path.chmod(0o770 if path.is_dir() else 0o660)
+    working.chmod(0o770)
+    tracked_working = working / "parameter_sets/real/tracked/default.yaml"
+    working_document = yaml.safe_load(tracked_working.read_text())
+    working_document["/**"]["ros__parameters"]["/control/dt"] = 0.4
+    tracked_working.write_text(yaml.safe_dump(working_document, sort_keys=False))
     source_inventory = {
         path.relative_to(source_root).as_posix(): path.read_bytes()
         for path in source_root.rglob("*")
@@ -170,6 +179,7 @@ def test_receiver_plans_read_only_then_reconciles_only_a_private_stage(tmp_path:
         checkpoints_root=checkpoints,
         staging_root=tmp_path / "staging",
         operations_root=tmp_path / "operations",
+        active_state_root=working,
         target_id=target,
         runtime_profile="real",
     )
@@ -203,7 +213,7 @@ def test_receiver_plans_read_only_then_reconciles_only_a_private_stage(tmp_path:
     )
     assert (
         yaml.safe_load(tracked.read_text())["/**"]["ros__parameters"]["/control/dt"]
-        == 0.3
+        == 0.4
     )
     assert source_inventory == {
         path.relative_to(source_root).as_posix(): path.read_bytes()

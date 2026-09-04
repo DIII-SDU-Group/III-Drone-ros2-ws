@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import stat
 import tarfile
@@ -682,8 +683,21 @@ class ReceiverSlotStore:
                     value = _read_canonical(
                         manifest_path, label="incoming upload manifest"
                     )
-                    self.registry.validate("bundle-upload", value)
-                    upload_manifests.append(value)
+                    if re.fullmatch(r"[a-f0-9]{64}\.partial", partial.name):
+                        self.registry.validate("bundle-upload", value)
+                        upload_manifests.append(value)
+                    elif re.fullmatch(
+                        r"receiver-[a-f0-9]{64}\.partial", partial.name
+                    ):
+                        self.registry.validate("receiver-update-upload", value)
+                    elif re.fullmatch(
+                        r"backup-[a-f0-9]{64}\.partial", partial.name
+                    ):
+                        self.registry.validate("portable-backup-upload", value)
+                    else:
+                        raise ContractError(
+                            "incoming upload partial has an unsupported identity"
+                        )
                 activity_path = partial / ".upload-activity.json"
                 if activity_path.exists() or activity_path.is_symlink():
                     value = _read_canonical(

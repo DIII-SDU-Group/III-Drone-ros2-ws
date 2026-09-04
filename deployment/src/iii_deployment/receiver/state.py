@@ -69,7 +69,13 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def atomic_bytes(path: Path, raw: bytes, *, mode: int = 0o600) -> None:
+def atomic_bytes(
+    path: Path,
+    raw: bytes,
+    *,
+    mode: int = 0o600,
+    owner: tuple[int, int] | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = path.parent / f".{path.name}.partial-{os.getpid()}"
     if temporary.exists() or temporary.is_symlink():
@@ -82,6 +88,8 @@ def atomic_bytes(path: Path, raw: bytes, *, mode: int = 0o600) -> None:
         mode,
     )
     try:
+        if owner is not None:
+            os.fchown(descriptor, *owner)
         with os.fdopen(descriptor, "wb", closefd=False) as stream:
             stream.write(raw)
             stream.flush()
@@ -97,8 +105,14 @@ def atomic_bytes(path: Path, raw: bytes, *, mode: int = 0o600) -> None:
             temporary.unlink()
 
 
-def atomic_document(path: Path, value: Mapping[str, Any], *, mode: int = 0o600) -> None:
-    atomic_bytes(path, canonical_json(value) + b"\n", mode=mode)
+def atomic_document(
+    path: Path,
+    value: Mapping[str, Any],
+    *,
+    mode: int = 0o600,
+    owner: tuple[int, int] | None = None,
+) -> None:
+    atomic_bytes(path, canonical_json(value) + b"\n", mode=mode, owner=owner)
 
 
 def _identity(value: Mapping[str, Any], field: str) -> str:

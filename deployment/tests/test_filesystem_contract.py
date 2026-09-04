@@ -39,6 +39,32 @@ def test_release_and_persistent_roots_are_disjoint() -> None:
     )
 
 
+def test_forced_command_upload_root_is_private_and_reachable() -> None:
+    value = json.loads(
+        (ROOT / "deployment/filesystem-contract.json").read_text(encoding="utf-8")
+    )
+    paths = {item["path"]: item for item in value["paths"]}
+
+    assert paths["/var/lib/iii"]["mode"] == "0751"
+    assert paths["/var/lib/iii/incoming"] == {
+        "path": "/var/lib/iii/incoming",
+        "owner": "iii-deploy",
+        "group": "iii-deploy",
+        "mode": "0700",
+        "kind": "unprivileged-upload",
+        "persistence": "bounded-partial",
+    }
+    assert paths["/run/iii"]["mode"] == "0751"
+    assert paths["/run/iii/deployment-upload"] == {
+        "path": "/run/iii/deployment-upload",
+        "owner": "iii-deploy",
+        "group": "iii-deploy",
+        "mode": "0700",
+        "kind": "unprivileged-upload-lock",
+        "persistence": "recreated-on-boot",
+    }
+
+
 def test_storage_projection_enforces_greater_of_absolute_or_percent_reserve() -> None:
     projection = StorageProjection(1, 2, 3, 4, 5, 6)
     assert (

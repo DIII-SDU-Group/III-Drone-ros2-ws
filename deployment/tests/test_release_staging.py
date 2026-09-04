@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import shutil
+import stat
 import struct
 from types import SimpleNamespace
 
@@ -52,6 +53,44 @@ def machine_enrollment(public_key: str, character: int) -> dict:
         },
         registry=REGISTRY,
     )
+
+
+def test_freeze_release_uses_signed_executable_mode(tmp_path: Path) -> None:
+    store = ReleaseStore(
+        tmp_path / "target",
+        bundle_trust={"schema_version": "1", "store_type": "iii.trusted-signers", "signers": []},
+        status_trust={"schema_version": "1", "store_type": "iii.trusted-signers", "signers": []},
+        registry=REGISTRY,
+        host_limits={
+            "maximum_archive_bytes": 1,
+            "maximum_extracted_bytes": 1,
+            "maximum_files": 1,
+            "maximum_path_bytes": 255,
+            "maximum_path_depth": 32,
+        },
+        minimum_reserve_bytes=0,
+        minimum_reserve_percent=0,
+    )
+    release = tmp_path / "release"
+    executable = release / "python/cp312/site-packages/mavsdk/bin/mavsdk_server"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"server")
+    executable.chmod(0o440)
+
+    store._freeze_release(
+        release,
+        signed_content=[
+            {
+                "path": "payload/python/cp312/site-packages/mavsdk/bin/mavsdk_server",
+                "type": "file",
+                "mode": 0o755,
+                "size": 6,
+                "sha256": "0" * 64,
+            }
+        ],
+    )
+
+    assert stat.S_IMODE(executable.stat().st_mode) == 0o550
 
 
 def test_receiver_uses_access_derived_field_signer_state(
@@ -194,10 +233,12 @@ class ReleaseCases:
         }
         if release_class == "field-development":
             manifest["source"]["branch"] = "deployment-infrastructure-redesign"
+            manifest["mission_catalog"]["scope"] = "field"
             manifest["qualification"].update(
                 explicit_action=False,
                 tag_on_release=False,
                 tests_complete=False,
+                evidence_sha256=None,
                 evidence_complete=False,
             )
         case_root = self.root / "bundles" / name
@@ -271,6 +312,17 @@ class ReleaseCases:
         return json.loads(self.status_store.read_text(encoding="utf-8"))
 
     def store(self, target: Path, **kwargs) -> ReleaseStore:
+        # Keep release-state tests independent of the host/container quota.
+        # Production uses shutil.disk_usage through ReleaseStore; individual
+        # tests override this deterministic ample filesystem where needed.
+        kwargs.setdefault(
+            "disk_usage",
+            lambda _path: SimpleNamespace(
+                total=10 * 1024**3,
+                used=1024**3,
+                free=9 * 1024**3,
+            ),
+        )
         return ReleaseStore(
             target,
             bundle_trust=self.bundle_store,
@@ -346,7 +398,18 @@ def _receiver_request(
 def test_receiver_engine_stages_a_real_signed_bundle_and_status_chain(
     tmp_path: Path,
     cases: ReleaseCases,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Receiver input claiming has its own storage check.  Model an ample
+    # target filesystem rather than inheriting the development-container quota.
+    monkeypatch.setattr(
+        "iii_deployment.receiver.engine.shutil.disk_usage",
+        lambda _path: SimpleNamespace(
+            total=10 * 1024**3,
+            used=1024**3,
+            free=9 * 1024**3,
+        ),
+    )
     case = cases.bundle(
         "receiver-e2e",
         release_id="a" * 64,

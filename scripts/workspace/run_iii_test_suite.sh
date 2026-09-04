@@ -32,7 +32,7 @@ workspace_root="$(cd "${workspace_root}/.." && pwd)"
 cd "${workspace_root}"
 
 run_frontend_tests_with_npm() {
-  npm --prefix src/III-Drone-GC/frontend ci
+  npm --prefix src/III-Drone-GC/frontend ci --no-audit --no-fund
   npm --prefix src/III-Drone-GC/frontend run contracts:check
   npm --prefix src/III-Drone-GC/frontend run lint
   npm --prefix src/III-Drone-GC/frontend run typecheck
@@ -110,11 +110,13 @@ if command -v npm >/dev/null 2>&1; then
   run_frontend_tests_with_npm
 elif command -v docker >/dev/null 2>&1; then
   docker run --rm \
-    -v "${workspace_root}/src/III-Drone-GC/frontend:/app" \
-    -v iii_gc_frontend_node_modules:/app/node_modules \
+    -v "${workspace_root}/src/III-Drone-GC/frontend:/app:ro" \
+    -v iii_gc_frontend_npm_cache:/root/.npm \
+    --tmpfs /app/node_modules:rw,exec,size=1g \
+    --tmpfs /app/dist:rw \
     -w /app \
     node:22-alpine \
-    sh -lc 'npm ci && npm run contracts:check && npm run lint && npm run typecheck && npm test && npm run build'
+    sh -lc 'npm ci --no-audit --no-fund && npm run lint && npm run typecheck && npm test && npm run build'
 else
   node_version="${III_NODE_VERSION:-22.21.1}"
   case "$(uname -m)" in

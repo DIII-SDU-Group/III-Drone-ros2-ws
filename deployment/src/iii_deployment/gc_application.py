@@ -13,6 +13,7 @@ from shutil import copyfile, disk_usage, rmtree
 import stat
 import subprocess
 import tempfile
+import time
 from typing import Any, Callable, Iterator, Mapping, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -84,8 +85,10 @@ def _atomic_bytes(path: Path, value: bytes, *, mode: int = 0o600) -> None:
             temporary.unlink()
 
 
-def _atomic_document(path: Path, value: Mapping[str, Any]) -> None:
-    _atomic_bytes(path, canonical_json(value) + b"\n")
+def _atomic_document(
+    path: Path, value: Mapping[str, Any], *, mode: int = 0o600
+) -> None:
+    _atomic_bytes(path, canonical_json(value) + b"\n", mode=mode)
 
 
 def _fsync_directory(path: Path) -> None:
@@ -198,6 +201,8 @@ class GCApplicationStore:
         operational_policy_path: Path,
         runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
         health_opener: Callable[..., Any] = urlopen,
+        monotonic: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
         disk_usage_provider: Callable[[Path], Any] = disk_usage,
         now: Callable[[], datetime] | None = None,
         failpoint: Callable[[str], None] | None = None,
@@ -218,11 +223,26 @@ class GCApplicationStore:
         self.releases_root = self.application_root / "releases"
         self.qgc_slots_root = self.application_root / "qgc/slots"
         self.control_root = self.state_root / "control"
-        for path in (self.releases_root, self.qgc_slots_root, self.control_root):
+        for path in (self.releases_root, self.qgc_slots_root):
             if create_roots:
                 path.mkdir(parents=True, exist_ok=True, mode=0o700)
             elif not path.is_dir() or path.is_symlink():
                 raise GCApplicationError(f"GC application boundary is missing: {path}")
+        # This is the sole host path mounted into the unprivileged, read-only
+        # browser proxy.  It contains only the integrity-protected maintenance
+        # marker, never credentials or application state.  The proxy must be
+        # able to read it in order to fail closed during an update.
+        if self.control_root.is_symlink():
+            raise GCApplicationError(
+                f"GC application boundary is linked: {self.control_root}"
+            )
+        if create_roots:
+            self.control_root.mkdir(parents=True, exist_ok=True, mode=0o755)
+            self.control_root.chmod(0o755)
+        elif not self.control_root.is_dir():
+            raise GCApplicationError(
+                f"GC application boundary is missing: {self.control_root}"
+            )
         self.state_path = self.state_root / "application-state.json"
         self.journal_path = self.state_root / "application-journal.json"
         self.lock_path = self.state_root / "application.lock"
@@ -251,6 +271,8 @@ class GCApplicationStore:
         self.bundle_limits = load_bundle_limits(operational_policy_path)
         self.runner = runner
         self.health_opener = health_opener
+        self.monotonic = monotonic
+        self.sleep = sleep
         self.disk_usage_provider = disk_usage_provider
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.failpoint = failpoint or (lambda _phase: None)
@@ -407,7 +429,7 @@ class GCApplicationStore:
                 "enabled": True,
             }
             value["drain_id"] = content_identity(value)
-            _atomic_document(path, value)
+            _atomic_document(path, value, mode=0o644)
         elif path.exists() and not path.is_symlink():
             path.unlink()
             _fsync_directory(path.parent)
@@ -554,9 +576,16 @@ class GCApplicationStore:
     def prune_cache(self, *, incoming_bytes: int = 0) -> dict[str, Any]:
         quota = self.policy["cache"]["non_protected_quota_bytes"]
         usage = self.disk_usage_provider(self.cache_root)
+        # The reserve protects the managed GC application store, not unrelated
+        # research data elsewhere on a large operator workstation.  Scale for
+        # small disks, but cap the percentage reserve at the policy's explicit
+        # GC-storage maximum.
         reserve = max(
             self.policy["cache"]["minimum_free_bytes"],
-            int(usage.total * self.policy["cache"]["minimum_free_fraction"]),
+            min(
+                int(usage.total * self.policy["cache"]["minimum_free_fraction"]),
+                self.policy["cache"]["maximum_free_bytes"],
+            ),
         )
         entries = self._cache_entries()
         removable = sorted(
@@ -906,20 +935,25 @@ class GCApplicationStore:
             ):
                 raise GCApplicationError(f"GC {image['name']} OCI archive changed")
             tag = f"iii-drone-gc-{image['name']}:{release_id}"
-            self._run(
-                [
-                    "skopeo",
-                    "copy",
-                    "--preserve-digests",
-                    f"oci-archive:{archive}",
-                    f"docker-daemon:{tag}",
-                ]
-            )
-            inspected = self._run(
-                ["skopeo", "inspect", "--format", "{{.Digest}}", f"docker-daemon:{tag}"]
-            ).stdout.strip()
-            if inspected != image["manifest_digest"]:
-                raise GCApplicationError(f"GC {image['name']} imported digest differs")
+            # Noble's supported skopeo (1.4) cannot use the modern Docker
+            # daemon API transport.  Convert the already hash-verified OCI
+            # archive locally, then let Docker's native loader import it.
+            # The release archive remains the integrity boundary; the final
+            # inspect proves the requested tag was actually installed.
+            with tempfile.TemporaryDirectory(
+                prefix=f".{image['name']}-docker-archive-", dir=slot
+            ) as temporary:
+                docker_archive = Path(temporary) / "image.tar"
+                self._run(
+                    [
+                        "skopeo",
+                        "copy",
+                        f"oci-archive:{archive}",
+                        f"docker-archive:{docker_archive}:{tag}",
+                    ]
+                )
+                self._run(["docker", "load", "--input", str(docker_archive)])
+            self._run(["docker", "image", "inspect", tag])
             imported.append(
                 {
                     "name": image["name"],
@@ -1108,19 +1142,30 @@ class GCApplicationStore:
 
     def _health(self) -> None:
         for url in self.policy["application"]["health_urls"]:
-            request = Request(url, headers={"Accept": "application/json"})
-            try:
-                with self.health_opener(request, timeout=10) as response:
-                    response.read(1024 * 1024 + 1)
-                    status_code = getattr(response, "status", 200)
-            except (HTTPError, URLError, TimeoutError, OSError) as exc:
+            # A systemd target's Wants= units start asynchronously.  Do not
+            # undo a valid selector merely because the first TCP probe races
+            # their container startup; wait a bounded, deterministic window.
+            deadline = self.monotonic() + 20.0
+            failure: Exception | None = None
+            while self.monotonic() < deadline:
+                request = Request(url, headers={"Accept": "application/json"})
+                try:
+                    with self.health_opener(request, timeout=2) as response:
+                        response.read(1024 * 1024 + 1)
+                        status_code = getattr(response, "status", 200)
+                    if 200 <= status_code < 400:
+                        failure = None
+                        break
+                    failure = GCApplicationError(
+                        f"GC application health returned HTTP {status_code}"
+                    )
+                except (HTTPError, URLError, TimeoutError, OSError) as exc:
+                    failure = exc
+                self.sleep(0.25)
+            if failure is not None:
                 raise GCApplicationError(
-                    f"GC application health failed at {url}: {exc}"
-                ) from exc
-            if not 200 <= status_code < 400:
-                raise GCApplicationError(
-                    f"GC application health returned HTTP {status_code}"
-                )
+                    f"GC application health failed at {url}: {failure}"
+                ) from failure
 
     def _restore_selectors(
         self, previous_release: str | None, previous_qgc: str | None
@@ -1299,6 +1344,12 @@ class GCApplicationStore:
                         self._sync_cache_protection(restored)
                     if previous is not None:
                         self._service("restart", self.policy["application"]["gc_unit"])
+                    else:
+                        # No prior selector exists.  Stop the candidate units
+                        # before removing their ConditionPathExists input so a
+                        # failed first activation cannot leave a proxy running
+                        # against a now-unselected release.
+                        self._service("stop", self.policy["application"]["gc_unit"])
                     if qgc_was_running:
                         self._service("start", self.policy["application"]["qgc_unit"])
                     journal = self._transition(journal, "rolled-back")
@@ -1343,6 +1394,8 @@ class GCApplicationStore:
             self._sync_cache_protection(restored)
         if journal["previous_release_id"] is not None:
             self._service("restart", self.policy["application"]["gc_unit"])
+        else:
+            self._service("stop", self.policy["application"]["gc_unit"])
         if journal["qgc_was_running"]:
             self._service("start", self.policy["application"]["qgc_unit"])
         self._journal(None)

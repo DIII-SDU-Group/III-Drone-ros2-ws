@@ -20,6 +20,7 @@ class ReceiverConfigurationReconciler:
         checkpoints_root: Path,
         staging_root: Path,
         operations_root: Path,
+        active_state_root: Path | None = None,
         target_id: str,
         runtime_profile: str,
     ) -> None:
@@ -27,6 +28,9 @@ class ReceiverConfigurationReconciler:
         self.checkpoints_root = checkpoints_root.absolute()
         self.staging_root = staging_root.absolute()
         self.operations_root = operations_root.absolute()
+        self.active_state_root = (
+            active_state_root.absolute() if active_state_root is not None else None
+        )
         self.target_id = target_id
         self.runtime_profile = runtime_profile
         if runtime_profile not in {"real", "opti_track"}:
@@ -68,7 +72,7 @@ class ReceiverConfigurationReconciler:
 
     def _inputs(
         self, *, release_id: str, source_checkpoint_id: str
-    ) -> tuple[Path, Path, Path, dict[str, Any]]:
+    ) -> tuple[Path, Path, Path, Path, dict[str, Any]]:
         api = self._api()
         source = self._checkpoint(source_checkpoint_id)
         source_manifest = api.verify_configuration_checkpoint(source)
@@ -96,7 +100,13 @@ class ReceiverConfigurationReconciler:
             if retained.is_dir() and not retained.is_symlink()
             else self._contract_root(old_release_id)
         )
-        return source, old_root, self._contract_root(release_id), source_manifest
+        state = source
+        if self.active_state_root is not None and self.active_state_root.exists():
+            active = self.active_state_root.resolve(strict=True)
+            if active.is_symlink() or not active.is_dir():
+                raise ContractError("active configuration state is unsafe")
+            state = active
+        return source, state, old_root, self._contract_root(release_id), source_manifest
 
     def preflight(
         self,
@@ -107,22 +117,27 @@ class ReceiverConfigurationReconciler:
         decisions: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         api = self._api()
-        source, old_root, new_root, source_manifest = self._inputs(
-            release_id=release_id, source_checkpoint_id=source_checkpoint_id
-        )
-        plan = api.plan_reconciliation(
-            old_immutable_root=old_root,
-            new_immutable_root=new_root,
-            writable_state_root=source,
-            operations_root=self.operations_root,
-            operation_id=operation_id,
-            runtime_profile=self.runtime_profile,
-            target_id=self.target_id,
-            old_release_id=source_manifest["release_id"],
-            new_release_id=release_id,
-            mode="receiver-staged",
-            purpose="activation",
-        )
+        try:
+            source, state, old_root, new_root, source_manifest = self._inputs(
+                release_id=release_id, source_checkpoint_id=source_checkpoint_id
+            )
+            plan = api.plan_reconciliation(
+                old_immutable_root=old_root,
+                new_immutable_root=new_root,
+                writable_state_root=state,
+                operations_root=self.operations_root,
+                operation_id=operation_id,
+                runtime_profile=self.runtime_profile,
+                target_id=self.target_id,
+                old_release_id=source_manifest["release_id"],
+                new_release_id=release_id,
+                mode="receiver-staged",
+                purpose="activation",
+            )
+        except api.ReconciliationError as exc:
+            raise ContractError(
+                f"configuration reconciliation contract rejected: {exc}"
+            ) from exc
         normalized_decisions = dict(decisions or {})
         if plan.review_required and not normalized_decisions:
             return {
@@ -142,6 +157,7 @@ class ReceiverConfigurationReconciler:
         predicted = api.plan_reconciled_checkpoint(
             plan,
             source_checkpoint=source,
+            source_state_root=state,
             checkpoint_root=self.checkpoints_root,
             decisions=normalized_decisions,
         )
@@ -203,7 +219,7 @@ class ReceiverConfigurationReconciler:
                 "configuration reconciliation preflight is unresolved: "
                 + "; ".join(preflight["rejection_reasons"])
             )
-        source, old_root, new_root, source_manifest = self._inputs(
+        source, state, old_root, new_root, source_manifest = self._inputs(
             release_id=release_id, source_checkpoint_id=source_checkpoint_id
         )
         stage = self.staging_root / operation_id
@@ -214,6 +230,7 @@ class ReceiverConfigurationReconciler:
         )
         staged_state = api.materialize_receiver_stage(
             source_checkpoint=source,
+            source_state_root=state,
             stage_root=stage,
             operation_id=operation_id,
             target_id=self.target_id,

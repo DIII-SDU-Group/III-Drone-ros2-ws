@@ -85,7 +85,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["net_cfg_path", "net_cfg_sha256", "extras_path", "extras_sha256"],
       "properties": {
-        "net_cfg_path": {"const": "/fs/microsd/net.cfg"},
+        "net_cfg_path": {"const": "/fs/microsd/etc/iii-network-baseline.cfg"},
         "net_cfg_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "extras_path": {"const": "/fs/microsd/etc/extras.txt"},
         "extras_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}

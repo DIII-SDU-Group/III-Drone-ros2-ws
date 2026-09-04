@@ -332,6 +332,34 @@ class PX4ParameterStore:
             raise PX4ParameterError("PX4 parameter snapshot count changed")
         return value
 
+    def retain_snapshot(self, snapshot: Mapping[str, Any]) -> dict[str, Any]:
+        """Persist a schema-validated complete inventory captured by the Pi.
+
+        The ground-control host must not bypass the deployed topology to reach
+        the FMU.  Receiver-owned Ethernet capture is therefore imported only
+        after its complete content identity and local schema validation agree.
+        """
+        value = dict(snapshot)
+        self.registry.validate("px4-parameter-snapshot", value)
+        snapshot_id = value.get("snapshot_id")
+        if not isinstance(snapshot_id, str) or not HASH.fullmatch(snapshot_id):
+            raise PX4ParameterError("PX4 snapshot identity is invalid")
+        expected = content_identity(
+            {
+                "profile": value["profile"],
+                "target": value["target"],
+                "parameter_count": value["parameter_count"],
+                "parameters": value["parameters"],
+            }
+        )
+        if snapshot_id != expected:
+            raise PX4ParameterError("PX4 receiver snapshot content changed")
+        destination = self.snapshot_root / f"{snapshot_id}.json"
+        if destination.exists():
+            return self.load_snapshot(snapshot_id)
+        _atomic_json(destination, value)
+        return self.load_snapshot(snapshot_id)
+
     def compare(self, profile: str, snapshot_id: str) -> dict[str, Any]:
         manifest = self.manifest(profile)
         snapshot = self.load_snapshot(snapshot_id)
@@ -869,6 +897,21 @@ class MavlinkParameterAdapter:
         )
         self.timeout = timeout
         self._status: dict[str, Any] | None = None
+        self._ftp_sequence = 0
+        self._px4_system: int | None = None
+        self._px4_component: int | None = None
+
+    def _target_ids(self) -> tuple[int, int]:
+        """Use the heartbeat source, not pymavlink's UDP broadcast default."""
+
+        return (
+            self._px4_system
+            if self._px4_system is not None
+            else int(self.connection.target_system),
+            self._px4_component
+            if self._px4_component is not None
+            else int(self.connection.target_component),
+        )
 
     @staticmethod
     def _decode(value: float, mav_type: int) -> int | float:
@@ -918,9 +961,10 @@ class MavlinkParameterAdapter:
 
     def _firmware(self) -> tuple[str, str | None]:
         command = self.mavutil.mavlink.MAV_CMD_REQUEST_MESSAGE
+        target_system, target_component = self._target_ids()
         self.connection.mav.command_long_send(
-            self.connection.target_system,
-            self.connection.target_component,
+            target_system,
+            target_component,
             command,
             0,
             self.mavutil.mavlink.MAVLINK_MSG_ID_AUTOPILOT_VERSION,
@@ -944,6 +988,10 @@ class MavlinkParameterAdapter:
 
     def status(self) -> Mapping[str, Any]:
         heartbeat = self._heartbeat()
+        source_system = getattr(heartbeat, "get_srcSystem", lambda: None)()
+        source_component = getattr(heartbeat, "get_srcComponent", lambda: None)()
+        self._px4_system = int(source_system or self.connection.target_system)
+        self._px4_component = int(source_component or self.connection.target_component)
         version, commit = self._firmware()
         self._status = {
             "connected": True,
@@ -951,18 +999,103 @@ class MavlinkParameterAdapter:
                 int(heartbeat.base_mode)
                 & int(self.mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
             ),
-            "system_id": int(self.connection.target_system),
-            "component_id": int(self.connection.target_component),
+            "system_id": self._px4_system,
+            "component_id": self._px4_component,
             "firmware_version": version,
             "firmware_commit": commit,
         }
         return dict(self._status)
 
-    def read_text_file(self, path: str) -> bytes:
-        """Read one fixed PX4 SD configuration file through the MAVLink shell."""
-
-        if path not in {"/fs/microsd/net.cfg", "/fs/microsd/etc/extras.txt"}:
+    @staticmethod
+    def _release_owned_file(path: str) -> None:
+        if path not in {
+            "/fs/microsd/net.cfg",
+            "/fs/microsd/etc/iii-network-baseline.cfg",
+            "/fs/microsd/etc/extras.txt",
+        }:
             raise PX4ParameterError("PX4 shell read path is not release-owned")
+
+    def _ftp_request(
+        self, *, opcode: int, session: int, offset: int, data: bytes, size: int | None = None
+    ) -> tuple[int, int, int, bytes]:
+        """Issue one MAVFTP request and return its response header and data.
+
+        This deliberately implements only the read-only commands needed to
+        attest release-owned SD artifacts.  It never exposes arbitrary file
+        access through the receiver.
+        """
+        request_size = len(data) if size is None else size
+        if len(data) > 239 or not 0 <= request_size <= 239:
+            raise PX4ParameterError("PX4 MAVFTP request is too large")
+        sequence = self._ftp_sequence
+        self._ftp_sequence = (sequence + 1) & 0xFFFF
+        payload = (
+            struct.pack("<HBBBBBBI", sequence, session, opcode, request_size, 0, 0, 0, offset)
+            + data
+            + bytes(239 - len(data))
+        )
+        target_system, target_component = self._target_ids()
+        self.connection.mav.file_transfer_protocol_send(
+            0,
+            target_system,
+            target_component,
+            payload,
+        )
+        deadline = time.monotonic() + min(self.timeout, 8)
+        while time.monotonic() < deadline:
+            message = self.connection.recv_match(
+                type="FILE_TRANSFER_PROTOCOL", blocking=True, timeout=0.25
+            )
+            if message is None:
+                continue
+            raw = bytes(message.payload)
+            if len(raw) != 251:
+                continue
+            _, response_session, response_opcode, size, request_opcode, _, _, response_offset = struct.unpack(
+                "<HBBBBBBI", raw[:12]
+            )
+            # PX4 advances the reply sequence number; request opcode is the
+            # protocol-level correlation field and is authoritative here.
+            if request_opcode != opcode:
+                continue
+            if size > 239:
+                raise PX4ParameterError("PX4 MAVFTP response is malformed")
+            if response_opcode == 128:  # kRspAck
+                return response_session, response_opcode, response_offset, raw[12 : 12 + size]
+            if response_opcode == 129:  # kRspNak
+                code = raw[12] if size else None
+                raise PX4ParameterError(f"PX4 MAVFTP request rejected (code={code})")
+        raise PX4ParameterError("PX4 MAVFTP request timed out")
+
+    def _read_text_file_ftp(self, path: str) -> bytes:
+        self._release_owned_file(path)
+        session, _, _, _ = self._ftp_request(
+            opcode=4, session=0, offset=0, data=path.encode("ascii")
+        )
+        output = bytearray()
+        try:
+            offset = 0
+            while True:
+                _, _, _, block = self._ftp_request(
+                    opcode=5, session=session, offset=offset, data=b"", size=239
+                )
+                if not block:
+                    break
+                output.extend(block)
+                if len(output) > 65536:
+                    raise PX4ParameterError("PX4 SD configuration exceeds size limit")
+                offset += len(block)
+                if len(block) < 239:
+                    break
+        finally:
+            try:
+                self._ftp_request(opcode=1, session=session, offset=0, data=b"")
+            except PX4ParameterError:
+                pass
+        return bytes(output)
+
+    def _read_text_file_shell(self, path: str) -> bytes:
+        self._release_owned_file(path)
         begin, end = "III_FILE_BEGIN", "III_FILE_END"
         command = f"echo {begin}; cat {path}; echo {end}\n"
         flags = (
@@ -1003,6 +1136,15 @@ class MavlinkParameterAdapter:
         if begin_marker not in normalized or end_marker not in normalized:
             raise PX4ParameterError("PX4 SD configuration read timed out")
         return normalized.split(begin_marker, 1)[1].split(end_marker, 1)[0] + b"\n"
+
+    def read_text_file(self, path: str) -> bytes:
+        """Read one fixed release-owned PX4 SD file via FTP, then shell fallback."""
+
+        self._release_owned_file(path)
+        try:
+            return self._read_text_file_ftp(path)
+        except (AttributeError, OSError, PX4ParameterError):
+            return self._read_text_file_shell(path)
 
     def pull_all(self) -> Sequence[Mapping[str, Any]]:
         self.connection.mav.param_request_list_send(

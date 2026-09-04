@@ -69,6 +69,7 @@ COMPATIBILITY = {
     "upload_manifest_schemas": ["iii.bundle-upload/v1"],
 }
 RECEIVER_SITE_PACKAGES = "lib/python3.12/site-packages"
+RECEIVER_PYTHON_VERSION = (3, 12)
 MAX_RECEIVER_PAYLOAD_FILES = 100_000
 MAX_RECEIVER_PAYLOAD_BYTES = 512 * 1024**2
 RECEIVER_MODULES = {
@@ -80,6 +81,34 @@ RECEIVER_MODULES = {
 
 class ProvisioningArtifactError(ContractError):
     code = "III_HOST_PROVISION_ARTIFACT_ERROR"
+
+
+def _require_receiver_python(python: Path) -> None:
+    """Fail before artifact creation when the builder ABI cannot match Noble."""
+
+    try:
+        result = subprocess.run(
+            [
+                str(python),
+                "-c",
+                "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')",
+            ],
+            check=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ProvisioningArtifactError(
+            "cannot authenticate the Python build executable"
+        ) from exc
+    observed = result.stdout.strip()
+    expected = ".".join(str(part) for part in RECEIVER_PYTHON_VERSION)
+    if observed != expected:
+        raise ProvisioningArtifactError(
+            f"receiver artifacts require Python {expected}; observed {observed or 'no version'}"
+        )
 
 
 def _sha256(path: Path) -> str:
@@ -189,6 +218,7 @@ def inspect_materialization(
     python = python_executable.expanduser().absolute()
     if not python.is_file() or not os.access(python, os.X_OK):
         raise ProvisioningArtifactError("Python build executable is unavailable")
+    _require_receiver_python(python)
     try:
         address = ipaddress.ip_address(target)
         network = ipaddress.ip_network(operator_cidr, strict=True)
@@ -665,6 +695,7 @@ def inspect_receiver_update_materialization(
     generation: int,
     version: str,
     schema_root: Path,
+    python_executable: Path | None = None,
 ) -> dict[str, Any]:
     output = output_root.expanduser().absolute()
     _require_ignored(output)
@@ -778,7 +809,7 @@ def inspect_receiver_update_materialization(
         )
     if not schema_files:
         raise ProvisioningArtifactError("receiver update schema root is empty")
-    return {
+    inspection = {
         "output_root": str(output),
         "provisioning_root": str(source),
         "source_record_id": record["record_id"],
@@ -797,10 +828,23 @@ def inspect_receiver_update_materialization(
         "generation": generation,
         "version": version,
     }
+    if python_executable is not None:
+        python = python_executable.expanduser().absolute()
+        if not python.is_file() or not os.access(python, os.X_OK):
+            raise ProvisioningArtifactError("Python build executable is unavailable")
+        _require_receiver_python(python)
+        inspection["python_executable"] = str(python)
+        inspection["wheelhouse_source"] = "current-workspace"
+    else:
+        inspection["wheelhouse_source"] = "provisioning-snapshot"
+    return inspection
 
 
 def materialize_receiver_update(
-    inspection: Mapping[str, Any], *, operation_id: str
+    inspection: Mapping[str, Any],
+    *,
+    operation_id: str,
+    wheelhouse_builder: Callable[..., list[dict[str, Any]]] = build_receiver_wheelhouse,
 ) -> dict[str, Any]:
     output = Path(str(inspection["output_root"]))
     partial = output.with_name(f".{output.name}.partial-{uuid.uuid4().hex}")
@@ -813,6 +857,11 @@ def materialize_receiver_update(
         generation=int(inspection["generation"]),
         version=str(inspection["version"]),
         schema_root=Path(str(inspection["schema_root"])),
+        python_executable=(
+            Path(str(inspection["python_executable"]))
+            if "python_executable" in inspection
+            else None
+        ),
     )
     if current != dict(inspection):
         raise ProvisioningArtifactError(
@@ -823,11 +872,20 @@ def materialize_receiver_update(
         workspace = Path(str(inspection["workspace_root"]))
         schemas = Path(str(inspection["schema_root"]))
         registry = ContractRegistry(schemas)
+        wheelhouse = Path(str(inspection["wheelhouse"]))
+        if inspection.get("wheelhouse_source") == "current-workspace":
+            wheelhouse = partial / "artifacts/receiver-wheelhouse"
+            wheelhouse.parent.mkdir(parents=True, mode=0o700)
+            wheelhouse_builder(
+                wheelhouse,
+                python_executable=Path(str(inspection["python_executable"])),
+                workspace_root=workspace,
+            )
         payload = _receiver_payload(
             partial,
             workspace,
             schemas,
-            Path(str(inspection["wheelhouse"])),
+            wheelhouse,
         )
         bundle = partial / "bundle"
         manifest = package_receiver_update(

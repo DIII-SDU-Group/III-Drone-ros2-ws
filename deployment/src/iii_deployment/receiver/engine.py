@@ -1865,9 +1865,15 @@ class ReceiverEngine:
         activation_safety = None
         safety_provider = getattr(self.activation_coordinator, "safety_provider", None)
         if callable(safety_provider):
-            observation = safety_provider()
-            observation.validate()
-            activation_safety = observation.as_document()
+            try:
+                observation = safety_provider()
+                observation.validate()
+                activation_safety = observation.as_document()
+            except ContractError:
+                # A freshly provisioned host has no runtime-authored safety
+                # observation yet. Status must remain available so operators can
+                # stage the first release and diagnose that explicit missing gate.
+                activation_safety = None
         backup_status = (
             self.backup_controller.status()
             if self.backup_controller is not None

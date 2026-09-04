@@ -28,6 +28,7 @@ from iii_deployment.release_pipeline import (
     package_documentation,
 )
 from iii_deployment.signers import generate_signer
+from iii_deployment.source import provenance_markdown
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ContractRegistry(ROOT / "deployment/schemas/v1")
@@ -656,6 +657,91 @@ def test_manifest_is_derived_from_pinned_payload_policy_and_signer(
         manifest["documentation"]["operator_manual"]
         == "docs/deployment-and-field-operations.md"
     )
+    assert manifest["release_id"] == content_identity(
+        {k: v for k, v in manifest.items() if k != "release_id"}
+    )
+
+
+def test_field_manifest_is_source_bound_unqualified_and_field_scoped(
+    pipeline_case: dict,
+) -> None:
+    case = pipeline_case
+    snapshot = case["snapshot_value"]
+    case["provenance"].write_text(provenance_markdown(snapshot), encoding="utf-8")
+    catalog_path = (
+        case["drone"]
+        / "install/iii_drone_mission/share/iii_drone_mission/mission_catalog/catalog.json"
+    )
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog["scope"] = "field"
+    catalog["field_selection"] = {
+        "included_experimental": [],
+        "warning": None,
+    }
+    catalog["catalog_hash"] = "sha256:" + content_identity(
+        {key: value for key, value in catalog.items() if key != "catalog_hash"}
+    )
+    catalog_raw = canonical_json(catalog) + b"\n"
+    catalog_path.write_bytes(catalog_raw)
+    catalog_path.with_name("catalog.sha256").write_text(
+        hashlib.sha256(catalog_raw).hexdigest() + "  catalog.json\n"
+    )
+    project_path = catalog_path.with_name("groot2-project.json")
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project["catalog_hash"] = catalog["catalog_hash"]
+    project_path.write_bytes(canonical_json(project) + b"\n")
+    # The mission reduction changes the retained install-tree identity.
+    build_record = json.loads(case["records"]["drone"].read_text(encoding="utf-8"))
+    # Dirty shared-contract changes require both impact domains in the ARM
+    # build even though the native GC payload has its own independent record.
+    build_record["components"] = ["drone", "gc"]
+    build_record["install_sha256"] = _tree_identity(
+        case["drone"] / "install"
+    )
+    build_record["build_id"] = content_identity(
+        {key: value for key, value in build_record.items() if key != "build_id"}
+    )
+    _canonical(case["records"]["drone"], build_record)
+    key = case["root"] / "field.pem"
+    public = case["root"] / "field.public.json"
+    generate_signer(key, public, authority="workstation-field", registry=REGISTRY)
+
+    manifest = assemble_release_manifest(
+        root=case["root"],
+        version=None,
+        source_snapshot_path=case["snapshot"],
+        provenance_path=case["provenance"],
+        qualification_evidence_path=None,
+        metadata_path=case["metadata"],
+        target_definition_path=ROOT
+        / "deployment/targets/v1/raspberry-pi-5-noble-arm64.json",
+        operational_policy_path=ROOT / "deployment/operational-policy.json",
+        documentation_root=case["documentation_root"],
+        documentation_manifest_path=case["documentation_manifest"],
+        documentation_policy_path=case["documentation_policy"],
+        component_roots={"drone": case["drone"], "gc": case["gc"]},
+        build_records=case["records"],
+        private_key_path=key,
+        builder_id="workstation-field",
+        built_at="2026-08-26T12:00:00Z",
+        source_date_epoch=1787745600,
+        source_content_identity=snapshot["content_identity"],
+        px4_build_record_path=case["px4_record"],
+        px4_firmware_path=case["px4_firmware"],
+        registry=REGISTRY,
+        release_class="field-development",
+        gc_test_record_path=case["checks"]["gc-tests"],
+    )
+
+    assert manifest["release_class"] == "field-development"
+    assert manifest["version"] is None
+    assert manifest["source"]["content_identity"] == snapshot["content_identity"]
+    assert manifest["mission_catalog"]["scope"] == "field"
+    assert manifest["mission_catalog"]["entries"] == ["inspection-production"]
+    assert manifest["mission_catalog"]["included_experimental"] == []
+    assert manifest["qualification"]["evidence_complete"] is False
+    assert manifest["signing"]["authority"] == "workstation-field"
+    REGISTRY.validate("release-manifest", manifest)
     assert manifest["release_id"] == content_identity(
         {k: v for k, v in manifest.items() if k != "release_id"}
     )

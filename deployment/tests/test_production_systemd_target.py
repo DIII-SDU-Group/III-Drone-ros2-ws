@@ -204,7 +204,8 @@ def test_boot_restart_failure_recovery_and_release_switch(tmp_path: Path) -> Non
         _run(["docker", "cp", str(payload) + "/.", container + ":/"])
         setup = (
             "id iii >/dev/null 2>&1 || useradd --uid 1100 --create-home iii; "
-            "install -d -o iii -g iii -m 0750 /run/iii /run/iii/clock-flush "
+            "install -d -o iii -g iii -m 0751 /run/iii; "
+            "install -d -o iii -g iii -m 0750 /run/iii/clock-flush "
             "/var/log/iii /var/lib/iii/configuration /var/lib/iii/tuning; "
             "chmod -R a+rX /opt/iii/releases /var/lib/iii/deployment /etc/iii; "
             "systemctl daemon-reload; "

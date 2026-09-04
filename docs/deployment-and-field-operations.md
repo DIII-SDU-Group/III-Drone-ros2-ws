@@ -165,8 +165,14 @@ deployment/scripts/prepare_receiver_update_artifact.py \
   --workspace-root . \
   --generation <generation> \
   --version v<major>.<minor>.<patch> \
+  --python /usr/bin/python3 \
   --operation-id receiver-update-artifact-<generation>
 ```
+
+Pass the target-compatible Python 3.12 executable whenever the receiver source
+has changed. Without `--python`, the command deliberately reuses the immutable
+wheelhouse from the provisioning artifact; that is appropriate only for
+re-signing the identical receiver closure, not for shipping a source change.
 
 Retain its `iii.receiver-update-artifact/v1` record. It binds the source
 provisioning record and receiver identity, signer, exact schema/policy inputs,
@@ -385,13 +391,15 @@ also proves the normalized uXRCE-DDS compile-time topic set; an advertised DDS
 endpoint alone is not evidence that any topic is delivering messages.
 
 Any mismatch returns `III_PX4_RELEASE_REQUIRED` and leaves the staged Pi release
-inactive. Prepare the paired update media with `iii px4 release prepare`, remove
-propellers, flash its custom firmware over USB in QGroundControl, import its
-non-calibration parameter defaults, power down, copy the two prepared files onto
-the PX4 microSD card, reinstall the card, and reconnect the built-in Pi Ethernet
-port to PX4. Rerun the same III deployment: staging is a no-op when identical,
-while the complete PX4 audit always runs again. Firmware or parameter writes are
-never performed implicitly by `iii deploy`.
+inactive. The canonical maintenance path is USB: prepare the paired payload with
+`iii px4 release prepare`, remove propellers, connect PX4 by USB, flash the
+custom firmware, apply its non-calibration parameter defaults, and write the
+prepared `net.cfg` and `extras.txt` through that same USB MAVLink session. Reboot
+and reconnect the built-in Pi Ethernet port to PX4. The microSD files in the
+payload are a recovery fallback, not a second normal procedure. Rerun the same
+III deployment: staging is a no-op when identical, while the complete PX4 audit
+always runs again. Firmware or parameter writes are never performed implicitly by
+`iii deploy`.
 
 Final physical acceptance additionally requires fresh uXRCE-DDS messages through
 the agent on `8888/UDP` and fresh fused landed/disarmed telemetry. Restore the

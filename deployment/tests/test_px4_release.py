@@ -123,6 +123,30 @@ def test_px4_release_audit_accepts_exact_zero_write_observation():
     assert result["dds_topics_observation"] == "proven-by-exact-firmware-commit"
 
 
+def test_receiver_ethernet_parameter_snapshot_provenance_is_contract_valid():
+    registry = ContractRegistry(ROOT / "deployment/schemas/v1")
+    target = {
+        "system_id": 1,
+        "component_id": 1,
+        "armed": False,
+        "firmware_version": "1.16.1",
+        "firmware_commit": "7f41496535",
+    }
+    rows = [{"name": "SYS_AUTOSTART", "mav_type": "INT32", "value": 4001, "index": 0}]
+    snapshot = {
+        "schema": "iii.px4-parameter-snapshot/v1",
+        "snapshot_id": content_identity({"profile": "real", "target": target, "parameter_count": 1, "parameters": rows}),
+        "captured_at": "2026-09-03T12:00:00Z",
+        "profile": "real",
+        "provenance": "receiver-px4-ethernet",
+        "target": target,
+        "complete": True,
+        "parameter_count": 1,
+        "parameters": rows,
+    }
+    registry.validate("px4-parameter-snapshot", snapshot)
+
+
 @pytest.mark.parametrize(
     ("status", "expected"),
     [
@@ -335,7 +359,7 @@ def test_receiver_inspector_binds_staged_release_and_returns_activation_evidence
         def __init__(self, *_args, **_kwargs): pass
         def status(self): return target | {"connected": True}
         def read_text_file(self, path):
-            return render_net_cfg(network) if path.endswith("net.cfg") else render_extras(network)
+            return render_net_cfg(network) if path == network["artifacts"]["net_cfg_path"] else render_extras(network)
 
     class Store:
         def __init__(self, **_kwargs): pass
@@ -352,3 +376,39 @@ def test_receiver_inspector_binds_staged_release_and_returns_activation_evidence
     assert result["activation_evidence"]["writes_performed"] == 0
     retained = tmp_path / "state" / f"{result['audit']['audit_id']}.json"
     assert json.loads(retained.read_text()) == result
+
+    class NetworkBlockedAdapter:
+        def __init__(self, *_args, **_kwargs):
+            raise OSError(97, "Address family not supported by protocol")
+
+    monkeypatch.setattr(
+        "iii_deployment.px4_inspection.MavlinkParameterAdapter",
+        NetworkBlockedAdapter,
+    )
+    unavailable = PX4ReleaseInspector(
+        schema_root=ROOT / "deployment/schemas/v1",
+        state_root=tmp_path / "unavailable-state",
+    ).audit(release_id="a" * 64, release_root=release_root)
+    assert unavailable["audit"]["healthy"] is False
+    assert unavailable["audit"]["findings"][0]["code"] == "PX4_UNREACHABLE"
+    assert unavailable["audit"]["writes_performed"] == 0
+
+    class ArtifactReadBlockedAdapter(Adapter):
+        def read_text_file(self, _path):
+            from iii_deployment.px4_parameters import PX4ParameterError
+
+            raise PX4ParameterError("PX4 SD configuration read timed out")
+
+    monkeypatch.setattr(
+        "iii_deployment.px4_inspection.MavlinkParameterAdapter",
+        ArtifactReadBlockedAdapter,
+    )
+    blocked = PX4ReleaseInspector(
+        schema_root=ROOT / "deployment/schemas/v1",
+        state_root=tmp_path / "artifact-read-blocked-state",
+    ).audit(release_id="a" * 64, release_root=release_root)
+    assert blocked["audit"]["healthy"] is False
+    assert {item["code"] for item in blocked["audit"]["findings"]} == {
+        "PX4_NETWORK_ARTIFACTS_UNVERIFIED"
+    }
+    assert blocked["audit"]["writes_performed"] == 0

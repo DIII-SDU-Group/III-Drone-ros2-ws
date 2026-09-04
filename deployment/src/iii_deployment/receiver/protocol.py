@@ -554,8 +554,8 @@ def _clock_samples(value: Any) -> None:
         for field in fields - {"target_boot_id"}:
             if not isinstance(sample[field], int) or isinstance(sample[field], bool):
                 raise ContractError(f"clock synchronization sample {field} is invalid")
-        if sample["rtt_ns"] < 0 or sample["rtt_ns"] > 500_000_000:
-            raise ContractError("clock synchronization sample RTT exceeds 500 ms")
+        if sample["rtt_ns"] < 0 or sample["rtt_ns"] > 2_000_000_000:
+            raise ContractError("clock synchronization sample RTT exceeds 2 seconds")
         if sample["offset_ns"] != (
             sample["target_wall_ns"] - sample["operator_midpoint_utc_ns"]
         ):

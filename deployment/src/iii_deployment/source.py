@@ -117,11 +117,17 @@ def _capture_repository(
         raise ContractError(f"governed repository has ambiguous unmerged entries: {repo_path}")
     commit = _git(repo, "rev-parse", "HEAD").decode().strip()
     tracked_changed, untracked_candidates = _changed(repo)
-    # Tracked files are represented only by content hashes. They cannot be
-    # silently omitted even when their name resembles a secret (the workspace
-    # intentionally tracks public environment defaults); raw bytes never enter
-    # the provenance record. Sensitive *untracked* files remain excluded.
-    tracked_entries = [_entry(repo, path) for path in _tracked_paths(repo)]
+    # A workspace source snapshot is deliberately scoped by the source policy.
+    # The workspace also carries adjacent research tooling, which must not make
+    # a deployable field build dirty or alter its identity.  Governed
+    # subrepositories, on the other hand, are captured in full.  Tracked source
+    # entries are represented only by hashes; their bytes never enter the
+    # provenance record.
+    tracked_paths = _tracked_paths(repo)
+    if repo_path == ".":
+        tracked_paths = [path for path in tracked_paths if _workspace_relevant(path, policy)]
+        tracked_changed = [path for path in tracked_changed if _workspace_relevant(path, policy)]
+    tracked_entries = [_entry(repo, path) for path in tracked_paths]
     untracked_entries: list[dict[str, Any]] = []
     excluded: list[dict[str, str]] = []
     changed_paths = [f"{repo_path}/{path}" if repo_path != "." else path for path in tracked_changed]
@@ -255,6 +261,7 @@ def release_manifest_source(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "branch": snapshot["branch"],
         "clean": snapshot["clean"],
         "content_identity": snapshot["content_identity"],
+        "snapshot_content_identity": snapshot["content_identity"],
         "snapshot_sha256": _sha256(canonical_json(snapshot)),
         "provenance_report_sha256": _sha256(report),
         "tracked_patch_sha256": root["tracked_patch_sha256"],

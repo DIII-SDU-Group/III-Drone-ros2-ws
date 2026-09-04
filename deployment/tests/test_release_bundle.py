@@ -71,10 +71,12 @@ def _case(tmp_path: Path, *, release_class: str = "qualified") -> BundleCase:
     if release_class == "field-development":
         manifest["version"] = None
         manifest["source"]["branch"] = "deployment-infrastructure-redesign"
+        manifest["mission_catalog"]["scope"] = "field"
         manifest["qualification"].update(
             explicit_action=False,
             tag_on_release=False,
             tests_complete=False,
+            evidence_sha256=None,
             evidence_complete=False,
         )
     manifest_path = tmp_path / "release-input.json"
@@ -274,6 +276,13 @@ def test_qualified_release_cannot_bind_field_catalog_but_field_release_can(
     manifest["release_class"] = "field-development"
     manifest["version"] = None
     manifest["signing"]["authority"] = "workstation-field"
+    manifest["qualification"] = {
+        "explicit_action": False,
+        "tag_on_release": False,
+        "tests_complete": False,
+        "evidence_sha256": None,
+        "evidence_complete": False,
+    }
     validate_release_metadata(manifest, REGISTRY)
 
 

@@ -164,6 +164,44 @@ def test_retryable_command_fails_immediately_on_non_retryable_rejection():
         )
 
 
+def test_mutating_smoke_accepts_expected_missing_sensor_degradation():
+    runner = object.__new__(smoke.SmokeRunner)
+    calls = []
+
+    def dispatch(name, command_id, parameters, headers, require_accepted=True):
+        calls.append((command_id, require_accepted))
+        if command_id == "powerline.overview.update":
+            return {
+                "accepted": False,
+                "rejection": {
+                    "code": "degraded_state",
+                    "message": "at least 4 live powerline lines are required; mapper has no overview",
+                },
+            }
+        return {"accepted": True}
+
+    runner.dispatch_command = dispatch
+    runner.run_mutating_workflows({})
+
+    assert ("powerline.overview.update", False) in calls
+    assert ("custom_operation.hover.start", False) in calls
+    assert all(
+        require_accepted
+        for command_id, require_accepted in calls
+        if command_id not in smoke.EXPECTED_BENCH_DEGRADED_COMMANDS
+    )
+
+
+def test_custom_operation_smoke_start_carries_hold_confirmation():
+    _, _, parameters = next(
+        command
+        for command in smoke.MUTATING_WORKFLOW_COMMANDS
+        if command[1] == "custom_operation.hover.start"
+    )
+
+    assert parameters["hold_confirmed"] is True
+
+
 def test_concurrent_heartbeats_are_serialized():
     runner = object.__new__(smoke.SmokeRunner)
     runner.args = SimpleNamespace(proxy_url="http://proxy")

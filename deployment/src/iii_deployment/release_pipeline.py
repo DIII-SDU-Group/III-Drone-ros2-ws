@@ -47,7 +47,7 @@ from .px4_release import (
     validate_release_inputs,
 )
 from .signers import load_private_key, signer_id_for_public_key
-from .source import verify_source_snapshot
+from .source import provenance_markdown, release_manifest_source, verify_source_snapshot
 from .target import load_target_definition
 
 
@@ -406,12 +406,13 @@ def package_documentation(
 def _validate_build_records(
     *,
     root: Path,
-    version: str,
+    version: str | None,
     snapshot: Mapping[str, Any],
     target: Mapping[str, Any],
     component_roots: Mapping[str, Path],
     build_records: Mapping[str, Path],
-    qualification_evidence: Mapping[str, Any],
+    qualification_evidence: Mapping[str, Any] | None,
+    gc_test_record_path: Path | None,
     registry: ContractRegistry,
 ) -> dict[str, dict[str, Any]]:
     drone = _json(build_records["drone"], canonical=True)
@@ -431,30 +432,41 @@ def _validate_build_records(
         drone["source_identity"] != source_identity
         or gc["source_identity"] != source_identity
     ):
-        raise ContractError("build records differ from the qualified source snapshot")
-    if drone["components"] != ["drone"]:
+        raise ContractError("build records differ from the retained source snapshot")
+    if version is None:
+        # A dirty field snapshot may touch shared contracts.  The impact gate
+        # then requires the ARM build to include both affected domains even
+        # though this record still authenticates the drone payload; the GC
+        # payload is independently authenticated by its native amd64 record.
+        if "drone" not in drone["components"] or not set(
+            drone["components"]
+        ).issubset({"drone", "gc"}):
+            raise ContractError(
+                "field ARM64 build record must contain the drone component"
+            )
+    elif drone["components"] != ["drone"]:
         raise ContractError(
             "qualified ARM64 build record must contain only the drone component"
         )
     if drone["target_definition_id"] != target["definition_id"]:
         raise ContractError(
-            "ARM64 build record differs from the qualified target definition"
+            "ARM64 build record differs from the target definition"
         )
     build_policy = _json(root / "deployment/build-policy.json")
     registry.validate("build-policy", build_policy)
     if drone["policy_sha256"] != content_identity(build_policy):
         raise ContractError(
-            "ARM64 build record differs from the qualified build policy"
+            "ARM64 build record differs from the build policy"
         )
     install = component_roots["drone"] / build_policy["release_install"]
     if not install.is_dir() or _build_tree_identity(install) != drone["install_sha256"]:
         raise ContractError("ARM64 payload differs from its retained build record")
     if (
         gc["source_commit"] != snapshot["workspace_commit"]
-        or gc["version"] != version
+        or (version is not None and gc["version"] != version)
         or gc["platform"] != {"os": "linux", "architecture": "amd64"}
     ):
-        raise ContractError("GC build record differs from the qualified candidate")
+        raise ContractError("GC build record differs from the release candidate")
     input_hashes = {
         path: _sha256(root / path)
         for path in (
@@ -470,11 +482,25 @@ def _validate_build_records(
     }
     if gc["inputs_sha256"] != content_identity(input_hashes):
         raise ContractError("GC build record differs from the pinned GC build inputs")
-    evidence_hashes = {
-        item["id"]: item["evidence_sha256"]
-        for item in qualification_evidence["required_checks"]
-    }
-    if gc["test_record_sha256"] != evidence_hashes.get("gc-tests"):
+    if qualification_evidence is not None:
+        evidence_hashes = {
+            item["id"]: item["evidence_sha256"]
+            for item in qualification_evidence["required_checks"]
+        }
+        expected_gc_test_sha256 = evidence_hashes.get("gc-tests")
+    else:
+        if gc_test_record_path is None:
+            raise ContractError("field release requires a retained GC test record")
+        gc_test = _json(gc_test_record_path, canonical=True)
+        registry.validate("qualification-check", gc_test)
+        if (
+            gc_test["check_id"] != "gc-tests"
+            or gc_test["source_commit"] != snapshot["workspace_commit"]
+            or gc_test["outcome"] != "passed"
+        ):
+            raise ContractError("field GC test record differs from the source snapshot")
+        expected_gc_test_sha256 = _sha256(gc_test_record_path)
+    if gc["test_record_sha256"] != expected_gc_test_sha256:
         raise ContractError(
             "GC build record differs from the retained GC test evidence"
         )
@@ -582,10 +608,10 @@ def _source_manifest(
 def assemble_release_manifest(
     *,
     root: Path,
-    version: str,
+    version: str | None,
     source_snapshot_path: Path,
     provenance_path: Path,
-    qualification_evidence_path: Path,
+    qualification_evidence_path: Path | None,
     metadata_path: Path,
     target_definition_path: Path,
     operational_policy_path: Path,
@@ -602,21 +628,35 @@ def assemble_release_manifest(
     px4_build_record_path: Path,
     px4_firmware_path: Path,
     registry: ContractRegistry,
+    release_class: str = "qualified",
+    gc_test_record_path: Path | None = None,
 ) -> dict[str, Any]:
-    if not SEMVER.fullmatch(version):
+    if release_class not in {"qualified", "field-development"}:
+        raise ContractError("release class is unsupported")
+    if release_class == "qualified" and (
+        not isinstance(version, str) or not SEMVER.fullmatch(version)
+    ):
         raise ContractError("qualified release version is not strict SemVer")
+    if release_class == "field-development" and version is not None:
+        raise ContractError("field-development release version must be null")
     _validate_timestamp(built_at)
     if source_date_epoch < 0:
         raise ContractError("source-date epoch cannot be negative")
     snapshot = _json(source_snapshot_path, canonical=True)
     verify_source_snapshot(snapshot, registry)
-    evidence = _json(qualification_evidence_path, canonical=True)
-    registry.validate("qualification-evidence", evidence)
-    if (
-        evidence["source_commit"] != snapshot["workspace_commit"]
-        or evidence["version"] != version
-    ):
-        raise ContractError("qualification evidence differs from release candidate")
+    evidence: dict[str, Any] | None = None
+    if release_class == "qualified":
+        if qualification_evidence_path is None:
+            raise ContractError("qualified release requires qualification evidence")
+        evidence = _json(qualification_evidence_path, canonical=True)
+        registry.validate("qualification-evidence", evidence)
+        if (
+            evidence["source_commit"] != snapshot["workspace_commit"]
+            or evidence["version"] != version
+        ):
+            raise ContractError("qualification evidence differs from release candidate")
+    elif qualification_evidence_path is not None:
+        raise ContractError("field-development release cannot claim qualification evidence")
     metadata = _json(metadata_path)
     registry.validate("release-metadata", metadata)
     target = load_target_definition(target_definition_path, registry)
@@ -639,6 +679,7 @@ def assemble_release_manifest(
         component_roots=component_roots,
         build_records=build_records,
         qualification_evidence=evidence,
+        gc_test_record_path=gc_test_record_path,
         registry=registry,
     )
     payload_identities: dict[str, str] = {}
@@ -771,14 +812,24 @@ def assemble_release_manifest(
         raise ContractError("PX4 firmware artifact differs from its exact build record")
     if not re.fullmatch(r"[a-f0-9]{64}", source_content_identity):
         raise ContractError("governed source-content identity is invalid")
-    source = _source_manifest(
-        snapshot, source_snapshot_path, provenance_path, source_content_identity
-    )
+    if release_class == "qualified":
+        source = _source_manifest(
+            snapshot, source_snapshot_path, provenance_path, source_content_identity
+        )
+    else:
+        if source_content_identity != snapshot["content_identity"]:
+            raise ContractError("field source identity differs from its source snapshot")
+        if provenance_path.read_text(encoding="utf-8") != provenance_markdown(snapshot):
+            raise ContractError("field source provenance report differs from its snapshot")
+        source = release_manifest_source(snapshot)
+        source["snapshot_sha256"] = _sha256(source_snapshot_path)
+        source["provenance_report_sha256"] = _sha256(provenance_path)
+    mission_scope = "qualified" if release_class == "qualified" else "field"
     mission_catalog = verify_mission_catalog(
         component_roots["drone"]
         / _json(root / "deployment/build-policy.json")["release_install"]
         / "iii_drone_mission/share/iii_drone_mission/mission_catalog",
-        expected_scope="qualified",
+        expected_scope=mission_scope,
     )
     for profile in metadata["profiles"]:
         descriptor = mission_catalog["profiles"].get(profile["id"])
@@ -797,7 +848,7 @@ def assemble_release_manifest(
         "schema_version": "1",
         "manifest_type": "release",
         "release_id": "0" * 64,
-        "release_class": "qualified",
+        "release_class": release_class,
         "version": version,
         "components": ["drone", "gc"],
         "component_targets": metadata["component_targets"],
@@ -826,7 +877,11 @@ def assemble_release_manifest(
         "packages": [
             {
                 "name": f"iii_{component}_release",
-                "version": version.removeprefix("v"),
+                "version": (
+                    version.removeprefix("v")
+                    if version is not None
+                    else "field-" + snapshot["content_identity"][:16]
+                ),
                 "content_sha256": payload_identities[component],
             }
             for component in ("drone", "gc")
@@ -889,18 +944,34 @@ def assemble_release_manifest(
             "catalog_hash": mission_catalog["catalog_hash"],
             "catalog_sha256": mission_catalog["catalog_sha256"],
             "source_state_sha256": mission_catalog["source_state_sha256"],
+            "entries": mission_catalog["entries"],
+            "included_experimental": mission_catalog["included_experimental"],
         },
-        "qualification": {
-            "explicit_action": True,
-            "tag_on_release": True,
-            "tests_complete": True,
-            "evidence_sha256": _sha256(qualification_evidence_path),
-            "evidence_complete": True,
-        },
+        "qualification": (
+            {
+                "explicit_action": True,
+                "tag_on_release": True,
+                "tests_complete": True,
+                "evidence_sha256": _sha256(qualification_evidence_path),
+                "evidence_complete": True,
+            }
+            if qualification_evidence_path is not None
+            else {
+                "explicit_action": False,
+                "tag_on_release": False,
+                "tests_complete": False,
+                "evidence_sha256": None,
+                "evidence_complete": False,
+            }
+        ),
         "signing": {
             "algorithm": "Ed25519",
             "signer_id": signer_id,
-            "authority": "ci-qualified",
+            "authority": (
+                "ci-qualified"
+                if release_class == "qualified"
+                else "workstation-field"
+            ),
         },
         "operational_policy": {
             "schema_version": str(policy["schema_version"]),

@@ -52,6 +52,9 @@ REAL_REQUIRED = {
 CALIBRATION_IDENTITY = (
     re.compile(r"^CAL_"),
     re.compile(r"(^|_)ID($|_)"),
+    # PX4 assigns external-mode slots by persisted FNV hashes.  They are
+    # aircraft/runtime identity, not release-owned tuning values.
+    re.compile(r"^COM_MODE[0-7]_HASH$"),
     re.compile(r"^(SYS_AUTOSTART|SYS_AUTOCONFIG|SYS_FAC_CAL_MODE)$"),
     re.compile(r"^(COM_FLIGHT_UUID|SDLOG_UUID|UXRCE_DDS_(AG_IP|CFG|KEY|PRT))$"),
     re.compile(r"^(UAVCAN_|UCAN1_|CANNODE_|MAV_SYS_ID|MAV_COMP_ID)"),
@@ -134,10 +137,25 @@ def main() -> int:
         required=True,
         help="canonical iii.px4-parameter-snapshot/v1 decoded from live MAVLink",
     )
-    parser.add_argument("--airframe", type=Path, required=True)
+    parser.add_argument("--airframe", type=Path)
     parser.add_argument("--network-baseline", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--firmware-version")
+    generation_mode = parser.add_mutually_exclusive_group()
+    generation_mode.add_argument(
+        "--commissioned-real",
+        action="store_true",
+        help=(
+            "Generate only real.json from a complete disarmed commissioned FMU "
+            "inventory. This is the production counterpart to the SITL-derived "
+            "real/sim baseline."
+        ),
+    )
+    generation_mode.add_argument(
+        "--sim-only",
+        action="store_true",
+        help="Generate only sim.json from the complete SITL reference inventory.",
+    )
     args = parser.parse_args()
     if args.output.exists() and not args.output.is_dir():
         raise SystemExit("output must be a directory")
@@ -157,8 +175,9 @@ def main() -> int:
             "parameters": source,
         }
     )
+    expected_profile = "real" if args.commissioned_real else "sim"
     if (
-        value["profile"] != "sim"
+        value["profile"] != expected_profile
         or value["complete"] is not True
         or value["snapshot_id"] != expected_snapshot_id
         or value["parameter_count"] != len(source)
@@ -195,7 +214,9 @@ def main() -> int:
         value["target"]["firmware_commit"]
     ):
         raise SystemExit("reference snapshot firmware identity differs from PX4 source")
-    sim_required = airframe_required(args.airframe)
+    if not args.commissioned_real and args.airframe is None:
+        raise SystemExit("--airframe is required unless --commissioned-real is used")
+    sim_required = airframe_required(args.airframe) if args.airframe else set()
     missing_required = sorted(
         (sim_required | REAL_REQUIRED) - {item["name"] for item in source}
     )
@@ -209,17 +230,31 @@ def main() -> int:
             "reference_snapshot_sha256": hashlib.sha256(
                 canonical_json(value) + b"\n"
             ).hexdigest(),
-            "airframe_sha256": hashlib.sha256(args.airframe.read_bytes()).hexdigest(),
+            "airframe_sha256": (
+                hashlib.sha256(args.airframe.read_bytes()).hexdigest()
+                if args.airframe
+                else None
+            ),
             "classification_contract": "iii.px4-parameter-classification/v2",
             "network_baseline_id": network_baseline["baseline_id"],
             "px4_commit": commit,
         }
     )
     args.output.mkdir(parents=True, exist_ok=True)
-    (args.output / "reference-sitl-snapshot.json").write_bytes(
+    reference_name = (
+        "reference-commissioned-fmu-snapshot.json"
+        if args.commissioned_real
+        else "reference-sitl-snapshot.json"
+    )
+    (args.output / reference_name).write_bytes(
         canonical_json(value) + b"\n"
     )
-    for profile in ("real", "sim"):
+    profiles = (
+        ("real",)
+        if args.commissioned_real
+        else (("sim",) if args.sim_only else ("real", "sim"))
+    )
+    for profile in profiles:
         parameters = classified(
             source,
             profile=profile,
@@ -242,7 +277,11 @@ def main() -> int:
             "inventory": {
                 "complete": True,
                 "parameter_count": len(parameters),
-                "source": "px4-sitl-reference",
+                "source": (
+                    "commissioned-fmu"
+                    if args.commissioned_real
+                    else "px4-sitl-reference"
+                ),
                 "source_sha256": source_sha,
             },
             "parameters": parameters,

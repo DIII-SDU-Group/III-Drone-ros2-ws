@@ -101,10 +101,10 @@ class PX4ReleaseInspector:
             or declared.get("manifest_ids", {}).get("real") != parameters["manifest_id"]
         ):
             raise ContractError("staged PX4 resources differ from the signed release")
-        adapter = MavlinkParameterAdapter(self.endpoint, timeout=self.timeout)
         try:
+            adapter = MavlinkParameterAdapter(self.endpoint, timeout=self.timeout)
             status = dict(adapter.status())
-        except PX4ParameterError:
+        except (OSError, PX4ParameterError):
             audit = audit_release(
                 release_id=release_id,
                 spec=spec,
@@ -134,13 +134,20 @@ class PX4ReleaseInspector:
                 provenance="receiver-px4-ethernet",
             )
             return self._retain(audit, None, registry)
-        artifacts = {
-            path: adapter.read_text_file(path)
-            for path in (
-                network["artifacts"]["net_cfg_path"],
-                network["artifacts"]["extras_path"],
-            )
-        }
+        # The shell/FTP channel used for SD-card evidence is less reliable than
+        # the MAVLink parameter channel.  A read timeout is an audit finding,
+        # never a reason to terminate the receiver process that owns future
+        # recovery and deployment transactions.
+        try:
+            artifacts = {
+                path: adapter.read_text_file(path)
+                for path in (
+                    network["artifacts"]["net_cfg_path"],
+                    network["artifacts"]["extras_path"],
+                )
+            }
+        except (OSError, PX4ParameterError):
+            artifacts = None
         store = PX4ParameterStore(
             manifest_paths={"real": resources / "real.json", "sim": resources / "sim.json"},
             state_root=self.state_root,

@@ -25,6 +25,7 @@ from iii_deployment.contracts import (  # noqa: E402
     canonical_json,
     content_identity,
 )
+from iii_deployment.build import materialize_build_source  # noqa: E402
 from iii_deployment.source import (  # noqa: E402
     capture_source_snapshot,
     load_source_policy,
@@ -48,6 +49,19 @@ BUILD_INPUTS = (
     "src/III-Drone-GC/frontend/Dockerfile",
     "src/III-Drone-GC/frontend/package-lock.json",
 )
+
+
+def _builder_resource_options(parallel_workers: int | None) -> list[str]:
+    if parallel_workers is None:
+        return []
+    if parallel_workers < 1:
+        raise ContractError("parallel worker count must be positive")
+    return [
+        "--driver-opt",
+        f"cpu-quota={parallel_workers * 100_000}",
+        "--driver-opt",
+        "cpu-period=100000",
+    ]
 
 
 def _validate_qgc_appimage(path: Path, policy: dict[str, Any]) -> dict[str, Any]:
@@ -233,6 +247,7 @@ def _build_image(
     tag: str,
     smoke: Sequence[str],
     builder: str | None,
+    context: Path,
 ) -> dict[str, Any]:
     builder_args = [] if builder is None else ["--builder", builder]
     inspect = _run(["docker", "buildx", "inspect", *builder_args, "--bootstrap"])
@@ -278,7 +293,8 @@ def _build_image(
             "--tag",
             tag,
             ".",
-        ]
+        ],
+        cwd=context,
     )
     _run(
         [
@@ -332,6 +348,12 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-date-epoch", type=int, required=True)
     parser.add_argument("--qgc-appimage", type=Path, required=True)
+    parser.add_argument(
+        "--parallel-workers",
+        type=int,
+        default=None,
+        help="Enforce an aggregate CPU ceiling on the isolated BuildKit worker.",
+    )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
     partial = args.output.parent / f".{args.output.name}.partial-{os.getpid()}"
@@ -342,6 +364,7 @@ def main() -> int:
             raise ContractError("GC release version is not strict SemVer")
         if args.source_date_epoch < 0:
             raise ContractError("SOURCE_DATE_EPOCH cannot be negative")
+        builder_resources = _builder_resource_options(args.parallel_workers)
         if args.output.exists() or args.output.is_symlink() or partial.exists():
             raise ContractError(
                 "GC build output or private partial path already exists"
@@ -366,14 +389,19 @@ def main() -> int:
         ):
             raise ContractError("GC test record differs from this release candidate")
         partial.mkdir(parents=True, mode=0o700)
+        build_source = materialize_build_source(
+            ROOT, (partial / ".build-source").resolve()
+        )
         images_dir = partial / "images"
         images_dir.mkdir()
         args.cache.mkdir(parents=True, exist_ok=True)
         default_builder = _run(["docker", "buildx", "inspect", "--bootstrap"])
-        if not any(
-            line.strip().lower() == "driver: docker-container"
+        default_is_container = any(
+            line.lower().startswith("driver:")
+            and line.split(":", 1)[1].strip().lower() == "docker-container"
             for line in default_builder.stdout.splitlines()
-        ):
+        )
+        if builder_resources or not default_is_container:
             private_builder = f"iii-gc-qualification-{os.getpid()}"
             _run(
                 [
@@ -384,6 +412,7 @@ def main() -> int:
                     private_builder,
                     "--driver",
                     "docker-container",
+                    *builder_resources,
                 ]
             )
             _run(
@@ -400,12 +429,12 @@ def main() -> int:
         specs = (
             (
                 "frontend",
-                ROOT / "src/III-Drone-GC/frontend/Dockerfile",
+                build_source / "src/III-Drone-GC/frontend/Dockerfile",
                 ["/bin/sh", "-c", "test -s /usr/share/nginx/html/index.html"],
             ),
             (
                 "proxy",
-                ROOT / "src/III-Drone-GC/docker/proxy.Dockerfile",
+                build_source / "src/III-Drone-GC/docker/proxy.Dockerfile",
                 [
                     "python",
                     "-c",
@@ -427,8 +456,10 @@ def main() -> int:
                     tag=tag,
                     smoke=smoke,
                     builder=private_builder,
+                    context=build_source,
                 )
             )
+        shutil.rmtree(build_source)
         qgc_dir = partial / "qgc"
         qgc_dir.mkdir()
         qgc_path = qgc_dir / qgc_policy["qgroundcontrol"]["filename"]

@@ -25,12 +25,18 @@ def private_network(value: str) -> bool:
 
 
 def live_state(profile: str) -> dict[str, Any]:
+    configuration_hash = content_id(
+        {"schema": "iii.no-configuration/v1", "profile": profile}
+    )
+    commissioning_hash = content_id(
+        {"schema": "iii.not-commissioned/v1", "profile": profile}
+    )
     value: dict[str, Any] = {
         "schema": "iii.receiver-live-state/v1",
         "target_state_hash": "0" * 64,
         "active_release_id": None,
-        "configuration_hash": None,
-        "commissioning_hash": None,
+        "configuration_hash": configuration_hash,
+        "commissioning_hash": commissioning_hash,
         "profile": profile,
     }
     value["target_state_hash"] = content_id(

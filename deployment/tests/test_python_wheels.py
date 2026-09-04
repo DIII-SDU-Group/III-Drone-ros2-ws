@@ -30,10 +30,11 @@ def test_committed_wheel_lock_binds_requirements_resolver_and_dependency_closure
         ROOT / "deployment/python-wheel-lock.json", REQUIREMENTS, TARGET, REGISTRY
     )
     assert [requirement.name.lower() for requirement in direct_requirements(REQUIREMENTS)] == [
-        "fastapi", "httpx", "pydantic", "pyserial", "pyyaml", "uvicorn", "websockets", "zeroconf"
+        "fastapi", "httpx", "mavsdk", "pydantic", "pyserial", "pyyaml", "uvicorn", "websockets", "zeroconf"
     ]
     assert len(lock["wheels"]) >= 8
     assert any(wheel["name"] == "pydantic-core" for wheel in lock["wheels"])
+    assert "mavsdk" in lock["imports"]
 
 
 @pytest.mark.parametrize("mutation, message", [

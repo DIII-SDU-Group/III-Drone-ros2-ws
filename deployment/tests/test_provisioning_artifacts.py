@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import stat
 import struct
 import tarfile
@@ -18,7 +19,9 @@ from iii_deployment.identity import create_machine_enrollment
 from iii_deployment.provisioning_artifacts import (
     ProvisioningArtifactError,
     RECEIVER_MODULES,
+    RECEIVER_PYTHON_VERSION,
     RECEIVER_SITE_PACKAGES,
+    _require_receiver_python,
     _extract_receiver_wheels,
     inspect_materialization,
     inspect_receiver_update_materialization,
@@ -37,6 +40,20 @@ def test_controller_builder_entrypoint_is_executable() -> None:
     assert os.access(script, os.X_OK)
     update = WORKSPACE / "deployment/scripts/prepare_receiver_update_artifact.py"
     assert os.access(update, os.X_OK)
+
+
+def test_receiver_artifact_builder_rejects_wrong_python_abi(tmp_path: Path) -> None:
+    wrong_python = tmp_path / "python"
+    wrong_python.write_text("#!/bin/sh\nprintf '3.10\\n'\n", encoding="ascii")
+    wrong_python.chmod(0o700)
+
+    with pytest.raises(
+        ProvisioningArtifactError,
+        match=r"receiver artifacts require Python 3\.12; observed 3\.10",
+    ):
+        _require_receiver_python(wrong_python)
+
+    assert RECEIVER_PYTHON_VERSION == (3, 12)
 
 
 def _enrollment(path: Path) -> Path:
@@ -117,8 +134,11 @@ def test_materializer_produces_complete_signed_owner_controlled_input(
     maintenance_key.chmod(0o600)
     known_hosts = tmp_path / "known-hosts"
     known_hosts.write_text("10.42.0.70 fixture-host-key\n", encoding="utf-8")
+    target_python = shutil.which("python3.12")
+    if target_python is None:
+        pytest.skip("receiver artifact materialization requires a Python 3.12 builder")
     python_link = tmp_path / "build-python"
-    python_link.symlink_to("/usr/bin/python3")
+    python_link.symlink_to(target_python)
     output = tmp_path / "host-provision"
     inspection = inspect_materialization(
         output_root=output,

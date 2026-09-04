@@ -8,7 +8,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from .contracts import ContractError, canonical_json, content_identity
 
@@ -151,6 +151,11 @@ def verify_mission_catalog(directory: Path, *, expected_scope: str) -> dict[str,
         "catalog_sha256": hashlib.sha256(catalog_bytes).hexdigest(),
         "source_state_sha256": state["state_hash"],
         "entries": sorted(entry_ids),
+        "included_experimental": (
+            list(catalog["field_selection"]["included_experimental"])
+            if expected_scope == "field"
+            else []
+        ),
         "profiles": profiles,
         "assets": len(asset_ids),
     }
@@ -187,4 +192,108 @@ def install_qualified_mission_catalog(install_root: Path) -> dict[str, Any]:
     observed = verify_mission_catalog(active, expected_scope="qualified")
     if observed != identity:
         raise ContractError("promoted mission catalog identity changed during installation")
+    return observed
+
+
+def install_field_mission_catalog(
+    install_root: Path, *, include_experimental: Sequence[str] = ()
+) -> dict[str, Any]:
+    """Replace build-only catalogs with one explicit field catalog.
+
+    Field payloads always carry a field-scoped catalog, even when the explicit
+    experimental selection is empty.  This prevents a dirty build from being
+    packaged with qualified mission metadata while retaining the exact same
+    content-addressed asset rules used by qualified releases.
+    """
+
+    share = install_root / "iii_drone_mission/share/iii_drone_mission"
+    active = share / "mission_catalog"
+    variants = share / "mission_catalog_variants"
+    candidates = variants / "field-candidates"
+    verify_mission_catalog(active, expected_scope="local")
+    verify_mission_catalog(candidates, expected_scope="field-candidates")
+    candidate_catalog, _ = _canonical_document(
+        candidates / "catalog.json", label="field-candidate mission catalog"
+    )
+    requested = sorted(set(include_experimental))
+    experimental = {
+        entry["id"]
+        for entry in candidate_catalog["entries"]
+        if entry.get("classification") == "experimental"
+    }
+    unknown = sorted(set(requested) - experimental)
+    if unknown:
+        raise ContractError(
+            "unknown or non-experimental field mission IDs: " + ", ".join(unknown)
+        )
+    entries = [
+        entry
+        for entry in candidate_catalog["entries"]
+        if entry.get("classification") == "production" or entry["id"] in requested
+    ]
+    referenced = {asset_id for entry in entries for asset_id in entry["dependencies"]}
+    assets = [
+        asset for asset in candidate_catalog["assets"] if asset["asset_id"] in referenced
+    ]
+    catalog = {
+        **candidate_catalog,
+        "catalog_hash": "",
+        "scope": "field",
+        "entries": entries,
+        "assets": assets,
+        "field_selection": {
+            "included_experimental": requested,
+            "warning": (
+                "EXPERIMENTAL missions are included in this field-development "
+                "catalog and are not qualified."
+                if requested
+                else None
+            ),
+        },
+    }
+    catalog["catalog_hash"] = _hash_identity(catalog, "catalog_hash")
+    staging = Path(tempfile.mkdtemp(prefix=".field-mission-catalog-", dir=share))
+    try:
+        output = staging / "catalog"
+        output_assets = output / "assets/sha256"
+        output_assets.mkdir(parents=True)
+        catalog_bytes = canonical_json(catalog) + b"\n"
+        (output / "catalog.json").write_bytes(catalog_bytes)
+        (output / "catalog.sha256").write_text(
+            hashlib.sha256(catalog_bytes).hexdigest() + "  catalog.json\n",
+            encoding="ascii",
+        )
+        shutil.copy2(candidates / "source-state.json", output / "source-state.json")
+        shutil.copy2(candidates / "models.xml", output / "models.xml")
+        project = {
+            "schema": GROOT_PROJECT_SCHEMA,
+            "catalog": "catalog.json",
+            "node_model": "models.xml",
+            "catalog_hash": catalog["catalog_hash"],
+        }
+        (output / "groot2-project.json").write_bytes(canonical_json(project) + b"\n")
+        for asset_id in sorted(referenced):
+            shutil.copy2(
+                candidates / "assets/sha256" / asset_id.removeprefix(HASH_PREFIX),
+                output_assets / asset_id.removeprefix(HASH_PREFIX),
+            )
+        identity = verify_mission_catalog(output, expected_scope="field")
+        previous = share / ".local-mission-catalog"
+        if previous.exists() or previous.is_symlink():
+            raise ContractError("temporary mission catalog promotion path already exists")
+        os.replace(active, previous)
+        try:
+            os.replace(output, active)
+        except Exception:
+            os.replace(previous, active)
+            raise
+        shutil.rmtree(previous)
+        shutil.rmtree(variants)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    if variants.exists() or variants.is_symlink():
+        raise ContractError("drone install retained local mission catalog variants")
+    observed = verify_mission_catalog(active, expected_scope="field")
+    if observed != identity:
+        raise ContractError("field mission catalog identity changed during installation")
     return observed

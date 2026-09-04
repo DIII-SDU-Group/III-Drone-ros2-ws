@@ -13,6 +13,32 @@ def _canonical(value: object) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+def _live_state(profile: str) -> dict[str, object]:
+    configuration_hash = __import__("hashlib").sha256(
+        _canonical({"schema": "iii.no-configuration/v1", "profile": profile}).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    commissioning_hash = __import__("hashlib").sha256(
+        _canonical({"schema": "iii.not-commissioned/v1", "profile": profile}).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    value: dict[str, object] = {
+        "schema": "iii.receiver-live-state/v1",
+        "target_state_hash": "0" * 64,
+        "active_release_id": None,
+        "configuration_hash": configuration_hash,
+        "commissioning_hash": commissioning_hash,
+        "profile": profile,
+    }
+    unsigned = {key: item for key, item in value.items() if key != "target_state_hash"}
+    value["target_state_hash"] = __import__("hashlib").sha256(
+        _canonical(unsigned).encode("utf-8")
+    ).hexdigest()
+    return value
+
+
 def test_ansible_json_templates_emit_only_canonical_json_and_one_newline() -> None:
     environment = Environment(
         loader=FileSystemLoader(ANSIBLE),
@@ -21,6 +47,7 @@ def test_ansible_json_templates_emit_only_canonical_json_and_one_newline() -> No
         autoescape=False,
     )
     environment.filters["iii_canonical_json"] = _canonical
+    environment.filters["iii_live_state"] = _live_state
     context = {
         "ansible_check_mode": False,
         "iii_baseline_id": "a" * 64,
@@ -62,6 +89,7 @@ def test_ansible_json_templates_emit_only_canonical_json_and_one_newline() -> No
         "roles/host_health/templates/host-baseline-report.json.j2",
         "roles/time/templates/clock-policy.json.j2",
         "roles/receiver/templates/deployment-receiver.json.j2",
+        "roles/receiver/templates/live-state.json.j2",
     )
     for path in templates:
         raw = environment.get_template(path).render(**context)

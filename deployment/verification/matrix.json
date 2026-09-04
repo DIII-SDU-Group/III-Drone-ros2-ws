@@ -1,5 +1,5 @@
 {
-  "matrix_id": "d1c414b2f61468890b9221f9c8f9f5291a0a4a870c58514d6087f18fdaa2fc96",
+  "matrix_id": "b8cdc9abaff56965270c83e6099231e89e9c79630a2c1c9ec8200af278601b5c",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -284,7 +284,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P1.T2.t8",
+        "P1.T2.t9",
         "P3.T1.t1",
         "P3.T2.t2",
         "P5.T6.t9"
@@ -369,7 +369,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P1.T2.t8",
+        "P1.T2.t10",
         "P3.T1.t1",
         "P3.T2.t2",
         "P5.T6.t9"
@@ -411,7 +411,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P1.T2.t2",
+        "P1.T2.t9",
         "P3.T1.t1",
         "P3.T2.t2",
         "P5.T6.t8"
@@ -574,11 +574,11 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P1.T2.t8",
+        "P1.T2.t9",
         "P2.T6.t8",
         "P3.T1.t1",
         "P3.T8.t7",
-        "P5.T0.t8"
+        "P5.T0.t10"
       ],
       "text": "Settled.",
       "title": "Offline operation"
@@ -666,11 +666,11 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P1.T2.t8",
+        "P1.T2.t9",
         "P2.T6.t8",
         "P3.T1.t1",
         "P3.T8.t2",
-        "P5.T0.t2"
+        "P5.T0.t11"
       ],
       "text": "Initial cache population and fresh SD provisioning may depend on internet access for now.",
       "title": "Offline operation"
@@ -8348,7 +8348,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P1.T1.t5",
-        "P1.T2.t8",
+        "P1.T2.t9",
         "P1.T3.t6",
         "P2.T6.t8"
       ],
@@ -8390,7 +8390,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P1.T1.t2",
-        "P1.T2.t8",
+        "P1.T2.t9",
         "P1.T3.t6",
         "P2.T6.t3"
       ],
@@ -8433,7 +8433,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P1.T1.t5",
-        "P1.T2.t7",
+        "P1.T2.t9",
         "P1.T3.t2",
         "P2.T6.t5"
       ],
@@ -8475,7 +8475,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P1.T1.t5",
-        "P1.T2.t8",
+        "P1.T2.t9",
         "P1.T3.t6",
         "P2.T6.t8"
       ],
@@ -8517,7 +8517,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P1.T1.t3",
-        "P1.T2.t7",
+        "P1.T2.t9",
         "P1.T3.t3",
         "P2.T6.t4"
       ],
@@ -8555,7 +8555,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P1.T0.t6",
-        "P1.T2.t8"
+        "P1.T2.t9"
       ],
       "text": "Settled.",
       "title": "Canonical offboard ARM64 build strategy"
@@ -8664,7 +8664,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P1.T0.t3",
-        "P1.T2.t8"
+        "P1.T2.t10"
       ],
       "text": "Prefer pinned prebuilt third-party target dependencies",
       "title": "Canonical offboard ARM64 build strategy"
@@ -8739,7 +8739,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P1.T0.t5",
-        "P1.T2.t3"
+        "P1.T2.t9"
       ],
       "text": "Laptop and CI builders share the same recipe/manifest contract, with native ARM64 CI allowed to omit the crossing layer.",
       "title": "Canonical offboard ARM64 build strategy"
@@ -8775,7 +8775,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P1.T0.t5",
-        "P1.T2.t2"
+        "P1.T2.t9"
       ],
       "text": "Cache toolchain, sysroot, dependencies, and colcon outputs for offline field use.",
       "title": "Canonical offboard ARM64 build strategy"
@@ -9793,7 +9793,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P1.T0.t6",
-        "P1.T2.t8",
+        "P1.T2.t9",
         "P3.T8.t7"
       ],
       "text": "Settled.",
@@ -9833,7 +9833,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P1.T0.t2",
-        "P1.T2.t8",
+        "P1.T2.t9",
         "P3.T8.t7"
       ],
       "text": "Initially support Ubuntu 22.04 and 24.04 x86_64 workstation/ground-control computers.",
@@ -9991,7 +9991,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P1.T0.t6",
-        "P1.T2.t4",
+        "P1.T2.t9",
         "P3.T8.t3"
       ],
       "text": "Treat macOS, Windows/WSL, and ARM64 operator computers as unsupported initially.",
@@ -16648,11 +16648,11 @@
       "required_evidence": "junit",
       "test_refs": [
         "P1.T0.t6",
-        "P1.T2.t8",
+        "P1.T2.t9",
         "P2.T6.t8",
         "P3.T8.t7",
         "P3.T9.t4",
-        "P5.T0.t8"
+        "P5.T0.t10"
       ],
       "text": "Settled.",
       "title": "Offline field-readiness preparation"
@@ -16697,7 +16697,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P1.T0.t2",
-        "P1.T2.t3",
+        "P1.T2.t9",
         "P2.T6.t5",
         "P3.T8.t2",
         "P3.T9.t4",
@@ -16797,7 +16797,7 @@
         "P2.T6.t4",
         "P3.T8.t2",
         "P3.T9.t1",
-        "P5.T0.t4"
+        "P5.T0.t10"
       ],
       "text": "Never update or install automatically merely because newer content exists.",
       "title": "Offline field-readiness preparation"
@@ -16842,7 +16842,7 @@
         "P1.T3.t6",
         "P1.T5.t6",
         "P2.T6.t8",
-        "P5.T0.t8"
+        "P5.T0.t10"
       ],
       "text": "Settled.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -16887,7 +16887,7 @@
         "P1.T3.t6",
         "P1.T5.t6",
         "P2.T6.t8",
-        "P5.T0.t8"
+        "P5.T0.t12"
       ],
       "text": "Do not implement mocap transport, frames, estimator tuning, or OptiTrack-server provisioning in this sweep.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -16932,7 +16932,7 @@
         "P1.T3.t5",
         "P1.T5.t3",
         "P2.T6.t4",
-        "P5.T0.t6"
+        "P5.T0.t12"
       ],
       "text": "Make one GC/drone release bundle capable of declaring extensible supported runtime profiles and later booting the same deployed drone release as `opti_track` through an explicit cold profile switch, while `real` remains the installed/power-on default.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -16979,7 +16979,7 @@
         "P1.T3.t6",
         "P1.T5.t6",
         "P2.T6.t8",
-        "P5.T0.t7"
+        "P5.T0.t10"
       ],
       "text": "Treat OptiTrack as a physical-real target for clock sync, credentials, deployment safety, PX4/QGC inventory, logging, rosbag, parameter capture, and rollback.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -17025,7 +17025,7 @@
         "P1.T3.t5",
         "P1.T5.t3",
         "P2.T6.t8",
-        "P5.T0.t6"
+        "P5.T0.t10"
       ],
       "text": "Let a profile descriptor later declare external mocap readiness hooks, network peers, required PX4/III configuration overlays, and an allowlist of limited mission specifications.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -17070,7 +17070,7 @@
         "P1.T3.t5",
         "P1.T5.t4",
         "P2.T6.t4",
-        "P5.T0.t6"
+        "P5.T0.t11"
       ],
       "text": "Initially declare `opti_track` explicitly as an alias of `real`, inheriting its readiness and allowlists by intentional manifest policy rather than accidental non-sim branching; later changing that alias requires a versioned profile-contract change.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -17115,7 +17115,7 @@
         "P1.T3.t5",
         "P1.T5.t3",
         "P2.T6.t4",
-        "P5.T0.t8"
+        "P5.T0.t12"
       ],
       "text": "Display the active profile prominently.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -17161,7 +17161,7 @@
         "P1.T3.t6",
         "P1.T5.t3",
         "P2.T6.t8",
-        "P5.T0.t7"
+        "P5.T0.t11"
       ],
       "text": "Add a pre-field evidence workflow that deploys once, switches to OptiTrack, runs its profile-specific checks/tests, captures evidence, then switches back to `real` and verifies field readiness without redeployment.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -17206,7 +17206,7 @@
         "P1.T3.t5",
         "P1.T5.t3",
         "P2.T6.t4",
-        "P5.T0.t8"
+        "P5.T0.t9"
       ],
       "text": "Keep the profile and artifact boundaries extensible for the later integration change.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -20996,7 +20996,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P1.T2.t8",
+        "P1.T2.t9",
         "P1.T3.t6"
       ],
       "text": "Settled.",
@@ -21218,7 +21218,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P1.T0.t6",
-        "P1.T2.t8",
+        "P1.T2.t9",
         "P3.T1.t1"
       ],
       "text": "Settled.",
@@ -21377,7 +21377,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P1.T0.t2",
-        "P1.T2.t8",
+        "P1.T2.t9",
         "P3.T1.t1"
       ],
       "text": "Normal deployment never runs apt or pip on the drone; host-package changes require an explicit `iii host maintenance`/Ansible transaction before application activation.",
@@ -21411,7 +21411,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P1.T2.t8"
+        "P1.T2.t9"
       ],
       "text": "Settled.",
       "title": "Release-local Python dependency layout"
@@ -21510,7 +21510,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P1.T2.t3"
+        "P1.T2.t9"
       ],
       "text": "The release wrapper prepends that tree while retaining the provisioned system Python/ROS Jazzy packages; manifests record Python ABI and every wheel hash.",
       "title": "Release-local Python dependency layout"
@@ -21609,7 +21609,7 @@
       ],
       "required_evidence": "junit",
       "test_refs": [
-        "P1.T2.t8"
+        "P1.T2.t9"
       ],
       "text": "Settled.",
       "title": "Release-local native shared-library policy"
@@ -21808,7 +21808,7 @@
       ],
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
-        "P1.T2.t6"
+        "P1.T2.t10"
       ],
       "text": "Validate the complete closure on target-equivalent ARM64 before signing.",
       "title": "Release-local native shared-library policy"
@@ -26040,7 +26040,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t8"
+        "P5.T0.t10"
       ],
       "text": "Settled.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26079,7 +26079,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t4",
-        "P5.T0.t7"
+        "P5.T0.t10"
       ],
       "text": "Require signed local evidence before promoting `develop` into stable `main`; CI remains responsible for building/signing the final qualified artifact, but the `main -> release` PR must reference a concise field- validation record produced from the exact `main` commit (or an artifact proven source-identical to it).",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26159,7 +26159,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t4",
-        "P5.T0.t7"
+        "P5.T0.t12"
       ],
       "text": "require actual flight evidence only when the release changes flight-critical behavior, mission logic, PX4 contracts, hardware interfaces, or safety policy.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26200,7 +26200,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t7"
+        "P5.T0.t10"
       ],
       "text": "Pure tooling/docs changes need no flight.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26241,7 +26241,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t4",
-        "P5.T0.t8"
+        "P5.T0.t10"
       ],
       "text": "CI verifies evidence identity/required categories but does not contact the aircraft.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26399,7 +26399,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t8"
+        "P5.T0.t9"
       ],
       "text": "PR text is untrusted transport",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26438,7 +26438,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t2",
-        "P5.T0.t8"
+        "P5.T0.t10"
       ],
       "text": "the signature, source identity, schema, required categories, and trusted signer are what the required `promotion-evidence` check validates.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26477,7 +26477,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t3",
-        "P5.T0.t4"
+        "P5.T0.t10"
       ],
       "text": "GitHub never runs simulation or reaches the drone.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26516,7 +26516,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t8"
+        "P5.T0.t12"
       ],
       "text": "Promotion tooling proves that mechanical submodule merge commits/gitlink-lock refresh preserve the tested source-content identity.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26972,7 +26972,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t8"
+        "P5.T0.t10"
       ],
       "text": "Settled.",
       "title": "Authority for required validation categories"
@@ -27013,7 +27013,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t1",
-        "P5.T0.t7"
+        "P5.T0.t12"
       ],
       "text": "Version a repository policy mapping governed packages/paths, interfaces, parameter/PX4 manifests, mission classifications, host/deployment changes, and change types to required evidence categories such as static/unit, local simulation, provisioned-drone bench smoke, OptiTrack, and field flight.",
       "title": "Authority for required validation categories"
@@ -27130,7 +27130,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t1",
-        "P5.T0.t8"
+        "P5.T0.t11"
       ],
       "text": "Keep the policy conservative but coarse enough for this research system.",
       "title": "Authority for required validation categories"
@@ -27169,7 +27169,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t8"
+        "P5.T0.t10"
       ],
       "text": "Settled.",
       "title": "Validation-waiver limits"
@@ -27670,7 +27670,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T6.t8",
-        "P5.T0.t5"
+        "P5.T0.t12"
       ],
       "text": "Settled by delegated authority.",
       "title": "One connected-system field-readiness command"
@@ -27706,7 +27706,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T6.t8",
-        "P5.T0.t7"
+        "P5.T0.t12"
       ],
       "text": "Add read-only `iii field check` for the currently connected `iii.local` plus local GC.",
       "title": "One connected-system field-readiness command"
@@ -27744,7 +27744,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P2.T6.t8",
-        "P5.T0.t6"
+        "P5.T0.t12"
       ],
       "text": "Report commissioning/field overlay, paired GC/drone release compatibility, clock gate, credentials, storage/reserves, receiver/ runtime health, hardware roles, PX4 firmware/required-parameter drift, III config reconciliation/pending cold restart, selected mission/classification, QGC version/ managed-settings drift, logging/rosbag capacity, backup freshness, and prepared- offline cache/recovery assets.",
       "title": "One connected-system field-readiness command"
@@ -27816,7 +27816,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T6.t4",
-        "P5.T0.t4"
+        "P5.T0.t10"
       ],
       "text": "never mutate or arm anything.",
       "title": "One connected-system field-readiness command"
@@ -27888,7 +27888,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T6.t8",
-        "P5.T0.t8"
+        "P5.T0.t10"
       ],
       "text": "This is the canonical connected-system pre-field checklist, but its record is evidence rather than a reusable authorization token: every later safety-sensitive operation still validates live state.",
       "title": "One connected-system field-readiness command"
@@ -27927,7 +27927,7 @@
       "test_refs": [
         "P0.T12.t1",
         "P2.T6.t8",
-        "P5.T0.t5"
+        "P5.T0.t12"
       ],
       "text": "Settled by delegated authority.",
       "title": "Field-readiness severity and enforcement"
@@ -28007,7 +28007,7 @@
       "test_refs": [
         "P0.T12.t1",
         "P2.T6.t8",
-        "P5.T0.t8"
+        "P5.T0.t11"
       ],
       "text": "`FAIL` covers conditions that make the declared field workflow unsafe or non-recoverable: invalid commissioning without an allowed field overlay, incompatible GC/drone components, invalid clock gate, unavailable receiver/control plane, required hardware or PX4 mismatch, unresolved parameter reconciliation/reintroduction, invalid selected mission, or violated storage/ rollback reserve.",
       "title": "Field-readiness severity and enforcement"
@@ -28048,7 +28048,7 @@
       "test_refs": [
         "P0.T12.t1",
         "P2.T6.t6",
-        "P5.T0.t5"
+        "P5.T0.t10"
       ],
       "text": "`WARN` covers bounded non-safety deviations such as stale but still valid backup/evidence export, optional hardware absence, or offline cache age.",
       "title": "Field-readiness severity and enforcement"
@@ -28126,7 +28126,7 @@
       "test_refs": [
         "P0.T12.t1",
         "P2.T6.t6",
-        "P5.T0.t8"
+        "P5.T0.t12"
       ],
       "text": "A runtime-only computer may produce a checksummed diagnostic record; release/commissioning evidence requires signature by an authorized field-signing key.",
       "title": "Field-readiness severity and enforcement"
@@ -28165,7 +28165,7 @@
       "test_refs": [
         "P0.T12.t1",
         "P2.T6.t8",
-        "P5.T0.t7"
+        "P5.T0.t10"
       ],
       "text": "Warnings may be acknowledged with rationale in a new signed readiness record, but acknowledgement never changes a finding's severity or bypasses a live safety gate.",
       "title": "Field-readiness severity and enforcement"
@@ -28204,7 +28204,7 @@
       "test_refs": [
         "P0.T12.t1",
         "P2.T6.t6",
-        "P5.T0.t8"
+        "P5.T0.t12"
       ],
       "text": "Failures cannot be waived by readiness tooling.",
       "title": "Field-readiness severity and enforcement"
@@ -28252,7 +28252,7 @@
         "P2.T0.t6",
         "P2.T6.t8",
         "P3.T4.t4",
-        "P5.T0.t5"
+        "P5.T0.t12"
       ],
       "text": "Settled by delegated authority.",
       "title": "Withdrawal of a previously qualified release"
@@ -28348,7 +28348,7 @@
         "P2.T0.t5",
         "P2.T6.t3",
         "P3.T4.t4",
-        "P5.T0.t7"
+        "P5.T0.t10"
       ],
       "text": "Publish an append-only signed release-status statement that identifies the exact qualified release and classifies it as `qualified`, `withdrawn`, or `unsafe`, with reason, timestamp, superseding version when known, and signing authority.",
       "title": "Withdrawal of a previously qualified release"
@@ -28492,7 +28492,7 @@
         "P2.T0.t3",
         "P2.T6.t6",
         "P3.T4.t4",
-        "P5.T0.t8"
+        "P5.T0.t10"
       ],
       "text": "Its non-SemVer protected tag points at the trusted workflow revision and never triggers a bundle build.",
       "title": "Withdrawal of a previously qualified release"
@@ -28540,7 +28540,7 @@
         "P2.T0.t5",
         "P2.T6.t8",
         "P3.T4.t4",
-        "P5.T0.t5"
+        "P5.T0.t10"
       ],
       "text": "Inputs cannot alter code, artifacts, prior statements, or arbitrary refs.",
       "title": "Withdrawal of a previously qualified release"
@@ -28638,7 +28638,7 @@
         "P2.T0.t5",
         "P2.T6.t3",
         "P3.T4.t4",
-        "P5.T0.t8"
+        "P5.T0.t12"
       ],
       "text": "`unsafe` additionally invalidates commissioning and blocks flight-capable operation.",
       "title": "Withdrawal of a previously qualified release"
@@ -28688,7 +28688,7 @@
         "P2.T0.t6",
         "P2.T6.t4",
         "P3.T4.t4",
-        "P5.T0.t8"
+        "P5.T0.t10"
       ],
       "text": "Revocation never switches code while the aircraft may be operating.",
       "title": "Withdrawal of a previously qualified release"
@@ -28738,7 +28738,7 @@
         "P2.T0.t5",
         "P2.T6.t4",
         "P3.T4.t4",
-        "P5.T0.t7"
+        "P5.T0.t12"
       ],
       "text": "An unsafe installed release remains immutable for diagnostics and may be used by the onboard receiver only as a maintenance-safe last-resort control-plane recovery when no non-unsafe accepted release can recover the target; that exceptional state blocks flight and requires an immediate qualified replacement or reprovision.",
       "title": "Withdrawal of a previously qualified release"
@@ -28831,7 +28831,7 @@
         "P3.T3.t1",
         "P3.T8.t10",
         "P3.T11.t3",
-        "P5.T0.t5"
+        "P5.T0.t12"
       ],
       "text": "Settled by delegated authority.",
       "title": "Complete operator-credential or workstation loss"
@@ -29106,7 +29106,7 @@
         "P3.T3.t1",
         "P3.T8.t10",
         "P3.T11.t3",
-        "P5.T0.t7"
+        "P5.T0.t12"
       ],
       "text": "A lost GC/workstation is rebuilt from stock supported Ubuntu plus the repository, regenerated machine identity, fresh keys, verified imported records/caches, and a new provisioning record.",
       "title": "Complete operator-credential or workstation loss"
@@ -29142,7 +29142,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T8.t4",
-        "P5.T0.t5"
+        "P5.T0.t12"
       ],
       "text": "Settled by delegated authority.",
       "title": "Disaster recovery for local evidence and operator state"
@@ -29178,7 +29178,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T8.t2",
-        "P5.T0.t7"
+        "P5.T0.t12"
       ],
       "text": "Treat Git-ignored `.iii/` state as a schema-versioned local registry whose durable domains include content-addressed release caches, operation records, captures, backups, commissioning/readiness records, release evidence, status indexes, and import/export receipts.",
       "title": "Disaster recovery for local evidence and operator state"
@@ -29250,7 +29250,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T8.t4",
-        "P5.T0.t2"
+        "P5.T0.t10"
       ],
       "text": "Archives preserve provenance and cross-domain references, support incremental content reuse, never auto-prune, and clearly report omitted or unavailable bulky content.",
       "title": "Disaster recovery for local evidence and operator state"
@@ -29287,7 +29287,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P2.T8.t5",
-        "P5.T0.t8"
+        "P5.T0.t12"
       ],
       "text": "Exclude all SSH/signing private keys, runtime credentials, Wi-Fi secrets, and machine identity.",
       "title": "Disaster recovery for local evidence and operator state"
@@ -29323,7 +29323,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T8.t2",
-        "P5.T0.t7"
+        "P5.T0.t12"
       ],
       "text": "Repository state and compact GitHub attestations are not substitutes for bulky local evidence; field readiness warns when irreplaceable records have no verified external archive.",
       "title": "Disaster recovery for local evidence and operator state"
@@ -29747,7 +29747,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T4.t1",
-        "P5.T0.t5",
+        "P5.T0.t12",
         "P5.T1.t14",
         "P5.T6.t9"
       ],
@@ -29791,7 +29791,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P0.T4.t1",
-        "P5.T0.t7",
+        "P5.T0.t12",
         "P5.T1.t2",
         "P5.T6.t9"
       ],
@@ -29835,7 +29835,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P0.T4.t1",
-        "P5.T0.t7",
+        "P5.T0.t10",
         "P5.T1.t10",
         "P5.T6.t5"
       ],
@@ -29877,7 +29877,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T4.t1",
-        "P5.T0.t4",
+        "P5.T0.t10",
         "P5.T1.t17",
         "P5.T6.t5"
       ],
@@ -29919,7 +29919,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T4.t1",
-        "P5.T0.t8",
+        "P5.T0.t10",
         "P5.T1.t14",
         "P5.T6.t9"
       ],
@@ -29957,7 +29957,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T0.t1",
-        "P5.T0.t5"
+        "P5.T0.t12"
       ],
       "text": "Settled by delegated authority.",
       "title": "Deployment-redesign scope closure"
@@ -29993,7 +29993,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T0.t1",
-        "P5.T0.t8"
+        "P5.T0.t12"
       ],
       "text": "The architecture is closed for implementation after the integrity sweep in this backlog.",
       "title": "Deployment-redesign scope closure"
@@ -30031,7 +30031,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P0.T0.t1",
-        "P5.T0.t7"
+        "P5.T0.t12"
       ],
       "text": "Future source-repository-independent field operation, actual split-host HIL, profile-specific OptiTrack integration, multiple tracked parameter variants, delta transfer, TLS/private-CA operation, and fleet/per-aircraft identity remain explicitly deferred.",
       "title": "Deployment-redesign scope closure"
@@ -30067,7 +30067,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T0.t1",
-        "P5.T0.t8"
+        "P5.T0.t10"
       ],
       "text": "This sweep may add only the schemas and boundaries already specified for those futures.",
       "title": "Deployment-redesign scope closure"
@@ -30103,7 +30103,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T0.t1",
-        "P5.T0.t7"
+        "P5.T0.t10"
       ],
       "text": "Implementation discoveries that contradict a load-bearing decision require an ADR/backlog amendment; ordinary technical choices may proceed within these contracts without reopening the design interview.",
       "title": "Deployment-redesign scope closure"
@@ -32624,7 +32624,7 @@
       "required_evidence": "junit",
       "task": "P1.T2",
       "test_refs": [
-        "P1.T2.t7"
+        "P1.T2.t9"
       ],
       "text": "Incremental field builds reuse caches without contaminating release output.",
       "title": "Implement Cached Cross-Compilation"
@@ -38164,7 +38164,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P3.T12",
       "test_refs": [
-        "P3.T12.t6"
+        "P3.T12.t9"
       ],
       "text": "One canonical PX4 release contract binds the exact 40-character Git commit, semantic firmware version, V6X board target, firmware artifact hash, build recipe/cache identity, normalized uXRCE-DDS publications/subscriptions, network baseline identity, and complete real parameter-manifest identity.",
       "title": "Bind And Verify The Exact PX4 Release"
@@ -38198,7 +38198,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P3.T12",
       "test_refs": [
-        "P3.T12.t6"
+        "P3.T12.t5"
       ],
       "text": "The qualified release pipeline builds or reuses a content-addressed cached PX4 firmware artifact and rejects stale, dirty, wrong-board, wrong-commit, malformed, or unbound build evidence.",
       "title": "Bind And Verify The Exact PX4 Release"
@@ -38232,7 +38232,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P3.T12",
       "test_refs": [
-        "P3.T12.t6"
+        "P3.T12.t9"
       ],
       "text": "The signed III release manifest and bundle carry the exact PX4 contract and flashable artifact; version ranges cannot substitute for exact identity.",
       "title": "Bind And Verify The Exact PX4 Release"
@@ -38266,7 +38266,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P3.T12",
       "test_refs": [
-        "P3.T12.t6"
+        "P3.T12.t7"
       ],
       "text": "A receiver-owned, read-only Ethernet audit distinguishes unreachable PX4, firmware/version mismatch, topic-contract mismatch, network mismatch, and complete parameter drift; it performs zero FMU writes and retains evidence.",
       "title": "Bind And Verify The Exact PX4 Release"
@@ -38300,7 +38300,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P3.T12",
       "test_refs": [
-        "P3.T12.t6"
+        "P3.T12.t5"
       ],
       "text": "III activation fails closed with a stable PX4-release-required result and actionable separate-flow instructions, while a matching rerun is a Pi no-op and repeats the PX4 audit before activation.",
       "title": "Bind And Verify The Exact PX4 Release"
@@ -38333,7 +38333,7 @@
       "required_evidence": "junit",
       "task": "P3.T12",
       "test_refs": [
-        "P3.T12.t6"
+        "P3.T12.t5"
       ],
       "text": "Operators can pull a complete disarmed FMU parameter inventory and promote it as reviewed repository defaults only when its exact firmware contract matches; calibration identity remains explicitly preserved.",
       "title": "Bind And Verify The Exact PX4 Release"
@@ -38344,7 +38344,7 @@
       ],
       "blocking": true,
       "ci": false,
-      "digest": "05647545439d33b6b8aef101267cb393cc7f1646bcc3a77b7ccb415fddaafcc0",
+      "digest": "886ae368051c81992f8439a1bd055642ac513e9ad23db7a63db1388490cf113e",
       "id": "P3.T12.a7",
       "impact_categories": [
         "provisioned-drone-bench-smoke"
@@ -38367,9 +38367,9 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P3.T12",
       "test_refs": [
-        "P3.T12.t6"
+        "P3.T12.t5"
       ],
-      "text": "The separate PX4 release flow prepares authenticated firmware, `net.cfg`, `extras.txt`, and parameter-default artifacts, clearly separates USB firmware upload from microSD network/startup installation, and verifies the result read-only before III activation.",
+      "text": "The separate PX4 release flow prepares authenticated firmware, `net.cfg`, `extras.txt`, and parameter-default artifacts. USB is the canonical firmware/configuration maintenance path; microSD copying is recovery-only, and the result is verified read-only before III activation.",
       "title": "Bind And Verify The Exact PX4 Release"
     },
     {
@@ -38400,7 +38400,7 @@
       "required_evidence": "junit",
       "task": "P3.T12",
       "test_refs": [
-        "P3.T12.t7"
+        "P3.T12.t8"
       ],
       "text": "Focused unit/integration tests cover cache hits, all mismatch classes, hostile evidence, no-write behavior, idempotent redeploy, and generated artifact drift; the Phase 3 suite and target-equivalent checks pass.",
       "title": "Bind And Verify The Exact PX4 Release"
@@ -38411,7 +38411,7 @@
       ],
       "blocking": true,
       "ci": false,
-      "digest": "50fac4f1455844bea467675683cc33ae41ff7045c9b2de2f052756c3da421214",
+      "digest": "9a4b74a0e9ea123a88a572a7abb46367a2d62e4e27d670cf4b8045c39ca6c7df",
       "id": "P3.T12.a9",
       "impact_categories": [
         "field-flight",
@@ -38435,9 +38435,9 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P3.T12",
       "test_refs": [
-        "P3.T12.t4"
+        "P3.T12.t9"
       ],
-      "text": "Final physical acceptance flashes the prepared PX4 candidate, installs its microSD files, reruns the already-staged III release, and records a healthy Pi-to-PX4 Ethernet audit plus fresh uXRCE-DDS delivery while disarmed.",
+      "text": "Final physical acceptance applies the prepared PX4 candidate through USB, reruns the already-staged III release, and records a healthy Pi-to-PX4 Ethernet audit plus fresh uXRCE-DDS delivery while disarmed.",
       "title": "Bind And Verify The Exact PX4 Release"
     },
     {
@@ -42262,7 +42262,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T0",
       "test_refs": [
-        "P5.T0.t2"
+        "P5.T0.t9"
       ],
       "text": "Every Q1\u2013Q132 load-bearing contract and every backlog acceptance criterion maps to at least one automated check, scripted local check, or explicit signed physical acceptance step; uncovered rows fail the matrix audit.",
       "title": "Build The Deployment Verification Matrix"
@@ -42297,7 +42297,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T0",
       "test_refs": [
-        "P5.T0.t8"
+        "P5.T0.t9"
       ],
       "text": "CI runs all hardware-independent tests.",
       "title": "Build The Deployment Verification Matrix"
@@ -42332,7 +42332,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T0",
       "test_refs": [
-        "P5.T0.t3"
+        "P5.T0.t10"
       ],
       "text": "Simulation and hardware-required tests are scripted locally, selected by Q121 change-impact policy, and produce P2.T8-retained signed evidence that CI verifies by source/policy identity without replaying the test.",
       "title": "Build The Deployment Verification Matrix"
@@ -42465,7 +42465,7 @@
       "required_evidence": "junit",
       "task": "P5.T0",
       "test_refs": [
-        "P5.T0.t1"
+        "P5.T0.t12"
       ],
       "text": "`iii field check` implements the final Q125 connected GC/drone readiness contract, seals a non-mutating readiness record, and emits exact next actions for every warning/failure.",
       "title": "Build The Deployment Verification Matrix"
@@ -42567,7 +42567,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T0",
       "test_refs": [
-        "P5.T0.t7"
+        "P5.T0.t11"
       ],
       "text": "Credential tests cover Q128 surviving-computer enrollment, signing-only loss, complete SSH-authority loss, mandatory reimage, state restore, and recommissioning with no hidden bypass.",
       "title": "Build The Deployment Verification Matrix"
@@ -44026,7 +44026,7 @@
       "required_evidence": "signed-local-acceptance",
       "scenario": "configuration",
       "test_refs": [
-        "P5.T0.t8",
+        "P5.T0.t11",
         "P5.T6.t5"
       ],
       "text": "Real and simulation tuning, cold restart, capture, reconciliation, comparison, deliberate promotion, release deployment, and rollback preserve exact provenance.",
@@ -44120,7 +44120,7 @@
       "required_evidence": "signed-local-acceptance",
       "scenario": "evidence",
       "test_refs": [
-        "P5.T0.t8",
+        "P5.T0.t12",
         "P5.T6.t9"
       ],
       "text": "A replacement GC verifies, restores, and rearchives all declared non-secret records while new machine identity and credentials are generated.",
@@ -44214,7 +44214,7 @@
       "required_evidence": "signed-local-acceptance",
       "scenario": "failure",
       "test_refs": [
-        "P5.T0.t6",
+        "P5.T0.t10",
         "P5.T6.t6"
       ],
       "text": "Interrupted transfer, activation, receiver update, network, storage, clock, power, and credential failures recover to an authenticated old or new pair.",
@@ -44261,7 +44261,7 @@
       "required_evidence": "signed-local-acceptance",
       "scenario": "field",
       "test_refs": [
-        "P5.T0.t7",
+        "P5.T0.t10",
         "P5.T6.t9"
       ],
       "text": "Prepared online and fully offline field-development and qualified workflows operate through III CLI with native GC and no onboard source or build dependency.",

@@ -2647,6 +2647,24 @@ Implementation notes (2026-08-26):
   audits, failure-path tests, diff hygiene, and the refreshed submodule lock.
   Owning PRs merged: Configuration #17, Core #58, Mission #12, Runtime #6,
   Supervision #13, and IWR fork #1.
+- The 2026-09-04 field acceptance continuation added an explicit build resource
+  contract. ARM64 colcon receives a bounded worker count and its Docker builder
+  has a matching hard CPU quota; the GC release builder now uses the governed
+  materialized source tree instead of sending the 275 GiB development workspace
+  as Docker context, and its private BuildKit builder has the same quota. A
+  no-change ARM64 rebuild completed with zero compiler cache misses, and live
+  container inspection confirmed a 16-CPU quota while the host has 32 logical
+  CPUs. Focused build/release coverage passed 26 cases after these changes.
+- The final five-area R57 field build captured dirty source identity
+  `50b5fac9d90a55b1b7d26a66f7200b70e6da33a343d1a70b270c7e29f0dee1cb`
+  and produced ARM64 build
+  `1965429b4c49950a44e0f3395e7d1c3c07b845a8477d487a7558d59c26933e89`.
+  Fifteen target packages compiled successfully under the 16-of-32 CPU cap;
+  ccache reported 540 direct hits and eight misses, and the emulated target
+  smoke/closure checks passed. The paired GC build
+  `0762111862540a32f90445c8953777a2106bcf2a18cca6186e43bd56c18088fe`
+  reused the pinned QGroundControl 5.0.8 artifact and passed both OCI runtime
+  smoke checks.
 
 #### P1.T3: Package And Verify Release Bundles
 
@@ -5413,6 +5431,49 @@ satisfy or reclassify the 119 physical matrix rows.
   stale committed matrix: the canonical generator preserved all 1,197 rows and
   the policy identity while updating 145 `test_refs`; the matrix audit and the
   original batch then passed. This is target-equivalent evidence only.
+- The 2026-09-04 software acceptance boundary completed under a hard 16-of-32 CPU
+  limit. The canonical Jazzy phase suites passed 711 deployment tests with five
+  explicit physical/privileged skips, 246 CLI tests, 761 selected III package
+  tests, 17 simulation tests, 44 workspace transport/bag/GUI helper tests, three
+  top-level integration tests, 30 smoke-runner tests, 128 GC frontend tests, and
+  the frontend contract, zero-warning lint, typecheck, production-build, and
+  zero-vulnerability audit gates. `iii verify deployment --audit-only` validated
+  all 1,214 governed rows; the submodule lock and documentation gates passed.
+- Live simulation then exercised canonical retained-plan boot/start/shutdown,
+  every read domain, runtime lifecycle, simulated gripper open/close, mapper
+  start/pause/freeze/stop, overview update, configuration and rosbag queries,
+  custom-operation validation/start/cancel, authentication, proxy selection, and
+  browser hydration without issuing Arm, takeoff, or other flight commands.
+  All 39 non-flight mutating/read steps returned HTTP 200, and an independent
+  read-only 25-domain run captured the authenticated Dashboard before logout.
+  The run exposed and fixed stale Dashboard hydration selectors, a vulnerable
+  Browserslist lock, root-owned generated frontend/build artifacts, Docker
+  fallback writes into the source tree, a slow implicit install-time audit, and
+  simulation format/CMake-policy warnings. These results close no physical Q131
+  row; signed aircraft evidence and the commissioned OptiTrack cycle remain open.
+- The 2026-09-04 R57 aircraft-connected five-area acceptance exercised the
+  non-arming path for configuration management, field deployment, cross-build,
+  mission catalog control, and real-profile lifecycle. Live configuration apply
+  and snapshot save/load passed; a missing snapshot-download return was fixed and
+  covered by a concrete adapter regression. System shutdown/boot, selected
+  configuration/control startup, and a cold mission-executor restart passed on
+  the Pi. Both `inspection-production` and the explicitly included
+  `reach-charge-leave-experimental` mission were listed and inspected. The
+  initial `opti_track -> real` configuration alias now consumes the reconciled
+  receiver-owned real selector when no independent OptiTrack selector exists,
+  without copying or mutating state; its focused tests passed.
+- The same run fixed mDNS advertisement selecting `127.0.1.1`, restricted
+  selected-node failure reports to their requested scope, started/stopped a real
+  20,299-byte vehicle-status rosbag, completed a 79-file 3.66 MB immutable log
+  pull, and inventoried 470 local records. Signed field release
+  `800622360d9b4c64c8ca1b9c592335740a5a0bffefa3fd325bcc094a7b1707e4`
+  binds the two mission entries and exact cached PX4 build
+  `0e8ead95d3dc1fa425f2dcd8f1b51c745da918697e1f87a356d6df9d2c77950e`.
+  Retained operation `five-area-r57-stage-enrolled` staged GC then drone in
+  about 80 seconds, made no PX4 write, and deliberately skipped activation, so
+  the older active flight runtime remained unchanged. Missing local trust and a
+  non-enrolled SSH identity each failed closed before transfer and were corrected
+  by binding the target-enrolled trust projection and provisioning key.
 
 #### P5.T1: Commission The First Aircraft From Raw Image
 
@@ -5738,6 +5799,11 @@ Implementation notes (software boundary, 2026-08-27):
   migration review were renewed, after which `iii docs check` returned
   `III_DOCS_OK` for 92 maintained documents and two generated references. The
   independent physical Q131 walkthrough remains open.
+- The 2026-09-04 continuation repeated the executable documentation and generated
+  reference checks after the field-build and live-GC corrections. The governed
+  inventory remains 144 documents with 92 maintained documents and two generated
+  references. The independent clean-computer/physical Q131 walkthrough remains
+  the only documentation acceptance boundary not exercised autonomously.
 
 #### P5.T4: Migrate CI, Branch Hygiene, Release, And AI-Agent Instructions
 
@@ -6000,15 +6066,15 @@ Acceptance:
       it as reviewed repository defaults only when its exact firmware contract
       matches; calibration identity remains explicitly preserved.
 - [x] The separate PX4 release flow prepares authenticated firmware, `net.cfg`,
-      `extras.txt`, and parameter-default artifacts, clearly separates USB
-      firmware upload from microSD network/startup installation, and verifies
-      the result read-only before III activation.
+      `extras.txt`, and parameter-default artifacts. USB is the canonical
+      firmware/configuration maintenance path; microSD copying is recovery-only,
+      and the result is verified read-only before III activation.
 - [x] Focused unit/integration tests cover cache hits, all mismatch classes,
       hostile evidence, no-write behavior, idempotent redeploy, and generated
       artifact drift; the Phase 3 suite and target-equivalent checks pass.
-- [ ] Final physical acceptance flashes the prepared PX4 candidate, installs its
-      microSD files, reruns the already-staged III release, and records a healthy
-      Pi-to-PX4 Ethernet audit plus fresh uXRCE-DDS delivery while disarmed.
+- [ ] Final physical acceptance applies the prepared PX4 candidate through USB,
+      reruns the already-staged III release, and records a healthy Pi-to-PX4
+      Ethernet audit plus fresh uXRCE-DDS delivery while disarmed.
 
 Tests:
 
@@ -6018,8 +6084,18 @@ Tests:
   complete.
 - Real `px4_fmu-v6x_multicopter` build at the pinned source commit, followed by
   first-build/cache-hit and prepared-media verification.
-- Final physical USB/microSD update and Pi-to-PX4 Ethernet audit remain required
-  before the final acceptance item can close.
+- Final physical USB update and Pi-to-PX4 Ethernet audit remain required before
+  the final acceptance item can close.
+- 2026-09-03 field USB exercise: the exact prepared V6X firmware SHA-256
+  `f6ac33e8d5372bc7884e15d07e9e448211cd301baea56809a1cb985c91532620` was
+  flashed and booted disarmed as PX4 v1.16.1 at commit prefix `7f41496535`.
+  Exact `net.cfg` and `etc/extras.txt` bytes were written and read back through
+  USB MAVLink FTP; PX4 then emitted 14541/UDP to the Pi at `10.41.10.1`.
+  The release parameter export contains 176 names absent from this v1.16.1 FMU
+  schema (largely legacy/simulation parameters), so 739 matching values were
+  applied and persisted but the final audit remains deliberately open. The
+  receiver also exposed an SD-read timeout crash; it is now covered by a
+  fail-closed regression test and must be included in the next receiver update.
 - Passed the real `px4_fmu-v6x_multicopter` build at
   `7f41496535c54924dfb33a25a27be88b4b134a30`; the resulting 1,771,162-byte
   image has SHA-256 `f6ac33e8d5372bc7884e15d07e9e448211cd301baea56809a1cb985c91532620`.
@@ -6034,6 +6110,15 @@ Tests:
   232 CLI tests. The Docker-capable host then passed all three aircraft
   target-equivalent first-convergence, idempotence, and drift-repair checks in
   623.98 seconds.
+- The 2026-09-04 release/field dry run bound one signed paired drone/GC bundle to
+  the exact component source manifests, PX4 contract, selected real profile,
+  `inspection-production`, and the explicitly included
+  `reach-charge-leave-experimental` mission. Planning succeeded only for that
+  exact selection; omitting the experimental mission failed closed before any
+  staging or activation. The full field command retained and validated its
+  operation plan without contacting the aircraft. Final physical USB application,
+  Pi-to-PX4 Ethernet verification, and fresh uXRCE-DDS delivery remain the sole
+  acceptance item left open for this task.
 
 ## Completed
 

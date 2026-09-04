@@ -26,6 +26,7 @@ def main() -> int:
     parser.add_argument("--generation", type=int, required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--operation-id", required=True)
+    parser.add_argument("--python", type=Path)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     try:
@@ -36,6 +37,7 @@ def main() -> int:
             generation=args.generation,
             version=args.version,
             schema_root=ROOT / "deployment/schemas/v1",
+            python_executable=args.python,
         )
         result = (
             materialize_receiver_update(inspection, operation_id=args.operation_id)

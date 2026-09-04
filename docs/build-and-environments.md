@@ -157,6 +157,57 @@ impact fail closed. The Markdown report is mandatory provenance for a field-
 development release. A caller requesting components must pass all inferred
 components; omitting either side of a shared-contract change is rejected.
 
+### Rapid drone-code field iteration
+
+For a change confined to `src/III-Drone-Core` (or another source root mapped
+only to the `DRONE` rule), capture a fresh snapshot and request only `drone`.
+The impact calculation is the authority: it permits the lightweight build and
+deployment only when it reports `components: ["drone"]`; changes to deployment,
+interfaces, configuration, CLI, lockfiles, or GC content require the paired
+GC/drone release instead. Local Python `*.egg-info` metadata is generated
+output and is excluded from the snapshot.
+
+```bash
+PYTHONPATH=deployment/src python3 scripts/release/capture_source_snapshot.py \
+  --output "$evidence/source-snapshot.json" \
+  --report "$evidence/source-provenance.md" \
+  --component drone
+
+PYTHONPATH=deployment/src python3 scripts/build/build_arm64_release.py \
+  --snapshot "$evidence/source-snapshot.json" \
+  --component drone --cache "$cache" --output "$output" \
+  --wheelhouse "$wheelhouse" --wheel-lock deployment/python-wheel-lock.json \
+  --parallel-workers "$workers"
+```
+
+Package the signed field bundle and use `iii deploy plan` followed by
+`iii deploy field --component drone`; the latter remains disarmed-safe and
+performs the same receiver, configuration-checkpoint, PX4 audit, and readiness
+gates as a paired deployment. The cached toolchain and package cache make this
+the intended in-field code-update path; it never rebuilds or reflashes PX4
+when its release audit matches.
+
+Set `workers` to the maximum CPU share available to the build (for example,
+half of `nproc`). The cap applies to colcon package scheduling and CMake/make
+compilation, and Docker enforces the same value as a hard aggregate CPU quota
+for the pinned builder container.
+
+Field-development signing uses the encrypted owner-only key in
+`~/.config/iii/credentials/provisioning/field-signing-key.pem`. Before an
+assemble/package command, provide only its non-secret OS-keyring account; the
+passphrase is read directly by the keyring provider and is never placed in an
+argument, file, log, or environment value:
+
+```bash
+export III_FIELD_SIGNING_KEYRING_ACCOUNT=provisioning
+```
+
+The signer must match the target's enrolled `workstation-field` public signer.
+Do not use a private key in the workspace, even for an otherwise valid bundle.
+Paired GC/drone staging also enforces the GC host cache free-space reserve; do
+not weaken that reserve to force a field update. Free or attach sufficient
+operator-workstation storage, then rerun the retained deployment plan.
+
 ### Cached ARM64 release build
 
 The production ARM64 builder is an offboard-only workflow. It permits only a
@@ -221,6 +272,12 @@ unresolved libraries, invalid RUNPATHs, and undeclared host libraries fail the
 build. Only a release that passes every check receives `build-record.json` and
 is atomically renamed to the requested output path. A failed partial directory
 is diagnostic evidence and is never packageable as a complete release.
+
+The paired GC image builder uses the same governed materialized source tree as
+its Docker build context. It never walks the surrounding workspace or includes
+unrelated local evidence and generated artifacts in a release build. Pass the
+same `--parallel-workers "$workers"` value to `build_gc_release.py`; it creates
+an isolated BuildKit worker with a matching aggregate CPU quota.
 
 ## 5. Entrypoints
 

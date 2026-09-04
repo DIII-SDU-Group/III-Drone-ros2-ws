@@ -26,6 +26,7 @@ from iii_deployment.receiver.upload import (
 SFTP_SERVER = Path("/usr/lib/openssh/sftp-server")
 SFTP_ORIGINAL_COMMANDS = frozenset(
     {
+        "sftp",
         "internal-sftp",
         "sftp-server",
         "/usr/lib/openssh/sftp-server",
@@ -40,8 +41,9 @@ _LANDLOCK_ADD_RULE = 445
 _LANDLOCK_RESTRICT_SELF = 446
 _LANDLOCK_RULE_PATH_BENEATH = 1
 _PR_SET_NO_NEW_PRIVS = 38
+_WRITE_FILE = 1 << 1
 _WRITE_ACCESS = (
-    (1 << 1)  # WRITE_FILE
+    _WRITE_FILE
     | (1 << 4)  # REMOVE_DIR
     | (1 << 5)  # REMOVE_FILE
     | (1 << 6)  # MAKE_CHAR
@@ -92,6 +94,7 @@ def restrict_writes_to(root: Path) -> None:
             raise ContractError("kernel Landlock write confinement is unavailable")
         raise OSError(observed, os.strerror(observed))
     root_fd = -1
+    null_fd = -1
     try:
         root_fd = os.open(root, os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW)
         path_rule = _PathBeneathAttr(_WRITE_ACCESS, root_fd)
@@ -107,6 +110,23 @@ def restrict_writes_to(root: Path) -> None:
         ):
             observed = ctypes.get_errno()
             raise OSError(observed, os.strerror(observed))
+        # OpenSSH's sftp-server opens /dev/null while starting. Permit writes
+        # only to that exact sink; the upload tree remains the sole mutable
+        # filesystem namespace.
+        null_fd = os.open("/dev/null", os.O_PATH | os.O_NOFOLLOW)
+        null_rule = _PathBeneathAttr(_WRITE_FILE, null_fd)
+        if (
+            libc.syscall(
+                _LANDLOCK_ADD_RULE,
+                ruleset_fd,
+                _LANDLOCK_RULE_PATH_BENEATH,
+                ctypes.byref(null_rule),
+                0,
+            )
+            < 0
+        ):
+            observed = ctypes.get_errno()
+            raise OSError(observed, os.strerror(observed))
         if libc.prctl(_PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0:
             observed = ctypes.get_errno()
             raise OSError(observed, os.strerror(observed))
@@ -114,6 +134,8 @@ def restrict_writes_to(root: Path) -> None:
             observed = ctypes.get_errno()
             raise OSError(observed, os.strerror(observed))
     finally:
+        if null_fd >= 0:
+            os.close(null_fd)
         if root_fd >= 0:
             os.close(root_fd)
         os.close(ruleset_fd)
@@ -153,7 +175,20 @@ def dispatch(
         raise ContractError("forced SSH gateway client identity is invalid")
     if original_command == "":
         return receiver_client_main()
-    if original_command in SFTP_ORIGINAL_COMMANDS:
+    # This exact command is deliberately limited to the SSH gateway's
+    # persistent, read-only clock sampling client.  It amortizes interpreter
+    # startup while preserving the normal Unix-socket peer authentication for
+    # every individual sample.
+    if original_command == "iii-clock-samples":
+        return receiver_client_main(persistent=True, client_id=client_id)
+    # OpenSSH reconstructs a configured Subsystem command with one trailing
+    # space in SSH_ORIGINAL_COMMAND even when the sshd_config line has none.
+    # Accept only that exact server representation in addition to the exact
+    # allow-listed spellings; never parse or execute caller-supplied suffixes.
+    if original_command in SFTP_ORIGINAL_COMMANDS or (
+        original_command.endswith(" ")
+        and original_command[:-1] in SFTP_ORIGINAL_COMMANDS
+    ):
         if not sftp_server.is_absolute() or not sftp_server.is_file():
             raise ContractError("fixed OpenSSH SFTP server is unavailable")
         store = UploadStore(incoming_root, lock_path=lock_path)

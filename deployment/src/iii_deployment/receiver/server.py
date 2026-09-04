@@ -200,7 +200,9 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
     )
     activation = ActivationCoordinator(
         release_store=store,
-        transaction_store=ActivationTransactionStore(Path("/")),
+        transaction_store=ActivationTransactionStore(
+            Path("/"), selector_owner=(0, store.runtime_gid)
+        ),
         diagnostics=ActivationDiagnosticStore(STATE_ROOT / "activation"),
         safety_provider=safety_provider,
         health_provider=OnboardHealthProvider(
@@ -225,7 +227,11 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
             releases_root=store.releases_root,
             checkpoints_root=Path("/var/lib/iii/configuration/checkpoints"),
             staging_root=Path("/var/lib/iii/configuration/staging"),
-            operations_root=STATE_ROOT / "operations",
+            # Reconciliation owns directories and review artifacts.  Keep them
+            # out of the receiver journal, whose root is deliberately an exact
+            # flat inventory of authenticated ``*.json`` operation records.
+            operations_root=STATE_ROOT / "configuration-reconciliation",
+            active_state_root=Path("/var/lib/iii/configuration/current"),
             target_id=config.logical_target,
             runtime_profile=config.profile,
         ),
@@ -396,9 +402,8 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         schedule_receiver_handoff=lambda: subprocess.run(
             [
                 "/usr/bin/systemctl",
-                "start",
-                "--no-block",
-                "iii-receiver-bootstrap-apply.service",
+                "restart",
+                "iii-receiver-bootstrap-apply.timer",
             ],
             check=True,
         ),

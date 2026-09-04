@@ -2,6 +2,7 @@
 # captured by python-wheel-lock.json using the pinned resolver image.
 fastapi==0.116.1
 httpx==0.28.1
+mavsdk==3.17.2
 pydantic==2.11.7
 pyserial==3.5
 PyYAML==6.0.2

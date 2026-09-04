@@ -621,7 +621,7 @@
       ],
       "path": "docs/build-and-environments.md",
       "repository": "workspace",
-      "sha256": "44347d28e20a313bb166812ab8211013aea6efcfe8031873c5101d38801b2112",
+      "sha256": "3a12f1b20d61d73c6dcbbe9c29f63eb9577e788039f498fc854608ca1706da3c",
       "status": "passed"
     },
     {
@@ -673,7 +673,7 @@
       ],
       "path": "docs/deployment-and-field-operations.md",
       "repository": "workspace",
-      "sha256": "fb51979d8f3691e959bb716f608e3e33786b010420ddac4d8b09ad880e4e978c",
+      "sha256": "a7ca1c16843c3d1d31c823881ed9bcc1a04787fc1b18d5f308047ad796351b96",
       "status": "passed"
     },
     {
@@ -764,7 +764,7 @@
       ],
       "path": "docs/generated/deployment-schema-reference.md",
       "repository": "workspace",
-      "sha256": "ff02d0b529009d634cff816a24f01689efc40f94bcdd20cd0a0c505d14a6926a",
+      "sha256": "d2a9cb0c8a3d375f9ce9f73176a198283149be8eaf98d795371c1341288cbafc",
       "status": "passed"
     },
     {
@@ -777,7 +777,7 @@
       ],
       "path": "docs/generated/iii-command-reference.md",
       "repository": "workspace",
-      "sha256": "2fb42c293cb4b3aaddaa064df0c44cfb76974364f75bf2c44d1eb69b7748eebd",
+      "sha256": "0f4dc99aee76eba8cc11b3136ddbe2eb4e33b0b799fc6aba2ef6534459f41ee3",
       "status": "passed"
     },
     {
@@ -1024,7 +1024,7 @@
       ],
       "path": "docs/qualified-release-pipeline.md",
       "repository": "workspace",
-      "sha256": "24aee138541f7476ad6d617082606c3293d9b2a39b157bad18c8a36fc0f3f316",
+      "sha256": "8d4e728794d18c11aa383cf9280fbb37bd7cfbe07522d570a4c0075fb1da6315",
       "status": "passed"
     },
     {
@@ -1197,8 +1197,8 @@
       "status": "passed"
     }
   ],
-  "manifest_id": "32cd993ee96f3076cabd13e97f06d709148ed3f36b4296584b589b6c6342ab76",
-  "review_id": "fb7a79a029a2b0859b100e6d6c89307670c5168d150f3662e38e89673d861f98",
-  "reviewer": "codex-px4-release-pairing",
+  "manifest_id": "da9882697799e4991dbf963b923c6a68abbb5eeddcaeb357230e8612ad0133ca",
+  "review_id": "9033b7a2f63390094425414cdb0b63cdea1d355e583d9c81deaafc295b798ce1",
+  "reviewer": "codex-deployment-acceptance",
   "schema": "iii.documentation-review/v1"
 }

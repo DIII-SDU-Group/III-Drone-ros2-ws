@@ -105,7 +105,7 @@ iii_filesystem_directories:
   - {path: /etc/iii/secrets, owner: root, group: iii, mode: "0750"}
   - {path: /var/cache/iii, owner: root, group: root, mode: "0755"}
   - {path: /var/cache/iii/wheels, owner: root, group: root, mode: "0755"}
-  - {path: /var/lib/iii, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii, owner: iii, group: iii, mode: "0751"}
   - {path: /var/lib/iii/configuration, owner: iii, group: iii, mode: "0750"}
   - {path: /var/lib/iii/configuration/checkpoints, owner: iii, group: iii, mode: "0750"}
   - {path: /var/lib/iii/backups, owner: root, group: iii, mode: "0750"}
@@ -118,7 +118,8 @@ iii_filesystem_directories:
   - {path: /var/lib/iii/deployment, owner: root, group: iii, mode: "0750"}
   - {path: /var/lib/iii/deployment/activation-transactions, owner: root, group: iii, mode: "0750"}
   - {path: /var/lib/iii/deployment/activation, owner: root, group: iii, mode: "0750"}
-  - {path: /var/lib/iii/incoming, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/incoming, owner: iii-deploy, group: iii-deploy, mode: "0700"}
   - {path: /var/log/iii, owner: iii, group: iii, mode: "0750"}
   - {path: /var/log/iii/deployment, owner: root, group: iii, mode: "0750"}
-  - {path: /run/iii, owner: iii, group: iii, mode: "0750"}
+  - {path: /run/iii, owner: iii, group: iii, mode: "0751"}
+  - {path: /run/iii/deployment-upload, owner: iii-deploy, group: iii-deploy, mode: "0700"}

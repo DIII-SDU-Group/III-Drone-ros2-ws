@@ -10,7 +10,7 @@
     "snapshot_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "captured_at": {"type": "string", "format": "date-time"},
     "profile": {"enum": ["real", "sim"]},
-    "provenance": {"enum": ["mavlink-complete-inventory", "qgc-forwarded-mavlink-observation", "imported-verified-capture"]},
+    "provenance": {"enum": ["mavlink-complete-inventory", "receiver-px4-ethernet", "qgc-forwarded-mavlink-observation", "imported-verified-capture"]},
     "target": {"type": "object", "additionalProperties": false, "required": ["system_id", "component_id", "armed", "firmware_version", "firmware_commit"], "properties": {"system_id": {"type": "integer", "minimum": 1, "maximum": 255}, "component_id": {"type": "integer", "minimum": 0, "maximum": 255}, "armed": {"const": false}, "firmware_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}, "firmware_commit": {"type": ["string", "null"], "pattern": "^[a-f0-9]{8,40}$"}}},
     "complete": {"const": true},
     "parameter_count": {"type": "integer", "minimum": 1},

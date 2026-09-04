@@ -139,13 +139,13 @@
     mode: "0640"
 
 - name: Initialize a no-release live-state document
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: live-state.json.j2
     dest: /var/lib/iii/deployment/live-state.json
     owner: root
     group: "{{ iii_runtime_group_effective }}"
     mode: "0640"
     force: false
-    content: "{{ iii_profile | iii_live_state | iii_canonical_json }}\n"
 
 - name: Bootstrap or reconcile permanent forced-command operator access
   ansible.builtin.command:
@@ -197,9 +197,11 @@
     mode: "0644"
   loop:
     - iii-receiver-bootstrap-apply.service
+    - iii-receiver-bootstrap-apply.timer
     - iii-receiver-bootstrap-prepare.service
     - iii-receiver-bootstrap-reconcile.service
     - iii-deployment-receiver-reconcile.service
+    - iii-deployment-receiver-candidate.service
     - iii-deployment-receiver.service
     - iii-log-maintenance.service
     - iii-log-maintenance.timer
@@ -265,6 +267,13 @@
     path: /run/iii/deployment-receiver.sock
     state: present
     timeout: 30
+  when: not ansible_check_mode
+
+- name: Verify the restricted deployment account can traverse to the receiver socket
+  ansible.builtin.command:
+    argv: [/usr/sbin/runuser, -u, iii-deploy, --, /usr/bin/test, -x, /run/iii]
+  changed_when: false
+  check_mode: false
   when: not ansible_check_mode
 
 - name: Wait for authenticated receiver readiness evidence

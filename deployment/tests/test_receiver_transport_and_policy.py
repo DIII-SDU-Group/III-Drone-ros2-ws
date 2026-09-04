@@ -76,6 +76,17 @@ def test_unix_socket_transport_is_bounded_canonical_and_has_no_tcp_listener(
     assert policy["transport"]["kind"] == "unix-domain-socket"
 
 
+def test_unix_socket_readiness_probe_disconnect_does_not_crash_receiver() -> None:
+    class DisconnectedProbe:
+        def sendall(self, _payload: bytes) -> None:
+            raise BrokenPipeError("readiness probe closed after connect")
+
+    UnixReceiverServer._send_response(
+        DisconnectedProbe(),
+        {"schema": "iii.receiver-response/v1", "ok": False},
+    )
+
+
 def test_local_process_cannot_impersonate_forced_ssh_credential() -> None:
     with pytest.raises(ContractError, match="authenticated client|sshd session"):
         authenticate_forced_ssh_peer(os.getpid(), os.getuid(), CLIENT_ID)
@@ -214,7 +225,11 @@ def test_stable_units_run_receiver_outside_release_tree_and_allow_only_declared_
         )
         assert exec_line.startswith("ExecStart=/opt/iii/receiver/selectors/current/")
         assert "/opt/iii/releases/" not in exec_line
-        assert "RestrictAddressFamilies=AF_UNIX" in unit
+        if name == "iii-deployment-receiver.service":
+            assert "PrivateNetwork=no" in unit
+            assert "RestrictAddressFamilies=AF_UNIX AF_INET" in unit
+        else:
+            assert "RestrictAddressFamilies=AF_UNIX" in unit
         write_line = next(
             line for line in unit.splitlines() if line.startswith("ReadWritePaths=")
         )
@@ -262,3 +277,37 @@ def test_stable_units_run_receiver_outside_release_tree_and_allow_only_declared_
         assert not any(
             path in bootstrap_writes for path in policy["self_update_forbidden_paths"]
         )
+
+    apply = (
+        ROOT / "deployment/systemd/iii-receiver-bootstrap-apply.service"
+    ).read_text(encoding="utf-8")
+    candidate = (
+        ROOT / "deployment/systemd/iii-deployment-receiver-candidate.service"
+    ).read_text(encoding="utf-8")
+    timer = (
+        ROOT / "deployment/systemd/iii-receiver-bootstrap-apply.timer"
+    ).read_text(encoding="utf-8")
+    server = (
+        ROOT / "deployment/src/iii_deployment/receiver/server.py"
+    ).read_text(encoding="utf-8")
+    assert "OnSuccess=iii-deployment-receiver.service" in apply
+    assert "OnFailure=iii-deployment-receiver.service" in apply
+    assert "ExecStart=/opt/iii/receiver/selectors/current/" in candidate
+    candidate_writes = next(
+        line for line in candidate.splitlines() if line.startswith("ReadWritePaths=")
+    )
+    running_receiver = (
+        ROOT / "deployment/systemd/iii-deployment-receiver.service"
+    ).read_text(encoding="utf-8")
+    receiver_writes = next(
+        line
+        for line in running_receiver.splitlines()
+        if line.startswith("ReadWritePaths=")
+    )
+    assert candidate_writes == receiver_writes
+    assert "OnActiveSec=1s" in timer
+    assert "Unit=iii-receiver-bootstrap-apply.service" in timer
+    assert '"iii-receiver-bootstrap-apply.timer"' in server
+    assert '"restart",\n                "iii-receiver-bootstrap-apply.timer"' in server
+    assert 'operations_root=STATE_ROOT / "configuration-reconciliation"' in server
+    assert 'operations_root=STATE_ROOT / "operations"' not in server

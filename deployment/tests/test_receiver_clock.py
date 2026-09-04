@@ -95,10 +95,10 @@ def test_high_rtt_or_too_few_samples_fail_closed(tmp_path: Path):
         gate.synchronize(
             operation_id="clock-operation-0001", samples=samples(clock, count=4)
         )
-    with pytest.raises(ContractError, match="500 ms"):
+    with pytest.raises(ContractError, match="2 seconds"):
         gate.synchronize(
             operation_id="clock-operation-0001",
-            samples=samples(clock, rtt_ns=500_000_001),
+            samples=samples(clock, rtt_ns=2_000_000_001),
         )
 
 
@@ -140,7 +140,7 @@ def test_operational_manual_sync_is_measure_only_and_never_steps(tmp_path: Path)
 def test_settled_sample_and_threshold_edges_are_enforced(tmp_path: Path):
     clock = FakeClock()
     gate = controller(tmp_path, clock, [])
-    edge = samples(clock, rtt_ns=500_000_000 - 4)
+    edge = samples(clock, rtt_ns=2_000_000_000 - 4)
     gate.synchronize(operation_id="clock-operation-edge", samples=edge)
 
     unsettled = samples(clock)

@@ -12,7 +12,7 @@
     "target": {"type": "object", "required": ["selector", "endpoint", "logical_id", "execution_host", "runtime_profile"]},
     "impact": {"type": "object", "required": ["schema", "impact_id", "components"]},
     "bundle_set": {"type": "string", "minLength": 1},
-    "configuration_checkpoint_id": {"$ref": "#/definitions/hash"},
+    "configuration_checkpoint_id": {"anyOf": [{"$ref": "#/definitions/hash"}, {"type": "null"}]},
     "mutations": {"type": "array", "uniqueItems": true, "items": {"enum": ["stage-gc-application", "activate-gc-application", "transfer-drone", "stage-drone", "activate-drone"]}},
     "px4_write": {"const": false},
     "px4_validation": {"enum": ["complete-disarmed-inventory-before-activation", "not-requested"]}

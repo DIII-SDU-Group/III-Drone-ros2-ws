@@ -13,6 +13,7 @@ from iii_deployment.field_signing_agent import (
     FieldSigningAgent,
     generate_field_signer,
 )
+from iii_deployment.signers import load_private_key, signer_id_for_public_key
 
 
 SCHEMAS = Path(__file__).resolve().parents[1] / "schemas/v1"
@@ -97,3 +98,20 @@ def test_field_signing_agent_refuses_ttl_above_24_hours(tmp_path: Path) -> None:
             registry=REGISTRY,
             ttl_hours=24.1,
         )
+
+
+def test_encrypted_field_key_uses_only_named_keyring_account(tmp_path: Path, monkeypatch) -> None:
+    private = tmp_path / "credentials/field.pem"
+    public = tmp_path / "credentials/field-public.json"
+    descriptor = generate_field_signer(
+        private_key_path=private,
+        public_descriptor_path=public,
+        passphrase=b"correct horse battery staple",
+        registry=REGISTRY,
+    )
+    monkeypatch.setenv("III_FIELD_SIGNING_KEYRING_ACCOUNT", "field-test")
+    monkeypatch.setattr(
+        "iii_deployment.field_signing_agent.passphrase_from_keyring",
+        lambda account: b"correct horse battery staple" if account == "field-test" else b"",
+    )
+    assert signer_id_for_public_key(load_private_key(private).public_key()) == descriptor["signer_id"]

@@ -19,10 +19,12 @@ from iii_deployment.build import (  # noqa: E402
     classify_package_cache, commit_package_cache_state, install_locked_wheels,
     installed_package_names, isolated_colcon_command, prepare_package_cache,
     load_build_policy, materialize_build_source, make_build_record,
-    normalize_install_tree, package_cache_keys, package_graph, run_offboard_command,
+    normalize_install_tree, package_cache_keys, package_graph, run_bounded_target_check,
+    run_offboard_command, docker_build_resource_arguments,
     parse_compiler_cache_stats,
     select_build_packages, target_elf_closure_command, target_import_command, validate_release_tree,
-    verify_installed_release_assets, write_release_wrapper,
+    install_deployment_release_resources, verify_installed_release_assets,
+    write_release_wrapper,
 )
 from iii_deployment.contracts import (  # noqa: E402
     ContractError, ContractRegistry, canonical_json, content_identity,
@@ -32,7 +34,10 @@ from iii_deployment.source import (  # noqa: E402
     verify_source_snapshot,
 )
 from iii_deployment.target import load_target_definition  # noqa: E402
-from iii_deployment.mission_catalog import install_qualified_mission_catalog  # noqa: E402
+from iii_deployment.mission_catalog import (  # noqa: E402
+    install_field_mission_catalog,
+    install_qualified_mission_catalog,
+)
 from iii_deployment.wheels import load_wheel_lock  # noqa: E402
 
 
@@ -51,6 +56,18 @@ def main() -> int:
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--component", choices=("drone", "gc"), action="append", required=True)
     parser.add_argument(
+        "--release-class",
+        choices=("qualified", "field-development"),
+        default="qualified",
+        help="Select the release-safe mission catalog reduction.",
+    )
+    parser.add_argument(
+        "--include-experimental",
+        action="append",
+        default=[],
+        help="Explicit experimental mission ID for a field-development payload.",
+    )
+    parser.add_argument(
         "--qualified-paired",
         action="store_true",
         help="Build only the drone payload while a separately validated GC artifact satisfies paired impact.",
@@ -61,6 +78,12 @@ def main() -> int:
     parser.add_argument("--wheel-lock", type=Path, required=True)
     parser.add_argument("--image", default="iii-arm64-cross-builder:p1")
     parser.add_argument("--target-image", default="iii-arm64-target-runtime:p1")
+    parser.add_argument(
+        "--parallel-workers",
+        type=int,
+        default=None,
+        help="Cap both colcon package and CMake compile parallelism.",
+    )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
     registry = ContractRegistry(ROOT / "deployment/schemas/v1")
@@ -136,10 +159,13 @@ def main() -> int:
             packages, build_base=Path("/cache/build"),
             install_base=Path(policy["activation_root"]) / policy["release_install"],
             log_base=Path("/cache/log"), skip_packages=set(graph) - set(packages),
+            parallel_workers=args.parallel_workers,
         )
+        build_resources = docker_build_resource_arguments(args.parallel_workers)
         run_offboard_command([
             "docker", "run", "--rm", "--network", "none",
             "--user", container_user, "-e", "HOME=/tmp",
+            *build_resources,
             "-v", f"{build_source.resolve()}:/home/iii/ws", "-v", f"{args.cache.resolve()}:/cache",
             "-v", f"{partial.resolve()}:{policy['activation_root']}", args.image, *container_command,
         ], cwd=ROOT)
@@ -152,7 +178,22 @@ def main() -> int:
         cache["state_sha256"] = commit_package_cache_state(
             cache_state_path, keys, cache_context
         )
-        mission_catalog = install_qualified_mission_catalog(partial / policy["release_install"])
+        if args.release_class == "qualified":
+            if args.include_experimental:
+                raise ContractError(
+                    "qualified builds cannot include experimental missions"
+                )
+            mission_catalog = install_qualified_mission_catalog(
+                partial / policy["release_install"]
+            )
+        else:
+            mission_catalog = install_field_mission_catalog(
+                partial / policy["release_install"],
+                include_experimental=args.include_experimental,
+            )
+        install_deployment_release_resources(
+            ROOT, partial / policy["release_install"]
+        )
         normalize_install_tree(partial / policy["release_install"])
         verify_installed_release_assets(build_source, partial, policy)
         installed_packages = installed_package_names(partial, policy)
@@ -161,16 +202,22 @@ def main() -> int:
             args.wheelhouse, partial / policy["python_site_packages"], lock
         )
         write_release_wrapper(partial, policy)
-        run_offboard_command(
+        # QEMU-backed target imports must be bounded: a module that blocks at
+        # import time must fail the offboard build with retained diagnostics,
+        # never leave a field-deployment build indefinitely in progress.
+        run_bounded_target_check(
             target_import_command(
                 args.target_image, partial.resolve(), [
                     *lock["imports"],
+                    *policy["target_python_imports"],
                     *(name for name in installed_packages if name.startswith("iii_drone_")),
                 ],
                 Path(policy["activation_root"]),
             ), cwd=ROOT
         )
-        run_offboard_command(
+        # The ELF closure scan is likewise executed under ARM64 emulation and
+        # must retain a finite, diagnostic failure mode.
+        run_bounded_target_check(
             target_elf_closure_command(
                 args.target_image, partial.resolve(), Path(policy["activation_root"]),
                 policy["host_library_prefixes"],

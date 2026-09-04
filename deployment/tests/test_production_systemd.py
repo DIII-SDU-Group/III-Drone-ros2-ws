@@ -66,7 +66,11 @@ def test_host_maintenance_privilege_is_isolated_in_fixed_oneshot_unit():
     receiver = (SYSTEMD / "iii-deployment-receiver.service").read_text()
     maintenance = (SYSTEMD / "iii-host-maintenance@.service").read_text()
     assert "ProtectSystem=strict" in receiver
-    assert "PrivateNetwork=yes" in receiver
+    # The unprivileged receiver needs IPv4 only for the read-only PX4 release
+    # audit.  Filesystem isolation and the dedicated maintenance privilege
+    # boundary remain intact.
+    assert "PrivateNetwork=no" in receiver
+    assert "RestrictAddressFamilies=AF_UNIX AF_INET" in receiver
     assert "ProtectSystem=no" in maintenance
     assert "PrivateNetwork=no" in maintenance
     assert "Type=oneshot" in maintenance

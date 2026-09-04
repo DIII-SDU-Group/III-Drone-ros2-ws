@@ -196,6 +196,19 @@ run_system() {
     iii_dev_exec "${tty_mode}" iii system "$@"
 }
 
+run_system_mutation() {
+    local action="$1"
+    shift
+    local operation_id="iii-dev-${action}-$(date +%s)-${BASHPID}"
+
+    # System mutations use the same durable two-stage contract as direct CLI
+    # operation: retain the exact plan first, then apply that plan explicitly.
+    run_system "${action}" "$@" \
+        --dry-run --operation-id "${operation_id}" --output=json
+    run_system "${action}" "$@" \
+        --operation-id "${operation_id}" --confirm --non-interactive --output=json
+}
+
 run_sim() {
     local action="${1:-}"
     local argument
@@ -374,8 +387,8 @@ stack_start() {
         2 \
         simulation_ready
 
-    run_system boot
-    run_system start
+    run_system_mutation boot
+    run_system_mutation start
     run_runtime_api start
     iii_dev_wait_until \
         "III runtime API" \
@@ -435,7 +448,7 @@ stack_stop() {
     section "Ground control"
     run_gui stop || result=1
     section "III system"
-    run_system shutdown || result=1
+    run_system_mutation shutdown || result=1
     section "III runtime API"
     run_runtime_api stop || result=1
     section "Simulation"

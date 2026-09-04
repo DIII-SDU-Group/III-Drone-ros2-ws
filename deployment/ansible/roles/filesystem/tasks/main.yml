@@ -3,8 +3,14 @@
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: directory
-    owner: "{{ iii_runtime_owner_effective if item.owner == 'iii' else item.owner }}"
-    group: "{{ iii_runtime_group_effective if item.group == 'iii' else item.group }}"
+    owner: >-
+      {{ iii_runtime_owner_effective if item.owner == 'iii'
+         else iii_deployment_owner_effective if item.owner == 'iii-deploy'
+         else item.owner }}
+    group: >-
+      {{ iii_runtime_group_effective if item.group == 'iii'
+         else iii_deployment_group_effective if item.group == 'iii-deploy'
+         else item.group }}
     mode: "{{ item.mode }}"
   loop: "{{ iii_filesystem_directories }}"
 
@@ -15,8 +21,9 @@
     group: root
     mode: "0644"
     content: |
-      d /run/iii 0750 iii iii -
+      d /run/iii 0751 iii iii -
       d /run/iii/clock-flush 0750 iii iii -
+      d /run/iii/deployment-upload 0700 iii-deploy iii-deploy -
 
 - name: Bound III file log retention
   ansible.builtin.copy:

@@ -250,6 +250,27 @@ def test_active_transfer_lock_prevents_cleanup_and_gateway_rejects_shell_input(
         )
 
 
+def test_gateway_allows_only_the_fixed_persistent_clock_sampling_command(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    observed: list[tuple[bool, str]] = []
+
+    def persistent_client(*, persistent: bool, client_id: str) -> int:
+        observed.append((persistent, client_id))
+        return 0
+
+    monkeypatch.setattr(
+        "iii_deployment.receiver.ssh_gateway.receiver_client_main", persistent_client
+    )
+    assert dispatch(
+        client_id=CLIENT,
+        original_command="iii-clock-samples",
+        incoming_root=tmp_path / "incoming",
+        lock_path=tmp_path / "run/upload.lock",
+    ) == 0
+    assert observed == [(True, CLIENT)]
+
+
 def test_upload_root_link_or_replacement_fails_closed(tmp_path: Path) -> None:
     linked = tmp_path / "linked-incoming"
     target = tmp_path / "target"
@@ -267,8 +288,18 @@ def test_upload_root_link_or_replacement_fails_closed(tmp_path: Path) -> None:
         store.cleanup()
 
 
+@pytest.mark.parametrize(
+    "original_command",
+    [
+        "sftp",
+        "internal-sftp",
+        "sftp-server",
+        "/usr/lib/openssh/sftp-server",
+        "/usr/lib/openssh/sftp-server ",
+    ],
+)
 def test_gateway_execs_only_fixed_sftp_server_root_and_denies_links(
-    tmp_path: Path,
+    tmp_path: Path, original_command: str
 ) -> None:
     server = tmp_path / "usr/lib/openssh/sftp-server"
     server.parent.mkdir(parents=True)
@@ -283,7 +314,7 @@ def test_gateway_execs_only_fixed_sftp_server_root_and_denies_links(
     with pytest.raises(RuntimeError, match="intercepted"):
         dispatch(
             client_id=CLIENT,
-            original_command="internal-sftp",
+            original_command=original_command,
             incoming_root=incoming,
             lock_path=tmp_path / "run/upload.lock",
             sftp_server=server,
@@ -323,6 +354,9 @@ def test_landlock_sftp_boundary_allows_incoming_and_denies_sibling_write(
             restrict_writes_to(incoming)
             (incoming / "allowed").write_text("ok", encoding="ascii")
             result.append("inside-ok")
+            with open("/dev/null", "wb") as sink:
+                sink.write(b"sftp-startup")
+            result.append("dev-null-ok")
             try:
                 (outside / "denied").write_text("bad", encoding="ascii")
             except PermissionError:
@@ -335,6 +369,6 @@ def test_landlock_sftp_boundary_allows_incoming_and_denies_sibling_write(
     observed = os.read(read_descriptor, 4096).decode("utf-8")
     _, status = os.waitpid(child, 0)
     assert os.waitstatus_to_exitcode(status) == 0
-    assert observed == "inside-ok\noutside-denied"
+    assert observed == "inside-ok\ndev-null-ok\noutside-denied"
     assert (incoming / "allowed").read_text(encoding="ascii") == "ok"
     assert not (outside / "denied").exists()

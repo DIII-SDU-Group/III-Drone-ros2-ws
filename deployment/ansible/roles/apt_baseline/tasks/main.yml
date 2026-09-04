@@ -181,6 +181,17 @@
     - unattended-upgrades.service
   failed_when: false
 
+- name: Clear stopped timer failure residue after masking
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - reset-failed
+      - apt-daily.timer
+      - apt-daily-upgrade.timer
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
 - name: Record immutable package-source policy separately from releases
   ansible.builtin.template:
     src: host-package-policy.json.j2

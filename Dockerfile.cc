@@ -66,6 +66,7 @@ ARG MAKE_VERSION=4.3-4.1build2
 ARG GIT_VERSION=1:2.43.0-1ubuntu7.3
 ARG PYTHON_VERSION=3.12.3-0ubuntu2.1
 ARG CCACHE_VERSION=4.9.1-1
+ARG QEMU_USER_STATIC_VERSION=1:8.2.2+ds-0ubuntu1.17
 
 # Bootstrap CA certificates from a signed snapshot index, then require normal
 # TLS and apt signature verification for every remaining package.
@@ -89,7 +90,8 @@ RUN printf '%s\n' \
       make=${MAKE_VERSION} \
       git=${GIT_VERSION} \
       python3=${PYTHON_VERSION} \
-      ccache=${CCACHE_VERSION} && \
+      ccache=${CCACHE_VERSION} \
+      qemu-user-static=${QEMU_USER_STATIC_VERSION} && \
     rm -rf /var/lib/apt/lists/*
 
 # The sysroot is generated from the immutable ARM64 target seed. It is never
@@ -104,8 +106,9 @@ COPY --from=ros-build-tools /usr/lib/x86_64-linux-gnu/blas/libblas.so.3.12.0 /op
 COPY --from=ros-build-tools /usr/lib/x86_64-linux-gnu/lapack/liblapack.so.3.12.0 /opt/iii/ros-build-libs/liblapack.so.3
 COPY --from=ros-build-tools /usr/lib/x86_64-linux-gnu/libgfortran.so.5.0.0 /opt/iii/ros-build-libs/libgfortran.so.5
 COPY cc_ws/arm64-toolchain.cmake /opt/iii/arm64-toolchain.cmake
+COPY cc_ws/run-target-emulated.sh /usr/local/bin/iii-run-target-emulated
 COPY entrypoint_cc.sh /entrypoint.sh
-RUN chmod 0555 /entrypoint.sh && mkdir -p /home/iii/ws
+RUN chmod 0555 /entrypoint.sh /usr/local/bin/iii-run-target-emulated && mkdir -p /home/iii/ws
 WORKDIR /home/iii/ws
 ENV III_TARGET_ID=raspberry-pi-5-noble-arm64 \
     III_SYSTEM_PROFILE=real \

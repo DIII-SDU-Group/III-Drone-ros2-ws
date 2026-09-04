@@ -85,7 +85,7 @@
     "target": "cross-compiler",
     "tag": "iii-cc:raspberry-pi-5-noble-arm64-v1",
     "definition": "Dockerfile.cc",
-    "definition_sha256": "72a7742d1ac4357ea7b305251c235805cb5075286c8cd4d1f768c520cf013156"
+    "definition_sha256": "7f824ff2d57b51724d70f46036cb15d09d72c09f2783d2ae40b27791089069da"
   },
   "offline_roles": [
     "ansible-controller-wheelhouse",

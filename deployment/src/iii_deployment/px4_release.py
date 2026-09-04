@@ -408,6 +408,12 @@ def prepare_release_media(
         (temporary / "parameters").mkdir()
         shutil.copyfile(firmware_path, temporary / "firmware" / firmware_path.name)
         (temporary / "microSD/net.cfg").write_bytes(render_net_cfg(network))
+        # PX4 consumes net.cfg during startup and it is not reliably retained
+        # by the MAVFTP server.  Preserve an immutable, release-owned copy for
+        # post-boot Ethernet attestation.
+        (temporary / "microSD/etc/iii-network-baseline.cfg").write_bytes(
+            render_net_cfg(network)
+        )
         (temporary / "microSD/etc/extras.txt").write_bytes(render_extras(network))
         rows = ["# Onboard parameters for PX4", "# MAV ID\tCOMPONENT ID\tPARAM NAME\tVALUE\tTYPE"]
         mav_types = {"INT32": 6, "REAL32": 9}
@@ -442,11 +448,11 @@ def prepare_release_media(
         instructions = (
             "PX4 RELEASE PROCEDURE\n\n"
             "1. Remove propellers and keep the vehicle disarmed.\n"
-            "2. In QGroundControl, flash firmware/" + firmware_path.name + " as custom firmware over USB.\n"
-            "3. Import parameters/real.params, reboot PX4, and export a fresh parameter backup.\n"
-            "4. Power off PX4, insert its microSD in this computer, and copy microSD/net.cfg and microSD/etc/extras.txt to the same paths.\n"
-            "5. Safely eject the card, reinstall it, connect PX4 Ethernet to the Pi, and power both.\n"
-            "6. Rerun the III deployment. The Pi stage is idempotent and the receiver will repeat the zero-write PX4 audit.\n"
+            "2. Connect PX4 by USB and use the USB release workflow to flash firmware/" + firmware_path.name + ".\n"
+            "3. Use the same USB MAVLink session to apply parameters/real.params and write microSD/net.cfg, microSD/etc/iii-network-baseline.cfg, and microSD/etc/extras.txt.\n"
+            "4. Reboot PX4, verify its disarmed firmware identity and the Pi-PX4 14541/UDP link, then reconnect the built-in Pi Ethernet port to PX4.\n"
+            "5. Rerun the III deployment. The Pi stage is idempotent and the receiver will repeat the zero-write PX4 audit.\n"
+            "6. If USB maintenance is unavailable, the microSD files remain a recovery fallback; do not create a second normal release path.\n"
         )
         (temporary / "README.txt").write_text(instructions, encoding="ascii")
         temporary.replace(destination)

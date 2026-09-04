@@ -13,7 +13,6 @@ from iii_deployment.contracts import ContractError, ContractRegistry
 from iii_deployment.receiver.config import (
     READINESS_PATH,
     SOCKET_PATH,
-    CONFIG_PATH,
     RECEIVER_UPDATE_TRUST_PATH,
     assert_production_root,
 )
@@ -26,22 +25,17 @@ from iii_deployment.receiver.update import (
 BOOTSTRAP_SCHEMA_ROOT = Path(
     "/opt/iii/receiver/bootstrap/share/iii-deployment/schemas/v1"
 )
-CURRENT_RECEIVER = Path(
-    "/opt/iii/receiver/selectors/current/bin/iii-deployment-receiver"
-)
+CANDIDATE_UNIT = "iii-deployment-receiver-candidate.service"
 
 
-def _spawn_candidate() -> subprocess.Popen:
+def _restart_candidate() -> None:
     try:
         READINESS_PATH.unlink(missing_ok=True)
-        return subprocess.Popen(
-            [str(CURRENT_RECEIVER), "--config", str(CONFIG_PATH), "--foreground"],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=False,
+        subprocess.run(
+            ["/usr/bin/systemctl", "restart", CANDIDATE_UNIT],
+            check=True,
         )
-    except OSError as exc:
+    except (OSError, subprocess.CalledProcessError) as exc:
         raise ContractError(
             f"stable bootstrap could not start receiver candidate: {exc}"
         ) from exc
@@ -61,15 +55,16 @@ def _readiness() -> dict:
         return {}
 
 
-def _stop_candidate(candidate: subprocess.Popen | None) -> None:
-    if candidate is None or candidate.poll() is not None:
-        return
-    candidate.terminate()
+def _stop_candidate() -> None:
     try:
-        candidate.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        candidate.kill()
-        candidate.wait(timeout=5)
+        subprocess.run(
+            ["/usr/bin/systemctl", "stop", CANDIDATE_UNIT],
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ContractError(
+            f"stable bootstrap could not stop receiver candidate: {exc}"
+        ) from exc
 
 
 def main() -> int:
@@ -111,18 +106,11 @@ def main() -> int:
             )
             return 0
 
-        candidate: subprocess.Popen | None = None
-
-        def restart_candidate() -> None:
-            nonlocal candidate
-            _stop_candidate(candidate)
-            candidate = _spawn_candidate()
-
-        bootstrap.restart_receiver = restart_candidate
+        bootstrap.restart_receiver = _restart_candidate
         try:
             result = bootstrap.apply() if arguments.apply else bootstrap.reconcile()
         finally:
-            _stop_candidate(candidate)
+            _stop_candidate()
         print(json.dumps(result, sort_keys=True, separators=(",", ":")))
         return 0 if result["stage"] in {"committed", "staged", "reverted"} else 1
     except ContractError as exc:

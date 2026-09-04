@@ -329,15 +329,25 @@ def test_activation_switches_and_rolls_back_matching_code_configuration_and_cata
     )
     assert store.current() == second
     assert (tmp_path / "opt/iii/current").resolve() == Path(second.release_path)
-    assert (tmp_path / "var/lib/iii/configuration/current").resolve() == Path(
-        second.configuration_checkpoint_path
+    working = (
+        tmp_path
+        / "var/lib/iii/configuration/working"
+        / second.configuration_checkpoint_id
     )
+    assert (tmp_path / "var/lib/iii/configuration/current").resolve() == working
+    assert not (working / "checkpoint.json").exists()
+    assert (working.stat().st_mode & 0o777) == 0o770
 
     rolled_back = store.rollback(operation_id=second_operation)
     assert rolled_back["checkpoint"] == "rollback-selector-committed"
     assert rolled_back["autonomy_started"] is False
     assert store.current() == first
     assert store.current().mission_catalog_hash == CATALOG_ONE
+    assert (tmp_path / "var/lib/iii/configuration/current").resolve() == (
+        tmp_path
+        / "var/lib/iii/configuration/working"
+        / first.configuration_checkpoint_id
+    )
 
 
 def test_activation_rejects_mixed_release_catalog_or_configuration(tmp_path):

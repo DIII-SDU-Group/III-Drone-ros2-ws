@@ -186,6 +186,10 @@ def _bundle(tmp_path: Path, *, release_id: str = "a" * 64, release_class="qualif
 
 
 def _store(tmp_path: Path, trust: Path, runner, **kwargs) -> GCApplicationStore:
+    disk_usage_provider = kwargs.pop(
+        "disk_usage_provider",
+        lambda _path: Usage(200 * 1024**3, 20 * 1024**3, 180 * 1024**3),
+    )
     return GCApplicationStore(
         application_root=tmp_path / "home/.local/share/iii/gc-applications",
         state_root=tmp_path / "home/.local/state/iii/gc",
@@ -196,9 +200,7 @@ def _store(tmp_path: Path, trust: Path, runner, **kwargs) -> GCApplicationStore:
         operational_policy_path=ROOT / "deployment/operational-policy.json",
         runner=runner,
         health_opener=lambda *_args, **_kwargs: Response(),
-        disk_usage_provider=lambda _path: Usage(
-            200 * 1024**3, 20 * 1024**3, 180 * 1024**3
-        ),
+        disk_usage_provider=disk_usage_provider,
         now=lambda: datetime(2026, 8, 27, tzinfo=timezone.utc),
         **kwargs,
     )
@@ -258,6 +260,15 @@ def test_offline_stage_and_activate_select_exact_gc_and_qgc_slots(tmp_path: Path
     assert "EnableAutoUpload=false" in merged
     assert logs.read_text() == "log\n"
     assert [command[:2] for command in runner.commands].count(["skopeo", "copy"]) == 4
+    assert all(
+        "--preserve-digests" not in command
+        for command in runner.commands
+        if command[:2] == ["skopeo", "copy"]
+    )
+    assert [command[:2] for command in runner.commands].count(["docker", "load"]) == 4
+    assert [command[:3] for command in runner.commands].count(
+        ["docker", "image", "inspect"]
+    ) == 4
     assert ["systemctl", "--user", "restart", "iii-gc.target"] in runner.commands
     assert ["systemctl", "--user", "stop", "iii-qgc.service"] in runner.commands
     assert ["systemctl", "--user", "start", "iii-qgc.service"] in runner.commands
@@ -293,6 +304,21 @@ def test_connected_real_update_rejects_armed_state_and_override_cannot_waive_it(
         )
     assert not (store.control_root / "drain.json").exists()
     assert store.state()["active_release_id"] is None
+
+
+def test_proxy_control_surface_is_publicly_readable_but_not_writable(
+    tmp_path: Path,
+):
+    component, trust, digests, _manifest = _bundle(tmp_path)
+    store = _store(tmp_path, trust, CommandRunner(digests))
+
+    # The browser proxy is deliberately unprivileged and receives this
+    # directory as a read-only bind mount.  It must be able to inspect a drain
+    # marker even though all surrounding GC state remains private.
+    assert store.control_root.stat().st_mode & 0o777 == 0o755
+    store._set_drain(operation_id="gc-update-1", enabled=True)
+    marker = store.control_root / "drain.json"
+    assert marker.stat().st_mode & 0o777 == 0o644
 
 
 def test_unknown_real_state_requires_separately_confirmed_audited_override(
@@ -380,6 +406,25 @@ def test_activation_failure_after_qgc_merge_restores_exact_bytes_and_service(
     assert not store.journal_path.exists()
     assert ["systemctl", "--user", "stop", "iii-qgc.service"] in runner.commands
     assert ["systemctl", "--user", "start", "iii-qgc.service"] in runner.commands
+
+
+def test_failed_first_activation_stops_candidate_gc_units(tmp_path: Path):
+    component, trust, digests, _manifest = _bundle(tmp_path)
+    runner = CommandRunner(digests)
+
+    def fail(phase: str):
+        if phase == "selected":
+            raise GCApplicationError("injected selected-release failure")
+
+    store = _store(tmp_path, trust, runner, failpoint=fail)
+    release_id = store.stage(component)["release_id"]
+    with pytest.raises(GCApplicationError, match="selected-release"):
+        store.activate(
+            release_id, operation_id="first-activation-failure", safety={"connected": False}
+        )
+
+    assert not (store.application_root / "current").exists()
+    assert ["systemctl", "--user", "stop", "iii-gc.target"] in runner.commands
 
 
 def test_reconcile_restores_qgc_bytes_and_exact_prior_service_state(tmp_path: Path):
@@ -485,6 +530,21 @@ def test_cache_pressure_never_evicts_offline_or_selected_domains(tmp_path: Path)
     assert not (artifacts / ("1" * 64)).exists()
     assert (artifacts / ("2" * 64)).is_dir()
     assert (artifacts / ("3" * 64)).is_dir()
+
+
+def test_large_operator_disk_reserve_is_capped_to_gc_storage_policy(tmp_path: Path):
+    component, trust, digests, _manifest = _bundle(tmp_path)
+    store = _store(
+        tmp_path,
+        trust,
+        CommandRunner(digests),
+        disk_usage_provider=lambda _path: Usage(
+            1800 * 1024**3, 1719 * 1024**3, 81 * 1024**3
+        ),
+    )
+    report = store.prune_cache(incoming_bytes=300 * 1024**2)
+    assert report["required_free_bytes"] == 32 * 1024**3
+    assert report["removed"] == []
 
 
 def test_offline_stage_marks_bundle_as_non_evictable_and_preserves_that_domain(

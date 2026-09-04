@@ -413,8 +413,7 @@ options:
 
 ```text
 usage: iii deploy field [-h] --bundle-set BUNDLE_SET
-                        --configuration-checkpoint-id
-                        CONFIGURATION_CHECKPOINT_ID
+                        [--configuration-checkpoint-id CONFIGURATION_CHECKPOINT_ID]
                         [--status-index STATUS_INDEX]
                         [--trusted-signers TRUSTED_SIGNERS]
                         [--component {gc,drone,both}]
@@ -430,7 +429,8 @@ options:
   --bundle-set BUNDLE_SET
   --configuration-checkpoint-id CONFIGURATION_CHECKPOINT_ID
                         currently selected source checkpoint reconciled by
-                        receiver activation
+                        receiver activation (required with --activate; staging
+                        does not require one)
   --status-index STATUS_INDEX
   --trusted-signers TRUSTED_SIGNERS
                         field bundle signer trust store
@@ -455,14 +455,19 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii deploy inspect [-h] [--target {sim,real}] component
+usage: iii deploy inspect [-h] [--trusted-signers TRUSTED_SIGNERS]
+                          [--target {sim,real}]
+                          component
 
 positional arguments:
   component
 
 options:
-  -h, --help           show this help message and exit
-  --target {sim,real}  explicit per-command runtime target
+  -h, --help            show this help message and exit
+  --trusted-signers TRUSTED_SIGNERS
+                        bundle signer trust store (defaults to
+                        III_RELEASE_TRUSTED_SIGNERS)
+  --target {sim,real}   explicit per-command runtime target
 ```
 
 ## `iii deploy operations list`
@@ -750,6 +755,7 @@ options:
 
 ```text
 usage: iii gc application activate [-h] --release-id RELEASE_ID
+                                   [--trusted-signers TRUSTED_SIGNERS]
                                    (--safety-file SAFETY_FILE | --disconnected | --sim)
                                    [--override-reason OVERRIDE_REASON]
                                    [--override-confirmation OVERRIDE_CONFIRMATION]
@@ -757,6 +763,10 @@ usage: iii gc application activate [-h] --release-id RELEASE_ID
 options:
   -h, --help            show this help message and exit
   --release-id RELEASE_ID
+  --trusted-signers TRUSTED_SIGNERS
+                        release signer trust store; overrides
+                        III_GC_TRUSTED_SIGNERS for this authenticated
+                        operation
   --safety-file SAFETY_FILE
                         fresh authenticated maintenance-safety JSON
   --disconnected        explicitly assert that no aircraft target is connected
@@ -797,13 +807,17 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii gc application rollback [-h]
+usage: iii gc application rollback [-h] [--trusted-signers TRUSTED_SIGNERS]
                                    (--safety-file SAFETY_FILE | --disconnected | --sim)
                                    [--override-reason OVERRIDE_REASON]
                                    [--override-confirmation OVERRIDE_CONFIRMATION]
 
 options:
   -h, --help            show this help message and exit
+  --trusted-signers TRUSTED_SIGNERS
+                        release signer trust store; overrides
+                        III_GC_TRUSTED_SIGNERS for this authenticated
+                        operation
   --safety-file SAFETY_FILE
                         fresh authenticated maintenance-safety JSON
   --disconnected        explicitly assert that no aircraft target is connected
@@ -821,12 +835,17 @@ options:
 
 ```text
 usage: iii gc application stage [-h] --bundle BUNDLE [--protect-offline]
+                                [--trusted-signers TRUSTED_SIGNERS]
 
 options:
-  -h, --help         show this help message and exit
+  -h, --help            show this help message and exit
   --bundle BUNDLE
-  --protect-offline  retain this cached bundle as an operator-designated
-                     offline set
+  --protect-offline     retain this cached bundle as an operator-designated
+                        offline set
+  --trusted-signers TRUSTED_SIGNERS
+                        release signer trust store; overrides
+                        III_GC_TRUSTED_SIGNERS for this authenticated
+                        operation
 ```
 
 ## `iii gc application status`
@@ -1561,11 +1580,14 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii px4 params pull [-h] --profile {real,sim}
+usage: iii px4 params pull [-h] --profile {real,sim} [--release-id RELEASE_ID]
 
 options:
   -h, --help            show this help message and exit
   --profile {real,sim}
+  --release-id RELEASE_ID
+                        exact staged release used for receiver-owned real PX4
+                        Ethernet capture
 ```
 
 ## `iii px4 params show`

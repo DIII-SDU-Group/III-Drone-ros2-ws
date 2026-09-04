@@ -961,7 +961,7 @@
       "qualified_release_inclusion": false,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "9b9c3e5fccfab628feadec7c6ff9166da369b81a783f240235eeb1a104a81b54",
+      "sha256": "49a961d9183146d9a6d273ccf84ba6ff4842ae6a878687f1b3ec10418ea2a522",
       "source_of_truth": "codex-backlogs/deployment-infrastructure-redesign.md"
     },
     {
@@ -1489,7 +1489,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "44347d28e20a313bb166812ab8211013aea6efcfe8031873c5101d38801b2112",
+      "sha256": "3a12f1b20d61d73c6dcbbe9c29f63eb9577e788039f498fc854608ca1706da3c",
       "source_of_truth": "docs/build-and-environments.md"
     },
     {
@@ -1585,7 +1585,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "fb51979d8f3691e959bb716f608e3e33786b010420ddac4d8b09ad880e4e978c",
+      "sha256": "a7ca1c16843c3d1d31c823881ed9bcc1a04787fc1b18d5f308047ad796351b96",
       "source_of_truth": "docs/deployment-and-field-operations.md"
     },
     {
@@ -1697,7 +1697,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "ff02d0b529009d634cff816a24f01689efc40f94bcdd20cd0a0c505d14a6926a",
+      "sha256": "d2a9cb0c8a3d375f9ce9f73176a198283149be8eaf98d795371c1341288cbafc",
       "source_of_truth": "deployment/scripts/update_documentation_references.py"
     },
     {
@@ -1713,7 +1713,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "2fb42c293cb4b3aaddaa064df0c44cfb76974364f75bf2c44d1eb69b7748eebd",
+      "sha256": "0f4dc99aee76eba8cc11b3136ddbe2eb4e33b0b799fc6aba2ef6534459f41ee3",
       "source_of_truth": "deployment/scripts/update_documentation_references.py"
     },
     {
@@ -2081,7 +2081,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "24aee138541f7476ad6d617082606c3293d9b2a39b157bad18c8a36fc0f3f316",
+      "sha256": "8d4e728794d18c11aa383cf9280fbb37bd7cfbe07522d570a4c0075fb1da6315",
       "source_of_truth": "docs/qualified-release-pipeline.md"
     },
     {
@@ -2309,7 +2309,7 @@
       "source_of_truth": "tools/III-Drone-MCP/README.md"
     }
   ],
-  "manifest_id": "32cd993ee96f3076cabd13e97f06d709148ed3f36b4296584b589b6c6342ab76",
+  "manifest_id": "da9882697799e4991dbf963b923c6a68abbb5eeddcaeb357230e8612ad0133ca",
   "policy_schema": "iii.documentation-policy/v1",
   "schema": "iii.documentation-manifest/v1"
 }

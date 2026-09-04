@@ -9,6 +9,7 @@ from iii_deployment.contracts import canonical_json, content_identity
 ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = ROOT / "scripts/build/generate_px4_parameter_manifests.py"
 REFERENCE = ROOT / "deployment/px4/reference-sitl-snapshot.json"
+COMMISSIONED_REFERENCE = ROOT / "deployment/px4/reference-commissioned-fmu-snapshot.json"
 NETWORK_BASELINE = ROOT / "deployment/px4/network-baseline.json"
 AIRFRAME = (
     ROOT
@@ -16,20 +17,25 @@ AIRFRAME = (
 )
 
 
-def run_generator(inventory: Path, output: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
+def run_generator(
+    inventory: Path, output: Path, *, commissioned_real: bool = False
+) -> subprocess.CompletedProcess[str]:
+    arguments = [
             "python3",
             str(GENERATOR),
             "--inventory",
             str(inventory),
-            "--airframe",
-            str(AIRFRAME),
             "--network-baseline",
             str(NETWORK_BASELINE),
             "--output",
             str(output),
-        ],
+        ]
+    if commissioned_real:
+        arguments.append("--commissioned-real")
+    else:
+        arguments.extend(["--airframe", str(AIRFRAME)])
+    return subprocess.run(
+        arguments,
         cwd=ROOT,
         check=False,
         text=True,
@@ -41,8 +47,16 @@ def run_generator(inventory: Path, output: Path) -> subprocess.CompletedProcess[
 def test_decoded_reference_reproduces_both_release_manifests(tmp_path: Path) -> None:
     completed = run_generator(REFERENCE, tmp_path)
     assert completed.returncode == 0, completed.stdout
-    for name in ("real.json", "sim.json", "reference-sitl-snapshot.json"):
+    for name in ("sim.json", "reference-sitl-snapshot.json"):
         assert (tmp_path / name).read_bytes() == (
+            ROOT / "deployment/px4" / name
+        ).read_bytes()
+    commissioned = run_generator(
+        COMMISSIONED_REFERENCE, tmp_path / "commissioned", commissioned_real=True
+    )
+    assert commissioned.returncode == 0, commissioned.stdout
+    for name in ("real.json", "reference-commissioned-fmu-snapshot.json"):
+        assert (tmp_path / "commissioned" / name).read_bytes() == (
             ROOT / "deployment/px4" / name
         ).read_bytes()
 

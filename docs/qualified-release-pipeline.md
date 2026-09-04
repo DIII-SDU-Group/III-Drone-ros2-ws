@@ -83,9 +83,11 @@ iii px4 release prepare \
   --operation-id prepare-px4-v1-2-3 --confirm --output=json
 ```
 
-The output contains the exact custom firmware, a QGroundControl-compatible
-non-calibration parameter file, the two microSD network/startup files, hashes,
-and an offline procedure. Preparation performs zero flight-controller writes.
+The output contains the exact custom firmware, a USB-applicable non-calibration
+parameter file, the two USB-written microSD network/startup files, hashes, and
+an offline procedure. USB is the canonical PX4 maintenance path; removable-media
+copying is retained only for recovery. Preparation performs zero flight-controller
+writes.
 
 `fetch` verifies current signed status and refuses withdrawn or unsafe releases.
 Explicit offline cache/deploy verifies the complete cached status chain and

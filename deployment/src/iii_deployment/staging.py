@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 import shutil
 import stat
 import tempfile
-from typing import Any, Callable, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from .bundle import (
     VerifiedBundle,
@@ -556,8 +556,18 @@ class ReleaseStore:
                 return False
         return True
 
-    def _freeze_release(self, root: Path) -> None:
+    def _freeze_release(
+        self,
+        root: Path,
+        *,
+        signed_content: Sequence[Mapping[str, Any]] = (),
+    ) -> None:
         assert_regular_safe_tree(root)
+        executable_paths = {
+            PurePosixPath(*PurePosixPath(item["path"]).parts[1:]).as_posix()
+            for item in signed_content
+            if item["type"] == "file" and item["mode"] & 0o111
+        }
         if self.target_root == Path("/"):
             for current, directories, files in os.walk(
                 root, topdown=True, followlinks=False
@@ -572,8 +582,8 @@ class ReleaseStore:
             base = Path(current)
             for name in files:
                 path = base / name
-                mode = stat.S_IMODE(path.stat().st_mode)
-                path.chmod(0o550 if mode & 0o111 else 0o440)
+                relative = path.relative_to(root).as_posix()
+                path.chmod(0o550 if relative in executable_paths else 0o440)
             for name in directories:
                 (base / name).chmod(0o550)
         root.chmod(0o550)
@@ -622,7 +632,10 @@ class ReleaseStore:
             (staging / "manifest.json").write_bytes(canonical_json(receipt) + b"\n")
             with (staging / "manifest.json").open("rb") as stream:
                 os.fsync(stream.fileno())
-            self._freeze_release(staging)
+            self._freeze_release(
+                staging,
+                signed_content=verified.bundle_manifest["content"],
+            )
             self._verify_release_tree(staging, receipt)
             _fsync_directory(staging)
             os.replace(staging, destination)

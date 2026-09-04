@@ -85,6 +85,7 @@ MUTATING_WORKFLOW_COMMANDS = [
         "custom_operation.hover.start",
         {
             "operation": "hover",
+            "hold_confirmed": True,
             "arguments": {
                 "duration_s": 1.0,
                 "sustain": False,
@@ -100,6 +101,11 @@ FLIGHT_COMMANDS = [
     ("px4-hold", "px4.hold", {}),
     ("px4-land", "px4.land", {}),
 ]
+
+EXPECTED_BENCH_DEGRADED_COMMANDS = {
+    "powerline.overview.update": "at least 4 live powerline lines are required",
+    "custom_operation.hover.start": "CustomOperation mode is not active",
+}
 
 # Acceptance evidence deliberately excludes raw images and point clouds. Those
 # streams can exceed 50 MiB/s and are validated through the dedicated perception
@@ -253,7 +259,23 @@ class SmokeRunner:
 
     def run_mutating_workflows(self, headers: dict[str, str]) -> None:
         for name, command_id, parameters in MUTATING_WORKFLOW_COMMANDS:
-            self.dispatch_command(name, command_id, parameters, headers)
+            expected_degraded_message = EXPECTED_BENCH_DEGRADED_COMMANDS.get(command_id)
+            result = self.dispatch_command(
+                name,
+                command_id,
+                parameters,
+                headers,
+                require_accepted=expected_degraded_message is None,
+            )
+            if expected_degraded_message is not None and not result.get("accepted"):
+                rejection = result.get("rejection") or result
+                if rejection.get("code") != "degraded_state" or expected_degraded_message not in str(
+                    rejection.get("message", "")
+                ):
+                    raise SmokeFailure(
+                        f"{command_id} had an unexpected rejection: "
+                        f"{json.dumps(rejection, sort_keys=True)}"
+                    )
 
     def run_flight_commands(self, headers: dict[str, str]) -> None:
         for name, command_id, parameters in FLIGHT_COMMANDS:
@@ -1323,10 +1345,11 @@ def capture_authenticated_chromium(
                             "Boolean(sessionStorage.getItem('iii-gc-v2-session')) && "
                             "Boolean(document.querySelector('.app-shell:not(.app-shell--login)')) && "
                             "Boolean(document.querySelector('[aria-label=\"Runtime session\"]')) && "
-                            "Boolean(document.querySelector('[aria-label=\"Mission command and current state\"]')) && "
-                            "Boolean(document.querySelector('.page-mode')) && "
+                            "Boolean(document.querySelector('[aria-label=\"Diagnostic dashboard\"], "
+                            "[aria-label=\"Mission command and current state\"]')) && "
+                            "Boolean(document.querySelector('.page-context[role=\"status\"]')) && "
                             "!['disconnected', 'connecting'].includes("
-                            "document.querySelector('.page-mode').textContent.trim().toLowerCase())"
+                            "document.querySelector('.page-context').textContent.trim().toLowerCase())"
                         ),
                         "returnByValue": True,
                     },

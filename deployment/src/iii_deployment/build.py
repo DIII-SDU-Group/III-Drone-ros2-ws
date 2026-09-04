@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from typing import Any, Iterable, Mapping
 import xml.etree.ElementTree as ET
 import zipfile
@@ -20,7 +21,33 @@ from .contracts import ContractError, ContractRegistry, canonical_json, content_
 from .wheels import verify_wheelhouse
 
 
-BUILD_SOURCE_EXCLUDES = {".git", "build", "install", "log", "runtime", "runtime_logs", "__pycache__", ".pytest_cache"}
+# Local dependency and frontend build trees are not governed source.  In
+# particular, package-manager command shims are commonly symlinks outside the
+# checkout; copying them into a release build both contaminates the Docker
+# context and correctly trips the immutable-input escape check below.
+BUILD_SOURCE_EXCLUDES = {
+    ".git", "build", "install", "log", "runtime", "runtime_logs",
+    "__pycache__", ".pytest_cache", "node_modules", "dist", ".vite", ".turbo",
+}
+
+
+def target_wheel_tag_compatible(tag: Any) -> bool:
+    """Return whether a wheel tag can run on the CPython 3.12 ARM64 target."""
+    platform_compatible = (
+        tag.platform == "any"
+        or tag.platform == "linux_aarch64"
+        or (tag.platform.startswith("manylinux") and tag.platform.endswith("_aarch64"))
+    )
+    if not platform_compatible:
+        return False
+    if tag.interpreter in {"cp312", "py3"} and tag.abi in {"cp312", "abi3", "none"}:
+        return True
+    match = re.fullmatch(r"cp(\d)(\d+)", tag.interpreter)
+    return bool(
+        tag.abi == "abi3"
+        and match
+        and (int(match.group(1)), int(match.group(2))) <= (3, 12)
+    )
 
 
 def materialize_build_source(workspace: Path, destination: Path) -> Path:
@@ -73,6 +100,29 @@ def package_graph(root: Path) -> dict[str, dict[str, Any]]:
             if (element.text or "").strip()
         })
         graph[name] = {"path": str(manifest.parent.relative_to(root)), "dependencies": dependencies}
+    # A small number of upstream CMake projects are valid colcon packages but
+    # intentionally do not carry ROS package.xml metadata. Include only their
+    # explicit colcon.pkg descriptor so release policy can name such a runtime
+    # dependency without teaching the builder package-specific paths.
+    for manifest in sorted(root.glob("src/*/colcon.pkg")):
+        try:
+            value = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ContractError(f"cannot parse colcon package manifest {manifest}: {exc}") from exc
+        name = value.get("name")
+        dependencies = value.get("dependencies", [])
+        if (
+            not isinstance(name, str)
+            or not name
+            or name in graph
+            or not isinstance(dependencies, list)
+            or any(not isinstance(item, str) or not item for item in dependencies)
+        ):
+            raise ContractError(f"ambiguous colcon package manifest {manifest}")
+        graph[name] = {
+            "path": str(manifest.parent.relative_to(root)),
+            "dependencies": sorted(set(dependencies)),
+        }
     if not graph:
         raise ContractError("no editable III packages were discovered")
     return graph
@@ -149,6 +199,7 @@ def isolated_colcon_command(
     packages: Iterable[str], *, build_base: Path, install_base: Path, log_base: Path,
     skip_packages: Iterable[str] = (),
     toolchain: Path = Path("/opt/iii/arm64-toolchain.cmake"),
+    parallel_workers: int | None = None,
 ) -> list[str]:
     selected = sorted(set(packages))
     skipped = sorted(set(skip_packages))
@@ -161,6 +212,10 @@ def isolated_colcon_command(
         "--build-base", str(build_base), "--install-base", str(install_base),
         "--packages-up-to", *selected,
     ]
+    if parallel_workers is not None:
+        if parallel_workers < 1:
+            raise ContractError("parallel build worker count must be positive")
+        command.extend(["--parallel-workers", str(parallel_workers)])
     if skipped:
         command.extend(["--packages-skip", *skipped])
     command.extend([
@@ -239,6 +294,28 @@ def verify_installed_release_assets(
                 f"ament-installed release asset differs from source: {item['package']}/{item['relative']}"
             )
     return metadata
+
+
+def install_deployment_release_resources(
+    workspace: Path, install_root: Path
+) -> dict[str, Any]:
+    """Install the deployment-owned PX4 contract used by receiver audits."""
+    source = (workspace / "deployment/px4").resolve()
+    destination = install_root / "share/iii-deployment/px4"
+    if not source.is_dir() or not source.is_relative_to(workspace.resolve()):
+        raise ContractError("deployment PX4 release resources are missing or escape the workspace")
+    if destination.exists() or destination.is_symlink():
+        raise ContractError("deployment PX4 release resource destination already exists")
+    for path in source.rglob("*"):
+        if path.is_symlink():
+            raise ContractError(f"deployment PX4 release resource contains a symlink: {path}")
+    shutil.copytree(source, destination)
+    if _tree_identity(source) != _tree_identity(destination):
+        raise ContractError("installed deployment PX4 release resources differ from source")
+    files = sum(path.is_file() for path in destination.rglob("*"))
+    if not files:
+        raise ContractError("deployment PX4 release resources are empty")
+    return {"sha256": _tree_identity(destination), "files": files}
 
 
 def normalize_install_tree(install: Path) -> None:
@@ -425,6 +502,17 @@ def validate_release_tree(
                 if _file_contains(path, fragment.encode()):
                     raise ContractError(f"builder path contamination in {path}: {fragment}")
     bundled = {path.name for path in release_root.rglob("*.so*") if path.is_file()}
+    target_extension_suffix = policy["target_python_extension_suffix"]
+    wrong_python_extensions = sorted(
+        str(path.relative_to(release_root))
+        for path in release_root.rglob("*.cpython-*.so")
+        if not path.name.endswith(target_extension_suffix)
+    )
+    if wrong_python_extensions:
+        raise ContractError(
+            "release contains Python extensions for the wrong target ABI: "
+            + ", ".join(wrong_python_extensions)
+        )
     elf_count = 0
     for path in release_root.rglob("*"):
         if not _is_elf(path):
@@ -504,6 +592,55 @@ def run_offboard_command(command: list[str], *, cwd: Path) -> subprocess.Complet
     return completed
 
 
+def docker_build_resource_arguments(parallel_workers: int | None) -> list[str]:
+    """Return a hard Docker CPU quota plus cooperative build-tool limits."""
+    if parallel_workers is None:
+        return []
+    if parallel_workers < 1:
+        raise ContractError("parallel worker count must be positive")
+    workers = str(parallel_workers)
+    return [
+        "--cpus", workers,
+        "-e", f"CMAKE_BUILD_PARALLEL_LEVEL={workers}",
+        "-e", f"MAKEFLAGS=-j{workers}",
+    ]
+
+
+def run_bounded_target_check(
+    command: list[str], *, cwd: Path, timeout_sec: int = 300
+) -> subprocess.CompletedProcess[str]:
+    """Run an ephemeral target container and remove it even after CLI timeout."""
+    if command[:2] != ["docker", "run"]:
+        raise ContractError("bounded target check must be a docker run command")
+    if timeout_sec <= 0:
+        raise ContractError("bounded target check timeout must be positive")
+    with tempfile.TemporaryDirectory(prefix="iii-target-check-") as directory:
+        cidfile = Path(directory) / "container.cid"
+        docker_command = [*command[:2], "--cidfile", str(cidfile), *command[2:]]
+        try:
+            return run_offboard_command(
+                [
+                    "timeout",
+                    "--signal=TERM",
+                    "--kill-after=10s",
+                    f"{timeout_sec}s",
+                    *docker_command,
+                ],
+                cwd=cwd,
+            )
+        finally:
+            if cidfile.is_file():
+                container_id = cidfile.read_text(encoding="utf-8").strip()
+                if re.fullmatch(r"[0-9a-f]{12,64}", container_id):
+                    subprocess.run(
+                        ["docker", "rm", "--force", container_id],
+                        cwd=cwd,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=False,
+                    )
+
+
 def make_build_record(
     *, source_identity: str, target_definition_id: str, policy: Mapping[str, Any],
     components: Iterable[str], packages: Iterable[str], cache_keys: Mapping[str, str],
@@ -573,16 +710,7 @@ def install_locked_wheels(
             parsed_tags = {tag for value in tags for tag in parse_tag(value)}
         except ValueError as exc:
             raise ContractError(f"wheel has an invalid compatibility tag: {filename}") from exc
-        compatible = any(
-            tag.interpreter in {"cp312", "py3"}
-            and tag.abi in {"cp312", "abi3", "none"}
-            and (
-                tag.platform == "any"
-                or tag.platform == "linux_aarch64"
-                or (tag.platform.startswith("manylinux") and tag.platform.endswith("_aarch64"))
-            )
-            for tag in parsed_tags
-        )
+        compatible = any(target_wheel_tag_compatible(tag) for tag in parsed_tags)
         if not tags or not compatible:
             raise ContractError(f"wheel target ABI is incompatible: {filename}")
         try:
@@ -611,6 +739,10 @@ def install_locked_wheels(
                         raise ContractError(f"wheel file collision: {filename}: {member.filename}")
                     with archive.open(member) as source, destination.open("wb") as output:
                         shutil.copyfileobj(source, output)
+                    archived_mode = member.external_attr >> 16
+                    destination.chmod(
+                        0o755 if archived_mode & 0o111 else 0o644
+                    )
         except zipfile.BadZipFile as exc:
             raise ContractError(f"invalid wheel archive: {filename}") from exc
     missing = sorted(set(lock.get("imports", [])) - {

@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import socket
 import struct
-from typing import Callable
+from typing import Callable, Mapping
 
 from iii_deployment.contracts import ContractError, canonical_json
 from iii_deployment.receiver.protocol import Request
@@ -137,7 +137,24 @@ class UnixReceiverServer:
                         "ok": False,
                         "error": {"code": "contract-rejected", "message": str(exc)},
                     }
+            self._send_response(connection, response)
+
+    @staticmethod
+    def _send_response(
+        connection: socket.socket, response: Mapping[str, object]
+    ) -> None:
+        """Best-effort response delivery after a peer has disconnected.
+
+        The stable bootstrap probes readiness by connecting to the receiver's
+        Unix socket and closing immediately.  A vanished local peer must not
+        terminate the long-running receiver process while it attempts to send
+        the resulting contract error.
+        """
+
+        try:
             connection.sendall(canonical_json(response) + b"\n")
+        except (BrokenPipeError, ConnectionResetError):
+            return
 
     @staticmethod
     def _receive(connection: socket.socket) -> bytes:

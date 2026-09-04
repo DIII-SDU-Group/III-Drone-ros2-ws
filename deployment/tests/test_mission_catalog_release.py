@@ -9,6 +9,7 @@ import pytest
 
 from iii_deployment.contracts import ContractError, canonical_json, content_identity
 from iii_deployment.mission_catalog import (
+    install_field_mission_catalog,
     install_qualified_mission_catalog,
     verify_mission_catalog,
 )
@@ -110,6 +111,57 @@ def test_qualified_install_removes_local_variants_and_preserves_exact_identity(t
     installed = json.loads((share / "mission_catalog/catalog.json").read_text())
     assert {entry["classification"] for entry in installed["entries"]} == {"production"}
     assert "sim" not in installed["profiles"]
+
+
+def test_field_install_materializes_explicit_selection_and_removes_variants(
+    tmp_path: Path,
+) -> None:
+    install = tmp_path / "install"
+    share = install / "iii_drone_mission/share/iii_drone_mission"
+    _write_catalog(share / "mission_catalog", scope="local", classification="test")
+    _write_catalog(
+        share / "mission_catalog_variants/qualified", scope="qualified"
+    )
+    candidate = _write_catalog(
+        share / "mission_catalog_variants/field-candidates",
+        scope="field-candidates",
+        classification="experimental",
+    )
+    experimental_id = candidate["entries"][0]["id"]
+
+    identity = install_field_mission_catalog(
+        install, include_experimental=[experimental_id]
+    )
+
+    assert identity["scope"] == "field"
+    assert identity["entries"] == [experimental_id]
+    assert identity["included_experimental"] == [experimental_id]
+    assert not (share / "mission_catalog_variants").exists()
+    installed = json.loads((share / "mission_catalog/catalog.json").read_text())
+    assert installed["field_selection"]["included_experimental"] == [
+        experimental_id
+    ]
+    assert "EXPERIMENTAL" in installed["field_selection"]["warning"]
+
+
+def test_field_install_rejects_implicit_or_unknown_experimental_selection(
+    tmp_path: Path,
+) -> None:
+    install = tmp_path / "install"
+    share = install / "iii_drone_mission/share/iii_drone_mission"
+    _write_catalog(share / "mission_catalog", scope="local", classification="test")
+    _write_catalog(
+        share / "mission_catalog_variants/qualified", scope="qualified"
+    )
+    _write_catalog(
+        share / "mission_catalog_variants/field-candidates",
+        scope="field-candidates",
+        classification="experimental",
+    )
+    with pytest.raises(ContractError, match="unknown or non-experimental"):
+        install_field_mission_catalog(
+            install, include_experimental=["not-a-catalog-entry"]
+        )
 
 
 def test_release_verifier_rejects_tamper_test_content_and_linked_assets(tmp_path: Path):

@@ -72,6 +72,57 @@ def test_gc_dockerfiles_pin_every_base_by_digest() -> None:
     assert ":latest" not in MODULE.SKOPEO_IMAGE
 
 
+def test_gc_builder_worker_cap_becomes_a_hard_cpu_quota() -> None:
+    assert MODULE._builder_resource_options(16) == [
+        "--driver-opt",
+        "cpu-quota=1600000",
+        "--driver-opt",
+        "cpu-period=100000",
+    ]
+    assert MODULE._builder_resource_options(None) == []
+    with pytest.raises(ContractError, match="worker count must be positive"):
+        MODULE._builder_resource_options(0)
+
+
+def test_gc_image_build_uses_explicit_materialized_context(
+    monkeypatch, tmp_path: Path
+) -> None:
+    context = tmp_path / "source"
+    context.mkdir()
+    dockerfile = context / "Dockerfile"
+    dockerfile.write_text(
+        "FROM example.invalid/base@sha256:" + "a" * 64 + "\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "image.oci"
+    calls: list[tuple[list[str], Path]] = []
+
+    def run(command, *, cwd=MODULE.ROOT):
+        calls.append((list(command), cwd))
+        if command[:3] == ["docker", "buildx", "inspect"]:
+            return type("Result", (), {"stdout": "Driver: docker-container\n", "stderr": ""})()
+        if MODULE.SKOPEO_IMAGE in command:
+            _oci(output)
+        return type("Result", (), {"stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr(MODULE, "_run", run)
+    MODULE._build_image(
+        name="fixture",
+        dockerfile=dockerfile,
+        output=output,
+        cache=tmp_path / "cache",
+        source_date_epoch=1,
+        tag="fixture:exact",
+        smoke=["true"],
+        builder=None,
+        context=context,
+    )
+
+    build = next(call for call in calls if call[0][:3] == ["docker", "buildx", "build"])
+    assert build[1] == context
+    assert Path(build[0][build[0].index("--file") + 1]).is_absolute()
+
+
 def test_gc_oci_inspection_binds_platform_manifest_and_every_blob(
     tmp_path: Path,
 ) -> None:
@@ -176,6 +227,9 @@ def test_release_compose_denies_host_authority_and_mounts_only_read_only_drain_c
     for name, service in services.items():
         assert service["read_only"] is True
         assert service["cap_drop"] == ["ALL"]
+        assert service.get("cap_add", []) == (
+            [] if name == "proxy" else ["CHOWN", "SETGID", "SETUID"]
+        )
         assert "no-new-privileges:true" in service["security_opt"]
         mounts = service.get("volumes", [])
         all_mounts.extend(mounts)

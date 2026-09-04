@@ -5,6 +5,7 @@ services:
     environment:
       III_GC_PROXY_HOST: 127.0.0.1
       III_GC_PROXY_PORT: "${III_GC_PROXY_PORT:-8780}"
+      III_GC_RUNTIME_REQUEST_TIMEOUT_SEC: "${III_GC_RUNTIME_REQUEST_TIMEOUT_SEC:-180}"
       III_GC_PROXY_CORS_ORIGINS: "${III_GC_PROXY_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}"
       III_GC_EXPECTED_RUNTIME_ID: "${III_GC_EXPECTED_RUNTIME_ID:-}"
       III_GC_EXPECTED_SYSTEM_ID: "${III_GC_EXPECTED_SYSTEM_ID:-}"
@@ -32,6 +33,13 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # The stock Nginx entrypoint must chown its explicitly mounted tmpfs
+    # directories before it drops to its worker account.  No host path is
+    # writable and every other capability remains removed.
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     tmpfs:
       - /var/cache/nginx:size=16m,mode=0755
       - /var/run:size=1m,mode=0755

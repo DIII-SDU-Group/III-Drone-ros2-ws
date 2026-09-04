@@ -20,7 +20,17 @@ from iii_deployment.target import load_target_definition  # noqa: E402
 from iii_deployment.wheels import create_wheel_lock, verify_wheel_lock  # noqa: E402
 
 
-IMPORTS = ["fastapi", "httpx", "pydantic", "serial", "uvicorn", "websockets", "yaml", "zeroconf"]
+IMPORTS = [
+    "fastapi",
+    "httpx",
+    "mavsdk",
+    "pydantic",
+    "serial",
+    "uvicorn",
+    "websockets",
+    "yaml",
+    "zeroconf",
+]
 
 
 def main() -> int:
@@ -48,7 +58,11 @@ def main() -> int:
         version_result = run_offboard_command(
             [*common, "python", "-m", "pip", "--version"], cwd=ROOT
         )
-        match = re.match(r"pip ([0-9]+(?:\.[0-9]+){1,2}) ", version_result.stdout)
+        match = re.search(
+            r"^pip ([0-9]+(?:\.[0-9]+){1,2}) ",
+            version_result.stdout,
+            flags=re.MULTILINE,
+        )
         if not match:
             raise ContractError("cannot determine pinned resolver pip version")
         run_offboard_command([

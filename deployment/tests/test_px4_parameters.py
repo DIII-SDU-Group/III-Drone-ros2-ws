@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import struct
 
 import pytest
 
@@ -258,6 +259,43 @@ def test_mavlink_shell_reads_only_fixed_release_owned_sd_files():
     assert sent[-1][1] == 0
     with pytest.raises(PX4ParameterError, match="not release-owned"):
         adapter.read_text_file("/fs/microsd/../../etc/passwd")
+
+
+def test_mavlink_ftp_reads_fixed_release_owned_sd_file():
+    from types import SimpleNamespace
+    from iii_deployment.px4_parameters import MavlinkParameterAdapter
+
+    def response(sequence, session, request_opcode, data):
+        return SimpleNamespace(
+            payload=(
+                struct.pack("<HBBBBBBI", sequence, session, 128, len(data), request_opcode, 0, 0, 0)
+                + data
+                + bytes(239 - len(data))
+            )
+        )
+
+    sent = []
+    messages = [
+        response(0, 7, 4, b""),
+        response(1, 7, 5, b"DEVICE=eth0\n"),
+        response(2, 7, 1, b""),
+    ]
+    adapter = object.__new__(MavlinkParameterAdapter)
+    adapter.timeout = 1
+    adapter._ftp_sequence = 0
+    adapter._px4_system = 1
+    adapter._px4_component = 1
+    adapter.connection = SimpleNamespace(
+        target_system=1,
+        target_component=1,
+        mav=SimpleNamespace(file_transfer_protocol_send=lambda *args: sent.append(args)),
+        recv_match=lambda **_kwargs: messages.pop(0) if messages else None,
+    )
+    assert adapter.read_text_file("/fs/microsd/net.cfg") == b"DEVICE=eth0\n"
+    assert len(sent) == 3
+    assert sent[0][3][3] == 4
+    assert sent[1][3][3] == 5
+    assert sent[0][1:3] == (1, 1)
 
 
 def test_plan_apply_verify_uses_fresh_full_backup_and_exact_confirmation(tmp_path):

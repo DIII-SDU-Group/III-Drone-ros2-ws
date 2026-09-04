@@ -120,7 +120,10 @@ def test_network_apply_and_revert_have_fixed_privileged_units_and_90_second_time
     assert "/etc/netplan" not in next(
         line for line in receiver.splitlines() if line.startswith("ReadWritePaths=")
     )
-    assert "PrivateNetwork=yes" in receiver
+    # The receiver owns the read-only PX4 audit over the dedicated Pi eth0
+    # network namespace, so its system unit must retain the host network while
+    # still limiting address families to local IPv4 and Unix sockets.
+    assert "PrivateNetwork=no" in receiver
 
 
 def test_application_and_receiver_updates_cannot_mutate_network_host_policy() -> None:

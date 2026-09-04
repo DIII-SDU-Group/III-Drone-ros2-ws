@@ -162,7 +162,17 @@ def load_private_key(path: Path) -> Ed25519PrivateKey:
                     "private signer key must be a regular user-only file"
                 )
             encoded = stream.read()
-        key = serialization.load_pem_private_key(encoded, password=None)
+        # Field-development keys are deliberately encrypted at rest.  A release
+        # command may opt into the existing OS-keyring provider by naming a
+        # non-secret account; the passphrase itself never enters argv, files,
+        # logs, or the process environment.
+        password: bytes | None = None
+        if b"ENCRYPTED PRIVATE KEY" in encoded:
+            account = os.environ.get("III_FIELD_SIGNING_KEYRING_ACCOUNT", "")
+            if account:
+                from .field_signing_agent import passphrase_from_keyring
+                password = passphrase_from_keyring(account)
+        key = serialization.load_pem_private_key(encoded, password=password)
     except (OSError, ValueError, TypeError) as exc:
         raise ContractError(f"cannot load private signer key: {exc}") from exc
     if not isinstance(key, Ed25519PrivateKey):

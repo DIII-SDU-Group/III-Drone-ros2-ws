@@ -33,6 +33,7 @@
     "non_protected_quota_bytes": 53687091200,
     "minimum_free_bytes": 10737418240,
     "minimum_free_fraction": 0.1,
+    "maximum_free_bytes": 34359738368,
     "protected_domains": [
       "offline",
       "qualified-anchor",

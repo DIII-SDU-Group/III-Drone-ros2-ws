@@ -15,7 +15,11 @@ from iii_deployment.receiver.state import atomic_document, read_boot_id
 
 CLOCK_STATE_SCHEMA = "iii.receiver-clock-state/v1"
 CLOCK_FLUSH_SCHEMA = "iii.clock-flush-commit/v1"
-MAX_RTT_NS = 500_000_000
+# Historical, already-journalled plans may retain the prior 2 s transport
+# envelope.  New samples are constrained to the operational 500 ms policy by
+# the client before planning; this broader replay bound prevents an update from
+# refusing to start solely because it is reconciling immutable old evidence.
+MAX_RTT_NS = 2_000_000_000
 MAX_SAMPLE_SPREAD_NS = 250_000_000
 MAX_COMMIT_OFFSET_NS = 250_000_000
 ACTIVE_RESYNC_OFFSET_NS = 1_000_000_000
@@ -401,7 +405,7 @@ class ClockController:
                 ):
                     raise ContractError(f"clock sample {field} is invalid")
             if sample["rtt_ns"] < 0 or sample["rtt_ns"] > MAX_RTT_NS:
-                raise ContractError("clock synchronization sample RTT exceeds 500 ms")
+                raise ContractError("clock synchronization sample RTT exceeds 2 seconds")
             observed = sample["target_wall_ns"] - sample["operator_midpoint_utc_ns"]
             if sample["offset_ns"] != observed:
                 raise ContractError(

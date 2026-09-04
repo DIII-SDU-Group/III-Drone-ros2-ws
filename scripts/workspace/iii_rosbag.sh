@@ -19,7 +19,7 @@ Usage: iii_rosbag.sh {status|list|start|stop|delete|clear} [arguments]
     --topic TOPIC           Record one topic; repeat for multiple topics
     --include-hidden        Include hidden topics
   stop [options]            Stop the active recording cleanly
-    --id NAME               Require the active recording to have this ID
+    --id NAME               Require the active recording to have this ID or start prefix
     --timeout SECONDS       Graceful-stop timeout (default: 10)
   delete RECORDING_ID       Delete one recording; rejected while recording
   clear --force             Delete every recording; rejected while recording
@@ -139,6 +139,19 @@ run_stop() {
     done
     [[ -z "${recording_id}" ]] || validate_recording_id "${recording_id}"
     [[ "${timeout}" =~ ^[0-9]+([.][0-9]+)?$ ]] || die "timeout must be a non-negative number"
+
+    # The recorder appends its collision-safe timestamp to every requested
+    # start prefix. Let the documented `start --id X` / `stop --id X` pair
+    # resolve that authoritative active ID without weakening the mismatch gate
+    # for an unrelated recording.
+    if [[ -n "${recording_id}" ]]; then
+        local status active_recording_id
+        status="$(status_output)" || die "could not query recorder status"
+        active_recording_id="$(sed -n "s/.*recording_id='\([^']*\)'.*/\1/p" <<< "${status}" | tail -n 1)"
+        if [[ "${active_recording_id}" == "${recording_id}_"* ]]; then
+            recording_id="${active_recording_id}"
+        fi
+    fi
     service_call "${STOP_SERVICE}" iii_drone_interfaces/srv/StopRosbagRecording \
         "{recording_id: $(yaml_quote "${recording_id}"), timeout_sec: ${timeout}}"
 }

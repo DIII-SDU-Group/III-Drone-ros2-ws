@@ -159,6 +159,33 @@ def test_control_plane_uses_fixed_argv_stops_all_units_and_starts_no_autonomy(
     assert "mission" not in json.dumps(sockets[1].sent[0]).lower()
 
 
+def test_control_plane_waits_for_deactivating_units() -> None:
+    runner = Runner()
+    polls = {unit: 0 for unit in runner.states}
+
+    def delayed_runner(command, **kwargs):
+        if command[1] == "stop":
+            runner.commands.append((command, kwargs))
+            for unit in runner.states:
+                runner.states[unit] = "deactivating"
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1] == "is-active":
+            unit = command[2]
+            polls[unit] += 1
+            state = "deactivating" if polls[unit] == 1 else "inactive"
+            return subprocess.CompletedProcess(command, 3, state + "\n", "")
+        return runner(command, **kwargs)
+
+    control = OnboardControlPlane(
+        runner=delayed_runner,
+        monotonic=iter((0.0, 0.0, 0.1, 0.2)).__next__,
+        sleep=lambda _duration: None,
+    )
+
+    assert set(control.stop_all_units()) == set(runner.states)
+    assert all(count == 2 for count in polls.values())
+
+
 def test_runtime_graph_stop_leaves_independent_api_unit_online(tmp_path: Path):
     runner = Runner()
     daemon_socket = tmp_path / "system-manager.sock"

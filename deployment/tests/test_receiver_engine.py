@@ -851,6 +851,23 @@ def test_status_exposes_authenticated_active_manifest_and_activation_safety(rece
     assert result["activation_safety"] == safety
 
 
+def test_status_remains_available_before_first_runtime_safety_observation(receiver):
+    def missing_safety():
+        raise ContractError("runtime activation safety state is missing or linked")
+
+    engine = receiver.build(
+        activation_coordinator=SimpleNamespace(safety_provider=missing_safety)
+    )
+
+    result = engine.handle(
+        request("status", "status-before-first-release", receiver.operator_id, {})
+    )
+
+    assert result["active_release_manifest"] is None
+    assert result["activation_safety"] is None
+    assert result["autonomy_started"] is False
+
+
 def test_accepted_stage_detaches_survives_client_loss_and_reattaches(receiver) -> None:
     planned = stage_plan(receiver)
     accepted = apply_stage(receiver, planned)

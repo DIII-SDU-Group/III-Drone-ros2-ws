@@ -129,11 +129,32 @@ def validate_release_metadata(
     )
     if manifest["signing"]["authority"] != expected_authority:
         raise ContractError("release signer authority does not match release class")
-    if (
-        manifest["release_class"] == "qualified"
-        and manifest["mission_catalog"]["scope"] != "qualified"
-    ):
-        raise ContractError("qualified release must bind a qualified mission catalog")
+    if manifest["release_class"] == "qualified":
+        if manifest["version"] is None:
+            raise ContractError("qualified release must bind a version")
+        if manifest["mission_catalog"]["scope"] != "qualified":
+            raise ContractError("qualified release must bind a qualified mission catalog")
+        if manifest["qualification"] != {
+            **manifest["qualification"],
+            "explicit_action": True,
+            "tag_on_release": True,
+            "tests_complete": True,
+            "evidence_complete": True,
+        } or manifest["qualification"]["evidence_sha256"] is None:
+            raise ContractError("qualified release must bind complete qualification evidence")
+    else:
+        if manifest["version"] is not None:
+            raise ContractError("field-development release cannot claim a version")
+        if manifest["mission_catalog"]["scope"] != "field":
+            raise ContractError("field-development release must bind a field mission catalog")
+        if manifest["qualification"] != {
+            "explicit_action": False,
+            "tag_on_release": False,
+            "tests_complete": False,
+            "evidence_sha256": None,
+            "evidence_complete": False,
+        }:
+            raise ContractError("field-development release cannot claim qualification")
     profile_ids: set[str] = set()
     parameter_profiles = set(manifest["px4"]["manifests"])
     if set(manifest["px4"]["manifest_ids"]) != parameter_profiles:
