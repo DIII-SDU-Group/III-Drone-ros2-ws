@@ -40,7 +40,7 @@ PX4-Autopilot/Tools/simulation/jsbsim/jsbsim_bridge/models/Rascal d0d1db1961549e
 src/BehaviorTree.CPP 3ff6a32ba0497a08519c77a1436e3b81eff1bcd6
 src/BehaviorTree.ROS2 c72596242684ed6f03796665908d337269afb4b3
 src/dynamic_message_introspection 5ad2f03ec713818dafe0926c81225d6351d65268
-src/III-Drone-Configuration d51065ef5e38749bf1d7930c0043a07fc828d3aa
+src/III-Drone-Configuration 94150d837755fa07935364107142cbfb08c269f4
 src/III-Drone-Contracts bb4d641d45296dba1004a5ab1020c60357a0f60d
 src/III-Drone-Core 0e05320097a4ca6d8c2d13c39ae4b63919649e71
 src/III-Drone-GC 49b5ac457eb99b7d9a30aaecec0d126feaecbeb7
