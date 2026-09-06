@@ -36,6 +36,7 @@ def test_avahi_publishes_iii_local_without_fixed_ip_or_reflector() -> None:
     assert "'px4_peer_address': iii_px4_peer_address" in policy
     assert variables["iii_operator_interface_match"] == "enx*"
     assert variables["iii_px4_interface"] == "eth0"
+    assert variables["iii_px4_host_ip"] == "10.41.10.1"
     assert variables["iii_px4_host_address"] == "10.41.10.1/24"
     assert variables["iii_px4_peer_address"] == "10.41.10.2"
 
@@ -94,6 +95,11 @@ def test_px4_ethernet_is_host_owned_and_firewall_limited_to_protocol_ports() -> 
         "ip saddr {{ iii_provisioning_inputs.operator_cidr }} udp dport {{ iii_hil_dds_discovery_udp_ports }} accept"
         in firewall
     )
+    assert (
+        'iifname "{{ iii_px4_interface }}" ip saddr {{ iii_px4_host_ip }} udp dport {{ iii_real_dds_discovery_udp_ports }} accept'
+        in firewall
+    )
+    assert variables["iii_real_dds_discovery_udp_ports"] == "7400-7650"
     assert variables["iii_hil_dds_discovery_udp_ports"] == "17900-18150"
 
 

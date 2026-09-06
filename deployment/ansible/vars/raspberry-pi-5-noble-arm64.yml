@@ -24,6 +24,7 @@ iii_mdns_port: 5353
 iii_hostname_manage: true
 iii_operator_interface_match: "enx*"
 iii_px4_interface: eth0
+iii_px4_host_ip: 10.41.10.1
 iii_px4_host_address: 10.41.10.1/24
 iii_px4_peer_address: 10.41.10.2
 iii_px4_subnet: 10.41.10.0/24
@@ -35,6 +36,10 @@ iii_hil_uxrce_dds_udp_port: 8889
 iii_hil_mavlink_udp_port: 14542
 iii_hil_px4_system_id: 8
 iii_hil_mavlink_audit_udp_port: 14543
+# Cyclone DDS domain 0 metatraffic and participant user-data ports. Locally
+# emitted multicast discovery frames re-enter through eth0 and therefore pass
+# through the nftables input hook even when every ROS process is on this host.
+iii_real_dds_discovery_udp_ports: 7400-7650
 # RTPS port mapping for ROS_DOMAIN_ID=42: 7400 + (250 * 42), with room
 # for participant-specific metatraffic and user-data ports.
 iii_hil_dds_discovery_udp_ports: 17900-18150

@@ -72,10 +72,53 @@ class MatrixRun:
         name: str,
         arguments: Iterable[str],
         *,
+        mutating: bool = False,
         require_profile: str | None = None,
         require_release: bool = False,
     ) -> dict[str, Any]:
-        argv = [self.executable, *arguments, "--output=json"]
+        base_argv = [self.executable, *arguments]
+        plan_log: Path | None = None
+        plan_log_sha256: str | None = None
+        operation_id: str | None = None
+        if mutating:
+            plan_argv = [*base_argv, "--output=json", "--dry-run"]
+            plan_process = subprocess.run(plan_argv, check=False, capture_output=True)
+            plan_log = self.root / f"{len(self.rows) + 1:02d}-{name}-plan.log"
+            _atomic(
+                plan_log,
+                b"argv="
+                + _canonical(plan_argv)
+                + b"\nstdout:\n"
+                + plan_process.stdout
+                + b"\nstderr:\n"
+                + plan_process.stderr,
+            )
+            plan_log_sha256 = hashlib.sha256(plan_log.read_bytes()).hexdigest()
+            try:
+                plan_result = json.loads(plan_process.stdout)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise RuntimeError(f"{name}: III operation plan is not valid JSON") from exc
+            operation = plan_result.get("operation")
+            if (
+                plan_process.returncode != 0
+                or plan_result.get("schema") != "iii.command-result/v1"
+                or plan_result.get("outcome") != "success"
+                or not isinstance(operation, dict)
+                or not isinstance(operation.get("id"), str)
+                or not operation["id"]
+            ):
+                raise RuntimeError(f"{name}: III operation plan was not retained")
+            operation_id = operation["id"]
+            argv = [
+                *base_argv,
+                "--output=json",
+                "--operation-id",
+                operation_id,
+                "--confirm",
+                "--non-interactive",
+            ]
+        else:
+            argv = [*base_argv, "--output=json"]
         started = _utc_now()
         process = subprocess.run(argv, check=False, capture_output=True)
         finished = _utc_now()
@@ -104,6 +147,14 @@ class MatrixRun:
             "log": log.name,
             "log_sha256": hashlib.sha256(log.read_bytes()).hexdigest(),
         }
+        if plan_log is not None:
+            row.update(
+                {
+                    "operation_id": operation_id,
+                    "plan_log": plan_log.name,
+                    "plan_log_sha256": plan_log_sha256,
+                }
+            )
         self.rows.append(row)
         if result.get("schema") != "iii.command-result/v1":
             raise RuntimeError(f"{name}: unsupported III result schema")
@@ -136,20 +187,22 @@ def _plan(
 ) -> dict[str, Any]:
     commands = [
         [executable, "field", "check", "--target", "real", "--output=json"],
-        [executable, "system", "stop", "--output=json"],
+        [executable, "system", "shutdown", "--output=json"],
         [executable, "system", "boot", "--profile", "opti_track", "--output=json"],
+        [executable, "system", "start", "--output=json"],
         [executable, "system", "status", "--output=json"],
-        [executable, "system", "stop", "--output=json"],
+        [executable, "system", "shutdown", "--output=json"],
         [executable, "system", "boot", "--profile", "real", "--output=json"],
+        [executable, "system", "start", "--output=json"],
         [executable, "field", "check", "--target", "real", "--output=json"],
     ]
     body = {
         "schema": "iii.pre-field-profile-matrix-plan/v1",
         "expected_release_id": expected_release_id,
         "output_dir": str(output_dir),
-        "mutations": commands[1:6],
+        "mutations": commands[1:8],
         "commands": commands,
-        "recovery": commands[4:6],
+        "recovery": commands[5:8],
     }
     return {**body, "plan_id": hashlib.sha256(_canonical(body)).hexdigest()}
 
@@ -188,11 +241,18 @@ def main(arguments: list[str] | None = None) -> int:
             require_profile="real",
             require_release=True,
         )
-        run.invoke("real-stop", ["system", "stop"])
+        run.invoke("real-shutdown", ["system", "shutdown"], mutating=True)
         switched = True
         run.invoke(
             "opti-track-boot",
             ["system", "boot", "--profile", "opti_track"],
+            mutating=True,
+            require_profile="opti_track",
+        )
+        run.invoke(
+            "opti-track-start",
+            ["system", "start"],
+            mutating=True,
             require_profile="opti_track",
         )
         run.invoke(
@@ -206,10 +266,17 @@ def main(arguments: list[str] | None = None) -> int:
     finally:
         if switched:
             try:
-                run.invoke("return-stop", ["system", "stop"])
+                run.invoke("return-shutdown", ["system", "shutdown"], mutating=True)
                 run.invoke(
                     "return-real-boot",
                     ["system", "boot", "--profile", "real"],
+                    mutating=True,
+                    require_profile="real",
+                )
+                run.invoke(
+                    "return-real-start",
+                    ["system", "start"],
+                    mutating=True,
                     require_profile="real",
                 )
                 recovered = True
