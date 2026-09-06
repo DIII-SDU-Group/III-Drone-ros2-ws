@@ -1,5 +1,5 @@
 {
-  "matrix_id": "be6e95a5b8bda05ce983624bceeda92b17b135510a9136efe0ad66ee7f4f42d4",
+  "matrix_id": "ac62dc5da13eb988c0085de982f4c226ce2543c2e56bd3319cab6e1bd39b6dfb",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -16701,7 +16701,7 @@
         "P2.T6.t5",
         "P3.T8.t2",
         "P3.T9.t4",
-        "P5.T0.t13"
+        "P5.T0.t20"
       ],
       "text": "Add `iii field prepare` as an online, non-deploying home workflow that verifies the workspace/submodule policy and populates a content-addressed GC-local cache with the selected paired qualified release, protected previous release metadata, pinned ARM64 builder/toolchain/sysroot, build/test dependencies, GC images and updater, QGroundControl binary, Ansible collections/packages, recovery tooling, and required source/dependency mirrors for dirty incremental builds.",
       "title": "Offline field-readiness preparation"
@@ -26159,7 +26159,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t4",
-        "P5.T0.t15"
+        "P5.T0.t22"
       ],
       "text": "require actual flight evidence only when the release changes flight-critical behavior, mission logic, PX4 contracts, hardware interfaces, or safety policy.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -28588,7 +28588,7 @@
         "P2.T0.t5",
         "P2.T6.t8",
         "P3.T4.t4",
-        "P5.T0.t13"
+        "P5.T0.t21"
       ],
       "text": "`withdrawn` blocks new download/install/activation but does not trigger an automatic switch.",
       "title": "Withdrawal of a previously qualified release"
@@ -28738,7 +28738,7 @@
         "P2.T0.t5",
         "P2.T6.t4",
         "P3.T4.t4",
-        "P5.T0.t13"
+        "P5.T0.t21"
       ],
       "text": "An unsafe installed release remains immutable for diagnostics and may be used by the onboard receiver only as a maintenance-safe last-resort control-plane recovery when no non-unsafe accepted release can recover the target; that exceptional state blocks flight and requires an immediate qualified replacement or reprovision.",
       "title": "Withdrawal of a previously qualified release"
@@ -29919,7 +29919,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T4.t1",
-        "P5.T0.t13",
+        "P5.T0.t21",
         "P5.T1.t14",
         "P5.T6.t9"
       ],
@@ -29993,7 +29993,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T0.t1",
-        "P5.T0.t15"
+        "P5.T0.t21"
       ],
       "text": "The architecture is closed for implementation after the integrity sweep in this backlog.",
       "title": "Deployment-redesign scope closure"
@@ -42365,7 +42365,7 @@
       "required_evidence": "junit",
       "task": "P5.T0",
       "test_refs": [
-        "P5.T0.t7"
+        "P5.T0.t22"
       ],
       "text": "Upgrade and rollback cover clean and dirty releases plus tuned configuration.",
       "title": "Build The Deployment Verification Matrix"
