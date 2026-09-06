@@ -1,6 +1,6 @@
 [Unit]
 Description=III real-profile runtime API
-Requires=iii-deployment-receiver.service
+Wants=iii-deployment-receiver.service
 After=local-fs.target network-online.target iii-deployment-receiver.service iii-system-daemon.service
 Wants=network-online.target iii-system-daemon.service
 PartOf=iii.target

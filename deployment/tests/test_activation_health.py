@@ -15,6 +15,7 @@ from iii_deployment.activation_health import (
     ActivationCoordinator,
     ActivationDiagnosticStore,
     ActivationHealthGate,
+    ActivationHealthPending,
     ActivationHealthPolicy,
     ActivationHealthSnapshot,
     ControlPlaneProof,
@@ -507,6 +508,33 @@ def test_activation_accepts_only_after_stable_health_evidence_is_durable(
     )
 
 
+def test_activation_waits_for_bounded_runtime_health_startup(tmp_path: Path):
+    env = _environment(tmp_path)
+    calls = 0
+
+    def starting_health(candidate, _policy_value):
+        nonlocal calls
+        calls += 1
+        if calls <= 12:
+            raise ActivationHealthPending(
+                "runtime activation health observation is not available yet"
+            )
+        return _health(candidate, env["clock"])
+
+    env["coordinator"].health_provider = starting_health
+    result = env["coordinator"].activate(
+        operation_id=OPERATION,
+        release_id=NEW_RELEASE,
+        configuration_checkpoint_id=env["new_checkpoint_id"],
+        explicit_qualified_action=False,
+        px4_activation_evidence=_px4_evidence(NEW_RELEASE),
+    )
+
+    assert calls > 12
+    assert result["stable_window_s"] == 10.0
+    assert env["store"].acceptance_calls == 1
+
+
 def test_activation_reconciles_current_checkpoint_before_atomic_tuple_switch(
     tmp_path: Path,
 ):
@@ -535,6 +563,9 @@ def test_activation_reconciles_current_checkpoint_before_atomic_tuple_switch(
 
     reconciler = Reconciler()
     env["coordinator"].configuration_reconciler = reconciler
+    env["coordinator"].safety_provider = lambda: _safety(
+        env["old"].configuration_checkpoint_id
+    )
     preflight = env["coordinator"].preflight(
         release_id=NEW_RELEASE,
         configuration_checkpoint_id=env["old"].configuration_checkpoint_id,
@@ -568,6 +599,47 @@ def test_activation_reconciles_current_checkpoint_before_atomic_tuple_switch(
         }
     ]
     assert env["transactions"].current() == env["new"]
+
+
+def test_configuration_reconciliation_rejects_runtime_selector_drift(
+    tmp_path: Path,
+):
+    env = _environment(tmp_path)
+
+    class Reconciler:
+        def preflight(self, **_values):
+            return {
+                "ready": True,
+                "result_checkpoint_id": env["new_checkpoint_id"],
+                "rejection_reasons": [],
+            }
+
+        def apply(self, **_values):
+            raise AssertionError("drift must be rejected before reconciliation")
+
+    env["coordinator"].configuration_reconciler = Reconciler()
+    env["coordinator"].safety_provider = lambda: _safety(
+        env["new_checkpoint_id"]
+    )
+    preflight = env["coordinator"].preflight(
+        release_id=NEW_RELEASE,
+        configuration_checkpoint_id=env["old"].configuration_checkpoint_id,
+        px4_activation_evidence=_px4_evidence(NEW_RELEASE),
+    )
+    assert preflight["ready"] is False
+    assert any(
+        "runtime configuration checkpoint differs" in reason
+        for reason in preflight["rejection_reasons"]
+    )
+    with pytest.raises(ContractError, match="runtime configuration checkpoint differs"):
+        env["coordinator"].activate(
+            operation_id=OPERATION,
+            release_id=NEW_RELEASE,
+            configuration_checkpoint_id=env["old"].configuration_checkpoint_id,
+            explicit_qualified_action=False,
+            px4_activation_evidence=_px4_evidence(NEW_RELEASE),
+        )
+    assert env["transactions"].current() == env["old"]
 
 
 def test_activation_rejects_identity_valid_px4_evidence_for_another_manifest(
@@ -732,7 +804,7 @@ def test_every_health_domain_fails_closed(tmp_path: Path, changes: dict, reason:
     assert any(reason in item for item in gate.rejection_reasons(snapshot))
 
 
-def test_optional_absence_is_allowed_but_undeclared_or_unhealthy_optional_is_not(
+def test_optional_missing_evidence_is_allowed_but_ambiguous_or_undeclared_is_not(
     tmp_path: Path,
 ):
     env = _environment(tmp_path)
@@ -745,6 +817,15 @@ def test_optional_absence_is_allowed_but_undeclared_or_unhealthy_optional_is_not
         runtime_api_version_range=">=2.0.0,<3.0.0",
     )
     assert gate.rejection_reasons(_health(env["new"], env["clock"])) == []
+    missing = _health(
+        env["new"],
+        env["clock"],
+        hardware_roles={
+            "camera": {"state": "missing", "unambiguous": False},
+            "fmu": {"state": "present", "unambiguous": True},
+        },
+    )
+    assert gate.rejection_reasons(missing) == []
     unhealthy = _health(
         env["new"],
         env["clock"],
@@ -802,6 +883,33 @@ def test_failed_health_times_out_onboard_and_restores_previous_without_autonomy(
     assert state["stage"] == "rolled-back"
     assert state["rollback"]["autonomy_started"] is False
     assert env["store"].acceptance_calls == 0
+
+
+def test_pre_switch_rejection_does_not_stop_or_restart_the_active_release(
+    tmp_path: Path,
+):
+    env = _environment(tmp_path)
+
+    def reject_before_transaction(*_args, **_kwargs):
+        raise ContractError("release activation requires Ansible host maintenance")
+
+    env["transactions"].switch = reject_before_transaction
+
+    with pytest.raises(ContractError, match="before selector mutation"):
+        env["coordinator"].activate(
+            operation_id=OPERATION,
+            release_id=NEW_RELEASE,
+            configuration_checkpoint_id=env["new_checkpoint_id"],
+            explicit_qualified_action=False,
+            px4_activation_evidence=_px4_evidence(NEW_RELEASE),
+        )
+
+    assert env["transactions"].current() == env["old"]
+    assert env["stop_calls"] == []
+    assert env["start_calls"] == []
+    state = env["diagnostics"].load_state(OPERATION)
+    assert state["stage"] == "rolled-back"
+    assert state["rollback"]["outcome"] == "not-required"
 
 
 @pytest.mark.parametrize(

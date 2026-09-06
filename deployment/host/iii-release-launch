@@ -127,7 +127,7 @@ def verify(root: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
         selector.get("schema") != "iii.activation-selector/v1"
         or selector.get("selector_id") != _identity(selector, "selector_id")
         or not HASH.fullmatch(str(selector.get("release_id", "")))
-        or selector.get("profile") not in {"real", "opti_track"}
+        or selector.get("profile") not in {"real", "opti_track", "hil"}
     ):
         raise LaunchError("active selector identity or real profile is invalid")
     release_id = selector["release_id"]
@@ -205,6 +205,25 @@ def main(argv: list[str] | None = None) -> int:
             "III_RUNTIME_API_PROFILE": selector["profile"],
         }
     )
+    if selector["profile"] == "hil":
+        environment.update(
+            {
+                "SIMULATION": "true",
+                "III_MICRO_ROS_AGENT_UDP_PORT": "8889",
+                "III_MICRO_ROS_AGENT_DOMAIN_ID": "42",
+                "III_RUNTIME_API_PX4_MAVLINK_ENDPOINT": "udpin://0.0.0.0:14542",
+                "ROS_DOMAIN_ID": "42",
+                "ROS_AUTOMATIC_DISCOVERY_RANGE": "SUBNET",
+                "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
+                "III_HIL_SIMULATOR_PEER": "10.42.0.1",
+                "CYCLONEDDS_URI": (
+                    "<CycloneDDS><Domain><General><Interfaces>"
+                    "<NetworkInterface address=\"10.42.0.15\" priority=\"default\" "
+                    "multicast=\"default\"/></Interfaces></General><Discovery><Peers>"
+                    "<Peer address=\"10.42.0.1\"/></Peers></Discovery></Domain></CycloneDDS>"
+                ),
+            }
+        )
     command = (str(wrapper), *SERVICES[args.service])
     os.execve(str(wrapper), command, environment)
     raise AssertionError("execve returned")

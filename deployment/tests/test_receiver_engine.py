@@ -9,6 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
+import iii_deployment.receiver.state as receiver_state_module
+
 from iii_deployment.contracts import (
     ContractError,
     ContractRegistry,
@@ -137,8 +139,17 @@ class FakeReleaseStore:
         assert release_id == "a" * 64
         return self.releases_root / release_id
 
-    def stage(self, component: Path, *, status_index, staged_at: str) -> StageResult:
+    def stage(
+        self,
+        component: Path,
+        *,
+        status_index,
+        staged_at: str,
+        commit_guard=None,
+    ) -> StageResult:
         self.stage_calls.append((component, status_index, staged_at))
+        if commit_guard is not None:
+            commit_guard()
         release_id = __import__("json").loads(
             (component / "release-manifest.json").read_text(encoding="utf-8")
         )["release_id"]
@@ -537,7 +548,8 @@ def apply_stage(receiver, planned: dict, operation_id: str = "operation-stage-00
 
 
 def test_receiver_update_is_claimed_handed_off_and_completed_by_new_generation(
-    receiver, monkeypatch,
+    receiver,
+    monkeypatch,
 ) -> None:
     receiver_id = "f" * 64
     slots = FakeReceiverSlots(receiver_id=receiver_id, generation=2)
@@ -736,9 +748,7 @@ def test_px4_audit_is_read_only_and_bound_to_authenticated_release(receiver):
         )
     )
     assert result["px4_release"]["audit"]["writes_performed"] == 0
-    assert inspector.calls == [
-        ("a" * 64, receiver.store.releases_root / ("a" * 64))
-    ]
+    assert inspector.calls == [("a" * 64, receiver.store.releases_root / ("a" * 64))]
 
 
 def test_clock_sync_uses_receiver_plan_nonce_and_detached_journal(receiver) -> None:
@@ -868,6 +878,40 @@ def test_status_remains_available_before_first_runtime_safety_observation(receiv
     assert result["autonomy_started"] is False
 
 
+def test_status_bounds_large_active_manifest_to_compatibility_summary(receiver):
+    manifest = {
+        "schema_version": "1",
+        "release_id": "a" * 64,
+        "compatibility": {
+            "api_ranges": {"runtime_api": ">=2.0.0,<3.0.0"},
+            "schema_ranges": {"configuration": ">=1.0.0,<2.0.0"},
+        },
+        "profiles": [
+            {
+                "id": "hil",
+                "status": "commissioned",
+                "health": {"required_hardware_roles": []},
+            }
+        ],
+        "files": [
+            {"path": "payload", "sha256": "b" * 64, "padding": "x" * (2 * 1024 * 1024)}
+        ],
+    }
+    receiver.store.active_release_manifest = lambda: manifest
+
+    result = receiver.engine.handle(
+        request("status", "status-large-manifest", receiver.operator_id, {})
+    )
+
+    assert result["active_release_manifest"] == {
+        "schema_version": "1",
+        "release_id": "a" * 64,
+        "compatibility": manifest["compatibility"],
+        "profiles": manifest["profiles"],
+    }
+    assert "files" not in result["active_release_manifest"]
+
+
 def test_accepted_stage_detaches_survives_client_loss_and_reattaches(receiver) -> None:
     planned = stage_plan(receiver)
     accepted = apply_stage(receiver, planned)
@@ -895,13 +939,39 @@ def test_accepted_stage_detaches_survives_client_loss_and_reattaches(receiver) -
     )
     assert status["operation"]["state"] == "completed"
     assert status["operation"]["result"]["deadlines"] == {
-        "target_acceptance_s": 60,
-        "hard_deadline_s": 120,
+        "target_acceptance_s": 300,
+        "hard_deadline_s": 600,
         "rollback_target_s": 60,
     }
     assert status["lease"] is None
     assert len(receiver.store.stage_calls) == 1
     assert receiver.store.stage_calls[0][0] == claimed
+
+
+def test_stage_journal_preserves_legacy_deadline_read_compatibility(
+    receiver, monkeypatch
+) -> None:
+    planned = stage_plan(receiver)
+    with monkeypatch.context() as context:
+        context.setitem(
+            receiver_state_module.STAGING_DEADLINES,
+            "target_acceptance_s",
+            60,
+        )
+        context.setitem(
+            receiver_state_module.STAGING_DEADLINES,
+            "hard_deadline_s",
+            120,
+        )
+        apply_stage(receiver, planned)
+
+    journal = receiver.journals.load("operation-stage-0001")
+    assert journal is not None
+    assert journal["deadlines"] == {
+        "target_acceptance_s": 60,
+        "hard_deadline_s": 120,
+        "rollback_target_s": 60,
+    }
 
 
 class FakeActivationDiagnostics:
@@ -1052,6 +1122,11 @@ def test_activation_is_planned_rechecked_durably_detached_and_runs_without_clien
     completed = receiver.journals.load(operation_id)
     assert completed["state"] == "completed"
     assert completed["result"]["autonomy_started"] is False
+    assert completed["result"]["deadlines"] == {
+        "target_acceptance_s": 180,
+        "hard_deadline_s": 300,
+        "rollback_target_s": 60,
+    }
     assert coordinator.calls == [
         ("preflight", release_id, checkpoint_id, False, evidence["evidence_id"]),
         ("preflight", release_id, checkpoint_id, False, evidence["evidence_id"]),
@@ -1064,6 +1139,61 @@ def test_activation_is_planned_rechecked_durably_detached_and_runs_without_clien
             evidence["evidence_id"],
         ),
     ]
+
+
+def test_activation_journal_preserves_legacy_deadline_read_compatibility(
+    receiver, monkeypatch
+) -> None:
+    coordinator = FakeActivationCoordinator()
+    receiver.engine = receiver.build(receiver.executor, coordinator)
+    operation_id = "operation-activate-legacy-0001"
+    release_id = "4" * 64
+    checkpoint_id = "5" * 64
+    evidence = px4_evidence(release_id)
+    planned = receiver.engine.handle(
+        request(
+            "plan-activate",
+            operation_id,
+            receiver.operator_id,
+            {
+                "activation": {
+                    "release_id": release_id,
+                    "configuration_checkpoint_id": checkpoint_id,
+                    "explicit_qualified_action": False,
+                    "px4_activation_evidence": evidence,
+                },
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    with monkeypatch.context() as context:
+        context.setitem(
+            receiver_state_module.ACTIVATION_DEADLINES,
+            "target_acceptance_s",
+            60,
+        )
+        context.setitem(
+            receiver_state_module.ACTIVATION_DEADLINES,
+            "hard_deadline_s",
+            120,
+        )
+        receiver.engine.handle(
+            request(
+                "activate",
+                operation_id,
+                receiver.operator_id,
+                {"plan": planned["plan"]},
+                planned["nonce"],
+            )
+        )
+
+    journal = receiver.journals.load(operation_id)
+    assert journal is not None
+    assert journal["deadlines"] == {
+        "target_acceptance_s": 60,
+        "hard_deadline_s": 120,
+        "rollback_target_s": 60,
+    }
 
 
 def test_activation_plan_binds_and_forwards_configuration_review_decisions(
@@ -1364,11 +1494,35 @@ def test_stale_lease_without_journal_is_recovered_and_audited(receiver) -> None:
 def test_deadline_expiry_fails_closed_before_privileged_mutation(receiver) -> None:
     planned = stage_plan(receiver)
     apply_stage(receiver, planned)
-    receiver.clock.value += 121
+    receiver.clock.value += 601
     receiver.executor.run_next()
     journal = receiver.journals.load("operation-stage-0001")
     assert journal["state"] == "failed"
     assert receiver.store.stage_calls == []
+    assert receiver.control.load()["lease"] is None
+
+
+def test_stage_deadline_expiry_before_commit_fails_operation(receiver) -> None:
+    planned = stage_plan(receiver)
+    apply_stage(receiver, planned)
+    original_stage = receiver.store.stage
+
+    def expire_before_commit(component, *, status_index, staged_at, commit_guard):
+        receiver.clock.value += 601
+        return original_stage(
+            component,
+            status_index=status_index,
+            staged_at=staged_at,
+            commit_guard=commit_guard,
+        )
+
+    receiver.store.stage = expire_before_commit
+    receiver.executor.run_next()
+    journal = receiver.journals.load("operation-stage-0001")
+    assert journal["state"] == "failed"
+    assert journal["failure"]["message"] == (
+        "receiver hard deadline expired before mutation commit"
+    )
     assert receiver.control.load()["lease"] is None
 
 
@@ -2038,7 +2192,11 @@ class FakeBackupController:
     def seal(self, *, operation_id, source):
         assert source == "receiver"
         self.sealed.append(operation_id)
-        return {"backup_id": self.backup_id, "verified": True}
+        return {
+            "backup_id": self.backup_id,
+            "verified": True,
+            "manifest": {"files": [{"path": "large-inventory-entry"}]},
+        }
 
     def plan_restore(self, archive_path, *, operation_id):
         archive_sha256 = hashlib.sha256(Path(archive_path).read_bytes()).hexdigest()
@@ -2086,6 +2244,17 @@ def test_portable_backup_uses_receiver_plan_lease_and_read_only_export(receiver)
         )
     )
     assert chunk["chunk"]["bytes"] == 8
+    with pytest.raises(ContractError, match="portable backup chunk bounds"):
+        request(
+            "backup-chunk",
+            "backup-oversized-chunk-test",
+            receiver.operator_id,
+            {
+                "backup_id": backup.backup_id,
+                "offset": 0,
+                "length": 512 * 1024 + 1,
+            },
+        )
     assert receiver.control.load()["lease"] is None
 
     operation_id = "backup-seal-test"
@@ -2108,7 +2277,9 @@ def test_portable_backup_uses_receiver_plan_lease_and_read_only_export(receiver)
     )
     receiver.executor.run_next()
     assert backup.sealed == [operation_id]
-    assert receiver.journals.load(operation_id)["state"] == "completed"
+    completed = receiver.journals.load(operation_id)
+    assert completed["state"] == "completed"
+    assert "manifest" not in completed["result"]
     assert receiver.control.load()["lease"] is None
 
     restore_id = "backup-restore-test"
@@ -2131,3 +2302,37 @@ def test_portable_backup_uses_receiver_plan_lease_and_read_only_export(receiver)
     )
     receiver.executor.run_next()
     assert backup.restored == [restore_id]
+
+
+def test_background_failure_never_loses_exception_identity(receiver):
+    class FailingBackupController(FakeBackupController):
+        def seal(self, *, operation_id, source):
+            raise AssertionError
+
+    backup = FailingBackupController(receiver.root)
+    engine = receiver.build(backup_controller=backup)
+    operation_id = "backup-empty-exception-test"
+    planned = engine.handle(
+        request(
+            "plan-backup-seal",
+            operation_id,
+            receiver.operator_id,
+            {"target": {"logical_id": "drone", "profile": "real"}},
+        )
+    )
+    engine.handle(
+        request(
+            "backup-seal",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"]},
+            planned["nonce"],
+        )
+    )
+    receiver.executor.run_next()
+    journal = receiver.journals.load(operation_id)
+    assert journal["state"] == "failed"
+    assert journal["failure"] == {
+        "code": "mutation-failed",
+        "message": "AssertionError",
+    }

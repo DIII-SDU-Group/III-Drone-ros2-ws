@@ -1057,9 +1057,7 @@ class ReceiverEngine:
             )
             return bundle, None
         upload_root = (
-            self.incoming_root
-            / "receiver-updates"
-            / str(parameters["receiver_id"])
+            self.incoming_root / "receiver-updates" / str(parameters["receiver_id"])
         )
         return upload_root / "bundle", upload_root / UPLOAD_MANIFEST_NAME
 
@@ -1100,8 +1098,7 @@ class ReceiverEngine:
         if (
             manifest["receiver_id"] != parameters["receiver_id"]
             or manifest["generation"] != parameters["generation"]
-            or _sha256(bundle / "receiver-update.tar")
-            != parameters["archive_sha256"]
+            or _sha256(bundle / "receiver-update.tar") != parameters["archive_sha256"]
         ):
             raise ContractError(
                 "signed receiver update differs from retained artifact identity"
@@ -1284,6 +1281,7 @@ class ReceiverEngine:
                 )
                 self.control.release(operation_id)
         except Exception as exc:
+            failure_message = str(exc).strip() or type(exc).__name__
             with self._mutex:
                 journal = self.journals.load(operation_id)
                 if journal is not None and journal["state"] not in TERMINAL_STATES:
@@ -1293,7 +1291,7 @@ class ReceiverEngine:
                         checkpoint="failed",
                         cancellation_safe=False,
                         event="operation-failed",
-                        failure={"code": "mutation-failed", "message": str(exc)},
+                        failure={"code": "mutation-failed", "message": failure_message},
                     )
                     self.audit.append(
                         event="operation",
@@ -1313,6 +1311,14 @@ class ReceiverEngine:
             with self._mutex:
                 self._running.discard(operation_id)
 
+    def _require_operation_budget(self, operation_id: str) -> None:
+        """Refuse the release-state commit after an over-budget mutation."""
+
+        if self.journals.remaining_budget(operation_id) <= 0:
+            raise ContractError(
+                "receiver hard deadline expired before mutation commit"
+            )
+
     def _execute(self, plan: Mapping[str, Any]) -> dict[str, Any]:
         action = plan["action"]
         parameters = plan["parameters"]
@@ -1330,6 +1336,9 @@ class ReceiverEngine:
                 component,
                 status_index=status_index,
                 staged_at=self.now().isoformat().replace("+00:00", "Z"),
+                commit_guard=lambda: self._require_operation_budget(
+                    str(plan["operation_id"])
+                ),
             )
             if result.release_id != parameters["release_id"]:
                 raise ContractError("staged release differs from accepted operation")
@@ -1345,9 +1354,7 @@ class ReceiverEngine:
                 **parameters,
                 "operation_id": plan["operation_id"],
             }
-            self._preflight_receiver_update(
-                parameters_with_operation, accepted=True
-            )
+            self._preflight_receiver_update(parameters_with_operation, accepted=True)
             self.prepare_receiver_handoff()
             bundle, _ = self._receiver_update_paths(
                 parameters_with_operation, accepted=True
@@ -1414,11 +1421,19 @@ class ReceiverEngine:
         if action == Action.BACKUP_SEAL.value:
             if self.backup_controller is None:
                 raise ContractError("receiver portable backup is unavailable")
+            sealed = dict(
+                self.backup_controller.seal(
+                    operation_id=plan["operation_id"], source=parameters["source"]
+                )
+            )
+            # The archive is the authority for its full per-file manifest.
+            # Keeping that potentially large inventory in the durable operation
+            # journal can exceed the fixed receiver response envelope and make a
+            # successful backup impossible to download.
+            sealed.pop("manifest", None)
             return {
                 "kind": "backup-seal",
-                **self.backup_controller.seal(
-                    operation_id=plan["operation_id"], source=parameters["source"]
-                ),
+                **sealed,
             }
         if action == Action.BACKUP_RESTORE.value:
             if self.backup_controller is None:
@@ -1862,6 +1877,20 @@ class ReceiverEngine:
         manifest_provider = getattr(self.release_store, "active_release_manifest", None)
         if callable(manifest_provider):
             active_manifest = manifest_provider()
+            if active_manifest is not None:
+                # Release manifests include per-file provenance and can exceed the
+                # receiver's deliberately bounded transport response.  Status only
+                # needs the authenticated identity and compatibility surface.
+                active_manifest = {
+                    key: active_manifest[key]
+                    for key in (
+                        "schema_version",
+                        "release_id",
+                        "compatibility",
+                        "profiles",
+                    )
+                    if key in active_manifest
+                }
         activation_safety = None
         safety_provider = getattr(self.activation_coordinator, "safety_provider", None)
         if callable(safety_provider):

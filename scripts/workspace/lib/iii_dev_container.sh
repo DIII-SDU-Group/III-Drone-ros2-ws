@@ -90,6 +90,26 @@ iii_dev_exec() {
         iii-dev "${III_DEV_CONTAINER_WORKSPACE}" "$@"
 }
 
+# A devcontainer shares the workspace with occasional root-owned maintenance and
+# CI commands.  Root-owned generated files make the normal ``iii`` user fail
+# late in a boot-time incremental build.  Repair only generated trees and only
+# entries owned by root; source and user-owned artifacts are never touched.
+iii_dev_repair_generated_ownership() {
+    local container_id
+    local repair_shell
+
+    container_id="$(iii_dev_container_id)" || return
+    repair_shell='set -eu; workspace="$1"; target_user="$2"; target_group="$(id -gn "$target_user")"; for root in build install log; do path="$workspace/$root"; [ -d "$path" ] || continue; find "$path" -xdev -uid 0 -exec chown "$target_user:$target_group" -- {} +; done'
+    "${III_DEV_DOCKER_BIN}" exec \
+        --user root \
+        --workdir "${III_DEV_CONTAINER_WORKSPACE}" \
+        "${container_id}" \
+        bash -lc "${repair_shell}" \
+        iii-dev-repair-generated-ownership \
+        "${III_DEV_CONTAINER_WORKSPACE}" \
+        "${III_DEV_CONTAINER_USER}"
+}
+
 iii_dev_container_status() {
     local running all
 

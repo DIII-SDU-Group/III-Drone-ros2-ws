@@ -15,9 +15,9 @@
       "additionalProperties": false,
       "required": ["enabled", "allowed_profiles", "address"],
       "properties": {
-        "enabled": {"const": false},
+        "enabled": {"type": "boolean"},
         "allowed_profiles": {"type": "array", "uniqueItems": true, "items": {"enum": ["hil"]}},
-        "address": {"type": "null"}
+        "address": {"type": ["string", "null"], "format": "ipv4"}
       }
     }
   }

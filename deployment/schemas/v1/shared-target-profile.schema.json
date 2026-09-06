@@ -28,14 +28,17 @@
       }
     },
     "profiles": {
-      "type": "array", "const": ["real", "opti_track"]
+      "type": "array", "const": ["real", "opti_track", "hil"]
     },
     "network": {
       "type": "object", "additionalProperties": false,
-      "required": ["runtime_api_port", "mdns_port", "operator_cidr_is_site_input"],
+      "required": ["runtime_api_port", "mdns_port", "operator_cidr_is_site_input", "hil_px4_runtime_udp_port", "hil_px4_audit_udp_port", "hil_uxrce_dds_udp_port"],
       "properties": {
         "runtime_api_port": {"const": 8765},
         "mdns_port": {"const": 5353},
+        "hil_px4_runtime_udp_port": {"const": 14542},
+        "hil_px4_audit_udp_port": {"const": 14543},
+        "hil_uxrce_dds_udp_port": {"const": 8889},
         "operator_cidr_is_site_input": {"const": true}
       }
     },

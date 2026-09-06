@@ -422,10 +422,12 @@ def test_user_units_autostart_companions_but_never_browser_qgc_or_drone():
     assert "qgroundcontrol" not in target.lower()
     assert "ConditionPathExists=" not in target
     for conditional in ("iii-gc-proxy.service.j2", "iii-gc-frontend.service.j2"):
+        content = (templates / conditional).read_text()
         assert (
             "ConditionPathExists={{ iii_gc_home }}/.local/share/iii/gc-applications/current/application.env"
-            in (templates / conditional).read_text()
+            in content
         )
+        assert "--force-recreate" in content
     qgc = (templates / "iii-qgc.service.j2").read_text()
     assert "WantedBy=" not in qgc
     assert "iii-gc.target" not in qgc
@@ -484,6 +486,23 @@ def test_gc_read_only_authentication_runs_during_zero_drift_check_mode():
     assert development.count("check_mode: false") >= 5
     assert "Require fixed iii.local discovery" in health
     assert "check_mode: false" in health
+
+
+def test_gc_runtime_replacement_restarts_only_an_already_active_session():
+    application = (
+        DEPLOYMENT / "ansible/roles/gc_application/tasks/main.yml"
+    ).read_text()
+
+    assert "Flush pending GC user unit changes before runtime restart" in application
+    assert "Inspect whether the GC target is already active" in application
+    assert "Restart the active GC target after runtime replacement" in application
+    assert "systemctl" in application
+    assert "is-active" in application
+    assert "iii-gc.target" in application
+    assert "iii_gc_runtime_changed" in application
+    assert "iii_gc_active_target.rc == 0" in application
+    assert "state: restarted" in application
+    assert 'XDG_RUNTIME_DIR: "/run/user/{{ iii_gc_uid }}"' in application
 
 
 def test_host_baseline_cannot_build_or_load_release_container_images():

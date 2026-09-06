@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
+import errno
 import json
 from pathlib import Path
 import subprocess
@@ -8,7 +9,7 @@ import subprocess
 import pytest
 
 from iii_deployment.activation import ActivationSafetySnapshot, ActivationTuple
-from iii_deployment.activation_health import ActivationHealthPolicy
+from iii_deployment.activation_health import ActivationHealthPending, ActivationHealthPolicy
 from iii_deployment.activation_runtime import (
     OnboardControlPlane,
     OnboardHealthProvider,
@@ -157,6 +158,59 @@ def test_control_plane_uses_fixed_argv_stops_all_units_and_starts_no_autonomy(
     assert [socket.sent[0]["command"] for socket in sockets] == ["boot", "start"]
     assert sockets[1].sent[0]["activate"] is True
     assert "mission" not in json.dumps(sockets[1].sent[0]).lower()
+
+
+def test_control_plane_boots_commissioned_hil_profile(tmp_path: Path):
+    runner = Runner()
+    daemon_socket = tmp_path / "system-manager.sock"
+    daemon_socket.touch()
+    sockets = []
+
+    def socket_factory(*args):
+        value = Socket(*args)
+        sockets.append(value)
+        return value
+
+    control = OnboardControlPlane(
+        daemon_socket=daemon_socket,
+        runner=runner,
+        socket_factory=socket_factory,
+        monotonic=lambda: 1.0,
+        sleep=lambda _duration: None,
+    )
+    proof = control.start(replace(_candidate(tmp_path), profile="hil"))
+    assert proof.profile == "hil"
+    assert sockets[0].sent[0]["command"] == "boot"
+    assert sockets[0].sent[0]["profile"] == "hil"
+
+
+def test_control_plane_retries_stale_daemon_socket_until_listener_is_ready(
+    tmp_path: Path,
+):
+    runner = Runner()
+    daemon_socket = tmp_path / "system-manager.sock"
+    daemon_socket.touch()
+    clock = [0.0]
+    attempts = []
+
+    class StartingSocket(Socket):
+        def connect(self, path):
+            attempts.append(path)
+            if len(attempts) == 1:
+                raise OSError(errno.ECONNREFUSED, "listener is starting")
+
+    control = OnboardControlPlane(
+        daemon_socket=daemon_socket,
+        runner=runner,
+        socket_factory=StartingSocket,
+        monotonic=lambda: clock[0],
+        sleep=lambda duration: clock.__setitem__(0, clock[0] + duration),
+    )
+
+    proof = control.start(_candidate(tmp_path))
+
+    assert proof.release_id == RELEASE
+    assert len(attempts) == 3  # failed boot connect, boot retry, start request
 
 
 def test_control_plane_waits_for_deactivating_units() -> None:
@@ -343,7 +397,7 @@ def test_health_provider_rejects_stale_or_other_boot_runtime_observation(
         monotonic=lambda: 101.0,
         boot_id=lambda: "boot-a",
     )
-    with pytest.raises(ContractError, match="stale"):
+    with pytest.raises(ActivationHealthPending, match="not fresh"):
         provider(_candidate(tmp_path), _policy())
     value = _runtime_document(101.0)
     value["boot_id"] = "boot-b"
@@ -351,7 +405,25 @@ def test_health_provider_rejects_stale_or_other_boot_runtime_observation(
         {key: item for key, item in value.items() if key != "snapshot_id"}
     )
     _write(runtime, value)
-    with pytest.raises(ContractError, match="another boot"):
+    with pytest.raises(ActivationHealthPending, match="previous boot"):
+        provider(_candidate(tmp_path), _policy())
+
+
+def test_health_provider_reports_missing_startup_observation_as_pending(tmp_path: Path):
+    provider = OnboardHealthProvider(
+        receiver_id=RECEIVER,
+        receiver_generation=7,
+        control_plane=OnboardControlPlane(
+            daemon_socket=tmp_path / "daemon.sock", runner=Runner()
+        ),
+        hardware_roles_provider=lambda: {},
+        runtime_path=tmp_path / "not-created-yet.json",
+        readiness_path=tmp_path / "readiness.json",
+        monotonic=lambda: 101.0,
+        boot_id=lambda: "boot-a",
+    )
+
+    with pytest.raises(ActivationHealthPending, match="not available yet"):
         provider(_candidate(tmp_path), _policy())
 
 

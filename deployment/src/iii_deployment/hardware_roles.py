@@ -282,7 +282,7 @@ def inspect_hardware(
     captured_monotonic_ns: int,
     stable_path_target: Callable[[str], str | None] | None = None,
 ) -> dict[str, Any]:
-    if profile not in {"real", "opti_track"}:
+    if profile not in {"real", "opti_track", "hil"}:
         raise ContractError("hardware inspection requires an aircraft profile")
     sanitized = [dict(item) for item in devices]
     expected_fields = {
@@ -329,8 +329,9 @@ def inspect_hardware(
             else (matches[0]["device_node"] if len(matches) == 1 else None)
         )
         stable_ok = len(matches) == 1 and target == matches[0]["device_node"]
+        requirement = "optional" if profile == "hil" else role["requirement"]
         resolved[role["role"]] = {
-            "requirement": role["requirement"],
+            "requirement": requirement,
             "state": state,
             "unambiguous": len(matches) == 1,
             "stable_path": role["stable_path"],

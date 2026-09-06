@@ -23,6 +23,7 @@ from iii_deployment.receiver.state import atomic_document
 
 SAFETY_SCHEMA = "iii.activation-safety/v1"
 SELECTOR_SCHEMA = "iii.activation-selector/v1"
+LIVE_STATE_SCHEMA = "iii.receiver-live-state/v1"
 TRANSACTION_SCHEMA = "iii.activation-transaction/v1"
 OVERRIDE_SCHEMA = "iii.maintenance-override/v1"
 HASH = re.compile(r"^(?:sha256:)?[a-f0-9]{64}$")
@@ -442,6 +443,7 @@ class ActivationTransactionStore:
         )
         self.state_root = self.target_root / "var/lib/iii/deployment"
         self.selector_path = self.state_root / "active-selector.json"
+        self.live_state_path = self.state_root / "live-state.json"
         self.transaction_root = self.state_root / "activation-transactions"
         self.selector_owner = selector_owner
 
@@ -629,6 +631,52 @@ class ActivationTransactionStore:
         atomic_document(
             self.selector_path,
             value,
+            mode=0o640,
+            owner=self.selector_owner,
+        )
+        self._write_live_state(selected)
+
+    def _write_live_state(self, selected: ActivationTuple) -> None:
+        """Keep the Ansible-visible target binding aligned with the selector.
+
+        Host convergence uses this document to refuse profile/baseline changes
+        while an application release is active.  Leaving its initial null
+        release identity behind after activation silently defeats that guard.
+        """
+
+        if not self.live_state_path.exists() and not self.live_state_path.is_symlink():
+            if self.enforce_host_contract:
+                raise ContractError("receiver live state is missing during activation")
+            return
+        live = _read_canonical(self.live_state_path, label="receiver live state")
+        if (
+            set(live)
+            != {
+                "schema",
+                "target_state_hash",
+                "active_release_id",
+                "configuration_hash",
+                "commissioning_hash",
+                "profile",
+            }
+            or live.get("schema") != LIVE_STATE_SCHEMA
+            or live.get("target_state_hash") != _identity(live, "target_state_hash")
+            or not isinstance(live.get("commissioning_hash"), str)
+            or not HASH.fullmatch(live["commissioning_hash"])
+        ):
+            raise ContractError("receiver live state is malformed or unauthenticated")
+        updated = {
+            "schema": LIVE_STATE_SCHEMA,
+            "target_state_hash": "0" * 64,
+            "active_release_id": selected.release_id,
+            "configuration_hash": selected.configuration_checkpoint_id,
+            "commissioning_hash": live["commissioning_hash"],
+            "profile": selected.profile,
+        }
+        updated["target_state_hash"] = _identity(updated, "target_state_hash")
+        atomic_document(
+            self.live_state_path,
+            updated,
             mode=0o640,
             owner=self.selector_owner,
         )

@@ -76,6 +76,9 @@ RECEIVER_MODULES = {
     "iii-deployment-receiver": "iii_deployment.receiver.server",
     "iii-deployment-ssh-gateway": "iii_deployment.receiver.ssh_gateway",
     "iii-deploymentctl": "iii_deployment.receiver.client",
+    "iii-log-maintenance": "iii_deployment.log_maintenance",
+    "iii-network-apply": "iii_deployment.network_apply",
+    "iii-network-revert": "iii_deployment.network_revert",
 }
 
 
@@ -272,6 +275,7 @@ def build_receiver_wheelhouse(
             "pip",
             "wheel",
             "--use-pep517",
+            "--no-cache-dir",
             "--wheel-dir",
             str(local),
             "--no-deps",
@@ -294,6 +298,7 @@ def build_receiver_wheelhouse(
             "-m",
             "pip",
             "download",
+            "--no-cache-dir",
             "--dest",
             str(destination),
             "--find-links",

@@ -5,3 +5,4 @@ WORKSPACE_DIR="$(dirname "$SCRIPT_DIR")"
 export WORKSPACE_DIR
 
 source "$SCRIPT_DIR/cli_path.bash"
+source "$SCRIPT_DIR/remote_runtime.bash"

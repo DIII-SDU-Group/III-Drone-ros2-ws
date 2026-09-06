@@ -39,6 +39,25 @@ def _live_state(profile: str) -> dict[str, object]:
     return value
 
 
+def test_live_state_filter_authenticates_no_release_profile_transitions() -> None:
+    import importlib.util
+
+    path = ANSIBLE / "filter_plugins/iii_contract.py"
+    spec = importlib.util.spec_from_file_location("iii_ansible_contract", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    real = module.live_state("real")
+    assert module.valid_live_state(real)
+    assert real["active_release_id"] is None
+    assert not module.valid_live_state({**real, "profile": "hil"})
+    assert not module.valid_live_state({**real, "unexpected": True})
+    document = {"schema": "example/v1"}
+    document["identity"] = module.content_id(document)
+    assert module.valid_document_identity(document, "identity")
+
+
 def test_ansible_json_templates_emit_only_canonical_json_and_one_newline() -> None:
     environment = Environment(
         loader=FileSystemLoader(ANSIBLE),

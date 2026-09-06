@@ -131,9 +131,15 @@ deployment/scripts/prepare_receiver_update_artifact.py \
   --workspace-root . \
   --generation 2 \
   --version v1.0.1 \
+  --reuse-provisioning-wheelhouse \
   --operation-id iii-receiver-update-artifact-generation-2
 # Review the canonical inspection result, then repeat the exact command with --apply.
 ```
+
+Exactly one wheel source is mandatory: use `--python <python-3.12>` whenever
+receiver source changed, or the deliberately explicit
+`--reuse-provisioning-wheelhouse` option only when re-signing the identical
+provisioned receiver closure. The command never silently chooses stale wheels.
 
 The resulting `iii.receiver-update-artifact/v1` record binds the source
 provisioning record and receiver, new receiver identity and generation, signer,

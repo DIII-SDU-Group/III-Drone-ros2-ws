@@ -15,7 +15,7 @@
     "target": {"type": "string", "minLength": 1, "maxLength": 255, "pattern": "^\\S+$"},
     "target_class": {"const": "raspberry-pi-5-noble-arm64"},
     "logical_target": {"const": "drone"},
-    "profile": {"enum": ["real", "opti_track"]},
+    "profile": {"enum": ["real", "opti_track", "hil"]},
     "inventory": {"$ref": "#/definitions/fileIdentity"},
     "input": {"$ref": "#/definitions/fileIdentity"},
     "ansible": {"$ref": "#/definitions/treeIdentity"},

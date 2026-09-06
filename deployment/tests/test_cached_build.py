@@ -4,6 +4,7 @@ from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import zipfile
 
@@ -28,6 +29,7 @@ from iii_deployment.build import (
     run_bounded_target_check,
     select_build_packages,
     verify_installed_release_assets,
+    verify_configuration_contract_source,
     install_deployment_release_resources,
     target_import_command,
     target_wheel_tag_compatible,
@@ -107,6 +109,40 @@ def test_cross_build_runs_target_generators_with_pinned_sysroot_emulator() -> No
     assert "COPY cc_ws/run-target-emulated.sh /usr/local/bin/iii-run-target-emulated" in dockerfile
     assert "COMMAND iii_behavior_node_contract_exporter" in mission_cmake
     assert 'COMMAND "$<TARGET_FILE:iii_behavior_node_contract_exporter>"' not in mission_cmake
+
+
+def test_configuration_contract_source_validation_catches_stale_artifact_hash(tmp_path) -> None:
+    source = ROOT / "src/III-Drone-Configuration/config"
+    destination = tmp_path / "src/III-Drone-Configuration/config"
+    destination.parent.mkdir(parents=True)
+    shutil.copytree(source, destination)
+
+    assert len(verify_configuration_contract_source(tmp_path)) == 64
+    tracked = destination / "parameter_sets/sim/tracked/default.yaml"
+    tracked.write_text(tracked.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    with pytest.raises(ContractError, match="artifact hash mismatch"):
+        verify_configuration_contract_source(tmp_path)
+
+
+def test_configuration_contract_source_validation_catches_stale_tracked_set_hash(tmp_path) -> None:
+    source = ROOT / "src/III-Drone-Configuration/config"
+    destination = tmp_path / "src/III-Drone-Configuration/config"
+    destination.parent.mkdir(parents=True)
+    shutil.copytree(source, destination)
+    manifest_path = destination / "configuration_contract/package-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["tracked_sets"][1]["sha256"] = "0" * 64
+    manifest["manifest_id"] = hashlib.sha256(
+        json.dumps(
+            {key: value for key, value in manifest.items() if key != "manifest_id"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+    with pytest.raises(ContractError, match="not bound to an authenticated artifact"):
+        verify_configuration_contract_source(tmp_path)
 
 
 def test_target_emulation_checks_are_bounded() -> None:

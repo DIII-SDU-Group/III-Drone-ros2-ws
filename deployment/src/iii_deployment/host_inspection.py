@@ -17,7 +17,7 @@ class HostInspector:
         boot_inspector: Any,
         registry: ContractRegistry,
     ) -> None:
-        if logical_target != "drone" or profile not in {"real", "opti_track"}:
+        if logical_target != "drone" or profile not in {"real", "opti_track", "hil"}:
             raise ContractError("host inspector target binding is invalid")
         self.logical_target = logical_target
         self.profile = profile

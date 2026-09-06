@@ -179,7 +179,10 @@ def test_nonce_expires_across_boot_and_journal_budget_pauses_while_powered_off(
     journals.create(plan=retained)
     clock.value += 500
     clock.boot = "boot-c"
-    assert journals.remaining_budget(retained["operation_id"]) == 120
+    # A reboot must not consume the stage operation's powered-on budget. Stage
+    # transfers have their own 600-second hard deadline; the shorter
+    # 120-second default applies to non-staging mutations.
+    assert journals.remaining_budget(retained["operation_id"]) == 600
     journals.transition(
         retained["operation_id"],
         state="running",
@@ -187,7 +190,7 @@ def test_nonce_expires_across_boot_and_journal_budget_pauses_while_powered_off(
         cancellation_safe=False,
         event="started",
     )
-    clock.value += 121
+    clock.value += 601
     assert journals.remaining_budget(retained["operation_id"]) == 0
 
 

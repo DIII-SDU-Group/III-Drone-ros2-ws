@@ -42,6 +42,15 @@ def test_controller_builder_entrypoint_is_executable() -> None:
     assert os.access(update, os.X_OK)
 
 
+def test_receiver_artifact_cli_requires_an_explicit_wheel_source() -> None:
+    script = (
+        WORKSPACE / "deployment/scripts/prepare_receiver_update_artifact.py"
+    ).read_text(encoding="utf-8")
+    assert "add_mutually_exclusive_group(required=True)" in script
+    assert '"--python"' in script
+    assert '"--reuse-provisioning-wheelhouse"' in script
+
+
 def test_receiver_artifact_builder_rejects_wrong_python_abi(tmp_path: Path) -> None:
     wrong_python = tmp_path / "python"
     wrong_python.write_text("#!/bin/sh\nprintf '3.10\\n'\n", encoding="ascii")

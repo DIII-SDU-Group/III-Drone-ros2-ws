@@ -260,3 +260,39 @@
     group: "{{ iii_gc_user }}"
     mode: "0600"
   become: true
+
+- name: Flush pending GC user unit changes before runtime restart
+  ansible.builtin.meta: flush_handlers
+  when: not iii_gc_test_mode and iii_gc_runtime_changed
+
+- name: Inspect whether the GC target is already active
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - --user
+      - is-active
+      - --quiet
+      - iii-gc.target
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ iii_gc_uid }}"
+  register: iii_gc_active_target
+  failed_when: false
+  changed_when: false
+  check_mode: false
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  when: not iii_gc_test_mode and iii_gc_runtime_changed
+
+- name: Restart the active GC target after runtime replacement
+  ansible.builtin.systemd_service:
+    name: iii-gc.target
+    state: restarted
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ iii_gc_uid }}"
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  when:
+    - not iii_gc_test_mode
+    - iii_gc_runtime_changed
+    - iii_gc_active_target.rc == 0

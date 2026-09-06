@@ -14,7 +14,7 @@
     "verified": {"const": true},
     "external_verified": {"type": "boolean"},
     "fresh": {"type": "boolean"},
-    "target": {"type": "object", "additionalProperties": false, "required": ["logical_id", "profile"], "properties": {"logical_id": {"type": "string", "minLength": 1}, "profile": {"enum": ["real", "opti_track", "sim"]}}},
+    "target": {"type": "object", "additionalProperties": false, "required": ["logical_id", "profile"], "properties": {"logical_id": {"type": "string", "minLength": 1}, "profile": {"enum": ["real", "opti_track", "sim", "hil"]}}},
     "release_id": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/hash"}]},
     "state_marker": {"$ref": "#/definitions/hash"},
     "target_state_hash": {"$ref": "#/definitions/hash"},

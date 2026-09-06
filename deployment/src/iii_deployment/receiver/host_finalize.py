@@ -17,6 +17,7 @@ from iii_deployment.receiver.state import atomic_bytes, atomic_document
 
 BOOTSTRAP_USER = "iii-bootstrap"
 REPORT_PATH = Path("/var/lib/iii/deployment/host-provisioning-report.json")
+REPORT_HISTORY_ROOT = Path("/var/lib/iii/deployment/host-provisioning-reports")
 SANITIZED_PATHS = (
     Path("/boot/firmware/user-data"),
     Path("/boot/firmware/meta-data"),
@@ -233,6 +234,7 @@ def finalize_host(
     ):
         raise ContractError("host baseline ID must be lowercase SHA-256")
     existing_report_path = _under(root, REPORT_PATH)
+    previous_report: dict[str, Any] | None = None
     if existing_report_path.exists() or existing_report_path.is_symlink():
         existing = _document(existing_report_path, label="host provisioning report")
         expected_report_id = content_identity(
@@ -241,7 +243,6 @@ def finalize_host(
         if (
             existing.get("schema") != "iii.host-provisioning-report/v1"
             or existing.get("state") != "provisioned"
-            or existing.get("baseline_id") != baseline_id
             or existing.get("report_id") != expected_report_id
         ):
             raise ContractError("existing host provisioning report is invalid")
@@ -262,7 +263,9 @@ def finalize_host(
             raise ContractError(
                 "secret-bearing bootstrap paths reappeared: " + ", ".join(residual)
             )
-        return existing
+        if existing.get("baseline_id") == baseline_id:
+            return existing
+        previous_report = existing
     health = _document(
         _under(root, Path("/var/lib/iii/deployment/host-baseline-report.json")),
         label="converged-host health report",
@@ -448,7 +451,7 @@ def finalize_host(
 
     current_slot = _selector_slot(root, "current")
     fallback_slot = _selector_slot(root, "fallback")
-    if current_slot != fallback_slot:
+    if previous_report is None and current_slot != fallback_slot:
         raise ContractError(
             "initial receiver current and recovery fallback selectors differ"
         )
@@ -477,6 +480,13 @@ def finalize_host(
     for relative in SANITIZED_PATHS:
         _remove_without_following(_under(root, relative))
     sudoers_changed = _sanitize_sudoers(root, run)
+    if previous_report is not None:
+        prior_changes = previous_report.get("bootstrap_sudoers_fragments_changed", [])
+        if not isinstance(prior_changes, list) or not all(
+            isinstance(item, str) for item in prior_changes
+        ):
+            raise ContractError("existing host provisioning sudoers evidence is invalid")
+        sudoers_changed = sorted(set(prior_changes) | set(sudoers_changed))
 
     if user_exists(BOOTSTRAP_USER):
         # The finalizer itself is normally a root child of the still-open
@@ -507,6 +517,9 @@ def finalize_host(
     report: dict[str, Any] = {
         "schema": "iii.host-provisioning-report/v1",
         "report_id": "",
+        "previous_report_id": (
+            previous_report["report_id"] if previous_report is not None else None
+        ),
         "state": "provisioned",
         "baseline_id": baseline_id,
         "target_definition_id": health.get("target_definition_id"),
@@ -532,6 +545,16 @@ def finalize_host(
     report["report_id"] = content_identity(
         {key: value for key, value in report.items() if key != "report_id"}
     )
+    if previous_report is not None:
+        history_root = _under(root, REPORT_HISTORY_ROOT)
+        if history_root.is_symlink():
+            raise ContractError("host provisioning report history is linked")
+        history_root.mkdir(parents=True, exist_ok=True, mode=0o750)
+        atomic_document(
+            history_root / f"{previous_report['report_id']}.json",
+            previous_report,
+            mode=0o640,
+        )
     output = _under(root, REPORT_PATH)
     atomic_document(output, report, mode=0o640)
     committed = _document(output, label="committed host provisioning report")

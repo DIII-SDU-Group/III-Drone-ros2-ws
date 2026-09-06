@@ -209,8 +209,10 @@ class PX4ParameterStore:
         except KeyError as exc:
             raise PX4ParameterError(f"unsupported PX4 profile: {profile}") from exc
 
-    def _status(self, profile: str) -> dict[str, Any]:
-        status = dict(self.adapter.status())
+    def _validate_status(
+        self, profile: str, observed: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        status = dict(observed)
         required = {
             "connected",
             "armed",
@@ -239,13 +241,24 @@ class PX4ParameterStore:
             raise PX4ParameterError("PX4 firmware commit differs from release manifest")
         return status
 
+    def _status(self, profile: str) -> dict[str, Any]:
+        return self._validate_status(profile, self.adapter.status())
+
     def pull(
         self,
         profile: str,
         *,
         provenance: str = "mavlink-complete-inventory",
+        status: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        status = self._status(profile)
+        # A release audit already requested and validated firmware identity on
+        # this connection. Reuse that observation rather than issuing a second
+        # AUTOPILOT_VERSION request, which PX4 may legitimately rate-limit.
+        status = (
+            self._status(profile)
+            if status is None
+            else self._validate_status(profile, status)
+        )
         values = [dict(item) for item in self.adapter.pull_all()]
         if not values:
             raise PX4ParameterError("PX4 returned an empty parameter inventory")
@@ -777,7 +790,11 @@ class PX4ParameterStore:
         return capture
 
     def promoted_manifest(
-        self, capture_id: str, *, accepted_keys: Sequence[str]
+        self,
+        capture_id: str,
+        *,
+        accepted_keys: Sequence[str],
+        include_unexpected_as_preserved: bool = False,
     ) -> dict[str, Any]:
         capture = self.load_capture(capture_id)
         snapshot = self.load_snapshot(capture["snapshot_id"])
@@ -785,15 +802,29 @@ class PX4ParameterStore:
         values = {item["name"]: item for item in snapshot["parameters"]}
         accepted = set(accepted_keys)
         parameters = {item["name"]: item for item in manifest["parameters"]}
-        if (
-            not accepted
-            or not accepted <= set(parameters)
-            or not accepted <= set(values)
+        unexpected = accepted - set(parameters)
+        if not accepted or not accepted <= set(values) or (
+            unexpected and not include_unexpected_as_preserved
         ):
             raise PX4ParameterError(
                 "PX4 promotion keys are absent from capture/manifest"
             )
+        for name in unexpected:
+            observed = values[name]
+            parameters[name] = {
+                "name": name,
+                "mav_type": observed["mav_type"],
+                "value": None,
+                # Unknown firmware-exposed keys enter conservatively. They are
+                # part of the complete inventory but are never written until a
+                # later, explicit classification change is reviewed.
+                "classification": "calibration-identity",
+                "enforcement": "preserve",
+                "tolerance": 1e-6 if observed["mav_type"] == "REAL32" else 0,
+            }
         for name in accepted:
+            if name in unexpected:
+                continue
             if parameters[name]["classification"] == "calibration-identity":
                 raise PX4ParameterError(
                     "PX4 calibration/identity promotion is forbidden"
@@ -801,6 +832,9 @@ class PX4ParameterStore:
             if parameters[name]["mav_type"] != values[name]["mav_type"]:
                 raise PX4ParameterError("PX4 promotion changes parameter type")
             parameters[name]["value"] = values[name]["value"]
+        manifest["parameters"] = [parameters[name] for name in sorted(parameters)]
+        manifest["inventory"]["parameter_count"] = len(manifest["parameters"])
+        manifest["inventory"]["source_sha256"] = snapshot["snapshot_id"]
         manifest["manifest_id"] = _identity(manifest, "manifest_id")
         self.registry.validate("px4-parameter-manifest", manifest)
         return manifest
@@ -901,6 +935,11 @@ class MavlinkParameterAdapter:
         self._px4_system: int | None = None
         self._px4_component: int | None = None
 
+    def close(self) -> None:
+        """Release the UDP/serial endpoint deterministically after one audit."""
+
+        self.connection.close()
+
     def _target_ids(self) -> tuple[int, int]:
         """Use the heartbeat source, not pymavlink's UDP broadcast default."""
 
@@ -911,6 +950,21 @@ class MavlinkParameterAdapter:
             self._px4_component
             if self._px4_component is not None
             else int(self.connection.target_component),
+        )
+
+    def _from_target(self, message: Any) -> bool:
+        """Reject MAVLink replies from another vehicle on a shared transport."""
+
+        source_system = getattr(message, "get_srcSystem", lambda: None)()
+        source_component = getattr(message, "get_srcComponent", lambda: None)()
+        # Synthetic adapters used by callers and tests may not expose MAVLink
+        # source accessors. Real pymavlink messages always do.
+        if source_system is None or source_component is None:
+            return True
+        target_system, target_component = self._target_ids()
+        return (
+            int(source_system) == target_system
+            and int(source_component) == target_component
         )
 
     @staticmethod
@@ -952,12 +1006,22 @@ class MavlinkParameterAdapter:
         return raw[::-1][:5].hex()
 
     def _heartbeat(self) -> Any:
-        message = self.connection.recv_match(
-            type="HEARTBEAT", blocking=True, timeout=self.timeout
-        )
-        if message is None:
-            raise PX4ParameterError("PX4 heartbeat timed out")
-        return message
+        deadline = time.monotonic() + self.timeout
+        px4_autopilot = int(self.mavutil.mavlink.MAV_AUTOPILOT_PX4)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise PX4ParameterError("PX4 autopilot heartbeat timed out")
+            message = self.connection.recv_match(
+                type="HEARTBEAT", blocking=True, timeout=remaining
+            )
+            if message is None:
+                raise PX4ParameterError("PX4 autopilot heartbeat timed out")
+            # MAVLink links routinely contain payload, gimbal, camera, and GCS
+            # heartbeats. Only a PX4 autopilot may establish the target used by
+            # firmware checks, inventories, or parameter writes.
+            if int(getattr(message, "autopilot", -1)) == px4_autopilot:
+                return message
 
     def _firmware(self) -> tuple[str, str | None]:
         command = self.mavutil.mavlink.MAV_CMD_REQUEST_MESSAGE
@@ -978,6 +1042,10 @@ class MavlinkParameterAdapter:
         message = self.connection.recv_match(
             type="AUTOPILOT_VERSION", blocking=True, timeout=min(self.timeout, 5)
         )
+        while message is not None and not self._from_target(message):
+            message = self.connection.recv_match(
+                type="AUTOPILOT_VERSION", blocking=True, timeout=min(self.timeout, 5)
+            )
         if message is None:
             raise PX4ParameterError("PX4 firmware identity timed out")
         packed = int(message.flight_sw_version)
@@ -1047,6 +1115,8 @@ class MavlinkParameterAdapter:
                 type="FILE_TRANSFER_PROTOCOL", blocking=True, timeout=0.25
             )
             if message is None:
+                continue
+            if not self._from_target(message):
                 continue
             raw = bytes(message.payload)
             if len(raw) != 251:
@@ -1122,6 +1192,8 @@ class MavlinkParameterAdapter:
                 )
                 if message is None or int(message.count) == 0:
                     continue
+                if not self._from_target(message):
+                    continue
                 output.extend(bytes(message.data[: int(message.count)]))
                 normalized = bytes(output).replace(b"\r\n", b"\n")
                 begin_marker = (begin + "\n").encode()
@@ -1154,18 +1226,33 @@ class MavlinkParameterAdapter:
         count: int | None = None
         deadline = time.monotonic() + self.timeout
         last = time.monotonic()
+
+        def complete_inventory() -> bool:
+            if count is None:
+                return False
+            marker = values.get(65535)
+            regular = {index for index in values if index != 65535}
+            return bool(
+                marker is not None
+                and marker.get("name") == "_HASH_CHECK"
+                and len(regular) == count - 1
+                and regular == set(range(count - 1))
+            )
+
         while time.monotonic() < deadline:
             message = self.connection.recv_match(
                 type="PARAM_VALUE", blocking=True, timeout=0.5
             )
             if message is None:
-                if count is not None and len(values) == count:
+                if complete_inventory():
                     break
                 if time.monotonic() - last >= 2:
                     self.connection.mav.param_request_list_send(
                         self.connection.target_system, self.connection.target_component
                     )
                     last = time.monotonic()
+                continue
+            if not self._from_target(message):
                 continue
             name = message.param_id
             if isinstance(name, bytes):
@@ -1175,7 +1262,16 @@ class MavlinkParameterAdapter:
             mav_type_id = int(message.param_type)
             if mav_type_id not in MAV_TYPES:
                 raise PX4ParameterError(f"unsupported PX4 parameter type for {name}")
-            count = int(message.param_count)
+            observed_count = int(message.param_count)
+            if count is not None and observed_count != count:
+                # PX4 can add parameters while modules finish starting. Never
+                # combine two count generations into an apparently complete
+                # inventory; restart from the newer generation instead.
+                values.clear()
+                self.connection.mav.param_request_list_send(
+                    self.connection.target_system, self.connection.target_component
+                )
+            count = observed_count
             index = int(message.param_index)
             values[index] = {
                 "name": name,
@@ -1185,8 +1281,18 @@ class MavlinkParameterAdapter:
                 "count": count,
             }
             last = time.monotonic()
-            if len(values) == count:
-                break
+            if len(values) >= count:
+                if complete_inventory():
+                    break
+                # A complete-sized but non-contiguous set is usually a mix of
+                # stale replies from consecutive list requests. Discard it and
+                # request one coherent generation within the same deadline.
+                values.clear()
+                count = None
+                self.connection.mav.param_request_list_send(
+                    self.connection.target_system, self.connection.target_component
+                )
+                last = time.monotonic()
         marker = values.pop(65535, None)
         if (
             count is None
@@ -1222,6 +1328,8 @@ class MavlinkParameterAdapter:
                 type="PARAM_VALUE", blocking=True, timeout=0.5
             )
             if message is None:
+                continue
+            if not self._from_target(message):
                 continue
             observed_name = message.param_id
             if isinstance(observed_name, bytes):

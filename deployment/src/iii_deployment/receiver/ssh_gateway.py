@@ -181,6 +181,10 @@ def dispatch(
     # every individual sample.
     if original_command == "iii-clock-samples":
         return receiver_client_main(persistent=True, client_id=client_id)
+    # Bulk read workflows use the same receiver protocol and per-request Unix
+    # peer checks, but amortize Python and SSH startup across one bounded stream.
+    if original_command == "iii-receiver-stream":
+        return receiver_client_main(persistent=True, client_id=client_id)
     # OpenSSH reconstructs a configured Subsystem command with one trailing
     # space in SSH_ORIGINAL_COMMAND even when the sshd_config line has none.
     # Accept only that exact server representation in addition to the exact

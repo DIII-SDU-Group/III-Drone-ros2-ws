@@ -12,8 +12,8 @@
   'clock_policy': 'receiver-step-gate-plus-chrony-slew-only',
   'journal_identity': 'boot-id-plus-monotonic',
   'receiver': {
-    'receiver_id': (iii_health_readiness.receiver_id if not ansible_check_mode else iii_receiver_manifest.receiver_id),
-    'generation': (iii_health_readiness.generation if not ansible_check_mode else iii_receiver_manifest.generation),
+    'receiver_id': iii_health_readiness.receiver_id,
+    'generation': iii_health_readiness.generation,
     'socket': '/run/iii/deployment-receiver.sock',
     'ssh_transport_only': true,
     'independent_recovery': true,

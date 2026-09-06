@@ -170,9 +170,9 @@ deployment/scripts/prepare_receiver_update_artifact.py \
 ```
 
 Pass the target-compatible Python 3.12 executable whenever the receiver source
-has changed. Without `--python`, the command deliberately reuses the immutable
-wheelhouse from the provisioning artifact; that is appropriate only for
-re-signing the identical receiver closure, not for shipping a source change.
+has changed. To re-sign the identical receiver closure, pass
+`--reuse-provisioning-wheelhouse` instead. One option is mandatory, so the
+command cannot silently package stale wheels.
 
 Retain its `iii.receiver-update-artifact/v1` record. It binds the source
 provisioning record and receiver identity, signer, exact schema/policy inputs,
@@ -273,6 +273,13 @@ withdrawal/unsafe status blocks new flight and activation without automatically
 switching an aircraft already in operation. See the
 [qualified release pipeline](qualified-release-pipeline.md) and
 [release bundle format](release-bundle-format.md).
+
+Application staging has its own 300-second target and 600-second hard deadline;
+it does not share the 60/120-second activation budget. The receiver rechecks the
+remaining monotonic budget after verification and extraction but before it
+commits release state. An over-budget extraction is removed and reported as a
+failed operation, while the active selector remains unchanged. This prevents a
+field command from reporting failure after silently selecting a candidate.
 
 ## 6. Perform A Dirty Or Untracked Field Deployment
 
@@ -406,6 +413,21 @@ Final physical acceptance additionally requires fresh uXRCE-DDS messages through
 the agent on `8888/UDP` and fresh fused landed/disarmed telemetry. Restore the
 captured files and parameter backup if any post-reboot check fails.
 
+### Split-host HIL rehearsal
+
+The commissioned `hil` target runs the aircraft release on the Pi while PX4
+SITL, Gazebo, ROS/Gazebo bridges, and the simulated charger-gripper remain on
+the workstation. Start the workstation side with `iii-dev hil start` and verify
+it with `iii-dev hil status` before selecting `--target hil` for deployment.
+The isolated bench links are uXRCE-DDS `8889/UDP`, runtime MAVLink `14542/UDP`,
+release-audit MAVLink `14543/UDP`, and ROS domain 42. The separate HIL audit port
+prevents a powered physical PX4's `14541/UDP` stream from being mistaken for the
+selected SITL vehicle. The audit link independently
+checks the disarmed SITL commit, version, complete `sim` parameter manifest, and
+compiled DDS contract; physical PX4 microSD network files are intentionally not
+part of this simulator-only audit. `hil` evidence proves the split-host software
+path, never physical-aircraft acceptance.
+
 ## 8. Operate Offline And Switch Profiles
 
 Before leaving connected infrastructure, prepare every intended qualified release
@@ -432,7 +454,7 @@ python3 deployment/scripts/run_pre_field_profile_matrix.py \
 ```
 
 Simulation remains a devcontainer profile; it skips aircraft clock alignment and
-uses native host QGroundControl. Never treat simulation, deferred HIL, or an
+uses native host QGroundControl. Never treat simulation, commissioned HIL, or an
 uncommissioned OptiTrack setup as physical acceptance.
 
 ## 9. Diagnostics, Rollback, And Recovery

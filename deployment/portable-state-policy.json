@@ -13,7 +13,7 @@
       "name": "tuning",
       "path": "var/lib/iii/tuning",
       "optional": true,
-      "exclude": []
+      "exclude": ["selectors"]
     },
     {
       "name": "px4",
@@ -31,13 +31,19 @@
       "name": "activation-evidence",
       "path": "var/lib/iii/deployment/activation",
       "optional": true,
-      "exclude": []
+      "exclude": ["transactions"]
     },
     {
       "name": "deployment-audits",
       "path": "var/log/iii/deployment",
       "optional": true,
-      "exclude": ["activation-transactions", "network", "transactions"]
+      "exclude": [
+        "activation-transactions",
+        "network",
+        "receiver-audit.jsonl",
+        "receiver-audit.jsonl.lock",
+        "transactions"
+      ]
     },
     {
       "name": "diagnostics",

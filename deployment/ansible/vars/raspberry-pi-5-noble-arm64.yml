@@ -1,8 +1,8 @@
 ---
 iii_baseline_schema: iii.ansible-host-baseline/v1
-iii_baseline_id: ea7bde80411c155c80b84a575953d1b5752f8b21d798aa9210a57aa624ccd41d
-iii_unit_contract_id: 33a2777fd109e9cd245fafcd13d253dec45ec67a805032adc37b52873a3a926d
-iii_target_definition_id: ecc2e4e9dc553e1fa6fb30f350b3034db48262604ba9ca28c954cc0694b17b34
+iii_baseline_id: 7194c5dae297412ff508d8089fd5d91e694843b4316d79c77a7b40d2e8af2bd6
+iii_unit_contract_id: 75dca3ef3db9f15f3d49cf286de72a428c596f79ed4897e9fdf1d80e79b9614a
+iii_target_definition_id: 98c194990c8a7f2e775d0d9a7513e7b3bf06b9d3b6dcd7b09c5ee4110526e037
 iii_expected_distribution: Ubuntu
 iii_expected_release: "24.04"
 iii_expected_codename: noble
@@ -28,9 +28,17 @@ iii_px4_host_address: 10.41.10.1/24
 iii_px4_peer_address: 10.41.10.2
 iii_px4_subnet: 10.41.10.0/24
 iii_px4_mavlink_udp_port: 14540
+iii_px4_system_id: 1
 iii_px4_mavlink_audit_udp_port: 14541
 iii_px4_uxrce_dds_udp_port: 8888
-iii_shared_target_profile_id: 89b5c1422a2296799f87a5dbc6d06b1f0868cc860ce28c669f52616ba2135cd2
+iii_hil_uxrce_dds_udp_port: 8889
+iii_hil_mavlink_udp_port: 14542
+iii_hil_px4_system_id: 8
+iii_hil_mavlink_audit_udp_port: 14543
+# RTPS port mapping for ROS_DOMAIN_ID=42: 7400 + (250 * 42), with room
+# for participant-specific metatraffic and user-data ports.
+iii_hil_dds_discovery_udp_ports: 17900-18150
+iii_shared_target_profile_id: 80e6d4dc7721661fc83659a3b3c2f64c2fca22487e267efb5a67581fa4ea05b5
 iii_boot_profile_id: 3a2147e380558975eb301c2af6a425919fac6be6b2312570cbb70f03032b5f31
 iii_boot_files_required: true
 iii_runtime_api_id: iii-aircraft-runtime

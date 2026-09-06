@@ -30,4 +30,6 @@ def test_core_and_simulation_launch_descriptions_share_same_config_tree(
     assert isinstance(core_description, LaunchDescription)
     assert isinstance(simulation_description, LaunchDescription)
     assert len(core_description.entities) >= 10
-    assert len(simulation_description.entities) == 5
+    # Two launch arguments select the odometry source, followed by the three
+    # sensor transforms and the mutually exclusive PX4/ground-truth publishers.
+    assert len(simulation_description.entities) == 7

@@ -8,6 +8,7 @@ identity, freshness, and the signed profile policy before accepting a release.
 from __future__ import annotations
 
 import json
+import errno
 from pathlib import Path
 import socket
 import subprocess
@@ -16,6 +17,7 @@ from typing import Any, Callable, Mapping
 
 from iii_deployment.activation import ActivationSafetySnapshot, ActivationTuple
 from iii_deployment.activation_health import (
+    ActivationHealthPending,
     ActivationHealthPolicy,
     ActivationHealthSnapshot,
     ControlPlaneProof,
@@ -195,19 +197,12 @@ class OnboardControlPlane:
 
     def boot_profile(self, profile: str) -> dict[str, Any]:
         """Boot a fixed installed profile after the receiver clock gate opens."""
-        if profile not in {"real", "opti_track"}:
+        if profile not in {"real", "opti_track", "hil"}:
             raise ContractError("clock-gate boot profile is not an onboard profile")
         self._systemctl("start", *self.units)
-        deadline = self.monotonic() + 30.0
-        while self.monotonic() < deadline:
-            if self.daemon_socket.exists() and not self.daemon_socket.is_symlink():
-                break
-            self.sleep(0.1)
-        else:
-            raise ContractError(
-                "system daemon socket did not appear after fixed unit start"
-            )
-        self._daemon_request({"command": "boot", "profile": profile})
+        self._daemon_request(
+            {"command": "boot", "profile": profile}, connect_timeout_s=30.0
+        )
         started = self._daemon_request(
             {
                 "command": "start",
@@ -246,13 +241,30 @@ class OnboardControlPlane:
         if result.get("success") is not True:
             raise ContractError("system daemon did not stop the runtime graph")
 
-    def _daemon_request(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+    def _daemon_request(
+        self, payload: Mapping[str, Any], *, connect_timeout_s: float = 0.0
+    ) -> dict[str, Any]:
         request = {**payload, "daemon_timeout_sec": 90.0}
         raw = json.dumps(request, sort_keys=True, separators=(",", ":")) + "\n"
-        client = self.socket_factory(socket.AF_UNIX, socket.SOCK_STREAM)
-        try:
+        deadline = self.monotonic() + connect_timeout_s
+        while True:
+            if self.daemon_socket.is_symlink():
+                raise ContractError("system daemon socket is linked")
+            client = self.socket_factory(socket.AF_UNIX, socket.SOCK_STREAM)
             client.settimeout(95.0)
-            client.connect(str(self.daemon_socket))
+            try:
+                client.connect(str(self.daemon_socket))
+                break
+            except OSError as exc:
+                client.close()
+                if (
+                    exc.errno in {errno.ENOENT, errno.ECONNREFUSED}
+                    and self.monotonic() < deadline
+                ):
+                    self.sleep(0.1)
+                    continue
+                raise ContractError(f"system daemon request failed: {exc}") from exc
+        try:
             client.sendall(raw.encode("utf-8"))
             response = b""
             while not response.endswith(b"\n"):
@@ -313,6 +325,12 @@ class OnboardHealthProvider:
     def __call__(
         self, candidate: ActivationTuple, policy: ActivationHealthPolicy
     ) -> ActivationHealthSnapshot:
+        if self.runtime_path.is_symlink():
+            raise ContractError("runtime activation health observation is linked")
+        if not self.runtime_path.is_file():
+            raise ActivationHealthPending(
+                "runtime activation health observation is not available yet"
+            )
         runtime = _canonical_document(
             self.runtime_path, label="runtime activation health observation"
         )
@@ -341,7 +359,9 @@ class OnboardHealthProvider:
         now = self.monotonic()
         current_boot = self.boot_id()
         if runtime["boot_id"] != current_boot:
-            raise ContractError("runtime activation health belongs to another boot")
+            raise ActivationHealthPending(
+                "runtime activation health still belongs to the previous boot"
+            )
         observed = runtime["observed_monotonic"]
         if (
             isinstance(observed, bool)
@@ -349,7 +369,7 @@ class OnboardHealthProvider:
             or observed > now
             or now - observed > self.maximum_age_s
         ):
-            raise ContractError("runtime activation health is stale")
+            raise ActivationHealthPending("runtime activation health is not fresh yet")
         readiness = _canonical_document(
             self.readiness_path, label="receiver readiness observation"
         )

@@ -28,6 +28,16 @@ DEFAULT_DEADLINES = {
     "hard_deadline_s": 120,
     "rollback_target_s": 60,
 }
+ACTIVATION_DEADLINES = {
+    "target_acceptance_s": 180,
+    "hard_deadline_s": 300,
+    "rollback_target_s": 60,
+}
+STAGING_DEADLINES = {
+    "target_acceptance_s": 300,
+    "hard_deadline_s": 600,
+    "rollback_target_s": 60,
+}
 HOST_MAINTENANCE_DEADLINES = {
     "target_acceptance_s": 1800,
     "hard_deadline_s": 7200,
@@ -36,16 +46,33 @@ HOST_MAINTENANCE_DEADLINES = {
 
 
 def operation_deadlines(action: str) -> dict[str, int]:
+    if action == Action.STAGE.value:
+        return dict(STAGING_DEADLINES)
+    if action in {Action.ACTIVATE.value, Action.ROLLBACK.value}:
+        return dict(ACTIVATION_DEADLINES)
     return dict(
         HOST_MAINTENANCE_DEADLINES
-        if action
-        in {
+        if action in {
             Action.HOST_MAINTENANCE.value,
             Action.BACKUP_SEAL.value,
             Action.BACKUP_RESTORE.value,
         }
         else DEFAULT_DEADLINES
     )
+
+
+def accepted_operation_deadlines(action: str) -> tuple[dict[str, int], ...]:
+    """Return current and historically persisted deadline contracts."""
+
+    current = operation_deadlines(action)
+    if action in {Action.STAGE.value, Action.ACTIVATE.value, Action.ROLLBACK.value}:
+        # Generation 48 split staging from the activation budget. Journals are
+        # immutable evidence, so receivers must continue reading earlier fixed
+        # deadlines rather than forcing a destructive migration. Activation's
+        # original 60/120-second envelope is also retained after field evidence
+        # showed a healthy activation can require more than 120 seconds.
+        return current, dict(DEFAULT_DEADLINES)
+    return (current,)
 
 
 def _canonical_document(path: Path, *, label: str) -> dict[str, Any]:
@@ -467,14 +494,29 @@ class OperationJournalStore:
         self,
         *,
         plan: Mapping[str, Any],
-        target_acceptance_s: int = 60,
-        hard_deadline_s: int = 120,
-        rollback_target_s: int = 60,
+        target_acceptance_s: int | None = None,
+        hard_deadline_s: int | None = None,
+        rollback_target_s: int | None = None,
     ) -> dict[str, Any]:
         validate_mutation_plan(plan)
         if self.load(plan["operation_id"]) is not None:
             raise ContractError("receiver operation ID already has a durable journal")
         expected_deadlines = operation_deadlines(str(plan["action"]))
+        target_acceptance_s = (
+            expected_deadlines["target_acceptance_s"]
+            if target_acceptance_s is None
+            else target_acceptance_s
+        )
+        hard_deadline_s = (
+            expected_deadlines["hard_deadline_s"]
+            if hard_deadline_s is None
+            else hard_deadline_s
+        )
+        rollback_target_s = (
+            expected_deadlines["rollback_target_s"]
+            if rollback_target_s is None
+            else rollback_target_s
+        )
         if (target_acceptance_s, hard_deadline_s, rollback_target_s) != tuple(
             expected_deadlines[field]
             for field in (
@@ -663,15 +705,15 @@ class OperationJournalStore:
             raise ContractError("receiver operation journal has invalid state")
         if not isinstance(value["sequence"], int) or value["sequence"] < 1:
             raise ContractError("receiver operation journal sequence is invalid")
-        expected_deadlines = operation_deadlines(str(value["action"]))
-        if value["deadlines"] != expected_deadlines:
+        accepted_deadlines = accepted_operation_deadlines(str(value["action"]))
+        if value["deadlines"] not in accepted_deadlines:
             raise ContractError("receiver operation journal deadlines are invalid")
         if (
             not isinstance(value["remaining_hard_s"], (int, float))
             or isinstance(value["remaining_hard_s"], bool)
             or not 0
             <= value["remaining_hard_s"]
-            <= expected_deadlines["hard_deadline_s"]
+            <= value["deadlines"]["hard_deadline_s"]
         ):
             raise ContractError("receiver operation remaining deadline is invalid")
         if not isinstance(value["accepted_boot_id"], str) or not isinstance(

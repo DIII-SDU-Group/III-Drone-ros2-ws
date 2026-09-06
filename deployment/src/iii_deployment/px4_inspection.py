@@ -28,11 +28,15 @@ class PX4ReleaseInspector:
         state_root: Path,
         endpoint: str = "udpin:0.0.0.0:14541",
         timeout: float = 30.0,
+        profile: str = "real",
     ) -> None:
+        if profile not in {"real", "sim"}:
+            raise ContractError("PX4 inspection profile must be real or sim")
         self.schema_root = schema_root
         self.state_root = state_root
         self.endpoint = endpoint
         self.timeout = timeout
+        self.profile = profile
 
     @staticmethod
     def _json(path: Path) -> dict[str, Any]:
@@ -84,7 +88,7 @@ class PX4ReleaseInspector:
         network = load_network_baseline(
             resources / "network-baseline.json", schema_root=self.schema_root
         )
-        parameters = self._json(resources / "real.json")
+        parameters = self._json(resources / f"{self.profile}.json")
         registry.validate("px4-parameter-manifest", parameters)
         validate_release_inputs(
             spec=spec,
@@ -98,13 +102,16 @@ class PX4ReleaseInspector:
             declared.get("spec_id") != spec["spec_id"]
             or declared.get("dds_topics_id") != dds["contract_id"]
             or declared.get("network_baseline_id") != network["baseline_id"]
-            or declared.get("manifest_ids", {}).get("real") != parameters["manifest_id"]
+            or declared.get("manifest_ids", {}).get(self.profile) != parameters["manifest_id"]
         ):
             raise ContractError("staged PX4 resources differ from the signed release")
+        adapter: MavlinkParameterAdapter | None = None
         try:
             adapter = MavlinkParameterAdapter(self.endpoint, timeout=self.timeout)
             status = dict(adapter.status())
         except (OSError, PX4ParameterError):
+            if adapter is not None:
+                adapter.close()
             audit = audit_release(
                 release_id=release_id,
                 spec=spec,
@@ -117,11 +124,73 @@ class PX4ReleaseInspector:
                 provenance="receiver-px4-ethernet",
             )
             return self._retain(audit, None, registry)
-        if (
-            status.get("armed") is not False
-            or status.get("firmware_version") != spec["version"]
-            or status.get("firmware_commit") != spec["advertised_commit"]
-        ):
+        try:
+            if (
+                status.get("armed") is not False
+                or status.get("firmware_version") != spec["version"]
+                or status.get("firmware_commit") != spec["advertised_commit"]
+            ):
+                audit = audit_release(
+                    release_id=release_id,
+                    spec=spec,
+                    dds=dds,
+                    network=network,
+                    parameters=parameters,
+                    status=status,
+                    snapshot=None,
+                    comparison=None,
+                    provenance="receiver-px4-ethernet",
+                )
+                return self._retain(audit, None, registry)
+            # The shell/FTP channel used for SD-card evidence is less reliable than
+            # the MAVLink parameter channel.  A read timeout is an audit finding,
+            # never a reason to terminate the receiver process that owns future
+            # recovery and deployment transactions.
+            try:
+                artifacts = (
+                    {
+                        path: adapter.read_text_file(path)
+                        for path in (
+                            network["artifacts"]["net_cfg_path"],
+                            network["artifacts"]["extras_path"],
+                        )
+                    }
+                    if self.profile == "real"
+                    else None
+                )
+            except (OSError, PX4ParameterError):
+                artifacts = None
+            store = PX4ParameterStore(
+                manifest_paths={"real": resources / "real.json", "sim": resources / "sim.json"},
+                state_root=self.state_root,
+                schema_root=self.schema_root,
+                adapter=adapter,
+            )
+            try:
+                snapshot = store.pull(
+                    self.profile,
+                    provenance="receiver-px4-ethernet",
+                    status=status,
+                )
+            except (OSError, PX4ParameterError):
+                # Parameter transport is explicitly retryable by the field
+                # client. Return a bounded audit finding instead of allowing a
+                # transient inventory failure to terminate the receiver.
+                audit = audit_release(
+                    release_id=release_id,
+                    spec=spec,
+                    dds=dds,
+                    network=network,
+                    parameters=parameters,
+                    status=status,
+                    snapshot=None,
+                    comparison=None,
+                    provenance="receiver-px4-ethernet",
+                    network_artifacts=artifacts,
+                    require_network_artifacts=self.profile == "real",
+                )
+                return self._retain(audit, None, registry)
+            comparison = store.compare(self.profile, snapshot["snapshot_id"])
             audit = audit_release(
                 release_id=release_id,
                 spec=spec,
@@ -129,58 +198,27 @@ class PX4ReleaseInspector:
                 network=network,
                 parameters=parameters,
                 status=status,
-                snapshot=None,
-                comparison=None,
+                snapshot=snapshot,
+                comparison=comparison,
                 provenance="receiver-px4-ethernet",
+                network_artifacts=artifacts,
+                require_network_artifacts=self.profile == "real",
             )
-            return self._retain(audit, None, registry)
-        # The shell/FTP channel used for SD-card evidence is less reliable than
-        # the MAVLink parameter channel.  A read timeout is an audit finding,
-        # never a reason to terminate the receiver process that owns future
-        # recovery and deployment transactions.
-        try:
-            artifacts = {
-                path: adapter.read_text_file(path)
-                for path in (
-                    network["artifacts"]["net_cfg_path"],
-                    network["artifacts"]["extras_path"],
-                )
+            evidence = {
+                "schema": "iii.px4-activation-evidence/v1",
+                "evidence_id": "0" * 64,
+                "captured_at": snapshot["captured_at"],
+                "release_id": release_id,
+                "profile": self.profile,
+                "manifest_id": comparison["manifest_id"],
+                "snapshot": snapshot,
+                "comparison": comparison,
+                "healthy": audit["healthy"],
+                "writes_performed": 0,
             }
-        except (OSError, PX4ParameterError):
-            artifacts = None
-        store = PX4ParameterStore(
-            manifest_paths={"real": resources / "real.json", "sim": resources / "sim.json"},
-            state_root=self.state_root,
-            schema_root=self.schema_root,
-            adapter=adapter,
-        )
-        snapshot = store.pull("real", provenance="receiver-px4-ethernet")
-        comparison = store.compare("real", snapshot["snapshot_id"])
-        audit = audit_release(
-            release_id=release_id,
-            spec=spec,
-            dds=dds,
-            network=network,
-            parameters=parameters,
-            status=status,
-            snapshot=snapshot,
-            comparison=comparison,
-            provenance="receiver-px4-ethernet",
-            network_artifacts=artifacts,
-        )
-        evidence = {
-            "schema": "iii.px4-activation-evidence/v1",
-            "evidence_id": "0" * 64,
-            "captured_at": snapshot["captured_at"],
-            "release_id": release_id,
-            "profile": "real",
-            "manifest_id": comparison["manifest_id"],
-            "snapshot": snapshot,
-            "comparison": comparison,
-            "healthy": audit["healthy"],
-            "writes_performed": 0,
-        }
-        evidence["evidence_id"] = content_identity(
-            {key: value for key, value in evidence.items() if key != "evidence_id"}
-        )
-        return self._retain(audit, evidence, registry)
+            evidence["evidence_id"] = content_identity(
+                {key: value for key, value in evidence.items() if key != "evidence_id"}
+            )
+            return self._retain(audit, evidence, registry)
+        finally:
+            adapter.close()

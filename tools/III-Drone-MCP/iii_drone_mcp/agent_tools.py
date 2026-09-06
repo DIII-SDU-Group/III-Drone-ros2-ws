@@ -2634,6 +2634,39 @@ class DroneAgentTools:
                 if abs(observed_pct - target_pct) <= tolerance_pct:
                     break
 
+        # The reset token is a transient command/acknowledgement handshake, but
+        # both values are exposed through the complete PX4 parameter inventory.
+        # Restore the release baseline before returning so a successful HIL
+        # fixture cannot make the next deployment audit report false drift.
+        cleanup_result = None
+        cleanup_acknowledgement = None
+        if next_token != 0:
+            cleanup_result = self.px4(
+                "set_param",
+                param_name="SIM_BAT_RESET",
+                param_value=0,
+                param_type=6,
+                timeout_sec=timeout_sec,
+            )
+            cleanup_deadline = time.monotonic() + timeout_sec
+            while time.monotonic() < cleanup_deadline:
+                cleanup_acknowledgement = self.px4(
+                    "get_param",
+                    param_name="SIM_BAT_RST_ACK",
+                    timeout_sec=max(0.1, cleanup_deadline - time.monotonic()),
+                )
+                if int(round(float(cleanup_acknowledgement.data["param_value"]))) == 0:
+                    break
+                time.sleep(min(0.1, max(0.0, cleanup_deadline - time.monotonic())))
+
+        cleanup_ack_token = (
+            0
+            if next_token == 0
+            else None
+            if cleanup_acknowledgement is None
+            else int(round(float(cleanup_acknowledgement.data["param_value"])))
+        )
+
         data = {
             "target_remaining_pct": target_pct,
             "tolerance_pct": tolerance_pct,
@@ -2645,6 +2678,8 @@ class DroneAgentTools:
             "acknowledgement_parameter": None if acknowledgement is None else acknowledgement.data,
             "initial_percentage_parameter": initial_result.data,
             "reset_parameter": reset_result.data,
+            "cleanup_reset_parameter": None if cleanup_result is None else cleanup_result.data,
+            "cleanup_acknowledgement_token": cleanup_ack_token,
             "battery_before": None if before is None else self._message_to_nested_dict(before),
             "battery_after": None if after is None else self._message_to_nested_dict(after),
             "observed_remaining_pct": observed_pct,
@@ -2654,6 +2689,8 @@ class DroneAgentTools:
         }
         if acknowledgement_token != next_token:
             return ToolResult(False, data, "battery simulator did not acknowledge the reset request")
+        if cleanup_ack_token != 0:
+            return ToolResult(False, data, "battery simulator reset handshake did not return to baseline")
         if observed_pct is None:
             return ToolResult(False, data, "battery reset was acknowledged but no battery status was observed")
         return ToolResult(

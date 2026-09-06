@@ -61,6 +61,33 @@ def test_decoded_reference_reproduces_both_release_manifests(tmp_path: Path) -> 
         ).read_bytes()
 
 
+def test_accumulated_flight_time_is_preserved_across_releases(tmp_path: Path) -> None:
+    value = json.loads(REFERENCE.read_text(encoding="utf-8"))
+    for item in value["parameters"]:
+        if item["name"] == "LND_FLIGHT_T_LO":
+            item["value"] = 15_088_000
+    value["snapshot_id"] = content_identity(
+        {
+            "profile": value["profile"],
+            "target": value["target"],
+            "parameter_count": value["parameter_count"],
+            "parameters": value["parameters"],
+        }
+    )
+    source = tmp_path / "flown-sitl.json"
+    source.write_bytes(canonical_json(value) + b"\n")
+
+    completed = run_generator(source, tmp_path / "output")
+
+    assert completed.returncode == 0, completed.stdout
+    manifest = json.loads((tmp_path / "output/sim.json").read_text(encoding="utf-8"))
+    by_name = {item["name"]: item for item in manifest["parameters"]}
+    for name in ("LND_FLIGHT_T_HI", "LND_FLIGHT_T_LO"):
+        assert by_name[name]["classification"] == "calibration-identity"
+        assert by_name[name]["enforcement"] == "preserve"
+        assert by_name[name]["value"] is None
+
+
 def test_generator_rejects_nonintegral_integer_after_identity_valid_decode(
     tmp_path: Path,
 ) -> None:

@@ -1,7 +1,8 @@
 {
   "schema_version": "1",
   "safety": {"telemetry_max_age_ms": 1000, "stable_preflight_s": 3, "acceptance_stable_s": 10},
-  "activation": {"target_acceptance_s": 60, "hard_deadline_s": 120, "rollback_target_s": 60},
+  "activation": {"target_acceptance_s": 180, "hard_deadline_s": 300, "rollback_target_s": 60},
+  "staging": {"target_acceptance_s": 300, "hard_deadline_s": 600, "rollback_target_s": 60},
   "host_maintenance": {"target_acceptance_s": 1800, "hard_deadline_s": 7200, "rollback_target_s": 60},
   "receiver": {"self_update_deadline_s": 30},
   "network": {"confirmation_deadline_s": 90, "ethernet_dhcp_required": true},

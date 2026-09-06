@@ -7,7 +7,7 @@
       - ansible_distribution_version is version(iii_expected_release, '==')
       - ansible_distribution_release == iii_expected_codename
       - ansible_architecture == iii_expected_architecture
-      - iii_profile in ['real', 'opti_track']
+      - iii_profile in ['real', 'opti_track', 'hil']
       - iii_logical_target == 'drone'
     fail_msg: The target does not match the governed Raspberry Pi 5 Noble ARM64 baseline.
 

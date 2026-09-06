@@ -296,6 +296,57 @@ def verify_installed_release_assets(
     return metadata
 
 
+def verify_configuration_contract_source(workspace: Path) -> str:
+    """Authenticate configuration package artifacts before an ARM build starts."""
+
+    package_root = workspace / "src/III-Drone-Configuration/config"
+    contract_root = package_root / "configuration_contract"
+    manifest_path = contract_root / "package-manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ContractError(f"configuration package manifest is unreadable: {exc}") from exc
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("artifacts"), list):
+        raise ContractError("configuration package manifest is malformed")
+    expected_id = content_identity(
+        {key: value for key, value in manifest.items() if key != "manifest_id"}
+    )
+    if manifest.get("manifest_id") != expected_id:
+        raise ContractError("configuration package manifest identity mismatch")
+    artifact_hashes: dict[str, str] = {}
+    for artifact in manifest["artifacts"]:
+        if not isinstance(artifact, dict) or set(artifact) != {"path", "sha256"}:
+            raise ContractError("configuration package artifact row is malformed")
+        relative = Path(artifact["path"])
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ContractError("configuration package artifact path is unsafe")
+        if relative.parts[:1] == ("tracked_defaults",) and len(relative.parts) == 3:
+            source = package_root / "parameter_sets" / relative.parts[1] / "tracked" / relative.parts[2]
+        elif relative.parts[:1] == ("schema",) and len(relative.parts) == 2:
+            source = package_root / "parameters" / relative.parts[1]
+        else:
+            source = contract_root / relative
+        if not source.is_file() or source.is_symlink():
+            raise ContractError(f"configuration package artifact is missing or unsafe: {relative}")
+        observed = hashlib.sha256(source.read_bytes()).hexdigest()
+        if observed != artifact["sha256"]:
+            raise ContractError(f"configuration package artifact hash mismatch: {relative}")
+        artifact_hashes[relative.as_posix()] = artifact["sha256"]
+    tracked_sets = manifest.get("tracked_sets")
+    if not isinstance(tracked_sets, list):
+        raise ContractError("configuration package tracked set inventory is malformed")
+    for tracked_set in tracked_sets:
+        if not isinstance(tracked_set, dict):
+            raise ContractError("configuration package tracked set row is malformed")
+        relative = tracked_set.get("path")
+        digest = tracked_set.get("sha256")
+        if not isinstance(relative, str) or artifact_hashes.get(relative) != digest:
+            raise ContractError(
+                "configuration package tracked set is not bound to an authenticated artifact"
+            )
+    return expected_id
+
+
 def install_deployment_release_resources(
     workspace: Path, install_root: Path
 ) -> dict[str, Any]:

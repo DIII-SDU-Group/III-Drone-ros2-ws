@@ -126,6 +126,11 @@ class IiiDevTests(unittest.TestCase):
             ("sim", "attach"),
             ("sim", "status"),
             ("sim", "stop"),
+            ("hil",),
+            ("hil", "start"),
+            ("hil", "status"),
+            ("hil", "stop"),
+            ("hil", "restart"),
             ("system",),
             ("api",),
             ("api", "start"),
@@ -244,6 +249,17 @@ class IiiDevTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("accepts only --headless", result.stderr)
         self.assertEqual(self.exec_commands(), [])
+
+    def test_hil_actions_forward_to_the_split_host_launcher(self) -> None:
+        for action in ("start", "status", "stop"):
+            with self.subTest(action=action):
+                self.log.unlink(missing_ok=True)
+                result = self.run_cli("hil", action)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(
+                    self.exec_commands()[0][-2:],
+                    ["/home/iii/ws/tools/simulation/launch_hil_workstation.sh", action],
+                )
 
     def test_system_arguments_are_forwarded_to_the_in_container_cli(self) -> None:
         result = self.run_cli("system", "logs", "mission_executor", "--lines", "25")

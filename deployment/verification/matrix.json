@@ -1,5 +1,5 @@
 {
-  "matrix_id": "572d07f9a9dc72b249395d78f1fb1d5b537a12958e567f83f99caf089291aace",
+  "matrix_id": "be6e95a5b8bda05ce983624bceeda92b17b135510a9136efe0ad66ee7f4f42d4",
   "policy_id": "a48de6561e90c929d5a2940c02bc12ead2f2c3785b0c3f468e7e2cb6d356fce8",
   "rows": [
     {
@@ -625,7 +625,7 @@
         "P2.T6.t8",
         "P3.T1.t1",
         "P3.T8.t5",
-        "P5.T0.t13"
+        "P5.T0.t15"
       ],
       "text": "Field deployment, rollback, status, logs, tuning capture, and repeated convergence must work offline over a local laptop-aircraft connection.",
       "title": "Offline operation"
@@ -670,7 +670,7 @@
         "P2.T6.t8",
         "P3.T1.t1",
         "P3.T8.t2",
-        "P5.T0.t11"
+        "P5.T0.t16"
       ],
       "text": "Initial cache population and fresh SD provisioning may depend on internet access for now.",
       "title": "Offline operation"
@@ -16797,7 +16797,7 @@
         "P2.T6.t4",
         "P3.T8.t2",
         "P3.T9.t1",
-        "P5.T0.t10"
+        "P5.T0.t16"
       ],
       "text": "Never update or install automatically merely because newer content exists.",
       "title": "Offline field-readiness preparation"
@@ -16932,7 +16932,7 @@
         "P1.T3.t5",
         "P1.T5.t3",
         "P2.T6.t4",
-        "P5.T0.t13"
+        "P5.T0.t15"
       ],
       "text": "Make one GC/drone release bundle capable of declaring extensible supported runtime profiles and later booting the same deployed drone release as `opti_track` through an explicit cold profile switch, while `real` remains the installed/power-on default.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -16979,7 +16979,7 @@
         "P1.T3.t6",
         "P1.T5.t6",
         "P2.T6.t8",
-        "P5.T0.t13"
+        "P5.T0.t15"
       ],
       "text": "Treat OptiTrack as a physical-real target for clock sync, credentials, deployment safety, PX4/QGC inventory, logging, rosbag, parameter capture, and rollback.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -17070,7 +17070,7 @@
         "P1.T3.t5",
         "P1.T5.t4",
         "P2.T6.t4",
-        "P5.T0.t11"
+        "P5.T0.t16"
       ],
       "text": "Initially declare `opti_track` explicitly as an alias of `real`, inheriting its readiness and allowlists by intentional manifest policy rather than accidental non-sim branching; later changing that alias requires a versioned profile-contract change.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -17115,7 +17115,7 @@
         "P1.T3.t5",
         "P1.T5.t3",
         "P2.T6.t4",
-        "P5.T0.t12"
+        "P5.T0.t15"
       ],
       "text": "Display the active profile prominently.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -17206,7 +17206,7 @@
         "P1.T3.t5",
         "P1.T5.t3",
         "P2.T6.t4",
-        "P5.T0.t13"
+        "P5.T0.t15"
       ],
       "text": "Keep the profile and artifact boundaries extensible for the later integration change.",
       "title": "Deployment preparation for pre-field OptiTrack testing"
@@ -26118,7 +26118,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t7"
+        "P5.T0.t15"
       ],
       "text": "Require at least the scripted sim suite plus the appropriate provisioned-drone smoke/maintenance-safe checks",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26159,7 +26159,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t4",
-        "P5.T0.t12"
+        "P5.T0.t15"
       ],
       "text": "require actual flight evidence only when the release changes flight-critical behavior, mission logic, PX4 contracts, hardware interfaces, or safety policy.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26241,7 +26241,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t4",
-        "P5.T0.t10"
+        "P5.T0.t15"
       ],
       "text": "CI verifies evidence identity/required categories but does not contact the aircraft.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26282,7 +26282,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t5",
-        "P5.T0.t7"
+        "P5.T0.t17"
       ],
       "text": "Implement it as a signed local-evidence handoff: On a clean checkout of the exact workspace `develop` promotion candidate, `iii release evidence collect` verifies governance/lock state, runs the pinned local devcontainer simulation suite, derives the required physical-test categories from the change-impact policy, and optionally orchestrates the connected provisioned-drone smoke/flight checklist.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26321,7 +26321,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t5",
-        "P5.T0.t6"
+        "P5.T0.t17"
       ],
       "text": "It seals logs/results/environment/source identity into Git-ignored `.iii/release-evidence/<commit>/<run-id>/` and signs a compact schema-versioned attestation with the authorized workstation field-signing key.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26360,7 +26360,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t5",
-        "P5.T0.t7"
+        "P5.T0.t14"
       ],
       "text": "`iii release evidence submit --pr <number>` posts that signed attestation to the verified `develop -> main` promotion PR and triggers a lightweight GitHub verification job.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26399,7 +26399,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t9"
+        "P5.T0.t16"
       ],
       "text": "PR text is untrusted transport",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26438,7 +26438,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t2",
-        "P5.T0.t10"
+        "P5.T0.t15"
       ],
       "text": "the signature, source identity, schema, required categories, and trusted signer are what the required `promotion-evidence` check validates.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26516,7 +26516,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t12"
+        "P5.T0.t15"
       ],
       "text": "Promotion tooling proves that mechanical submodule merge commits/gitlink-lock refresh preserve the tested source-content identity.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -26555,7 +26555,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t6",
-        "P5.T0.t13"
+        "P5.T0.t14"
       ],
       "text": "`main -> release` reuses the still-valid attestation and requires its own lightweight verification; changed content or policy requires recollection.",
       "title": "Local simulation/physical evidence promotion gate"
@@ -27013,7 +27013,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t1",
-        "P5.T0.t12"
+        "P5.T0.t15"
       ],
       "text": "Version a repository policy mapping governed packages/paths, interfaces, parameter/PX4 manifests, mission classifications, host/deployment changes, and change types to required evidence categories such as static/unit, local simulation, provisioned-drone bench smoke, OptiTrack, and field flight.",
       "title": "Authority for required validation categories"
@@ -27052,7 +27052,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t4",
-        "P5.T0.t2"
+        "P5.T0.t17"
       ],
       "text": "`iii release evidence plan` shows the exact reasons.",
       "title": "Authority for required validation categories"
@@ -27130,7 +27130,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t1",
-        "P5.T0.t11"
+        "P5.T0.t15"
       ],
       "text": "Keep the policy conservative but coarse enough for this research system.",
       "title": "Authority for required validation categories"
@@ -27288,7 +27288,7 @@
       "test_refs": [
         "P0.T5.t1",
         "P1.T4.t1",
-        "P5.T0.t4"
+        "P5.T0.t15"
       ],
       "text": "Never allow a waiver for source governance, dependency locks, build success, unit/static checks, artifact integrity/signing, deployment safety gates, or a failing test result; a waiver means \u201cnot performed,\u201d never \u201cfailed but accepted.\u201d",
       "title": "Validation-waiver limits"
@@ -27706,7 +27706,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T6.t8",
-        "P5.T0.t12"
+        "P5.T0.t15"
       ],
       "text": "Add read-only `iii field check` for the currently connected `iii.local` plus local GC.",
       "title": "One connected-system field-readiness command"
@@ -27780,7 +27780,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T6.t6",
-        "P5.T0.t13"
+        "P5.T0.t16"
       ],
       "text": "Produce a concise pass/warn/fail summary and sealed readiness record",
       "title": "One connected-system field-readiness command"
@@ -27888,7 +27888,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T6.t8",
-        "P5.T0.t10"
+        "P5.T0.t16"
       ],
       "text": "This is the canonical connected-system pre-field checklist, but its record is evidence rather than a reusable authorization token: every later safety-sensitive operation still validates live state.",
       "title": "One connected-system field-readiness command"
@@ -28048,7 +28048,7 @@
       "test_refs": [
         "P0.T12.t1",
         "P2.T6.t6",
-        "P5.T0.t13"
+        "P5.T0.t16"
       ],
       "text": "`WARN` covers bounded non-safety deviations such as stale but still valid backup/evidence export, optional hardware absence, or offline cache age.",
       "title": "Field-readiness severity and enforcement"
@@ -28126,7 +28126,7 @@
       "test_refs": [
         "P0.T12.t1",
         "P2.T6.t6",
-        "P5.T0.t13"
+        "P5.T0.t16"
       ],
       "text": "A runtime-only computer may produce a checksummed diagnostic record; release/commissioning evidence requires signature by an authorized field-signing key.",
       "title": "Field-readiness severity and enforcement"
@@ -28204,7 +28204,7 @@
       "test_refs": [
         "P0.T12.t1",
         "P2.T6.t6",
-        "P5.T0.t13"
+        "P5.T0.t16"
       ],
       "text": "Failures cannot be waived by readiness tooling.",
       "title": "Field-readiness severity and enforcement"
@@ -28444,7 +28444,7 @@
         "P2.T0.t3",
         "P2.T6.t3",
         "P3.T4.t4",
-        "P5.T0.t13"
+        "P5.T0.t17"
       ],
       "text": "Status publication is an emergency-capable but narrow protected workflow running trusted code from workspace `release`: `iii release status set` plans an exact monotonic transition, and explicit apply dispatches a concurrency-locked environment-protected job that signs and publishes an immutable `iii-status-<sequence>` GitHub Release/index snapshot.",
       "title": "Withdrawal of a previously qualified release"
@@ -28492,7 +28492,7 @@
         "P2.T0.t3",
         "P2.T6.t6",
         "P3.T4.t4",
-        "P5.T0.t13"
+        "P5.T0.t16"
       ],
       "text": "Its non-SemVer protected tag points at the trusted workflow revision and never triggers a bundle build.",
       "title": "Withdrawal of a previously qualified release"
@@ -28786,7 +28786,7 @@
         "P2.T0.t5",
         "P2.T6.t8",
         "P3.T4.t4",
-        "P5.T0.t2"
+        "P5.T0.t17"
       ],
       "text": "Status signing and CI bundle signing are independently rotatable; a compromised release-status key is removed from trust through explicit host maintenance and recommissioning.",
       "title": "Withdrawal of a previously qualified release"
@@ -28877,7 +28877,7 @@
         "P3.T3.t1",
         "P3.T8.t10",
         "P3.T11.t3",
-        "P5.T0.t6"
+        "P5.T0.t17"
       ],
       "text": "If any authorized operator computer remains, generate fresh SSH and field-signing keys on the replacement computer, enroll their public keys through `iii access enroll`, verify access, and revoke lost keys.",
       "title": "Complete operator-credential or workstation loss"
@@ -28968,7 +28968,7 @@
         "P3.T3.t1",
         "P3.T8.t10",
         "P3.T11.t3",
-        "P5.T0.t7"
+        "P5.T0.t17"
       ],
       "text": "Losing only a field-signing key does not require reimaging when authorized SSH access remains.",
       "title": "Complete operator-credential or workstation loss"
@@ -29015,7 +29015,7 @@
         "P3.T3.t1",
         "P3.T8.t10",
         "P3.T11.t4",
-        "P5.T0.t7"
+        "P5.T0.t16"
       ],
       "text": "If every authorized SSH credential is lost, provide no password, default account, hidden token, boot-partition key injection, or receiver bypass: power off and remove the SD card, use a safe read-only `iii host salvage` flow to extract declared portable state when the media remains readable, then require physical SD reimage, Ansible reprovisioning, fresh key enrollment, portable-state restore, and recommissioning.",
       "title": "Complete operator-credential or workstation loss"
@@ -29060,7 +29060,7 @@
         "P3.T3.t1",
         "P3.T8.t2",
         "P3.T11.t5",
-        "P5.T0.t7"
+        "P5.T0.t17"
       ],
       "text": "Salvage never modifies, boots, or injects access into the old installation and is not a credential-recovery mechanism.",
       "title": "Complete operator-credential or workstation loss"
@@ -29106,7 +29106,7 @@
         "P3.T3.t1",
         "P3.T8.t10",
         "P3.T11.t3",
-        "P5.T0.t12"
+        "P5.T0.t15"
       ],
       "text": "A lost GC/workstation is rebuilt from stock supported Ubuntu plus the repository, regenerated machine identity, fresh keys, verified imported records/caches, and a new provisioning record.",
       "title": "Complete operator-credential or workstation loss"
@@ -29287,7 +29287,7 @@
       "required_evidence": "signed-local-acceptance",
       "test_refs": [
         "P2.T8.t5",
-        "P5.T0.t12"
+        "P5.T0.t17"
       ],
       "text": "Exclude all SSH/signing private keys, runtime credentials, Wi-Fi secrets, and machine identity.",
       "title": "Disaster recovery for local evidence and operator state"
@@ -29323,7 +29323,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P2.T8.t2",
-        "P5.T0.t12"
+        "P5.T0.t16"
       ],
       "text": "Repository state and compact GitHub attestations are not substitutes for bulky local evidence; field readiness warns when irreplaceable records have no verified external archive.",
       "title": "Disaster recovery for local evidence and operator state"
@@ -29993,7 +29993,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T0.t1",
-        "P5.T0.t12"
+        "P5.T0.t15"
       ],
       "text": "The architecture is closed for implementation after the integrity sweep in this backlog.",
       "title": "Deployment-redesign scope closure"
@@ -30067,7 +30067,7 @@
       "required_evidence": "junit",
       "test_refs": [
         "P0.T0.t1",
-        "P5.T0.t13"
+        "P5.T0.t17"
       ],
       "text": "This sweep may add only the schemas and boundaries already specified for those futures.",
       "title": "Deployment-redesign scope closure"
@@ -42194,7 +42194,7 @@
       "required_evidence": "junit",
       "task": "P5.T0",
       "test_refs": [
-        "P5.T0.t13"
+        "P5.T0.t15"
       ],
       "text": "A repository-owned parser materializes every independent normative clause in Q1\u2013Q132 as a stable `Q<question>.c<clause>` identifier; changing clause text, splitting/merging clauses, or renumbering a question requires an explicit reviewed mapping so traceability cannot silently drift.",
       "title": "Build The Deployment Verification Matrix"
@@ -42533,7 +42533,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T0",
       "test_refs": [
-        "P5.T0.t8"
+        "P5.T0.t15"
       ],
       "text": "Release-status tests cover Q127 withdrawal/unsafe propagation online and offline, no automatic in-operation switch, blocked flight, retained evidence, last-resort maintenance recovery, and qualified replacement.",
       "title": "Build The Deployment Verification Matrix"
@@ -42567,7 +42567,7 @@
       "required_evidence": "signed-local-acceptance",
       "task": "P5.T0",
       "test_refs": [
-        "P5.T0.t11"
+        "P5.T0.t16"
       ],
       "text": "Credential tests cover Q128 surviving-computer enrollment, signing-only loss, complete SSH-authority loss, mandatory reimage, state restore, and recommissioning with no hidden bypass.",
       "title": "Build The Deployment Verification Matrix"
@@ -42600,7 +42600,7 @@
       "required_evidence": "junit",
       "task": "P5.T0",
       "test_refs": [
-        "P5.T0.t8"
+        "P5.T0.t15"
       ],
       "text": "P2.T8 record/archive tests prove a clean replacement GC can recover all declared non-secret local state from a verified external archive while generating new identity and keys.",
       "title": "Build The Deployment Verification Matrix"
@@ -44120,7 +44120,7 @@
       "required_evidence": "signed-local-acceptance",
       "scenario": "evidence",
       "test_refs": [
-        "P5.T0.t13",
+        "P5.T0.t15",
         "P5.T6.t9"
       ],
       "text": "A replacement GC verifies, restores, and rearchives all declared non-secret records while new machine identity and credentials are generated.",
@@ -44308,7 +44308,7 @@
       "required_evidence": "signed-local-acceptance",
       "scenario": "offline",
       "test_refs": [
-        "P5.T0.t6",
+        "P5.T0.t15",
         "P5.T6.t9"
       ],
       "text": "Representative GC-only, aircraft-only, paired deploy, diagnostics, tuning capture, rollback, and recovery complete from prepared caches with network denied.",
@@ -44355,7 +44355,7 @@
       "required_evidence": "signed-local-acceptance",
       "scenario": "release",
       "test_refs": [
-        "P5.T0.t5",
+        "P5.T0.t14",
         "P5.T6.t5"
       ],
       "text": "The exact qualified candidate is fetched, verified, deployed, activated, rolled back, withdrawn or marked unsafe, and replaced without bypassing protected publication policy.",
@@ -44402,7 +44402,7 @@
       "required_evidence": "signed-local-acceptance",
       "scenario": "retirement",
       "test_refs": [
-        "P5.T0.t7",
+        "P5.T0.t16",
         "P5.T6.t7"
       ],
       "text": "A clean workstation and commissioned target operate with legacy clones and caches absent, every retired entry point fails with the canonical replacement, and archive metadata is verified.",

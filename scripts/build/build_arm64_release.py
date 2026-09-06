@@ -24,6 +24,7 @@ from iii_deployment.build import (  # noqa: E402
     parse_compiler_cache_stats,
     select_build_packages, target_elf_closure_command, target_import_command, validate_release_tree,
     install_deployment_release_resources, verify_installed_release_assets,
+    verify_configuration_contract_source,
     write_release_wrapper,
 )
 from iii_deployment.contracts import (  # noqa: E402
@@ -141,6 +142,7 @@ def main() -> int:
         prepare_package_cache(args.cache, cache)
         (args.cache / "ccache").mkdir(exist_ok=True)
         build_source = materialize_build_source(ROOT, partial / ".build-source")
+        verify_configuration_contract_source(build_source)
         run_offboard_command([
             "docker", "buildx", "build", "--load", "--target", "cross-compiler",
             "--tag", args.image, "--file", "Dockerfile.cc", ".",

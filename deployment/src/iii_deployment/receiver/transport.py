@@ -12,6 +12,7 @@ from iii_deployment.contracts import ContractError, canonical_json
 from iii_deployment.receiver.protocol import Request
 
 MAXIMUM_REQUEST_BYTES = 1024 * 1024
+CONNECTION_TIMEOUT_SECONDS = 5.0
 
 
 def _process_parent(pid: int) -> int:
@@ -102,6 +103,7 @@ class UnixReceiverServer:
             raise ContractError("receiver Unix socket is not open")
         connection, _ = self.socket.accept()
         with connection:
+            connection.settimeout(CONNECTION_TIMEOUT_SECONDS)
             credentials = connection.getsockopt(
                 socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")
             )
@@ -116,7 +118,7 @@ class UnixReceiverServer:
                 raw = self._receive(connection)
                 request = Request.parse(raw, maximum_bytes=MAXIMUM_REQUEST_BYTES)
                 self.peer_authenticator(pid, uid, request.client_id)
-            except ContractError as exc:
+            except (ContractError, OSError) as exc:
                 self.rejection_logger("transport-contract-rejected", pid, uid)
                 response = {
                     "schema": "iii.receiver-response/v1",
@@ -153,7 +155,7 @@ class UnixReceiverServer:
 
         try:
             connection.sendall(canonical_json(response) + b"\n")
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, socket.timeout):
             return
 
     @staticmethod

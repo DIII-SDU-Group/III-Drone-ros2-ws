@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import struct
+from types import SimpleNamespace
 
 import pytest
 
@@ -159,6 +160,19 @@ def test_full_pull_classifies_required_tunable_and_preserved_drift(tmp_path):
     assert adapter.write_calls == []
 
 
+def test_pull_reuses_audit_status_without_second_firmware_request(tmp_path):
+    subject, adapter = make_store(tmp_path)
+    observed = adapter.status()
+
+    def repeated_status():
+        raise PX4ParameterError("PX4 firmware identity timed out")
+
+    adapter.status = repeated_status
+    snapshot = subject.pull("sim", status=observed)
+    assert snapshot["parameter_count"] == 4
+    assert adapter.pull_calls == 1
+
+
 def test_real_activation_health_fails_required_drift_without_writing(tmp_path):
     subject, adapter = make_store(tmp_path)
     adapter.values["COM_RC_IN_MODE"] = (4, "INT32")
@@ -228,6 +242,70 @@ def test_px4_autopilot_version_recovers_five_byte_git_prefix_after_vendor_overla
     from iii_deployment.px4_parameters import MavlinkParameterAdapter
 
     assert MavlinkParameterAdapter._decode_firmware_commit(transmitted) == "7f41496535"
+
+
+def test_mavlink_discovery_ignores_payload_heartbeat_before_px4(monkeypatch):
+    from types import SimpleNamespace
+    from iii_deployment.px4_parameters import MavlinkParameterAdapter
+
+    payload = SimpleNamespace(autopilot=0)
+    px4 = SimpleNamespace(autopilot=12)
+    messages = [payload, px4]
+    adapter = object.__new__(MavlinkParameterAdapter)
+    adapter.timeout = 1.0
+    adapter.mavutil = SimpleNamespace(
+        mavlink=SimpleNamespace(MAV_AUTOPILOT_PX4=12)
+    )
+    adapter.connection = SimpleNamespace(
+        recv_match=lambda **_kwargs: messages.pop(0) if messages else None
+    )
+    monkeypatch.setattr("iii_deployment.px4_parameters.time.monotonic", lambda: 0.0)
+
+    assert adapter._heartbeat() is px4
+
+
+def test_mavlink_full_inventory_ignores_other_vehicle_and_restarts_mixed_generation():
+    from iii_deployment.px4_parameters import MavlinkParameterAdapter
+
+    def value(name, index, count, *, system=8):
+        return SimpleNamespace(
+            param_id=name,
+            param_type=6,
+            param_value=0.0,
+            param_index=index,
+            param_count=count,
+            get_srcSystem=lambda: system,
+            get_srcComponent=lambda: 1,
+        )
+
+    # The first selected-vehicle generation is complete-sized but has a gap;
+    # a foreign vehicle is interleaved. The second generation is coherent.
+    messages = [
+        value("FOREIGN", 0, 2, system=1),
+        value("_HASH_CHECK", 65535, 3),
+        value("A", 0, 3),
+        value("STALE", 2, 3),
+        value("_HASH_CHECK", 65535, 3),
+        value("A", 0, 3),
+        value("B", 1, 3),
+    ]
+    requests = []
+    adapter = object.__new__(MavlinkParameterAdapter)
+    adapter.timeout = 1.0
+    adapter._px4_system = 8
+    adapter._px4_component = 1
+    adapter.connection = SimpleNamespace(
+        target_system=8,
+        target_component=1,
+        mav=SimpleNamespace(param_request_list_send=lambda *args: requests.append(args)),
+        recv_match=lambda **_kwargs: messages.pop(0) if messages else None,
+    )
+
+    result = adapter.pull_all()
+
+    assert [item["name"] for item in result] == ["A", "B"]
+    assert all(item["count"] == 2 for item in result)
+    assert len(requests) == 2
 
 
 def test_mavlink_shell_reads_only_fixed_release_owned_sd_files():
@@ -384,6 +462,35 @@ def test_named_capture_export_import_compare_and_selective_promotion(tmp_path):
     archive.write_bytes(canonical_json(value) + b"\n")
     with pytest.raises(PX4ParameterError, match="identity mismatch"):
         imported_store.import_capture(archive)
+
+
+def test_full_promotion_adds_unexpected_inventory_as_never_write_preserved(tmp_path):
+    subject, adapter = make_store(tmp_path)
+    adapter.values["COM_MODE0_HASH"] = (123456, "INT32")
+    snapshot = subject.pull("sim")
+    capture = subject.capture(
+        snapshot["snapshot_id"],
+        short_name="steady-runtime",
+        description="Complete inventory after dynamic modules started",
+    )
+
+    promoted = subject.promoted_manifest(
+        capture["capture_id"],
+        accepted_keys=["COM_MODE0_HASH", "MPC_XY_VEL_MAX"],
+        include_unexpected_as_preserved=True,
+    )
+
+    by_name = {item["name"]: item for item in promoted["parameters"]}
+    assert by_name["COM_MODE0_HASH"] == {
+        "name": "COM_MODE0_HASH",
+        "mav_type": "INT32",
+        "value": None,
+        "classification": "calibration-identity",
+        "enforcement": "preserve",
+        "tolerance": 0,
+    }
+    assert promoted["inventory"]["parameter_count"] == 5
+    assert promoted["inventory"]["source_sha256"] == snapshot["snapshot_id"]
 
 
 def test_monitor_debounces_events_reconciles_periodically_and_never_pulls_armed(

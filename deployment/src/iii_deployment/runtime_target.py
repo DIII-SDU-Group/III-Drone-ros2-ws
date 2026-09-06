@@ -39,8 +39,8 @@ def load_runtime_targets(
             raise ContractError(f"runtime target default {context} is unavailable")
     if targets["opti_track"].get("profile_alias") != "real":
         raise ContractError("initial opti_track target must explicitly alias real")
-    if targets["hil"]["bootable"] or targets["hil"]["capabilities"]:
-        raise ContractError("reserved HIL target must remain non-bootable")
+    if not targets["hil"]["bootable"] or targets["hil"]["capabilities"] != ["flight", "simulation"]:
+        raise ContractError("commissioned HIL target must be bootable with flight and simulation capabilities")
     return targets
 
 
@@ -59,8 +59,9 @@ def resolve_runtime_target(
 def load_middleware_policy(path: Path, registry: ContractRegistry) -> dict[str, Any]:
     value = _document(path, label="middleware interface policy")
     registry.validate("middleware-interface-policy", value)
-    if value["future_simulator_peer"]["enabled"]:
-        raise ContractError("future simulator peer must remain disabled by default")
+    peer = value["future_simulator_peer"]
+    if peer["enabled"] and not peer["address"]:
+        raise ContractError("enabled simulator peer requires an address")
     return value
 
 
@@ -126,10 +127,15 @@ def detect_middleware_interface(
         raise ContractError(
             "no stable LAN interface is available for the aircraft target"
         )
+    simulator_peer = policy["future_simulator_peer"]
+    peer_enabled = bool(
+        target["runtime_profile"] in simulator_peer["allowed_profiles"]
+        and simulator_peer["enabled"]
+    )
     return {
         "schema": "iii.middleware-selection/v1",
         "interface": selected,
         "source": source,
-        "peers": [],
-        "future_simulator_peer_enabled": False,
+        "peers": [simulator_peer["address"]] if peer_enabled else [],
+        "future_simulator_peer_enabled": peer_enabled,
     }

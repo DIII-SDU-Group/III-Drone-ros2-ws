@@ -115,6 +115,28 @@ def test_new_settings_file_has_a_restorable_absence_backup(tmp_path):
     assert not subject.settings_path.exists()
 
 
+def test_managed_settings_match_is_read_only_and_detects_drift(tmp_path):
+    subject = store(tmp_path)
+    subject.apply(
+        qgc_version="5.0.8",
+        release_id=RELEASE_ID,
+        profile="hil",
+        qgc_running=False,
+    )
+    original = subject.settings_path.read_bytes()
+
+    assert subject.managed_settings_match() is True
+    assert subject.settings_path.read_bytes() == original
+
+    write_settings(
+        subject.settings_path,
+        original.decode().replace("forwardMavlink=true", "forwardMavlink=false"),
+    )
+    changed = subject.settings_path.read_bytes()
+    assert subject.managed_settings_match() is False
+    assert subject.settings_path.read_bytes() == changed
+
+
 def test_malformed_settings_fail_without_overwriting_original(tmp_path):
     subject = store(tmp_path)
     malformed = b"[General]\nvalue=one\nvalue=two\n"

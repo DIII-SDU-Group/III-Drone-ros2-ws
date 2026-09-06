@@ -48,16 +48,16 @@ def test_target_descriptor_decouples_endpoint_execution_profile_and_simulator() 
     assert opti["parameter_profile"] == "real"
 
 
-def test_future_split_host_hil_is_representable_but_fails_boot_closed() -> None:
+def test_split_host_hil_is_commissioned_with_an_explicit_simulator_peer() -> None:
     targets, policy = _contracts()
     hil = resolve_runtime_target(targets, selector="hil", default_selector="real")
     assert hil["execution_host"] == "aircraft"
     assert hil["simulator_provider"] == "gazebo-workstation"
-    assert hil["bootable"] is False and hil["capabilities"] == []
+    assert hil["bootable"] is True and hil["capabilities"] == ["flight", "simulation"]
     assert policy["future_simulator_peer"] == {
-        "enabled": False,
+        "enabled": True,
         "allowed_profiles": ["hil"],
-        "address": None,
+        "address": "10.42.0.1",
     }
 
 
@@ -95,3 +95,26 @@ def test_middleware_selection_uses_loopback_or_detected_stable_lan(
         detect_middleware_interface(
             targets["real"], policy, sys_class_net=interfaces, route_path=route
         )
+
+
+def test_hil_middleware_selection_includes_standard_workstation_peer(tmp_path: Path) -> None:
+    targets, policy = _contracts()
+    interfaces = tmp_path / "sys/class/net"
+    link = interfaces / "usb0"
+    link.mkdir(parents=True)
+    (link / "operstate").write_text("up\n", encoding="ascii")
+    route = tmp_path / "proc/net/route"
+    route.parent.mkdir(parents=True)
+    route.write_text(
+        "Iface Destination Gateway Flags RefCnt Use Metric Mask MTU Window IRTT\n"
+        "usb0 00000000 01020304 0003 0 0 0 00000000 0 0 0\n",
+        encoding="ascii",
+    )
+
+    selected = detect_middleware_interface(
+        targets["hil"], policy, sys_class_net=interfaces, route_path=route
+    )
+
+    assert selected["interface"] == "usb0"
+    assert selected["peers"] == ["10.42.0.1"]
+    assert selected["future_simulator_peer_enabled"] is True

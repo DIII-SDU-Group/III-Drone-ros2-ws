@@ -26,7 +26,17 @@ def main() -> int:
     parser.add_argument("--generation", type=int, required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--operation-id", required=True)
-    parser.add_argument("--python", type=Path)
+    wheel_source = parser.add_mutually_exclusive_group(required=True)
+    wheel_source.add_argument(
+        "--python",
+        type=Path,
+        help="build the receiver wheelhouse from the current workspace",
+    )
+    wheel_source.add_argument(
+        "--reuse-provisioning-wheelhouse",
+        action="store_true",
+        help="explicitly re-sign the unchanged wheelhouse from host provisioning",
+    )
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     try:

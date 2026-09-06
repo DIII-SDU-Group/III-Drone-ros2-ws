@@ -176,6 +176,28 @@ def test_receiver_payload_policy_source_is_regular_file() -> None:
     assert not policy.is_symlink()
 
 
+def test_receiver_role_reinstalls_only_when_hash_locked_wheels_change() -> None:
+    tasks = (ANSIBLE_ROOT / "roles/receiver/tasks/main.yml").read_text()
+    assert "--force-reinstall" in tasks
+    assert "iii_receiver_installed_requirements.stat.checksum" in tasks
+    assert "iii_receiver_staged_requirements.stat.checksum" in tasks
+    assert "iii_initial_receiver_install.rc == 0" in tasks
+    assert "iii_effective_receiver.receiver_id" in tasks
+    assert "iii_effective_receiver.generation" in tasks
+
+
+def test_host_health_check_uses_effective_ab_receiver_readiness() -> None:
+    tasks = (ANSIBLE_ROOT / "roles/host_health/tasks/main.yml").read_text()
+    template = (
+        ANSIBLE_ROOT / "roles/host_health/templates/host-baseline-report.json.j2"
+    ).read_text()
+    assert "Inspect receiver readiness evidence" in tasks
+    assert "check_mode: false" in tasks
+    assert "iii_health_readiness.receiver_id" in template
+    assert "iii_health_readiness.generation" in template
+    assert "if not ansible_check_mode else iii_receiver_manifest" not in template
+
+
 def _wait_for_ssh(port: str, key: Path) -> None:
     for _attempt in range(60):
         result = subprocess.run(
@@ -424,6 +446,55 @@ def test_noble_systemd_first_second_drift_repair_and_finalization(
             check=True,
         )
         assert second["totals"]["changed"] == 0
+
+        # An already updated receiver must survive re-convergence with a new
+        # provisioning bundle, and an idle host may switch to the HIL profile.
+        hil_values = json.loads(inputs.read_text())
+        hil_values["profile"] = "hil"
+        inputs.write_text(json.dumps(hil_values, sort_keys=True) + "\n")
+        hil_plan = build_plan(
+            operation_id="iii-target-convergence-hil-test",
+            target="target",
+            inventory=inventory,
+            input_path=inputs,
+            schema_root=SCHEMAS,
+            ansible_root=ANSIBLE_ROOT,
+            workspace_root=WORKSPACE,
+            cli_root=CLI_ROOT,
+            ansible_playbook=WORKSPACE / "testing/ansible-venv/bin/ansible-playbook",
+        )
+        hil_authenticated = _verify_plan(hil_plan, schema_root=SCHEMAS)
+        hil = _run_ansible(
+            plan=hil_plan,
+            values=hil_authenticated,
+            playbook="aircraft-converge-target-equivalent.yml",
+            check=False,
+        )
+        assert hil["totals"]["failures"] == 0
+        live_state = json.loads(
+            _run(
+                [
+                    "docker",
+                    "exec",
+                    container,
+                    "cat",
+                    "/var/lib/iii/deployment/live-state.json",
+                ],
+                stdout=subprocess.PIPE,
+            ).stdout
+        )
+        assert live_state["profile"] == "hil"
+        assert live_state["active_release_id"] is None
+        hil_second = _run_ansible(
+            plan=hil_plan,
+            values=hil_authenticated,
+            playbook="aircraft-converge-target-equivalent.yml",
+            check=True,
+        )
+        assert hil_second["totals"]["changed"] == 0
+
+        hil_values["profile"] = "real"
+        inputs.write_text(json.dumps(hil_values, sort_keys=True) + "\n")
 
         _run(
             [

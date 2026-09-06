@@ -23,7 +23,7 @@
     "schema": {"const": "iii.host-provisioning-input/v1"},
     "target_class": {"const": "raspberry-pi-5-noble-arm64"},
     "logical_target": {"const": "drone"},
-    "profile": {"enum": ["real", "opti_track"]},
+    "profile": {"enum": ["real", "opti_track", "hil"]},
     "operator_cidr": {"type": "string", "minLength": 9, "maxLength": 18},
     "receiver_bundle_source": {"type": "string", "minLength": 1},
     "receiver_wheelhouse_source": {"type": "string", "minLength": 1},

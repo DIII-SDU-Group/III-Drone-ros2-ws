@@ -797,6 +797,35 @@ def test_candidate_replacement_retains_only_one_unaccepted_slot(
     assert store.state()["candidate_release_id"] == second.release_id
 
 
+def test_stage_commit_guard_removes_new_release_without_state_commit(
+    tmp_path: Path,
+    cases: ReleaseCases,
+) -> None:
+    store = cases.store(tmp_path / "target")
+    case = cases.bundle(
+        "deadline-before-commit",
+        release_id="9" * 64,
+        release_class="field-development",
+        version=None,
+    )
+
+    def expired() -> None:
+        raise ContractError("deadline expired before commit")
+
+    with pytest.raises(ContractError, match="deadline expired before commit"):
+        store.stage(
+            case.paths.directory,
+            status_index=None,
+            staged_at=NOW,
+            commit_guard=expired,
+        )
+
+    assert not (store.releases_root / case.release_id).exists()
+    state = store.state()
+    assert state["candidate_release_id"] is None
+    assert case.release_id not in state["releases"]
+
+
 @pytest.mark.parametrize("status", ["withdrawn", "unsafe"])
 def test_withdrawn_and_unsafe_candidates_cannot_be_newly_staged(
     tmp_path: Path,

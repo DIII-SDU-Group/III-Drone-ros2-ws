@@ -88,3 +88,22 @@ def test_host_inspection_rejects_cross_boot_and_profile_mismatch(tmp_path: Path)
             boot_inspector=Inspector(_boot(tmp_path)),
             registry=REGISTRY,
         ).inspect()
+
+
+def test_host_inspection_accepts_hil_without_physical_payloads(tmp_path: Path):
+    hardware = inspect_hardware(
+        load_manifest(ROOT / "hardware/shared-hardware-role-manifest.json", REGISTRY),
+        [],
+        profile="hil",
+        boot_id="boot-a",
+        captured_monotonic_ns=1,
+    )
+    report = HostInspector(
+        logical_target="drone",
+        profile="hil",
+        hardware_inspector=Inspector(hardware),
+        boot_inspector=Inspector(_boot(tmp_path)),
+        registry=REGISTRY,
+    ).inspect()
+    assert report["accepted"] is True
+    assert report["profile"] == "hil"

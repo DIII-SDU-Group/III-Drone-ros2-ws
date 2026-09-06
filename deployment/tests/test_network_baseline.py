@@ -53,6 +53,9 @@ def test_px4_ethernet_is_host_owned_and_firewall_limited_to_protocol_ports() -> 
     runtime = (
         ROOT / "deployment/ansible/roles/runtime_control_plane/templates/runtime.env.j2"
     ).read_text()
+    variables = yaml.safe_load(
+        (ROOT / "deployment/ansible/vars/raspberry-pi-5-noble-arm64.yml").read_text()
+    )
     assert "dest: /etc/netplan/80-iii-px4.yaml" in tasks
     assert "match:" in netplan and 'name: "{{ iii_px4_interface }}"' in netplan
     assert 'addresses: ["{{ iii_px4_host_address }}"]' in netplan
@@ -70,10 +73,28 @@ def test_px4_ethernet_is_host_owned_and_firewall_limited_to_protocol_ports() -> 
         "ip saddr {{ iii_px4_subnet }} udp dport {{ iii_px4_uxrce_dds_udp_port }} accept"
         in firewall
     )
+    assert "III_SYSTEM_PROFILE={{ iii_profile }}" in runtime
+    assert "III_RUNTIME_API_PROFILE={{ iii_profile }}" in runtime
+    assert "iii_profile == 'hil'" in runtime
+    assert "iii_hil_mavlink_udp_port" in runtime
+    assert "iii_px4_mavlink_udp_port" in runtime
     assert (
-        "III_RUNTIME_API_PX4_MAVLINK_ENDPOINT=udpin://0.0.0.0:{{ iii_px4_mavlink_udp_port }}"
-        in runtime
+        "ip saddr {{ iii_provisioning_inputs.operator_cidr }} udp dport {{ iii_hil_uxrce_dds_udp_port }} accept"
+        in firewall
     )
+    assert (
+        "ip saddr {{ iii_provisioning_inputs.operator_cidr }} udp dport {{ iii_hil_mavlink_udp_port }} accept"
+        in firewall
+    )
+    assert (
+        "ip saddr {{ iii_provisioning_inputs.operator_cidr }} udp dport {{ iii_hil_mavlink_audit_udp_port }} accept"
+        in firewall
+    )
+    assert (
+        "ip saddr {{ iii_provisioning_inputs.operator_cidr }} udp dport {{ iii_hil_dds_discovery_udp_ports }} accept"
+        in firewall
+    )
+    assert variables["iii_hil_dds_discovery_udp_ports"] == "17900-18150"
 
 
 def test_network_baseline_precedes_firewall_receiver_and_runtime() -> None:
@@ -89,6 +110,16 @@ def test_network_baseline_precedes_firewall_receiver_and_runtime() -> None:
         ROOT / "deployment/ansible/roles/firewall/templates/nftables.conf.j2"
     ).read_text()
     assert "udp dport {{ iii_mdns_port }} accept" in firewall
+
+
+def test_hil_px4_audit_isolated_from_physical_fmu() -> None:
+    receiver = (
+        ROOT / "deployment/src/iii_deployment/receiver/server.py"
+    ).read_text()
+    launcher = (ROOT / "tools/simulation/launch_hil_workstation.sh").read_text()
+    assert '"udpin:0.0.0.0:14543"' in receiver
+    assert '"udpin:0.0.0.0:14541"' in receiver
+    assert 'III_HIL_MAVLINK_AUDIT_REMOTE_PORT:-14543' in launcher
 
 
 def test_network_apply_and_revert_have_fixed_privileged_units_and_90_second_timer() -> (

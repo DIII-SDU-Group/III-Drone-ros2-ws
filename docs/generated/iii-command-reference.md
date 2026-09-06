@@ -10,12 +10,12 @@ Do not edit by hand. Universal structured output uses `--output=json`.
 
 ```text
 usage: iii access enroll add [-h] --enrollment ENROLLMENT
-                             [--target {real,opti_track}]
+                             [--target {real,opti_track,hil}]
 
 options:
   -h, --help            show this help message and exit
   --enrollment ENROLLMENT
-  --target {real,opti_track}
+  --target {real,opti_track,hil}
 ```
 
 ## `iii access enroll prepare`
@@ -42,12 +42,12 @@ options:
 
 ```text
 usage: iii access enroll prove [-h] --enrollment ENROLLMENT
-                               [--target {real,opti_track}]
+                               [--target {real,opti_track,hil}]
 
 options:
   -h, --help            show this help message and exit
   --enrollment ENROLLMENT
-  --target {real,opti_track}
+  --target {real,opti_track,hil}
 ```
 
 ## `iii access list`
@@ -56,11 +56,11 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii access list [-h] [--target {real,opti_track}]
+usage: iii access list [-h] [--target {real,opti_track,hil}]
 
 options:
   -h, --help            show this help message and exit
-  --target {real,opti_track}
+  --target {real,opti_track,hil}
 ```
 
 ## `iii access revoke`
@@ -70,12 +70,12 @@ options:
 
 ```text
 usage: iii access revoke [-h] --machine-id MACHINE_ID
-                         [--target {real,opti_track}]
+                         [--target {real,opti_track,hil}]
 
 options:
   -h, --help            show this help message and exit
   --machine-id MACHINE_ID
-  --target {real,opti_track}
+  --target {real,opti_track,hil}
 ```
 
 ## `iii access signer revoke`
@@ -85,12 +85,12 @@ options:
 
 ```text
 usage: iii access signer revoke [-h] --signer-id FIELD_SIGNER_ID
-                                [--target {real,opti_track}]
+                                [--target {real,opti_track,hil}]
 
 options:
   -h, --help            show this help message and exit
   --signer-id FIELD_SIGNER_ID
-  --target {real,opti_track}
+  --target {real,opti_track,hil}
 ```
 
 ## `iii config capture delete`
@@ -341,7 +341,7 @@ options:
 usage: iii deploy activate [-h] --configuration-checkpoint-id
                            CONFIGURATION_CHECKPOINT_ID [--qualified]
                            [--decision SET:PARAMETER=CHOICE]
-                           [--target {sim,real}]
+                           [--target {sim,real,hil}]
                            release_id
 
 positional arguments:
@@ -356,7 +356,8 @@ options:
   --decision SET:PARAMETER=CHOICE
                         resolve one reviewed reintroduction with use_old or
                         use_new_default
-  --target {sim,real}   explicit per-command runtime target
+  --target {sim,real,hil}
+                        explicit per-command runtime target
 ```
 
 ## `iii deploy configuration-capture`
@@ -365,11 +366,12 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii deploy configuration-capture [-h] [--target {sim,real}]
+usage: iii deploy configuration-capture [-h] [--target {sim,real,hil}]
 
 options:
-  -h, --help           show this help message and exit
-  --target {sim,real}  explicit per-command runtime target
+  -h, --help            show this help message and exit
+  --target {sim,real,hil}
+                        explicit per-command runtime target
 ```
 
 ## `iii deploy continue`
@@ -379,7 +381,7 @@ options:
 
 ```text
 usage: iii deploy continue [-h] --decision SET:PARAMETER=CHOICE
-                           [--target {sim,real}]
+                           [--target {sim,real,hil}]
                            review_operation_id
 
 positional arguments:
@@ -390,7 +392,8 @@ options:
   --decision SET:PARAMETER=CHOICE
                         resolve one exact retained review item with use_old or
                         use_new_default
-  --target {sim,real}   explicit per-command runtime target
+  --target {sim,real,hil}
+                        explicit per-command runtime target
 ```
 
 ## `iii deploy diagnostics pull`
@@ -400,12 +403,13 @@ options:
 
 ```text
 usage: iii deploy diagnostics pull [-h] [--destination DESTINATION]
-                                   [--target {sim,real}]
+                                   [--target {sim,real,hil}]
 
 options:
   -h, --help            show this help message and exit
   --destination DESTINATION
-  --target {sim,real}   explicit per-command runtime target
+  --target {sim,real,hil}
+                        explicit per-command runtime target
 ```
 
 ## `iii deploy field`
@@ -424,7 +428,7 @@ usage: iii deploy field [-h] --bundle-set BUNDLE_SET
                         [--decision SET:PARAMETER=CHOICE]
                         [--gc-override-reason GC_OVERRIDE_REASON]
                         [--gc-override-confirmation GC_OVERRIDE_CONFIRMATION]
-                        [--target {sim,real}]
+                        [--target {sim,real,hil}]
 
 options:
   -h, --help            show this help message and exit
@@ -448,7 +452,8 @@ options:
                         safety is unavailable
   --gc-override-confirmation GC_OVERRIDE_CONFIRMATION
                         exact GC recovery warning confirmation
-  --target {sim,real}   explicit per-command runtime target
+  --target {sim,real,hil}
+                        explicit per-command runtime target
 ```
 
 ## `iii deploy inspect`
@@ -458,7 +463,7 @@ options:
 
 ```text
 usage: iii deploy inspect [-h] [--trusted-signers TRUSTED_SIGNERS]
-                          [--target {sim,real}]
+                          [--target {sim,real,hil}]
                           component
 
 positional arguments:
@@ -469,7 +474,8 @@ options:
   --trusted-signers TRUSTED_SIGNERS
                         bundle signer trust store (defaults to
                         III_RELEASE_TRUSTED_SIGNERS)
-  --target {sim,real}   explicit per-command runtime target
+  --target {sim,real,hil}
+                        explicit per-command runtime target
 ```
 
 ## `iii deploy operations list`
@@ -524,7 +530,7 @@ usage: iii deploy plan [-h] [--bundle-set BUNDLE_SET]
                        [--component {gc,drone,both}]
                        [--include-mission INCLUDE_MISSION]
                        [--exclude-mission EXCLUDE_MISSION]
-                       [--target {sim,real}]
+                       [--target {sim,real,hil}]
 
 options:
   -h, --help            show this help message and exit
@@ -532,7 +538,8 @@ options:
   --component {gc,drone,both}
   --include-mission INCLUDE_MISSION
   --exclude-mission EXCLUDE_MISSION
-  --target {sim,real}   explicit per-command runtime target
+  --target {sim,real,hil}
+                        explicit per-command runtime target
 ```
 
 ## `iii deploy receiver-update apply`
@@ -542,16 +549,17 @@ options:
 
 ```text
 usage: iii deploy receiver-update apply [-h] --trust TRUST
-                                        [--target {sim,real}]
+                                        [--target {sim,real,hil}]
                                         bundle
 
 positional arguments:
   bundle
 
 options:
-  -h, --help           show this help message and exit
+  -h, --help            show this help message and exit
   --trust TRUST
-  --target {sim,real}  explicit per-command runtime target
+  --target {sim,real,hil}
+                        explicit per-command runtime target
 ```
 
 ## `iii deploy receiver-update inspect`
@@ -577,7 +585,8 @@ options:
 
 ```text
 usage: iii deploy rollback [-h] --configuration-checkpoint-id
-                           CONFIGURATION_CHECKPOINT_ID [--target {sim,real}]
+                           CONFIGURATION_CHECKPOINT_ID
+                           [--target {sim,real,hil}]
                            release_id
 
 positional arguments:
@@ -588,7 +597,8 @@ options:
   --configuration-checkpoint-id CONFIGURATION_CHECKPOINT_ID
                         current/source checkpoint for activation; paired
                         rollback checkpoint for explicit rollback
-  --target {sim,real}   explicit per-command runtime target
+  --target {sim,real,hil}
+                        explicit per-command runtime target
 ```
 
 ## `iii deploy stage`
@@ -598,7 +608,7 @@ options:
 
 ```text
 usage: iii deploy stage [-h] [--status-index STATUS_INDEX]
-                        [--target {sim,real}]
+                        [--target {sim,real,hil}]
                         component
 
 positional arguments:
@@ -607,7 +617,8 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   --status-index STATUS_INDEX
-  --target {sim,real}   explicit per-command runtime target
+  --target {sim,real,hil}
+                        explicit per-command runtime target
 ```
 
 ## `iii deploy status`
@@ -616,11 +627,13 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii deploy status [-h] [--target {sim,real}] [--operation OPERATION]
+usage: iii deploy status [-h] [--target {sim,real,hil}]
+                         [--operation OPERATION]
 
 options:
   -h, --help            show this help message and exit
-  --target {sim,real}   explicit per-command runtime target
+  --target {sim,real,hil}
+                        explicit per-command runtime target
   --operation OPERATION
                         include the exact retained local operation records
 ```
@@ -668,13 +681,13 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii field check [-h] [--target {sim,real}] [--state STATE]
+usage: iii field check [-h] [--target {sim,real,hil}] [--state STATE]
                        [--signing-key SIGNING_KEY]
                        [--trusted-signers TRUSTED_SIGNERS]
 
 options:
   -h, --help            show this help message and exit
-  --target {sim,real}
+  --target {sim,real,hil}
   --state STATE         explicit observation fixture (testing/offline
                         diagnostics)
   --signing-key SIGNING_KEY
@@ -1099,12 +1112,12 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii host hardware inspect [-h] [--target {real,opti_track}]
+usage: iii host hardware inspect [-h] [--target {real,opti_track,hil}]
                                  [--capture CAPTURE]
 
 options:
   -h, --help            show this help message and exit
-  --target {real,opti_track}
+  --target {real,opti_track,hil}
   --capture CAPTURE     create one owner-only canonical capture; existing
                         files are never overwritten
 ```
@@ -1162,11 +1175,12 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii host inspect [-h] [--target {real,opti_track}] [--capture CAPTURE]
+usage: iii host inspect [-h] [--target {real,opti_track,hil}]
+                        [--capture CAPTURE]
 
 options:
   -h, --help            show this help message and exit
-  --target {real,opti_track}
+  --target {real,opti_track,hil}
   --capture CAPTURE     create one owner-only canonical capture; existing
                         files are never overwritten
 ```
@@ -1179,7 +1193,7 @@ options:
 ```text
 usage: iii host maintenance apply [-h] --kind
                                   {packages,boot-settings,bundle-trust,release-status-trust}
-                                  [--target {real,opti_track}] [--offline]
+                                  [--target {real,opti_track,hil}] [--offline]
                                   [--backup-record BACKUP_RECORD]
                                   [--boot-profile BOOT_PROFILE]
                                   [--trust-store TRUST_STORE]
@@ -1191,7 +1205,7 @@ usage: iii host maintenance apply [-h] --kind
 options:
   -h, --help            show this help message and exit
   --kind {packages,boot-settings,bundle-trust,release-status-trust}
-  --target {real,opti_track}
+  --target {real,opti_track,hil}
   --offline
   --backup-record BACKUP_RECORD
   --boot-profile BOOT_PROFILE
@@ -1215,7 +1229,7 @@ options:
 ```text
 usage: iii host maintenance check [-h] --kind
                                   {packages,boot-settings,bundle-trust,release-status-trust}
-                                  [--target {real,opti_track}] [--offline]
+                                  [--target {real,opti_track,hil}] [--offline]
                                   [--backup-record BACKUP_RECORD]
                                   [--boot-profile BOOT_PROFILE]
                                   [--trust-store TRUST_STORE]
@@ -1227,7 +1241,7 @@ usage: iii host maintenance check [-h] --kind
 options:
   -h, --help            show this help message and exit
   --kind {packages,boot-settings,bundle-trust,release-status-trust}
-  --target {real,opti_track}
+  --target {real,opti_track,hil}
   --offline
   --backup-record BACKUP_RECORD
   --boot-profile BOOT_PROFILE
@@ -1250,12 +1264,12 @@ options:
 
 ```text
 usage: iii host maintenance reboot [-h] --maintenance-id MAINTENANCE_ID
-                                   [--target {real,opti_track}]
+                                   [--target {real,opti_track,hil}]
 
 options:
   -h, --help            show this help message and exit
   --maintenance-id MAINTENANCE_ID
-  --target {real,opti_track}
+  --target {real,opti_track,hil}
 ```
 
 ## `iii host maintenance status`
@@ -1264,11 +1278,11 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii host maintenance status [-h] [--target {real,opti_track}]
+usage: iii host maintenance status [-h] [--target {real,opti_track,hil}]
 
 options:
   -h, --help            show this help message and exit
-  --target {real,opti_track}
+  --target {real,opti_track,hil}
 ```
 
 ## `iii host network apply`
@@ -1277,12 +1291,13 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii host network apply [-h] --input INPUT [--target {real,opti_track}]
+usage: iii host network apply [-h] --input INPUT
+                              [--target {real,opti_track,hil}]
 
 options:
   -h, --help            show this help message and exit
   --input INPUT         Git-ignored owner-only network JSON
-  --target {real,opti_track}
+  --target {real,opti_track,hil}
 ```
 
 ## `iii host network confirm`
@@ -1293,12 +1308,12 @@ options:
 ```text
 usage: iii host network confirm [-h] --network-operation-id
                                 NETWORK_OPERATION_ID
-                                [--target {real,opti_track}]
+                                [--target {real,opti_track,hil}]
 
 options:
   -h, --help            show this help message and exit
   --network-operation-id NETWORK_OPERATION_ID
-  --target {real,opti_track}
+  --target {real,opti_track,hil}
 ```
 
 ## `iii host network status`
@@ -1309,12 +1324,12 @@ options:
 ```text
 usage: iii host network status [-h] --network-operation-id
                                NETWORK_OPERATION_ID
-                               [--target {real,opti_track}]
+                               [--target {real,opti_track,hil}]
 
 options:
   -h, --help            show this help message and exit
   --network-operation-id NETWORK_OPERATION_ID
-  --target {real,opti_track}
+  --target {real,opti_track,hil}
 ```
 
 ## `iii host provision apply`
@@ -1381,12 +1396,12 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii logs prune [-h] --pulled RECEIPT_ID [--target {sim,real}]
+usage: iii logs prune [-h] --pulled RECEIPT_ID [--target {sim,real,hil}]
 
 options:
-  -h, --help           show this help message and exit
+  -h, --help            show this help message and exit
   --pulled RECEIPT_ID
-  --target {sim,real}
+  --target {sim,real,hil}
 ```
 
 ## `iii logs pull`
@@ -1395,12 +1410,13 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii logs pull [-h] [--destination DESTINATION] [--target {sim,real}]
+usage: iii logs pull [-h] [--destination DESTINATION]
+                     [--target {sim,real,hil}]
 
 options:
   -h, --help            show this help message and exit
   --destination DESTINATION
-  --target {sim,real}
+  --target {sim,real,hil}
 ```
 
 ## `iii mission list`
@@ -1588,8 +1604,8 @@ options:
   -h, --help            show this help message and exit
   --profile {real,sim}
   --release-id RELEASE_ID
-                        exact staged release used for receiver-owned real PX4
-                        Ethernet capture
+                        exact staged release used for receiver-owned real or
+                        HIL PX4 Ethernet capture
 ```
 
 ## `iii px4 params show`
@@ -2125,12 +2141,12 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii system boot [-h] [--attach] [--profile {sim,real,opti_track}]
+usage: iii system boot [-h] [--attach] [--profile {sim,real,opti_track,hil}]
 
 options:
   -h, --help            show this help message and exit
   --attach              Attach to the tmux session after booting.
-  --profile {sim,real,opti_track}
+  --profile {sim,real,opti_track,hil}
                         explicit cold runtime profile for this boot only
 ```
 

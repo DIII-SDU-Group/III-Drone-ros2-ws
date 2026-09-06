@@ -108,6 +108,24 @@ def test_manifest_schema_identity_and_generated_rule_golden() -> None:
             assert profile["health"]["required_hardware_roles"] == manifest[
                 "requirements"
             ]["required"]
+        if profile["id"] == "hil":
+            assert profile["health"]["required_hardware_roles"] == []
+            assert profile["health"]["optional_hardware_roles"] == sorted(
+                item["role"] for item in manifest["roles"]
+            )
+
+
+def test_hil_hardware_inspection_does_not_require_physical_payload_devices() -> None:
+    report = inspect_hardware(
+        load_manifest(MANIFEST_PATH, REGISTRY),
+        [],
+        profile="hil",
+        boot_id="boot-hil",
+        captured_monotonic_ns=1,
+    )
+    REGISTRY.validate("hardware-inspection", report)
+    assert report["accepted"] is True
+    assert all(role["requirement"] == "optional" for role in report["roles"].values())
 
 
 def test_ansible_installs_one_source_manifest_and_does_not_preempt_retirement() -> None:

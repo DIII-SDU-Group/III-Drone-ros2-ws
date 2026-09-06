@@ -17,9 +17,9 @@ def _relay(raw: bytes, *, client_id: str) -> bytes:
     """Forward one canonical request without weakening peer authentication.
 
     A persistent SSH gateway reuses this process for a bounded sequence of
-    read-only clock probes.  Each request still gets its own Unix connection,
-    so the receiver continues to authenticate the PID, UID, and forced SSH
-    ancestry at the existing transport boundary.
+    receiver requests. Each request still gets its own Unix connection, so the
+    receiver continues to authenticate the PID, UID, and forced SSH ancestry at
+    the existing transport boundary.
     """
     if len(raw) > MAXIMUM_REQUEST_BYTES + 1 or not raw.endswith(b"\n"):
         raise ContractError(

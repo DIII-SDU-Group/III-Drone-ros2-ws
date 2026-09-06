@@ -138,7 +138,9 @@ px4_simulation_process_groups() {
             [[ -n "${pane_pid}" ]] || continue
             ps -o pgid= -p "${pane_pid}" 2>/dev/null | tr -d ' '
         done < <(tmux_command list-panes -t "${SESSION_NAME}:simulation" -F '#{pane_pid}' 2>/dev/null || true)
-        return
+        # A dead pane legitimately has no process group. Do not leak the final
+        # failed read/ps status into callers running under `set -e`.
+        return 0
     fi
 
     # If tmux disappeared unexpectedly, only recover the explicitly selected

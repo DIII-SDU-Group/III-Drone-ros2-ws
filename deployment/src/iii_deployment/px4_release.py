@@ -22,6 +22,29 @@ class PX4ReleaseError(ContractError):
     """The PX4 companion release cannot be authenticated."""
 
 
+def sitl_parameter_source_identity(
+    snapshot: Mapping[str, Any],
+    *,
+    airframe_sha256: str | None,
+    network_baseline_id: str,
+    px4_commit: str,
+) -> str:
+    """Bind a generated SITL inventory to every classification input."""
+
+    return content_identity(
+        {
+            "reference_snapshot_id": snapshot["snapshot_id"],
+            "reference_snapshot_sha256": hashlib.sha256(
+                canonical_json(snapshot) + b"\n"
+            ).hexdigest(),
+            "airframe_sha256": airframe_sha256,
+            "classification_contract": "iii.px4-parameter-classification/v2",
+            "network_baseline_id": network_baseline_id,
+            "px4_commit": px4_commit,
+        }
+    )
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -120,12 +143,16 @@ def validate_release_inputs(
 ) -> None:
     validate_network_baseline(network, registry)
     registry.validate("px4-parameter-manifest", parameters)
+    profile = parameters.get("profile")
     if (
         dds["firmware_commit"] != spec["git_commit"]
         or dds["contract_id"] != spec["dds_topics_id"]
         or network["baseline_id"] != spec["network_baseline_id"]
-        or parameters["manifest_id"] != spec["parameter_manifest_id"]
-        or parameters["profile"] != "real"
+        or profile not in {"real", "sim"}
+        or (
+            profile == "real"
+            and parameters["manifest_id"] != spec["parameter_manifest_id"]
+        )
         or parameters["firmware"]["reference_commit"] != spec["git_commit"]
         or parameters["firmware"]["reference_version"] != spec["version"]
         or network["firmware"]["reference_commit"] != spec["git_commit"]
@@ -283,6 +310,7 @@ def audit_release(
     comparison: Mapping[str, Any] | None,
     provenance: str,
     network_artifacts: Mapping[str, bytes] | None = None,
+    require_network_artifacts: bool = True,
 ) -> dict[str, Any]:
     """Classify a zero-write FMU observation against one exact PX4 release."""
 
@@ -319,13 +347,28 @@ def audit_release(
             for group in ("release-required", "operator-tunable")
         ):
             findings.append({"code": "PX4_PARAMETER_MISMATCH", "detail": "PX4 parameters differ from the release-owned complete manifest."})
-        required = {item["name"]: item["value"] for item in parameters["parameters"] if item["name"] in network["parameter_requirements"]}
-        observed = {item["name"]: item["value"] for item in (snapshot or {}).get("parameters", [])}
-        if any(observed.get(name) != expected for name, expected in required.items()):
-            findings.append({"code": "PX4_NETWORK_MISMATCH", "detail": "Release-owned PX4 Ethernet parameter owners differ."})
-        if network_artifacts is None:
+        # The physical-aircraft profile binds the FMU's Ethernet startup owners
+        # to the release network baseline.  SITL/HIL deliberately has no such
+        # binding: its split-workstation endpoints are process launch settings,
+        # not persistent FMU network configuration.
+        if parameters.get("network_baseline_id") is not None:
+            required = {
+                item["name"]: item["value"]
+                for item in parameters["parameters"]
+                if item["name"] in network["parameter_requirements"]
+            }
+            observed = {
+                item["name"]: item["value"]
+                for item in (snapshot or {}).get("parameters", [])
+            }
+            if any(
+                observed.get(name) != expected
+                for name, expected in required.items()
+            ):
+                findings.append({"code": "PX4_NETWORK_MISMATCH", "detail": "Release-owned PX4 Ethernet parameter owners differ."})
+        if require_network_artifacts and network_artifacts is None:
             findings.append({"code": "PX4_NETWORK_ARTIFACTS_UNVERIFIED", "detail": "PX4 SD network/startup files were not authenticated."})
-        else:
+        elif require_network_artifacts:
             expected_artifacts = {
                 network["artifacts"]["net_cfg_path"]: network["artifacts"]["net_cfg_sha256"],
                 network["artifacts"]["extras_path"]: network["artifacts"]["extras_sha256"],

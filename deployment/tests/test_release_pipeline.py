@@ -266,7 +266,7 @@ def _mission_catalog(drone: Path) -> dict:
         "classification": "production",
         "status": "active",
         "profiles": ["hil", "opti_track", "real"],
-        "default_for": ["opti_track", "real"],
+        "default_for": ["hil", "opti_track", "real"],
         "experimental_warning": None,
         "compatibility": {"source_state_sha256": state["state_hash"]},
         "specification": {
@@ -293,7 +293,11 @@ def _mission_catalog(drone: Path) -> dict:
         "scope": "qualified",
         "compatibility": {"source_state_sha256": state["state_hash"]},
         "profiles": {
-            "hil": {"commissioned": False, "onboard": True, "default_entry_id": None},
+            "hil": {
+                "commissioned": True,
+                "onboard": True,
+                "default_entry_id": "inspection-production",
+            },
             "opti_track": {
                 "commissioned": True,
                 "onboard": True,

@@ -90,7 +90,7 @@
       "properties": {
         "contract_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "unit_contract_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-        "shared_target_profile_id": {"const": "89b5c1422a2296799f87a5dbc6d06b1f0868cc860ce28c669f52616ba2135cd2"},
+        "shared_target_profile_id": {"const": "80e6d4dc7721661fc83659a3b3c2f64c2fca22487e267efb5a67581fa4ea05b5"},
         "owner": {"const": "ansible"},
         "converged_by": {"const": "Q93 aircraft host baseline"},
         "owns": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["ubuntu", "kernel-firmware", "glibc-loader", "ros-jazzy", "systemd", "udev-hardware", "platform-libraries", "system-python", "operator-networking", "human-maintenance-ssh", "deployment-transport-ssh"]}},

@@ -778,6 +778,7 @@ class ReleaseStore:
         *,
         status_index: Mapping[str, Any] | None,
         staged_at: str,
+        commit_guard: Callable[[], None] | None = None,
     ) -> StageResult:
         """Verify and immutably stage a drone bundle without touching active state."""
 
@@ -796,11 +797,6 @@ class ReleaseStore:
             state = self._load_state()
             selected_index, latest = self._verified_status_update(status_index)
             self._apply_statuses(state, selected_index, latest)
-            if selected_index is not None:
-                _atomic_document(
-                    self.status_path, selected_index, owner=self.state_owner
-                )
-                state = self._commit_state(state)
             statement = latest.get(release["release_id"])
             if release["release_class"] == "qualified":
                 if statement is None or statement["version"] != release.get("version"):
@@ -814,27 +810,44 @@ class ReleaseStore:
                 status_statement=statement,
             )
             existing = self._existing_release(metadata)
+            installed = False
             remaining: int | None = None
-            if not existing:
-                usage = self.disk_usage(self.releases_root)
-                projection = StorageProjection(
-                    incoming_bytes=verified.compressed_bytes,
-                    extracted_bytes=int(
-                        verified.bundle_manifest["limits"]["unpacked_bytes"]
-                    ),
-                    receiver_bytes=64 * 1024,
-                    checkpoint_bytes=64 * 1024,
-                    diagnostics_bytes=64 * 1024,
-                    retained_bytes=0,
+            try:
+                if not existing:
+                    usage = self.disk_usage(self.releases_root)
+                    projection = StorageProjection(
+                        incoming_bytes=verified.compressed_bytes,
+                        extracted_bytes=int(
+                            verified.bundle_manifest["limits"]["unpacked_bytes"]
+                        ),
+                        receiver_bytes=64 * 1024,
+                        checkpoint_bytes=64 * 1024,
+                        diagnostics_bytes=64 * 1024,
+                        retained_bytes=0,
+                    )
+                    remaining = ensure_storage_reserve(
+                        projection,
+                        available_bytes=int(usage.free),
+                        filesystem_bytes=int(usage.total),
+                        minimum_bytes=self.minimum_reserve_bytes,
+                        minimum_percent=self.minimum_reserve_percent,
+                    )
+                    self._install_release(verified, metadata)
+                    installed = True
+                if commit_guard is not None:
+                    commit_guard()
+            except Exception:
+                if installed:
+                    destination = self.releases_root / release["release_id"]
+                    self._make_removable(destination)
+                    shutil.rmtree(destination, ignore_errors=True)
+                    _fsync_directory(self.releases_root)
+                raise
+            if selected_index is not None:
+                _atomic_document(
+                    self.status_path, selected_index, owner=self.state_owner
                 )
-                remaining = ensure_storage_reserve(
-                    projection,
-                    available_bytes=int(usage.free),
-                    filesystem_bytes=int(usage.total),
-                    minimum_bytes=self.minimum_reserve_bytes,
-                    minimum_percent=self.minimum_reserve_percent,
-                )
-                self._install_release(verified, metadata)
+                state = self._commit_state(state)
             previous_candidate = state["candidate_release_id"]
             observed = state["releases"].get(release["release_id"])
             if observed is not None:

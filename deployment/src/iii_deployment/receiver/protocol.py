@@ -1059,7 +1059,7 @@ def validate_request_payload(request: Request) -> None:
             or payload["offset"] < 0
             or not isinstance(payload["length"], int)
             or isinstance(payload["length"], bool)
-            or not 1 <= payload["length"] <= 4 * 1024 * 1024
+            or not 1 <= payload["length"] <= 512 * 1024
         ):
             raise ContractError("portable backup chunk bounds are invalid")
         return

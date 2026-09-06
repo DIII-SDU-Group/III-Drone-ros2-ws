@@ -207,6 +207,67 @@ def test_finalize_preserves_network_revokes_bootstrap_and_is_resumable(
     assert repeated == result
 
 
+def test_finalize_rebinds_an_established_ab_host_and_archives_provenance(
+    tmp_path: Path,
+) -> None:
+    root = _root(tmp_path)
+    first = finalize_host(
+        baseline_id=BASELINE_ID,
+        root=root,
+        run=lambda _argv: None,
+        user_exists=lambda _name: False,
+    )
+    next_baseline = "f" * 64
+    health_path = root / "var/lib/iii/deployment/host-baseline-report.json"
+    health = json.loads(health_path.read_text())
+    health.update({"baseline_id": next_baseline, "profile": "hil"})
+    health["receiver"].update({"receiver_id": "c" * 64, "generation": 2})
+    _write(health_path, health)
+    _write(
+        root / "run/iii/receiver-readiness.json",
+        {
+            "schema": "iii.receiver-readiness/v1",
+            "receiver_id": "c" * 64,
+            "generation": 2,
+            "socket_open": True,
+            "self_tests_passed": True,
+        },
+    )
+    config_path = root / "etc/iii/deployment-receiver.json"
+    config = json.loads(config_path.read_text())
+    config["profile"] = "hil"
+    _write(config_path, config)
+    slot_b = root / "opt/iii/receiver/slots/b/bin/iii-deployment-ssh-gateway"
+    slot_b.parent.mkdir(parents=True)
+    slot_b.write_text("#!/bin/sh\nexit 0\n")
+    slot_b.chmod(0o555)
+    current = root / "opt/iii/receiver/selectors/current"
+    current.unlink()
+    current.symlink_to("../slots/b")
+
+    rebound = finalize_host(
+        baseline_id=next_baseline,
+        root=root,
+        run=lambda _argv: None,
+        user_exists=lambda _name: False,
+    )
+
+    assert rebound["baseline_id"] == next_baseline
+    assert rebound["profile"] == "hil"
+    assert rebound["receiver_generation"] == 2
+    assert rebound["receiver_slot"] == "b"
+    assert rebound["previous_report_id"] == first["report_id"]
+    archived = (
+        root
+        / "var/lib/iii/deployment/host-provisioning-reports"
+        / f"{first['report_id']}.json"
+    )
+    assert json.loads(archived.read_text()) == first
+    assert rebound["bootstrap_sudoers_fragments_changed"] == first[
+        "bootstrap_sudoers_fragments_changed"
+    ]
+
+
 def test_finalize_refuses_missing_permanent_network_before_sanitization(
     tmp_path: Path,
 ) -> None:

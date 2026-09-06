@@ -290,13 +290,40 @@ def test_initial_receiver_install_resumes_owned_partial_and_slot_before_selector
     assert store._selector_slot(store.fallback_path, required=True) == "a"
 
 
-def test_initial_receiver_install_cannot_replace_identity_or_fixed_protocols(
+def test_initial_receiver_install_preserves_established_updated_slots(
     tmp_path: Path,
 ) -> None:
     key, trust = _trust(tmp_path)
     bundle, _manifest = _bundle(tmp_path, key, generation=1)
     store = ReceiverSlotStore(tmp_path / "host", trust=trust, registry=REGISTRY)
     store.install_initial(bundle)
+    other, _ = _bundle(tmp_path, key, generation=2)
+    update = store.verify_update(other)
+    _provision_active(store, other, update.manifest, Clock())
+
+    observed = store.install_initial(bundle)
+    assert observed == {
+        "schema": "iii.initial-receiver-install/v1",
+        "receiver_id": update.manifest["receiver_id"],
+        "generation": 2,
+        "slot": "b",
+        "current": "b",
+        "fallback": "a",
+        "installed": False,
+    }
+    assert store.active_slot() == "b"
+    assert store._selector_slot(store.fallback_path, required=True) == "a"
+
+
+def test_initial_receiver_install_cannot_replace_unselected_slot_or_fixed_protocols(
+    tmp_path: Path,
+) -> None:
+    key, trust = _trust(tmp_path)
+    bundle, _manifest = _bundle(tmp_path, key, generation=1)
+    store = ReceiverSlotStore(tmp_path / "host", trust=trust, registry=REGISTRY)
+    store.install_initial(bundle)
+    store.current_path.unlink()
+    store.fallback_path.unlink()
     other, _ = _bundle(tmp_path, key, generation=2)
     with pytest.raises(ContractError, match="different initial receiver"):
         store.install_initial(other)

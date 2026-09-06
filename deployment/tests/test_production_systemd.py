@@ -6,6 +6,9 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import runpy
+
+import pytest
 
 from iii_deployment.contracts import ContractRegistry, canonical_json, content_identity
 
@@ -29,6 +32,13 @@ def _write(path: Path, value: dict) -> None:
     path.write_bytes(canonical_json(value) + b"\n")
 
 
+def test_committed_host_unit_contract_is_canonical_json():
+    path = SYSTEMD / "unit-contract.json"
+    raw = path.read_bytes()
+    value = json.loads(raw)
+    assert raw == canonical_json(value) + b"\n"
+
+
 def test_production_units_are_real_profile_host_owned_and_independently_stoppable():
     combined = "\n".join((SYSTEMD / name).read_text() for name in UNITS)
     for forbidden in (
@@ -44,6 +54,10 @@ def test_production_units_are_real_profile_host_owned_and_independently_stoppabl
     assert "ExecStart=/usr/libexec/iii/iii-release-launch system-daemon" in daemon
     assert "ExecStart=/usr/libexec/iii/iii-release-launch runtime-api" in api
     assert "Wants=network-online.target iii-system-daemon.service" in api
+    assert "Wants=iii-deployment-receiver.service" in daemon
+    assert "Wants=iii-deployment-receiver.service" in api
+    assert "Requires=iii-deployment-receiver.service" not in daemon
+    assert "Requires=iii-deployment-receiver.service" not in api
     assert "Requires=iii-system-daemon.service" not in api
     assert "StandardOutput=null" in daemon and "StandardOutput=null" in api
     assert "ProtectSystem=strict" in daemon and "ProtectSystem=strict" in api
@@ -52,6 +66,7 @@ def test_production_units_are_real_profile_host_owned_and_independently_stoppabl
         ROOT / "deployment/ansible/roles/runtime_control_plane/templates/runtime.env.j2"
     ).read_text(encoding="utf-8")
     assert "III_TUNING_STATE_ROOT=/var/lib/iii/tuning" in runtime_environment
+    assert "III_LOGICAL_TARGET={{ iii_logical_target }}" in runtime_environment
 
 
 def test_minimal_time_untrusted_clock_audit_has_host_retention_policy():
@@ -60,6 +75,22 @@ def test_minimal_time_untrusted_clock_audit_has_host_retention_policy():
     ).read_text(encoding="utf-8")
     assert "/var/log/iii/deployment/*.jsonl" in filesystem
     assert "rotate 14" in filesystem
+
+
+def test_host_convergence_does_not_restart_a_stale_selected_release():
+    tasks = (
+        ROOT / "deployment/ansible/roles/runtime_control_plane/tasks/main.yml"
+    ).read_text(encoding="utf-8")
+    assert "Authenticate the active application selector before path use" in tasks
+    assert "iii_active_release_manifest.target.host_unit_contract" in tasks
+    assert "Refuse host convergence with an incompatible active release" in tasks
+    assert "explicit host-maintenance or reimage workflow" in tasks
+    assert "Retire incompatible selector materialized views" not in tasks
+    assert "state: absent" not in tasks
+    assert "/var/lib/iii/deployment/active-selector.json" in tasks
+    assert tasks.index(
+        "Refuse host convergence with an incompatible active release"
+    ) < tasks.index("Install the Ansible-owned selector-aware release launcher")
 
 
 def test_host_maintenance_privilege_is_isolated_in_fixed_oneshot_unit():
@@ -76,6 +107,12 @@ def test_host_maintenance_privilege_is_isolated_in_fixed_oneshot_unit():
     assert "Type=oneshot" in maintenance
     assert "%i/ansible-extra-vars.json" in maintenance
     assert "/usr/share/iii/host-maintenance/aircraft-maintenance.yml" in maintenance
+
+
+def test_receiver_candidate_retries_transient_reconciliation_races():
+    candidate = (SYSTEMD / "iii-deployment-receiver-candidate.service").read_text()
+    assert "Restart=on-failure" in candidate
+    assert "RestartSec=500ms" in candidate
 
 
 def test_systemd_unit_graph_verifies_with_installed_commands_represented(tmp_path):
@@ -128,7 +165,7 @@ def test_unit_contract_authenticates_every_host_asset():
         assert item["sha256"] == _sha256(ROOT / item["path"])
 
 
-def _launcher_root(tmp_path: Path) -> tuple[Path, dict, dict]:
+def _launcher_root(tmp_path: Path, *, profile: str = "real") -> tuple[Path, dict, dict]:
     unit_contract = json.loads((SYSTEMD / "unit-contract.json").read_text())
     _write(tmp_path / "etc/iii/host-unit-contract.json", unit_contract)
     installed_launcher = tmp_path / "usr/libexec/iii/iii-release-launch"
@@ -147,7 +184,7 @@ def _launcher_root(tmp_path: Path) -> tuple[Path, dict, dict]:
             "host_baseline": "b" * 64,
             "host_unit_contract": unit_contract["contract_id"],
         },
-        "profiles": [{"id": "real", "bootable": True}],
+        "profiles": [{"id": profile, "bootable": True}],
     }
     manifest["release_id"] = content_identity(
         {key: item for key, item in manifest.items() if key != "release_id"}
@@ -171,7 +208,7 @@ def _launcher_root(tmp_path: Path) -> tuple[Path, dict, dict]:
         + "c" * 64,
         "configuration_schema_version": 1,
         "mission_catalog_hash": "sha256:" + "d" * 64,
-        "profile": "real",
+        "profile": profile,
     }
     selector["selector_id"] = content_identity(
         {key: item for key, item in selector.items() if key != "selector_id"}
@@ -186,6 +223,35 @@ def _launcher_root(tmp_path: Path) -> tuple[Path, dict, dict]:
     }
     _write(tmp_path / "var/lib/iii/deployment/host-baseline-report.json", report)
     return tmp_path, manifest, report
+
+
+def test_launcher_injects_isolated_split_host_hil_networking(tmp_path, monkeypatch):
+    root, _manifest, _report = _launcher_root(tmp_path, profile="hil")
+    module = runpy.run_path(str(LAUNCHER), run_name="iii_release_launch_test")
+    captured = {}
+
+    def fake_execve(path, command, environment):
+        captured.update(path=path, command=command, environment=environment)
+        raise RuntimeError("exec captured")
+
+    monkeypatch.setattr(os, "execve", fake_execve)
+    with pytest.raises(RuntimeError, match="exec captured"):
+        module["main"](["runtime-api", "--root", str(root)])
+
+    environment = captured["environment"]
+    assert environment["III_SYSTEM_PROFILE"] == "hil"
+    assert environment["III_RUNTIME_API_PROFILE"] == "hil"
+    assert environment["SIMULATION"] == "true"
+    assert environment["III_MICRO_ROS_AGENT_UDP_PORT"] == "8889"
+    assert environment["III_MICRO_ROS_AGENT_DOMAIN_ID"] == "42"
+    assert environment["ROS_DOMAIN_ID"] == "42"
+    assert (
+        environment["III_RUNTIME_API_PX4_MAVLINK_ENDPOINT"] == "udpin://0.0.0.0:14542"
+    )
+    assert environment["III_HIL_SIMULATOR_PEER"] == "10.42.0.1"
+    assert environment["RMW_IMPLEMENTATION"] == "rmw_cyclonedds_cpp"
+    assert 'address="10.42.0.15"' in environment["CYCLONEDDS_URI"]
+    assert '<Peer address="10.42.0.1"/>' in environment["CYCLONEDDS_URI"]
 
 
 def test_launcher_accepts_exact_selector_and_refuses_host_contract_drift(tmp_path):

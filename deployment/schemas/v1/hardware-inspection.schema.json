@@ -9,7 +9,7 @@
     "schema": {"const": "iii.hardware-inspection/v1"},
     "inspection_id": {"$ref": "#/definitions/hash"},
     "manifest_id": {"$ref": "#/definitions/hash"},
-    "profile": {"enum": ["real", "opti_track"]},
+    "profile": {"enum": ["real", "opti_track", "hil"]},
     "boot_id": {"type": "string", "minLength": 1, "maxLength": 128},
     "captured_monotonic_ns": {"type": "integer", "minimum": 0},
     "accepted": {"type": "boolean"},

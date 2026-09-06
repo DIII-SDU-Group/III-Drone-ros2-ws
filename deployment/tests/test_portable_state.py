@@ -7,6 +7,8 @@ import tarfile
 
 import pytest
 
+import iii_deployment.portable_state as portable_state_module
+
 from iii_deployment.portable_state import (
     PortableBackupController,
     PortableSecretError,
@@ -53,6 +55,13 @@ def _state(root: Path) -> None:
         {"schema": "iii.tuning-journal/v1", "operator_action": "accepted"},
     )
     _json(
+        root / "var/lib/iii/tuning/selectors/drone--real.json",
+        {
+            "schema": "iii.tuning-selector/v1",
+            "active_tuning_id": "b" * 64,
+        },
+    )
+    _json(
         root / "var/lib/iii/px4/backups/params.json",
         {"schema": "iii.px4-parameter-snapshot/v1", "parameters": []},
     )
@@ -60,6 +69,20 @@ def _state(root: Path) -> None:
         root / "var/lib/iii/deployment/activation/health.json",
         {"schema": "iii.activation-health/v1", "healthy": True},
     )
+    _json(
+        root / "var/lib/iii/deployment/activation/transactions/attempt.json",
+        {"schema": "iii.activation-transaction/v1", "state": "completed"},
+    )
+    (root / "var/log/iii/deployment").mkdir(parents=True, exist_ok=True)
+    (root / "var/log/iii/deployment/clock-audit.jsonl").write_text(
+        '{"schema":"iii.clock-audit/v1","outcome":"accepted"}\n',
+        encoding="utf-8",
+    )
+    (root / "var/log/iii/deployment/receiver-audit.jsonl").write_text(
+        '{"schema":"iii.receiver-audit/v1","action":"status"}\n',
+        encoding="utf-8",
+    )
+    (root / "var/log/iii/deployment/receiver-audit.jsonl.lock").touch()
 
 
 def _controller(
@@ -106,6 +129,17 @@ def test_policy_declares_every_domain_and_exclusion_boundary() -> None:
         in policy["structural_exclusions"]
     )
     assert policy["external_archive_warning_days"] == 30
+    tuning = next(item for item in policy["domains"] if item["name"] == "tuning")
+    assert tuning["exclude"] == ["selectors"]
+    activation = next(
+        item for item in policy["domains"] if item["name"] == "activation-evidence"
+    )
+    assert activation["exclude"] == ["transactions"]
+    deployment_audits = next(
+        item for item in policy["domains"] if item["name"] == "deployment-audits"
+    )
+    assert "receiver-audit.jsonl" in deployment_audits["exclude"]
+    assert "receiver-audit.jsonl.lock" in deployment_audits["exclude"]
 
 
 def test_quiesced_seal_is_deterministic_verified_and_resumed_before_transfer(
@@ -142,11 +176,49 @@ def test_quiesced_seal_is_deterministic_verified_and_resumed_before_transfer(
     assert any(
         item["path"] == "shadows/real/retired-gain.json" for item in configuration_files
     )
+    tuning_files = next(
+        item["files"]
+        for item in verification["manifest"]["domains"]
+        if item["name"] == "tuning"
+    )
+    assert [item["path"] for item in tuning_files] == ["journals/session.json"]
+    activation_files = next(
+        item["files"]
+        for item in verification["manifest"]["domains"]
+        if item["name"] == "activation-evidence"
+    )
+    assert [item["path"] for item in activation_files] == ["health.json"]
+    deployment_audit_files = next(
+        item["files"]
+        for item in verification["manifest"]["domains"]
+        if item["name"] == "deployment-audits"
+    )
+    assert [item["path"] for item in deployment_audit_files] == [
+        "clock-audit.jsonl"
+    ]
     assert controller.status()["backup_fresh"] is True
     duplicate = controller.seal(operation_id="backup-operation-2")
     assert duplicate["backup_id"] == receipt["backup_id"]
     assert duplicate["duplicate_content"] is True
     assert len(controller.list()) == 1
+
+
+def test_backup_freshness_ignores_byte_identical_runtime_recreation(
+    tmp_path: Path,
+) -> None:
+    _state(tmp_path)
+    controller = _controller(tmp_path)
+    controller.seal(operation_id="backup-byte-stable")
+
+    for path in tmp_path.glob("var/lib/iii/**/*.json"):
+        data = path.read_bytes()
+        path.write_bytes(data)
+
+    assert controller.status()["backup_fresh"] is True
+
+    changed = tmp_path / "var/lib/iii/configuration/checkpoints/base.json"
+    _json(changed, {"schema": "iii.configuration-checkpoint/v1", "gain": 2.0})
+    assert controller.status()["backup_fresh"] is False
 
 
 def test_concurrent_writer_and_failed_resume_fail_closed(tmp_path: Path) -> None:
@@ -195,6 +267,17 @@ def test_secret_links_special_files_and_tamper_are_rejected(tmp_path: Path) -> N
     archive.write_bytes(damaged)
     with pytest.raises(PortableStateError, match="mismatch"):
         inspect_archive(archive)
+
+
+def test_oversized_portable_file_fails_closed_before_allocation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(portable_state_module, "MAX_FILE_BYTES", 32)
+    path = tmp_path / "var/lib/iii/configuration/oversized.bin"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"x" * 33)
+    with pytest.raises(PortableStateError, match="exceeds the fixed limit"):
+        _controller(tmp_path).seal(operation_id="backup-oversized-file")
 
 
 def test_restore_is_staged_atomic_health_checked_and_never_restores_identity(

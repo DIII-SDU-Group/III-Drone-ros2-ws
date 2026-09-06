@@ -22,6 +22,7 @@ from iii_deployment.contracts import (  # noqa: E402
     content_identity,
 )
 from iii_deployment.px4_network import load_network_baseline  # noqa: E402
+from iii_deployment.px4_release import sitl_parameter_source_identity  # noqa: E402
 
 MAV_TYPES = {"UINT32", "INT32", "REAL32"}
 REAL_REQUIRED = {
@@ -52,6 +53,10 @@ REAL_REQUIRED = {
 CALIBRATION_IDENTITY = (
     re.compile(r"^CAL_"),
     re.compile(r"(^|_)ID($|_)"),
+    # PX4 updates this persisted counter after every flight.  Treating it as a
+    # release-owned value would make a known-good aircraft fail its next
+    # deployment audit merely because it has flown.
+    re.compile(r"^LND_FLIGHT_T_(HI|LO)$"),
     # PX4 assigns external-mode slots by persisted FNV hashes.  They are
     # aircraft/runtime identity, not release-owned tuning values.
     re.compile(r"^COM_MODE[0-7]_HASH$"),
@@ -224,21 +229,15 @@ def main() -> int:
         raise SystemExit(
             "reference inventory misses required keys: " + ", ".join(missing_required)
         )
-    source_sha = content_identity(
-        {
-            "reference_snapshot_id": value["snapshot_id"],
-            "reference_snapshot_sha256": hashlib.sha256(
-                canonical_json(value) + b"\n"
-            ).hexdigest(),
-            "airframe_sha256": (
-                hashlib.sha256(args.airframe.read_bytes()).hexdigest()
-                if args.airframe
-                else None
-            ),
-            "classification_contract": "iii.px4-parameter-classification/v2",
-            "network_baseline_id": network_baseline["baseline_id"],
-            "px4_commit": commit,
-        }
+    source_sha = sitl_parameter_source_identity(
+        value,
+        airframe_sha256=(
+            hashlib.sha256(args.airframe.read_bytes()).hexdigest()
+            if args.airframe
+            else None
+        ),
+        network_baseline_id=network_baseline["baseline_id"],
+        px4_commit=commit,
     )
     args.output.mkdir(parents=True, exist_ok=True)
     reference_name = (

@@ -37,10 +37,16 @@ RESTORE_PLAN_SCHEMA = "iii.portable-restore-plan/v1"
 RESTORE_RESULT_SCHEMA = "iii.portable-restore-result/v1"
 HASH = re.compile(r"^[a-f0-9]{64}$")
 DOMAIN_NAME = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
-MAX_FILE_BYTES = 16 * 1024**3
+# Portable state is control/configuration evidence, never flight bags or bulk
+# media.  Keep the per-file ceiling small enough that secret validation and
+# archive verification cannot exhaust an aircraft computer before rejecting a
+# malformed or accidentally misplaced file.
+MAX_FILE_BYTES = 64 * 1024**2
 MAX_ARCHIVE_MEMBERS = 100_000
 MAX_MANIFEST_BYTES = 64 * 1024**2
-DEFAULT_CHUNK_BYTES = 4 * 1024**2
+# Base64 and the canonical response envelope must remain below the receiver's
+# fixed 1 MiB transport ceiling.
+DEFAULT_CHUNK_BYTES = 512 * 1024
 
 PROHIBITED_PARTS = frozenset(
     {
@@ -132,10 +138,12 @@ def _read_regular(path: Path) -> bytes:
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     try:
         observed = os.fstat(descriptor)
-        if not stat.S_ISREG(observed.st_mode) or observed.st_size > MAX_FILE_BYTES:
+        if not stat.S_ISREG(observed.st_mode):
             raise PortableStateError(
                 f"portable source is not a bounded regular file: {path}"
             )
+        if observed.st_size > MAX_FILE_BYTES:
+            raise PortableStateError(f"portable file exceeds the fixed limit: {path}")
         result = bytearray()
         while len(result) <= MAX_FILE_BYTES:
             block = os.read(
@@ -338,7 +346,12 @@ def _domain_files(
 
 
 def state_marker(source_root: Path, policy: Mapping[str, Any]) -> str:
-    """Cheap state identity used to invalidate freshness after any declared-tree mutation."""
+    """Content identity used to invalidate freshness after a semantic mutation.
+
+    Runtime startup may safely recreate byte-identical working files.  Binding
+    freshness to inode timestamps made a backup stale immediately after the
+    controller resumed standby, even though its portable contents were unchanged.
+    """
 
     rows: list[dict[str, Any]] = []
     for domain in policy["domains"]:
@@ -352,8 +365,7 @@ def state_marker(source_root: Path, policy: Mapping[str, Any]) -> str:
                     {
                         "path": relative.as_posix(),
                         "size": path.stat(follow_symlinks=False).st_size,
-                        "mtime_ns": path.stat(follow_symlinks=False).st_mtime_ns,
-                        "ctime_ns": path.stat(follow_symlinks=False).st_ctime_ns,
+                        "sha256": _sha256(path),
                     }
                     for relative, path in files
                 ],
@@ -579,8 +591,15 @@ def inspect_archive(
                 raise PortableStateError(
                     f"portable archive member cannot be read: {member.name}"
                 )
-            data = stream.read(MAX_FILE_BYTES + 1)
             row = expected[member.name]
+            if member.size != row["bytes"] or member.size > MAX_FILE_BYTES:
+                raise PortableStateError(
+                    f"portable archive member size mismatch: {member.name}"
+                )
+            # Never ask the decompressor for the global maximum.  Some Python
+            # streams reserve the requested buffer eagerly, which turned a
+            # sub-megabyte aircraft backup into a multi-gigabyte allocation.
+            data = stream.read(member.size + 1)
             if (
                 len(data) != row["bytes"]
                 or hashlib.sha256(data).hexdigest() != row["sha256"]
@@ -896,11 +915,11 @@ class PortableBackupController:
             raise PortableStateError("portable backup source is invalid")
         if (
             source == "receiver"
-            and self.profile in {"real", "opti_track"}
+            and self.profile in {"real", "opti_track", "hil"}
             and not self.maintenance_safe()
         ):
             raise PortableStateError(
-                "real/OptiTrack backup requires maintenance-safe state"
+                "aircraft-runtime backup requires maintenance-safe state"
             )
         before = state_marker(self.source_root, self.policy)
         resumed: Mapping[str, Any] | None = None

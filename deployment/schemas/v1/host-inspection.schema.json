@@ -9,7 +9,7 @@
     "schema": {"const": "iii.host-inspection/v1"},
     "inspection_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "logical_target": {"const": "drone"},
-    "profile": {"enum": ["real", "opti_track"]},
+    "profile": {"enum": ["real", "opti_track", "hil"]},
     "boot_id": {"type": "string", "minLength": 1, "maxLength": 128},
     "accepted": {"type": "boolean"},
     "hardware": {"type": "object"},

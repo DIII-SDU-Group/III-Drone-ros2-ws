@@ -96,13 +96,29 @@ def _operational_policy() -> dict:
         raise ContractError(
             "receiver operational policy changes the fixed nonce expiry"
         )
-    if value.get("activation") != {
-        "target_acceptance_s": 60,
-        "hard_deadline_s": 120,
+    activation_deadlines = value.get("activation")
+    if activation_deadlines not in (
+        {
+            "target_acceptance_s": 180,
+            "hard_deadline_s": 300,
+            "rollback_target_s": 60,
+        },
+        {
+            "target_acceptance_s": 60,
+            "hard_deadline_s": 120,
+            "rollback_target_s": 60,
+        },
+    ):
+        raise ContractError(
+            "receiver operational policy changes the fixed activation deadlines"
+        )
+    if value.get("staging") != {
+        "target_acceptance_s": 300,
+        "hard_deadline_s": 600,
         "rollback_target_s": 60,
     }:
         raise ContractError(
-            "receiver operational policy changes the fixed activation deadlines"
+            "receiver operational policy changes the fixed staging deadlines"
         )
     if value.get("host_maintenance") != {
         "target_acceptance_s": 1800,
@@ -385,6 +401,15 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         px4_inspector=PX4ReleaseInspector(
             schema_root=SCHEMA_ROOT,
             state_root=STATE_ROOT / "px4-release-audits",
+            # Physical PX4 and workstation SITL may be powered concurrently.
+            # Isolate their read-only streams so the selected target cannot be
+            # verified against the other vehicle.
+            endpoint=(
+                "udpin:0.0.0.0:14543"
+                if config.profile == "hil"
+                else "udpin:0.0.0.0:14541"
+            ),
+            profile="sim" if config.profile == "hil" else "real",
         ),
         host_inspector=host_inspector,
         network_controller=network_controller,

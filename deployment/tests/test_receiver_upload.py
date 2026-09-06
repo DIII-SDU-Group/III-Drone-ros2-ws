@@ -250,8 +250,9 @@ def test_active_transfer_lock_prevents_cleanup_and_gateway_rejects_shell_input(
         )
 
 
-def test_gateway_allows_only_the_fixed_persistent_clock_sampling_command(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize("command", ["iii-clock-samples", "iii-receiver-stream"])
+def test_gateway_allows_only_fixed_persistent_receiver_commands(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, command: str
 ) -> None:
     observed: list[tuple[bool, str]] = []
 
@@ -264,7 +265,7 @@ def test_gateway_allows_only_the_fixed_persistent_clock_sampling_command(
     )
     assert dispatch(
         client_id=CLIENT,
-        original_command="iii-clock-samples",
+        original_command=command,
         incoming_root=tmp_path / "incoming",
         lock_path=tmp_path / "run/upload.lock",
     ) == 0

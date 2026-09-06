@@ -79,7 +79,7 @@ The devcontainer config is in `.devcontainer/devcontainer.json` and the in-conta
 Preferred execution pattern:
 ```bash
 CONTAINER_ID="$(docker ps --filter "label=devcontainer.local_folder=$(pwd)" --format '{{.ID}}' | head -n1)"
-docker exec "$CONTAINER_ID" bash -lc '
+docker exec --user iii "$CONTAINER_ID" bash -lc '
   source /opt/ros/jazzy/setup.bash
   cd /home/iii/ws
   colcon build --base-paths src --packages-select <pkg> --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
@@ -89,7 +89,7 @@ docker exec "$CONTAINER_ID" bash -lc '
 Preferred test pattern:
 ```bash
 CONTAINER_ID="$(docker ps --filter "label=devcontainer.local_folder=$(pwd)" --format '{{.ID}}' | head -n1)"
-docker exec "$CONTAINER_ID" bash -lc '
+docker exec --user iii "$CONTAINER_ID" bash -lc '
   source /opt/ros/jazzy/setup.bash
   cd /home/iii/ws
   colcon test --base-paths src --packages-select <pkg> --ctest-args --output-on-failure

@@ -53,6 +53,15 @@ PRE_ACCEPTANCE_STAGES = frozenset(
 )
 
 
+class ActivationHealthPending(ContractError):
+    """A valid startup observation is not available yet.
+
+    This is distinct from malformed or unauthenticated health evidence, which
+    remains an immediate hard failure.  The coordinator may retry this state
+    only inside its bounded pre-acceptance health window.
+    """
+
+
 def _identity(value: Mapping[str, Any], field: str) -> str:
     return content_identity({key: item for key, item in value.items() if key != field})
 
@@ -394,6 +403,7 @@ class ActivationHealthGate:
             required=self.policy.required_hardware_roles,
             optional=self.policy.optional_hardware_roles,
             healthy=lambda item: item == {"state": "present", "unambiguous": True},
+            absent=lambda item: item == {"state": "missing", "unambiguous": False},
         )
         self._entity_reasons(
             reasons,
@@ -459,6 +469,7 @@ class ActivationHealthGate:
         required: tuple[str, ...],
         optional: tuple[str, ...],
         healthy: Callable[[Mapping[str, Any]], bool],
+        absent: Callable[[Mapping[str, Any]], bool] | None = None,
     ) -> None:
         declared = set(required) | set(optional)
         undeclared = sorted(set(evidence) - declared)
@@ -470,7 +481,11 @@ class ActivationHealthGate:
             elif not healthy(evidence[entity]):
                 reasons.append(f"required {kind} is unhealthy: {entity}")
         for entity in optional:
-            if entity in evidence and not healthy(evidence[entity]):
+            if (
+                entity in evidence
+                and not (absent is not None and absent(evidence[entity]))
+                and not healthy(evidence[entity])
+            ):
                 reasons.append(f"present optional {kind} is unhealthy: {entity}")
 
     @staticmethod
@@ -886,6 +901,15 @@ class ActivationCoordinator:
             raise ContractError(
                 "field activation requires a known previous composite selector"
             )
+        safety = self.safety_provider()
+        if (
+            not operator_rollback
+            and self.configuration_reconciler is not None
+            and safety.configuration_checkpoint_id != requested_checkpoint_id
+        ):
+            raise ContractError(
+                "runtime configuration checkpoint differs from the durable deployment selector"
+            )
         configuration_reconciliation = None
         if not operator_rollback and self.configuration_reconciler is not None:
             if requested_checkpoint_id != previous.configuration_checkpoint_id:
@@ -913,7 +937,6 @@ class ActivationCoordinator:
         px4_evidence = self.validate_px4_evidence(
             release_id=release_id, evidence=px4_activation_evidence
         )
-        safety = self.safety_provider()
         ActivationSafetyGate(
             logical_target=self.logical_target, profile=self.profile
         ).authorize(
@@ -998,9 +1021,19 @@ class ActivationCoordinator:
                         "activation health deadline expired before a ten-second stable window: "
                         + detail
                     )
-                snapshot = self._with_px4_evidence(
-                    self.health_provider(candidate, policy), px4_evidence
-                )
+                try:
+                    observed = self.health_provider(candidate, policy)
+                except ActivationHealthPending as exc:
+                    last_reasons = [str(exc)]
+                    stable_since = None
+                    self.sleep(
+                        min(
+                            self.poll_interval_s,
+                            HARD_DEADLINE_S - (now - started),
+                        )
+                    )
+                    continue
+                snapshot = self._with_px4_evidence(observed, px4_evidence)
                 last_snapshot = snapshot
                 last_reasons = gate.rejection_reasons(snapshot)
                 if last_reasons:
@@ -1079,6 +1112,32 @@ class ActivationCoordinator:
                 raise ContractError(
                     "activation fault occurred after durable acceptance; automatic rollback is forbidden: "
                     + str(exc)
+                ) from exc
+            transaction_path = (
+                self.transaction_store.transaction_root / f"{operation_id}.json"
+            )
+            if not transaction_path.exists() and not transaction_path.is_symlink():
+                rollback = {
+                    "outcome": "not-required",
+                    "release_id": previous.release_id,
+                    "elapsed_s": 0.0,
+                    "target_s": ROLLBACK_TARGET_S,
+                    "target_met": True,
+                    "autonomy_started": False,
+                }
+                self._state(
+                    operation_id=operation_id,
+                    previous=previous,
+                    candidate=candidate,
+                    authorization=authorization,
+                    safety=safety,
+                    stage="rolled-back",
+                    failure={"code": "pre-switch-rejected", "message": str(exc)},
+                    rollback=rollback,
+                )
+                raise ContractError(
+                    f"activation was refused before selector mutation: {exc}; "
+                    "rollback=not-required"
                 ) from exc
             rollback = self._rollback(
                 operation_id=operation_id,
@@ -1159,6 +1218,14 @@ class ActivationCoordinator:
                 else "release is not the staged candidate"
             )
         safety = self.safety_provider()
+        if (
+            not operator_rollback
+            and self.configuration_reconciler is not None
+            and safety.configuration_checkpoint_id != requested_checkpoint_id
+        ):
+            reasons.append(
+                "runtime configuration checkpoint differs from the durable deployment selector"
+            )
         reasons.extend(
             ActivationSafetyGate(
                 logical_target=self.logical_target, profile=self.profile

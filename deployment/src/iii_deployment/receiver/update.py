@@ -854,6 +854,35 @@ class ReceiverSlotStore:
             self._make_removable(partial)
             shutil.rmtree(partial)
 
+        # A later Ansible convergence installs the current stable bootstrap
+        # before reaching this operation.  If A/B selectors already establish
+        # a complete receiver, authenticate and preserve that installation
+        # instead of trying to force the historical generation-1 bundle back
+        # into slot a.  This path never changes either selector or slot.
+        current = self.active_slot()
+        if current is not None:
+            fallback = self._selector_slot(self.fallback_path, required=True)
+            current_manifest = self.verify_slot(current)
+            self.verify_slot(fallback)
+            current_compatibility = current_manifest["compatibility"]
+            if (
+                "1" not in current_compatibility["bootstrap_protocols"]
+                or "1" not in current_compatibility["cli_protocols"]
+                or "1" not in current_compatibility["request_protocols"]
+            ):
+                raise ContractError(
+                    "installed receiver does not support the fixed bootstrap, CLI, and request protocols"
+                )
+            return {
+                "schema": "iii.initial-receiver-install/v1",
+                "receiver_id": current_manifest["receiver_id"],
+                "generation": current_manifest["generation"],
+                "slot": current,
+                "current": current,
+                "fallback": fallback,
+                "installed": False,
+            }
+
         destination = self.slots_root / "a"
         if destination.exists() or destination.is_symlink():
             if destination.is_symlink() or not destination.is_dir():

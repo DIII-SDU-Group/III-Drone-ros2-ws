@@ -262,6 +262,12 @@ class QGCConfigurationStore:
                 values[key] = _typed(parser.get(section, option), expected)
         return values
 
+    def managed_settings_match(self) -> bool:
+        """Check every release-managed key without changing QGC state."""
+
+        _payload, parser = self._load_settings()
+        return self._managed_values(parser) == self.baseline["settings"]
+
     def _backup(self, payload: bytes | None, *, release_id: str) -> dict[str, Any]:
         digest = hashlib.sha256(payload or b"").hexdigest()
         backup_id = content_identity(

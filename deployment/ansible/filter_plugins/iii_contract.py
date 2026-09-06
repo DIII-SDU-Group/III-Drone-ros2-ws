@@ -45,6 +45,37 @@ def live_state(profile: str) -> dict[str, Any]:
     return value
 
 
+def valid_live_state(value: Any) -> bool:
+    required = {
+        "schema",
+        "target_state_hash",
+        "active_release_id",
+        "configuration_hash",
+        "commissioning_hash",
+        "profile",
+    }
+    if (
+        not isinstance(value, Mapping)
+        or set(value) != required
+        or value.get("schema") != "iii.receiver-live-state/v1"
+    ):
+        return False
+    expected = content_id(
+        {key: item for key, item in value.items() if key != "target_state_hash"}
+    )
+    return value.get("target_state_hash") == expected
+
+
+def valid_document_identity(value: Any, field: str) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and isinstance(field, str)
+        and field in value
+        and value.get(field)
+        == content_id({key: item for key, item in value.items() if key != field})
+    )
+
+
 class FilterModule:
     def filters(self) -> Mapping[str, Any]:
         return {
@@ -52,4 +83,6 @@ class FilterModule:
             "iii_content_id": content_id,
             "iii_private_network": private_network,
             "iii_live_state": live_state,
+            "iii_valid_live_state": valid_live_state,
+            "iii_valid_document_identity": valid_document_identity,
         }

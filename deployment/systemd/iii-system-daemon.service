@@ -1,6 +1,6 @@
 [Unit]
 Description=III real-profile system daemon
-Requires=iii-deployment-receiver.service
+Wants=iii-deployment-receiver.service
 After=local-fs.target network-online.target iii-deployment-receiver.service
 Wants=network-online.target
 PartOf=iii.target

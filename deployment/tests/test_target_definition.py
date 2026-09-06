@@ -161,6 +161,12 @@ def test_production_ansible_baseline_is_derived_from_target_definition(
     target = definition["target"]
     assert variables["iii_target_definition_id"] == definition["definition_id"]
     assert variables["iii_baseline_id"] == definition["host_baseline"]["contract_id"]
+    unit_contract = _json(ROOT / "deployment/systemd/unit-contract.json")
+    assert variables["iii_unit_contract_id"] == unit_contract["contract_id"]
+    assert (
+        definition["host_baseline"]["unit_contract_id"]
+        == unit_contract["contract_id"]
+    )
     assert variables["iii_target_definition_id"] != variables["iii_baseline_id"]
     assert {
         "path": "/opt/iii",

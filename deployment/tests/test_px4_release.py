@@ -51,6 +51,18 @@ def test_generated_px4_release_contract_matches_source():
     assert dds["subscriptions_multi"] == []
 
 
+def test_sim_parameter_manifest_is_bound_to_the_same_px4_release():
+    spec, dds, network, _ = documents()
+    parameters = json.loads((ROOT / "deployment/px4/sim.json").read_text())
+    validate_release_inputs(
+        spec=spec,
+        dds=dds,
+        network=network,
+        parameters=parameters,
+        registry=REGISTRY,
+    )
+
+
 def test_dds_normalization_rejects_duplicates(tmp_path: Path):
     source = tmp_path / "dds_topics.yaml"
     source.write_text(
@@ -121,6 +133,31 @@ def test_px4_release_audit_accepts_exact_zero_write_observation():
     assert result["findings"] == []
     assert result["writes_performed"] == 0
     assert result["dds_topics_observation"] == "proven-by-exact-firmware-commit"
+
+
+def test_px4_release_audit_accepts_sim_without_physical_network_artifacts():
+    spec, dds, network, _ = documents()
+    parameters = json.loads((ROOT / "deployment/px4/sim.json").read_text())
+    observed = snapshot(parameters)
+    result = audit_release(
+        release_id="a" * 64,
+        spec=spec,
+        dds=dds,
+        network=network,
+        parameters=parameters,
+        status={
+            "connected": True,
+            "armed": False,
+            "firmware_version": spec["version"],
+            "firmware_commit": spec["advertised_commit"],
+        },
+        snapshot=observed,
+        comparison=comparison(parameters, observed),
+        provenance="receiver-px4-ethernet",
+        require_network_artifacts=False,
+    )
+    assert result["healthy"] is True
+    assert result["findings"] == []
 
 
 def test_receiver_ethernet_parameter_snapshot_provenance_is_contract_valid():
@@ -203,6 +240,37 @@ def test_px4_release_audit_classifies_network_and_parameter_drift():
         "PX4_NETWORK_MISMATCH",
     }
     assert result["writes_performed"] == 0
+
+
+def test_px4_release_audit_does_not_apply_physical_network_owners_to_sim():
+    spec, dds, network, parameters = documents()
+    parameters = dict(parameters)
+    parameters["network_baseline_id"] = None
+    observed = snapshot(parameters)
+    required = next(iter(network["parameter_requirements"]))
+    next(item for item in observed["parameters"] if item["name"] == required)[
+        "value"
+    ] = -1
+    result = audit_release(
+        release_id="a" * 64,
+        spec=spec,
+        dds=dds,
+        network=network,
+        parameters=parameters,
+        status={
+            "connected": True,
+            "armed": False,
+            "firmware_version": spec["version"],
+            "firmware_commit": spec["advertised_commit"],
+        },
+        snapshot=observed,
+        comparison=comparison(parameters, observed),
+        provenance="receiver-px4-ethernet",
+        network_artifacts=None,
+        require_network_artifacts=False,
+    )
+    assert result["healthy"] is True
+    assert result["findings"] == []
 
 
 def test_px4_release_audit_rejects_operator_tunable_drift():
@@ -355,11 +423,14 @@ def test_receiver_inspector_binds_staged_release_and_returns_activation_evidence
         "required_match": True,
     }
 
+    closed_adapters = []
+
     class Adapter:
         def __init__(self, *_args, **_kwargs): pass
         def status(self): return target | {"connected": True}
         def read_text_file(self, path):
             return render_net_cfg(network) if path == network["artifacts"]["net_cfg_path"] else render_extras(network)
+        def close(self): closed_adapters.append(self)
 
     class Store:
         def __init__(self, **_kwargs): pass
@@ -374,6 +445,7 @@ def test_receiver_inspector_binds_staged_release_and_returns_activation_evidence
     assert result["audit"]["healthy"] is True
     assert result["activation_evidence"]["healthy"] is True
     assert result["activation_evidence"]["writes_performed"] == 0
+    assert len(closed_adapters) == 1
     retained = tmp_path / "state" / f"{result['audit']['audit_id']}.json"
     assert json.loads(retained.read_text()) == result
 
@@ -412,3 +484,136 @@ def test_receiver_inspector_binds_staged_release_and_returns_activation_evidence
         "PX4_NETWORK_ARTIFACTS_UNVERIFIED"
     }
     assert blocked["audit"]["writes_performed"] == 0
+
+    class InventoryBlockedStore(Store):
+        def pull(self, *_args, **_kwargs):
+            from iii_deployment.px4_parameters import PX4ParameterError
+
+            raise PX4ParameterError("PX4 full inventory timed out")
+
+    monkeypatch.setattr("iii_deployment.px4_inspection.MavlinkParameterAdapter", Adapter)
+    monkeypatch.setattr("iii_deployment.px4_inspection.PX4ParameterStore", InventoryBlockedStore)
+    inventory_blocked = PX4ReleaseInspector(
+        schema_root=ROOT / "deployment/schemas/v1",
+        state_root=tmp_path / "inventory-blocked-state",
+    ).audit(release_id="a" * 64, release_root=release_root)
+    assert inventory_blocked["audit"]["healthy"] is False
+    assert inventory_blocked["activation_evidence"] is None
+    assert inventory_blocked["audit"]["writes_performed"] == 0
+
+
+def test_receiver_inspector_audits_hil_against_sim_manifest_without_sd_files(
+    tmp_path: Path, monkeypatch
+):
+    spec, dds, network, _ = documents()
+    parameters = json.loads((ROOT / "deployment/px4/sim.json").read_text())
+    release_root = tmp_path / "release"
+    resources = release_root / "install/share/iii-deployment/px4"
+    resources.mkdir(parents=True)
+    for name in (
+        "firmware.json",
+        "dds-topics.json",
+        "network-baseline.json",
+        "real.json",
+        "sim.json",
+    ):
+        shutil.copyfile(ROOT / "deployment/px4" / name, resources / name)
+    manifest = {
+        "release_id": "a" * 64,
+        "px4": {
+            "spec_id": spec["spec_id"],
+            "dds_topics_id": dds["contract_id"],
+            "network_baseline_id": network["baseline_id"],
+            "manifest_ids": {"sim": parameters["manifest_id"]},
+        },
+    }
+    (release_root / "release-manifest.json").write_bytes(
+        canonical_json(manifest) + b"\n"
+    )
+    target = {
+        "system_id": 1,
+        "component_id": 1,
+        "armed": False,
+        "firmware_version": spec["version"],
+        "firmware_commit": spec["advertised_commit"],
+    }
+    rows = [
+        {
+            "name": item["name"],
+            "mav_type": item["mav_type"],
+            "value": item["value"],
+            "index": index,
+        }
+        for index, item in enumerate(parameters["parameters"])
+        if item["value"] is not None
+    ]
+    snap = {
+        "schema": "iii.px4-parameter-snapshot/v1",
+        "snapshot_id": content_identity(
+            {
+                "profile": "sim",
+                "target": target,
+                "parameter_count": len(rows),
+                "parameters": rows,
+            }
+        ),
+        "captured_at": "2026-09-04T12:00:00Z",
+        "profile": "sim",
+        "provenance": "receiver-px4-ethernet",
+        "target": target,
+        "complete": True,
+        "parameter_count": len(rows),
+        "parameters": rows,
+    }
+    compare = {
+        "schema": "iii.px4-parameter-comparison/v1",
+        "profile": "sim",
+        "manifest_id": parameters["manifest_id"],
+        "snapshot_id": snap["snapshot_id"],
+        "inventory_complete": True,
+        "missing": [],
+        "unexpected": [],
+        "drift": {"release-required": [], "operator-tunable": []},
+        "preserved_calibration_identity": [],
+        "required_match": True,
+    }
+
+    closed_adapters = []
+
+    class Adapter:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def status(self):
+            return target | {"connected": True}
+
+        def read_text_file(self, _path):
+            raise AssertionError("HIL audit must not read physical PX4 SD files")
+
+        def close(self):
+            closed_adapters.append(self)
+
+    class Store:
+        def __init__(self, **_kwargs):
+            pass
+
+        def pull(self, profile, **_kwargs):
+            assert profile == "sim"
+            return snap
+
+        def compare(self, profile, _snapshot_id):
+            assert profile == "sim"
+            return compare
+
+    monkeypatch.setattr("iii_deployment.px4_inspection.MavlinkParameterAdapter", Adapter)
+    monkeypatch.setattr("iii_deployment.px4_inspection.PX4ParameterStore", Store)
+    result = PX4ReleaseInspector(
+        schema_root=ROOT / "deployment/schemas/v1",
+        state_root=tmp_path / "state",
+        profile="sim",
+    ).audit(release_id="a" * 64, release_root=release_root)
+    assert result["audit"]["healthy"] is True
+    assert result["activation_evidence"]["profile"] == "sim"
+    assert result["activation_evidence"]["manifest_id"] == parameters["manifest_id"]
+    assert result["activation_evidence"]["writes_performed"] == 0
+    assert len(closed_adapters) == 1

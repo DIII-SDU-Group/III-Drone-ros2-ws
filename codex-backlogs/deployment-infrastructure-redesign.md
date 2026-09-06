@@ -5490,6 +5490,115 @@ satisfy or reclassify the 119 physical matrix rows.
   `alive, ready`. The 19-finding readiness result remains a valid negative result
   for deferred camera/mmWave/charger and commissioning gates, not a claimed
   physical Q131 pass.
+- The 2026-09-05 R102 robustness continuation produced and independently verified
+  signed paired field-development release
+  `c9cb93c0cf386d5c7d63216f11f60688e342a6430efa3b2b5d391613b0180122`
+  from exact dirty-source snapshot
+  `00b81f07be93ce6df0a11c1530839108a1c2bfa89d8bedefdcc72b23143b4b07`.
+  The ARM64 build verified Python 3.12 imports and ELF closure for all 15 packages,
+  reused 3,728 compiler objects with 283 misses, packaged both mission catalog
+  entries for `real`, `opti_track`, and `hil`, and reused the exact cached PX4
+  V6X firmware build. Both drone and GC component bundles passed full signature,
+  archive, path, size, and content verification. The first GC-before-drone stage
+  completed without activation in 177.12 seconds, including 126.27 seconds of
+  receiver work; the identical repeat transferred no new aircraft candidate and
+  completed in 78.61 seconds, including 36.12 seconds of receiver verification.
+- The same continuation exercised 100/100 live read-only CLI operations over ten
+  independent cycles: system and receiver status, mission status/list and both
+  production/experimental mission records, GC, QGroundControl, PX4 capture
+  inventory, and local evidence inventory. The zero-write paired PX4 audit passed;
+  a complete disarmed HIL/simulation-profile read captured 1,029 parameters with
+  no required or operator-tunable drift, while an intentionally wrong `real`
+  request failed closed on profile identity. The target-equivalent
+  `real -> opti_track -> real` profile/recovery matrix passed 30/30 checks over ten
+  fresh runs. Full phase regression passed 752 deployment tests with six explicit
+  privileged/target skips, 265 CLI tests in the Jazzy installed overlay, 781 ROS
+  package tests with zero failures or skips, 128 frontend tests plus contract,
+  lint, typecheck, production-build, and zero-vulnerability gates, and ten
+  top-level integration tests.
+- Robustness failures found during this run were corrected rather than waived:
+  empty configuration-journal pages at the authoritative head now validate;
+  configuration state identities no longer recursively include their own binding;
+  portable backup freshness uses file content rather than rewrite metadata;
+  interrupted `.partial` captures remain archivable evidence; the receiver reboot
+  budget regression now asserts the governed 600-second stage deadline; and stale
+  root-owned frontend build output was narrowly recovered. The final connected
+  readiness record remains an honest seven-finding FAIL because the Pi still runs
+  the pre-redesign R75 application/host image while the exact-current candidate is
+  only staged. Final reimage/activation, fresh backup/archive/offline cache, and
+  physical peripheral/OptiTrack/Q131 work therefore remain open and are not
+  reclassified by this software robustness evidence.
+- The subsequent R103 field-command hardening found a real retained-operation
+  defect in `iii access`: add/prove/revoke replanned a receiver nonce during the
+  confirmed apply, so the documented exact plan/apply sequence rejected its own
+  retained plan. Access preflights now reuse immutable retained input like the
+  other mutating providers. Focused tests passed 10/10 and the complete CLI
+  regression passed 268/268. The live Pi then accepted and independently proved
+  a new `gc-primary-r102` machine across SSH, Runtime API, and field-signing
+  authority; both add and prove replayed idempotently as already complete. Ten
+  fresh-session cycles passed receiver access 10/10, deployment status 10/10,
+  and runtime status 10/10 through the newly enrolled default SSH key. The old
+  R75 runtime consistently rejected catalog listing and its configuration-state
+  endpoint, preserving deterministic release-skew evidence instead of treating
+  it as an intermittent network failure.
+- The CLI now consumes the explicit token first, otherwise an owner-only
+  `III_RUNTIME_API_TOKEN_FILE` or canonical per-user
+  `credentials/runtime-api.token`, and rejects linked, exposed, wrong-owner, or
+  empty token files before sending a request. The active R75 API still accepts
+  only its legacy development token even after a service restart; validating the
+  enrolled-token path on hardware therefore remains bound to final current-host
+  activation, while source tests cover the secure file selection and rejection
+  cases.
+- Exact post-fix source identity
+  `298de901ed796473f4fb399d21b4645fb1beb7d5dcc67cf12b0ab30502d44f9d`
+  produced signed paired field release
+  `eb0b79111cf31b344bec58185dd7de50051e249e587901d856e2dc13a61d8be7`.
+  Its ARM64 build passed CPython 3.12 imports and 79-object ELF closure, both GC
+  containers passed smoke tests, QGroundControl 5.0.8 passed its self-check, and
+  both compressed bundles passed independent full streaming verification. Live
+  GC-before-drone staging through the newly enrolled key completed in 169.57
+  seconds with receiver acceptance in 118.19 seconds; the exact repeat completed
+  in 77.80 seconds, transferred no aircraft candidate, and finished receiver
+  verification in 35.19 seconds. Activation remained explicitly skipped pending
+  the final host reimage/current-baseline gate.
+- The 2026-09-06 deadline candidate completed the current-host application gate.
+  Exact source snapshot
+  `05f9252123b72d4002bc4d1d0938c23d6ede46d06b691a4732a222cf71bc090f`
+  produced ARM64 build
+  `8ad20568cce8b2c830c6782a66b6e13bec25ebf7685ea99a82e45166458f27bc`,
+  GC build
+  `7e777f659d7b87d6a066c775d370acd23103c23d40fdebaea178927820bfb154`,
+  and signed paired field release
+  `278973251c1a9fbefd1c22b855d6d1a1b3b111a8e619e5ae1b83742442980e7c`.
+  The pinned builder used at most eight of the 16 host CPUs, verified the ARM64
+  Python/ELF closure, reused 3,910 compiler objects with 101 misses, and packaged
+  the production and explicitly selected experimental mission assets.
+- A first stage installed the candidate in 387.96 seconds: inside the receiver's
+  600-second hard deadline but outside its 300-second target. It exposed a real
+  one-time host-baseline migration boundary: the running pseudo-flash selector
+  named an application release that was not represented as active in the
+  receiver release state, so normal retention removed that unprotected release
+  and activation failed closed. The target was recovered without arming by
+  atomically restoring the authenticated r133/r132 state, switching to the
+  already verified r135 candidate, and accepting r135 only after live health.
+  This negative result remains retained; ordinary same-host-contract field
+  updates do not traverse that migration boundary.
+- The accepted r135 release passed the canonical cold shutdown, workstation SITL
+  reset, boot, and stack-start flow twice. The Micro XRCE agent reported
+  `alive, ready` and all 11 managed nodes became active. A 59-step authenticated
+  HIL smoke passed runtime/GC discovery, configuration snapshot/apply/restore,
+  mission and custom-operation control, gripper and mapper commands, rosbag and
+  log surfaces, plus simulated arm/takeoff/hold/land/disarm. This is simulation
+  evidence and does not satisfy physical arming, sensor, OptiTrack, or flight
+  rows.
+- A subsequent exact-release field deploy completed in 41 seconds. GC stage and
+  activation, drone stage and activation were correctly skipped as already
+  active, while the paired PX4 audit ran again and performed zero writes. A cold
+  restart from the durably accepted r135 state then passed without selector or
+  filesystem repair. The current software phase also passed 808 selected Jazzy
+  package tests (zero failures/errors, one explicit skip), 276 CLI tests, 13
+  workspace integration tests, and all 128 frontend tests plus contract, lint,
+  typecheck, and production-build gates.
 
 #### P5.T1: Commission The First Aircraft From Raw Image
 

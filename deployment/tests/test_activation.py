@@ -312,6 +312,19 @@ def test_activation_switches_and_rolls_back_matching_code_configuration_and_cata
         checkpoint_id=CHECKPOINT_TWO,
         catalog_hash=CATALOG_TWO,
     )
+    live_state = {
+        "schema": "iii.receiver-live-state/v1",
+        "target_state_hash": "0" * 64,
+        "active_release_id": None,
+        "configuration_hash": "3" * 64,
+        "commissioning_hash": "4" * 64,
+        "profile": "real",
+    }
+    live_state["target_state_hash"] = content_identity(
+        {key: value for key, value in live_state.items() if key != "target_state_hash"}
+    )
+    live_state_path = tmp_path / "var/lib/iii/deployment/live-state.json"
+    _write_document(live_state_path, live_state)
     store = ActivationTransactionStore(tmp_path)
     first_operation = "1" * 64
     second_operation = "2" * 64
@@ -337,12 +350,30 @@ def test_activation_switches_and_rolls_back_matching_code_configuration_and_cata
     assert (tmp_path / "var/lib/iii/configuration/current").resolve() == working
     assert not (working / "checkpoint.json").exists()
     assert (working.stat().st_mode & 0o777) == 0o770
+    selected_live_state = json.loads(live_state_path.read_text())
+    assert selected_live_state["active_release_id"] == RELEASE_TWO
+    assert (
+        selected_live_state["configuration_hash"] == second.configuration_checkpoint_id
+    )
+    assert selected_live_state["target_state_hash"] == content_identity(
+        {
+            key: value
+            for key, value in selected_live_state.items()
+            if key != "target_state_hash"
+        }
+    )
 
     rolled_back = store.rollback(operation_id=second_operation)
     assert rolled_back["checkpoint"] == "rollback-selector-committed"
     assert rolled_back["autonomy_started"] is False
     assert store.current() == first
     assert store.current().mission_catalog_hash == CATALOG_ONE
+    rolled_back_live_state = json.loads(live_state_path.read_text())
+    assert rolled_back_live_state["active_release_id"] == RELEASE_ONE
+    assert (
+        rolled_back_live_state["configuration_hash"]
+        == first.configuration_checkpoint_id
+    )
     assert (tmp_path / "var/lib/iii/configuration/current").resolve() == (
         tmp_path
         / "var/lib/iii/configuration/working"

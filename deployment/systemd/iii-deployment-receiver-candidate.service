@@ -7,6 +7,8 @@ Conflicts=iii-deployment-receiver.service
 [Service]
 Type=simple
 ExecStart=/opt/iii/receiver/selectors/current/bin/iii-deployment-receiver --config /etc/iii/deployment-receiver.json --foreground
+Restart=on-failure
+RestartSec=500ms
 User=root
 Group=root
 UMask=0027

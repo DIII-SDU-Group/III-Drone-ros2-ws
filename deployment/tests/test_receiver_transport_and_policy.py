@@ -87,6 +87,17 @@ def test_unix_socket_readiness_probe_disconnect_does_not_crash_receiver() -> Non
     )
 
 
+def test_unix_socket_stalled_response_does_not_crash_receiver() -> None:
+    class StalledPeer:
+        def sendall(self, _payload: bytes) -> None:
+            raise socket.timeout("peer stopped reading")
+
+    UnixReceiverServer._send_response(
+        StalledPeer(),
+        {"schema": "iii.receiver-response/v1", "ok": False},
+    )
+
+
 def test_local_process_cannot_impersonate_forced_ssh_credential() -> None:
     with pytest.raises(ContractError, match="authenticated client|sshd session"):
         authenticate_forced_ssh_peer(os.getpid(), os.getuid(), CLIENT_ID)

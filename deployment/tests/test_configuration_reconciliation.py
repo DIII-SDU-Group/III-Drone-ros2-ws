@@ -227,6 +227,77 @@ def test_receiver_plans_read_only_then_reconciles_only_a_private_stage(tmp_path:
     }
 
 
+def test_receiver_preserves_wrapped_runtime_configuration_layout(tmp_path: Path):
+    from iii_drone_configuration import verify_configuration_checkpoint
+
+    contract = _materialize_contract(tmp_path / "contract-current")
+    releases = tmp_path / "releases"
+    checkpoints = tmp_path / "checkpoints"
+    old_release = "4" * 64
+    new_release = "5" * 64
+    target = "aircraft-wrapped"
+    _release(releases, old_release, contract)
+    _release(releases, new_release, contract)
+    flat = _source_checkpoint(
+        tmp_path, contract, release_id=old_release, target_id=target
+    )
+    flat_root = Path(flat["path"])
+
+    wrapped_state = tmp_path / "wrapped-state"
+    shutil.copytree(
+        flat_root,
+        wrapped_state / "iii_drone",
+        ignore=shutil.ignore_patterns("checkpoint.json"),
+    )
+    installed = __import__(
+        "iii_drone_configuration", fromlist=["load_installed_contract"]
+    ).load_installed_contract(contract).contract
+    wrapped = __import__(
+        "iii_drone_configuration", fromlist=["seal_configuration_checkpoint"]
+    ).seal_configuration_checkpoint(
+        writable_state_root=wrapped_state,
+        checkpoint_root=checkpoints,
+        target_id=target,
+        runtime_profile="real",
+        schema_version=installed.schema_version,
+        release_id=old_release,
+        manifest_id=installed.manifest_id,
+    )
+    working = tmp_path / "working-wrapped"
+    shutil.copytree(
+        Path(wrapped["path"]),
+        working,
+        ignore=shutil.ignore_patterns("checkpoint.json"),
+    )
+    reconciler = ReceiverConfigurationReconciler(
+        releases_root=releases,
+        checkpoints_root=checkpoints,
+        staging_root=tmp_path / "staging",
+        operations_root=tmp_path / "operations",
+        active_state_root=working,
+        target_id=target,
+        runtime_profile="real",
+    )
+
+    preflight = reconciler.preflight(
+        operation_id="receiver-wrapped-0001",
+        release_id=new_release,
+        source_checkpoint_id=wrapped["checkpoint_id"],
+    )
+    result = reconciler.apply(
+        operation_id="receiver-wrapped-0001",
+        release_id=new_release,
+        source_checkpoint_id=wrapped["checkpoint_id"],
+    )
+
+    assert result["result_checkpoint_id"] == preflight["result_checkpoint_id"]
+    checkpoint = checkpoints / result["result_checkpoint_id"]
+    verified = verify_configuration_checkpoint(checkpoint)
+    assert verified["release_id"] == new_release
+    assert (checkpoint / "iii_drone/state/real/contract.json").is_file()
+    assert not (checkpoint / "state").exists()
+
+
 def test_receiver_retries_discard_only_its_authenticated_private_stage(tmp_path: Path):
     contract = _materialize_contract(tmp_path / "contract-current")
     releases = tmp_path / "releases"

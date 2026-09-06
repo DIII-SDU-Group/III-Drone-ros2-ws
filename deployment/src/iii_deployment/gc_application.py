@@ -461,7 +461,7 @@ class GCApplicationStore:
     def _safety_gate(
         self, safety: Mapping[str, Any], override: Mapping[str, Any] | None
     ) -> None:
-        if safety.get("connected") is False or safety.get("profile") == "sim":
+        if safety.get("connected") is False or safety.get("profile") in {"sim", "hil"}:
             if override is not None:
                 raise GCApplicationError(
                     "maintenance override is invalid when the normal gate passes"
@@ -1263,8 +1263,8 @@ class GCApplicationStore:
                     qgc_version=verified_slot["record"]["qgroundcontrol"]["version"],
                     release_id=release_id,
                     profile=(
-                        safety.get("profile")
-                        if safety.get("profile") in {"real", "sim"}
+                        "sim"
+                        if safety.get("profile") in {"sim", "hil"}
                         else "real"
                     ),
                     qgc_running=False,

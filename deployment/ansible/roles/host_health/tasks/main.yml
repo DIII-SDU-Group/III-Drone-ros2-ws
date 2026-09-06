@@ -56,12 +56,11 @@
   ansible.builtin.slurp:
     src: /run/iii/receiver-readiness.json
   register: iii_health_readiness_raw
-  when: not ansible_check_mode
+  check_mode: false
 
 - name: Parse authenticated receiver readiness evidence
   ansible.builtin.set_fact:
     iii_health_readiness: "{{ iii_health_readiness_raw.content | b64decode | from_json }}"
-  when: not ansible_check_mode
 
 - name: Verify receiver readiness identity
   ansible.builtin.assert:
@@ -69,7 +68,6 @@
       - iii_health_readiness.schema == 'iii.receiver-readiness/v1'
       - iii_health_readiness.socket_open
       - iii_health_readiness.self_tests_passed
-  when: not ansible_check_mode
 
 - name: Verify every receiver and recovery unit is enabled
   ansible.builtin.command:
