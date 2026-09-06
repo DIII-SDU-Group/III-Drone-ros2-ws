@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/receiver-policy.schema.json",
+  "title": "III receiver privileged boundary policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "transport", "normal_release_mutable_paths", "normal_release_read_only_paths", "host_control_mutable_paths", "declared_systemd_units", "normal_release_forbidden_paths", "self_update_receiver_mutable_paths", "self_update_bootstrap_mutable_paths", "self_update_forbidden_paths", "deadlines_s", "authorization"],
+  "properties": {
+    "schema": {"const": "iii.receiver-policy/v1"},
+    "transport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "path", "tcp_listener", "ssh_forced_command"],
+      "properties": {
+        "kind": {"const": "unix-domain-socket"},
+        "path": {"const": "/run/iii/deployment-receiver.sock"},
+        "tcp_listener": {"const": false},
+        "ssh_forced_command": {"const": "/usr/bin/iii-deployment-ssh-gateway"}
+      }
+    },
+    "normal_release_mutable_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^/"}},
+    "normal_release_read_only_paths": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^/"}},
+    "host_control_mutable_paths": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^/"}},
+    "declared_systemd_units": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^iii-[a-z-]+\\.service$"}},
+    "normal_release_forbidden_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^/"}},
+    "self_update_receiver_mutable_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^/"}},
+    "self_update_bootstrap_mutable_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^/"}},
+    "self_update_forbidden_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^/"}},
+    "deadlines_s": {
+      "type": "object", "additionalProperties": false,
+      "required": ["target_acceptance", "hard", "rollback_target"],
+      "properties": {"target_acceptance": {"const": 60}, "hard": {"const": 120}, "rollback_target": {"const": 60}}
+    },
+    "authorization": {
+      "type": "object", "additionalProperties": false,
+      "required": ["nonce_expiry_s", "single_use", "target_wide_lease_count"],
+      "properties": {"nonce_expiry_s": {"const": 300}, "single_use": {"const": true}, "target_wide_lease_count": {"const": 1}}
+    }
+  }
+}

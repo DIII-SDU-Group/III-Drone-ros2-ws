@@ -63,7 +63,7 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     Workspace-root commands for devcontainer, simulation, III CLI, tmux, and
     ground-control operation from the development host.
 
-19. `automation-ready-authoring-contract.md`
+19. [`automation-ready-authoring-contract.md`](automation-ready-authoring-contract.md)
     Required structure, authority, evidence, recovery, structured-output, and
     next-action contract for every executable operator or automation workflow.
 
@@ -71,12 +71,87 @@ This `docs/` folder captures a full workspace-level technical overview of the pr
     Historical-data destination map and the evidence gate that must pass before
     the retired deployment repository can be archived.
 
-21. `release-bundle-format.md`
+21. `deployment-hardware-roles.md`
+    Shared Pi attached-device manifest, stable `/dev/iii/*` paths, authenticated
+    inspection, physical commissioning, and replacement-device policy.
+
+22. `release-bundle-format.md`
     Deterministic paired artifact layout, signing and signer rotation, inspection,
     verification, extraction limits, and operator commands.
 
+23. `qualified-release-pipeline.md`
+    Protected tag qualification, retained build/test evidence, immutable GitHub
+    publication, release-status transitions, CLI retrieval, and CI key rotation.
+
+24. `local-record-registry.md`
+    User-owned registry layout, deterministic full/incremental archives,
+    cross-computer recovery, secret exclusions, and explicit retention policy.
+
+25. `host-imaging-and-first-boot.md`
+    Checksum-pinned Raspberry Pi media imaging, typed physical-device proof,
+    NoCloud bootstrap boundaries, diagnostics, and Ethernet-first recovery.
+
+26. `host-provisioning.md`
+    Retained Ansible convergence, pinned host/ROS baseline, signed receiver
+    bootstrap, zero-drift proof, and first-boot authority finalization.
+
+27. `host-maintenance.md`
+    Explicit package and trust maintenance, offline cache gates, retained
+    before/after evidence, reboot reconciliation, recovery, and recommissioning.
+
+28. `raspberry-pi-boot-baseline.md`
+    Stock-preserving Raspberry Pi 5 boot policy, authenticated drift inspection,
+    retained setting maintenance, explicit reboot validation, and physical SD
+    repair/reprovision rehearsal.
+
+29. `gc-host-provisioning.md`
+    Stock Ubuntu 22.04/24.04 ground-control convergence, exact controller/runtime
+    locks, prepared-offline cache contract, persistent state, replacement-host
+    recovery, and graphical login lifecycle.
+
+30. `portable-host-backup-and-restore.md`
+    Receiver-coordinated portable state, external content-addressed backup,
+    post-reimage reconciliation, and powered-off removed-media salvage.
+
+31. `deployment-verification-matrix.md`
+    Decision/acceptance traceability, Q121-selected execution layers, signed local
+    evidence, exact Q131 candidate binding, and canonical audit/JUnit commands.
+
+32. [`generated/iii-command-reference.md`](generated/iii-command-reference.md)
+    Source-generated command paths, help signatures, and mutation/terminal traits.
+
+33. [`generated/deployment-schema-reference.md`](generated/deployment-schema-reference.md)
+    Source-generated Draft-7 deployment contract and required-field index.
+
+34. [`deployment-and-field-operations.md`](deployment-and-field-operations.md)
+    Canonical lifecycle manual from stock GC and raw SD card through
+    commissioning, qualified/field deployment, tuning, offline work, recovery,
+    backup, and retirement stop conditions.
+
+35. [`historical-records.md`](historical-records.md)
+    Explicit index of immutable research, planning, and implementation records
+    that are retained as evidence but are not current operating instructions.
+
+## Editable Repository Entry Points
+
+Package-local documentation remains useful in its own repository. The governed
+entry points are:
+
+- [Configuration](../src/III-Drone-Configuration/README.md)
+- [Contracts](../src/III-Drone-Contracts/README.md)
+- [Core](../src/III-Drone-Core/README.md)
+- [Ground Control](../src/III-Drone-GC/README.md)
+- [Interfaces](../src/III-Drone-Interfaces/README.md)
+- [Mission](../src/III-Drone-Mission/README.md)
+- [Runtime](../src/III-Drone-Runtime/README.md)
+- [Simulation](../src/III-Drone-Simulation/README.md)
+- [Supervision](../src/III-Drone-Supervision/README.md)
+- [III CLI](../tools/III-Drone-CLI/README.md)
+
 Domain language and context ownership are indexed by the root
-`CONTEXT-MAP.md`.
+[`CONTEXT-MAP.md`](../CONTEXT-MAP.md). Architecture decisions are indexed in
+[`adr/README.md`](adr/README.md), and agent-facing repository conventions route
+through [`agents/README.md`](agents/README.md).
 
 Deployment domain terms live in [`../deployment/CONTEXT.md`](../deployment/CONTEXT.md).
 Deployment ADRs extend this index without reopening the existing Operations

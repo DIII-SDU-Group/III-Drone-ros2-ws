@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/receiver-live-state.schema.json",
+  "title": "III receiver state binding for planned mutations",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "target_state_hash", "active_release_id", "configuration_hash", "commissioning_hash", "profile"],
+  "properties": {
+    "schema": {"const": "iii.receiver-live-state/v1"},
+    "target_state_hash": {"$ref": "#/definitions/identity"},
+    "active_release_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "configuration_hash": {"$ref": "#/definitions/identity"},
+    "commissioning_hash": {"$ref": "#/definitions/identity"},
+    "profile": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$"}
+  },
+  "definitions": {"identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

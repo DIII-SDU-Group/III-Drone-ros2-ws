@@ -9,19 +9,33 @@ description = "ROS-independent deployment contracts and tooling for III-Drone"
 requires-python = ">=3.10"
 dependencies = [
   "iii==0.2.0",
+  "iii-drone-configuration==2.2.0",
   "cryptography==45.0.6",
   "jsonschema==4.25.1",
+  "pymavlink==2.4.49",
   "PyYAML==6.0.2",
   "zstandard==0.23.0"
 ]
 
 [project.optional-dependencies]
 test = ["pytest==8.4.1"]
+gc = ["pymavlink==2.4.49"]
 
 [project.scripts]
 iii-deployment-verify = "iii_deployment.verification.cli:main"
 iii-deploymentctl = "iii_deployment.receiver.client:main"
+iii-deployment-ssh-gateway = "iii_deployment.receiver.ssh_gateway:main"
 iii-deployment-receiver = "iii_deployment.receiver.server:main"
+iii-receiver-bootstrap = "iii_deployment.receiver.bootstrap:main"
+iii-receiver-initial-install = "iii_deployment.receiver.install:main"
+iii-receiver-access-bootstrap = "iii_deployment.receiver.access_bootstrap:main"
+iii-host-bootstrap-finalize = "iii_deployment.receiver.host_finalize:main"
+iii-log-maintenance = "iii_deployment.log_maintenance:main"
+iii-network-revert = "iii_deployment.networking:revert_main"
+iii-network-apply = "iii_deployment.networking:apply_main"
+iii-px4-parameter-companion = "iii_deployment.px4_parameters:companion_main"
+iii-qgc-config-clean-exit = "iii_deployment.qgc_configuration:clean_exit_main"
+iii-host-salvage-worker = "iii_deployment.portable_state:salvage_main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -35,9 +49,19 @@ iii_deployment = ["assets/**/*.json", "assets/**/*.yaml", "assets/**/*.j2"]
 
 [tool.setuptools.data-files]
 "share/iii-deployment/schemas/v1" = ["schemas/v1/*.json"]
-"share/iii-deployment/policy" = ["operational-policy.json", "documentation-policy.json"]
-"share/iii-deployment/verification" = ["verification/clause-baseline.json"]
+"share/iii-deployment/policy" = ["operational-policy.json", "documentation-policy.json", "legacy-retirement-policy.json", "receiver-policy.json", "runtime-targets.json", "middleware-policy.json", "gc-host-policy.json", "gc-application-policy.json", "portable-state-policy.json"]
+"share/iii-deployment/documentation" = ["documentation-manifest.json", "documentation-review.json"]
+"share/iii-deployment/retirement" = ["legacy-archive-metadata.json"]
+"share/iii-deployment/verification" = ["verification/clause-baseline.json", "verification/clause-migrations.json", "verification/matrix.json", "verification/policy.json"]
+"share/iii-deployment/systemd" = ["systemd/*.service", "systemd/*.timer"]
+"share/iii-deployment/host" = ["host/*.json", "host/*.sudoers"]
+"share/iii-deployment/provisioning" = ["provisioning/*.json"]
+"share/iii-deployment/hardware" = ["hardware/*.json", "hardware/*.rules"]
+"share/iii-deployment/boot" = ["boot/*.json"]
+"share/iii-deployment/px4" = ["px4/*.json"]
+"share/iii-deployment/qgc" = ["qgc/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = ["target: privileged target-equivalent ARM64/systemd integration test"]

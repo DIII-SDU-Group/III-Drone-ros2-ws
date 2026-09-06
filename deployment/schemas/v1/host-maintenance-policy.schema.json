@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/host-maintenance-policy.schema.json",
+  "title": "III fixed host-maintenance policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "policy_id", "target_class", "platform", "host_contract", "snapshots", "governed_packages", "trust", "reboot", "boot", "application_deployment_may_manage_packages"],
+  "properties": {
+    "schema": {"const": "iii.host-maintenance-policy/v1"},
+    "policy_id": {"$ref": "#/definitions/hash"},
+    "target_class": {"const": "raspberry-pi-5-noble-arm64"},
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["distribution", "release", "codename", "architecture", "ros_distro"],
+      "properties": {
+        "distribution": {"const": "Ubuntu"},
+        "release": {"const": "24.04"},
+        "codename": {"const": "noble"},
+        "architecture": {"const": "aarch64"},
+        "ros_distro": {"const": "jazzy"}
+      }
+    },
+    "host_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline_id", "unit_contract_id", "target_definition_id", "shared_target_profile_id"],
+      "properties": {
+        "baseline_id": {"$ref": "#/definitions/hash"},
+        "unit_contract_id": {"$ref": "#/definitions/hash"},
+        "target_definition_id": {"$ref": "#/definitions/hash"},
+        "shared_target_profile_id": {"$ref": "#/definitions/hash"}
+      }
+    },
+    "snapshots": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ubuntu", "ros", "ros_key_fingerprint", "ros_key_sha256"],
+      "properties": {
+        "ubuntu": {"type": "string", "pattern": "^https://snapshot\\.ubuntu\\.com/ubuntu/[0-9]{8}T[0-9]{6}Z$"},
+        "ros": {"type": "string", "pattern": "^http://snapshots\\.ros\\.org/jazzy/[0-9]{4}-[0-9]{2}-[0-9]{2}/ubuntu$"},
+        "ros_key_fingerprint": {"type": "string", "pattern": "^[A-F0-9]{40}$"},
+        "ros_key_sha256": {"$ref": "#/definitions/hash"}
+      }
+    },
+    "governed_packages": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.+-]*(=[0-9][A-Za-z0-9.+:~_-]+)?$"}
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundle", "release_status"],
+      "properties": {
+        "bundle": {"const": {"path": "/etc/iii/trust/bundle-signers.json", "required_authority": "ci-qualified"}},
+        "release_status": {"const": {"path": "/etc/iii/trust/release-status-signers.json", "required_authority": "release-status"}}
+      }
+    },
+    "reboot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_marker", "package_prefixes", "automatic"],
+      "properties": {
+        "required_marker": {"const": "/var/run/reboot-required"},
+        "package_prefixes": {"const": ["linux-", "raspberrypi-firmware"]},
+        "automatic": {"const": false}
+      }
+    },
+    "boot": {
+      "const": {
+        "installed_profile_path": "/etc/iii/boot-profile.json",
+        "config_path": "/boot/firmware/config.txt",
+        "cmdline_path": "/boot/firmware/cmdline.txt",
+        "backup_paths": ["/etc/iii/boot-profile.json", "/boot/firmware/cmdline.txt", "/boot/firmware/config.txt"],
+        "changes_require_reboot": true,
+        "application_release_may_mutate": false
+      }
+    },
+    "application_deployment_may_manage_packages": {"const": false}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

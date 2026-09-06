@@ -7,6 +7,14 @@ Container images remain useful for:
 - dependency/bootstrap reference (`Dockerfile`)
 - production ARM64 cross-compilation (`Dockerfile.cc`)
 
+| Environment | Purpose | Runtime/build boundary |
+|---|---|---|
+| Development host | VS Code, native pinned QGC, and devcontainer control | Does not run the ROS graph directly |
+| Jazzy devcontainer at `/home/iii/ws` | Builds, III-only tests, PX4 SITL, Gazebo, and the simulated III graph | Development and simulation only |
+| Pinned amd64 ARM64 builder | Produces native AArch64 release trees against the immutable target definition | Offboard build only; never contacts an aircraft |
+| Native aircraft | Runs the activated Jazzy/AArch64 release under systemd and the III daemon | No source checkout, Docker, compiler, or mutable sysroot |
+| Native GC/QGC host | Runs the host-managed frontend/proxy images and pinned QGC AppImage | No onboard runtime ownership |
+
 ## 1. Build System
 
 Primary build system: `colcon` with workspace defaults (`defaults.yaml`).
@@ -25,7 +33,7 @@ The workspace defines explicit runtime modes via shell profiles:
 1. `setup_dev.bash`
 - Sets `SIMULATION=true`
 - Sets `III_SYSTEM_PROFILE=sim`
-- Loads paths, remote settings, log levels, ROS middleware variables
+- Loads workspace paths, log levels, and ROS middleware variables
 - Sets `COLCON_HOME` to workspace
 
 2. `setup_real.bash`
@@ -35,19 +43,29 @@ The workspace defines explicit runtime modes via shell profiles:
 - Sources the installed ROS/workspace setup expected on the target OS
 
 3. `setup_remote.bash`
-- Remote tooling profile for deployment/SSH workflow. Remote runtime-control
-  commands use `iii-runtime-api` with `III_RUNTIME_API_URL` and
-  `III_RUNTIME_API_CLI_TOKEN`; SSH remains for deploy/sync/admin tasks.
+- Checkout-local operator profile for deployment. Remote runtime-control commands use
+  `iii-runtime-api` with `III_RUNTIME_API_URL` and the per-computer runtime
+  credential. Deployment uses a dedicated per-computer Ed25519 key with key-only
+  SSH to `iii-deploy@iii.local`; its forced gateway permits canonical receiver requests
+  and fixed-root resumable SFTP only. It is not a workspace synchronization or
+  administrative shell. Attended development and field maintenance instead use
+  the separately keyed `iii@iii.local` account, whose interactive shell has
+  full passwordless sudo but no forwarding/tunneling and is not an Ansible or
+  receiver transport. Server host-key authentication is intentionally absent
+  in the initial local-network model and remains an explicitly reported
+  spoofing/MITM risk.
 
 Shared env and path conventions:
 - `CONFIG_BASE_DIR`
 - `NODE_MANAGEMENT_CONFIG_DIR`
-- `MISSION_SPECIFICATION_DIR`
-- `BEHAVIOR_TREES_DIR`
 - `III_SYSTEM_RUNTIME_DIR`
 - `III_SYSTEM_DAEMON_SOCKET`
 - `III_SYSTEM_DAEMON_LOG`
 - `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`
+
+Mission specifications and behavior trees are installed, content-addressed
+package assets. Runtime selection uses mission catalog IDs and does not depend on
+source-tree path environment variables.
 
 ## 3. Development Container
 
@@ -76,7 +94,7 @@ Post hooks:
 - rewrites Ubuntu archive/security apt sources to HTTPS while leaving ROS package sources on HTTP
 - installs stable OS, ROS, and development tooling in an early apt layer using `--no-install-recommends`
 - installs Python requirements
-- installs QGroundControl AppImage + dev tools
+- installs PX4/Gazebo development tools; QGroundControl is host-native and release-managed
 - installs GUI/simulation operator packages, the runtime API service
   dependencies, and workspace ROS/runtime package dependencies in late apt
   layers so package additions do not invalidate the expensive stable layers
@@ -138,6 +156,57 @@ unsafe links, unmerged indexes, missing repositories, and unclassified artifact
 impact fail closed. The Markdown report is mandatory provenance for a field-
 development release. A caller requesting components must pass all inferred
 components; omitting either side of a shared-contract change is rejected.
+
+### Rapid drone-code field iteration
+
+For a change confined to `src/III-Drone-Core` (or another source root mapped
+only to the `DRONE` rule), capture a fresh snapshot and request only `drone`.
+The impact calculation is the authority: it permits the lightweight build and
+deployment only when it reports `components: ["drone"]`; changes to deployment,
+interfaces, configuration, CLI, lockfiles, or GC content require the paired
+GC/drone release instead. Local Python `*.egg-info` metadata is generated
+output and is excluded from the snapshot.
+
+```bash
+PYTHONPATH=deployment/src python3 scripts/release/capture_source_snapshot.py \
+  --output "$evidence/source-snapshot.json" \
+  --report "$evidence/source-provenance.md" \
+  --component drone
+
+PYTHONPATH=deployment/src python3 scripts/build/build_arm64_release.py \
+  --snapshot "$evidence/source-snapshot.json" \
+  --component drone --cache "$cache" --output "$output" \
+  --wheelhouse "$wheelhouse" --wheel-lock deployment/python-wheel-lock.json \
+  --parallel-workers "$workers"
+```
+
+Package the signed field bundle and use `iii deploy plan` followed by
+`iii deploy field --component drone`; the latter remains disarmed-safe and
+performs the same receiver, configuration-checkpoint, PX4 audit, and readiness
+gates as a paired deployment. The cached toolchain and package cache make this
+the intended in-field code-update path; it never rebuilds or reflashes PX4
+when its release audit matches.
+
+Set `workers` to the maximum CPU share available to the build (for example,
+half of `nproc`). The cap applies to colcon package scheduling and CMake/make
+compilation, and Docker enforces the same value as a hard aggregate CPU quota
+for the pinned builder container.
+
+Field-development signing uses the encrypted owner-only key in
+`~/.config/iii/credentials/provisioning/field-signing-key.pem`. Before an
+assemble/package command, provide only its non-secret OS-keyring account; the
+passphrase is read directly by the keyring provider and is never placed in an
+argument, file, log, or environment value:
+
+```bash
+export III_FIELD_SIGNING_KEYRING_ACCOUNT=provisioning
+```
+
+The signer must match the target's enrolled `workstation-field` public signer.
+Do not use a private key in the workspace, even for an otherwise valid bundle.
+Paired GC/drone staging also enforces the GC host cache free-space reserve; do
+not weaken that reserve to force a field update. Free or attach sufficient
+operator-workstation storage, then rerun the retained deployment plan.
 
 ### Cached ARM64 release build
 
@@ -204,6 +273,12 @@ build. Only a release that passes every check receives `build-record.json` and
 is atomically renamed to the requested output path. A failed partial directory
 is diagnostic evidence and is never packageable as a complete release.
 
+The paired GC image builder uses the same governed materialized source tree as
+its Docker build context. It never walks the surrounding workspace or includes
+unrelated local evidence and generated artifacts in a release build. Pass the
+same `--parallel-workers "$workers"` value to `build_gc_release.py`; it creates
+an isolated BuildKit worker with a matching aggregate CPU quota.
+
 ## 5. Entrypoints
 
 - `entrypoint_dev.sh`: source ROS + workspace install if exists.
@@ -223,7 +298,7 @@ Dependency sources:
 
 Workspace scripts provide utility for:
 - package/executable discovery
-- remote install/setup
+- authenticated receiver and runtime-API control
 - devcontainer startup behavior
 - docker compose builds
 - GUI v2 full-suite and sim E2E smoke verification
@@ -248,7 +323,8 @@ Runtime ownership is:
   control plane
 - the GC proxy/frontend run on the ground-control computer and do not require
   ROS, DDS, MAVSDK, or runtime Python packages
-- PX4 hardware, PX4 SITL/Gazebo, and QGroundControl are external to III supervision
+- PX4 hardware and PX4 SITL/Gazebo are external to III supervision; host QGroundControl is independently operated through `iii qgc`
+- release-owned PX4/QGC policy is shipped with `iii-deployment`; `iii px4 params` and `iii qgc config` provide backup-first retained-plan workflows while activation itself remains read-only toward the FMU
 
 GUI v2 compose entrypoints:
 

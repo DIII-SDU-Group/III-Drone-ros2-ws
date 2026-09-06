@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/px4-network-baseline.schema.json",
+  "title": "Release-owned PX4 Ethernet network and transport baseline",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "baseline_id", "profile", "firmware", "network", "transports", "parameter_requirements", "artifacts"],
+  "properties": {
+    "schema": {"const": "iii.px4-network-baseline/v1"},
+    "baseline_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "profile": {"const": "real"},
+    "firmware": {
+      "type": "object", "additionalProperties": false,
+      "required": ["compatible_range", "reference_commit"],
+      "properties": {
+        "compatible_range": {"const": ">=1.16.1,<1.17.0"},
+        "reference_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"}
+      }
+    },
+    "network": {
+      "type": "object", "additionalProperties": false,
+      "required": ["device", "boot_protocol", "px4_address", "netmask", "companion_address", "router", "dns"],
+      "properties": {
+        "device": {"const": "eth0"},
+        "boot_protocol": {"const": "static"},
+        "px4_address": {"const": "10.41.10.2"},
+        "netmask": {"const": "255.255.255.0"},
+        "companion_address": {"const": "10.41.10.1"},
+        "router": {"const": "0.0.0.0"},
+        "dns": {"const": "0.0.0.0"}
+      }
+    },
+    "transports": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mavlink", "mavlink_audit", "uxrce_dds"],
+      "properties": {
+        "mavlink": {
+          "type": "object", "additionalProperties": false,
+          "required": ["startup_owner", "local_port", "remote_port", "remote_address", "mode", "max_rate_bytes_s", "ftp_enabled"],
+          "properties": {
+            "startup_owner": {"const": "extras.txt"},
+            "local_port": {"const": 14540},
+            "remote_port": {"const": 14540},
+            "remote_address": {"const": "10.41.10.1"},
+            "mode": {"const": "onboard"},
+            "max_rate_bytes_s": {"const": 100000},
+            "ftp_enabled": {"const": true}
+          }
+        },
+        "mavlink_audit": {
+          "type": "object", "additionalProperties": false,
+          "required": ["startup_owner", "local_port", "remote_port", "remote_address", "mode", "max_rate_bytes_s", "ftp_enabled"],
+          "properties": {
+            "startup_owner": {"const": "extras.txt"},
+            "local_port": {"const": 14541},
+            "remote_port": {"const": 14541},
+            "remote_address": {"const": "10.41.10.1"},
+            "mode": {"const": "onboard"},
+            "max_rate_bytes_s": {"const": 100000},
+            "ftp_enabled": {"const": true}
+          }
+        },
+        "uxrce_dds": {
+          "type": "object", "additionalProperties": false,
+          "required": ["startup_owner", "agent_address", "agent_port"],
+          "properties": {
+            "startup_owner": {"const": "extras.txt"},
+            "agent_address": {"const": "10.41.10.1"},
+            "agent_port": {"const": 8888}
+          }
+        }
+      }
+    },
+    "parameter_requirements": {
+      "type": "object", "additionalProperties": false,
+      "required": ["MAV_2_CONFIG", "UXRCE_DDS_CFG", "UXRCE_DDS_DOM_ID", "UXRCE_DDS_KEY"],
+      "properties": {
+        "MAV_2_CONFIG": {"const": 0},
+        "UXRCE_DDS_CFG": {"const": 0},
+        "UXRCE_DDS_DOM_ID": {"const": 0},
+        "UXRCE_DDS_KEY": {"const": 1}
+      }
+    },
+    "artifacts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["net_cfg_path", "net_cfg_sha256", "extras_path", "extras_sha256"],
+      "properties": {
+        "net_cfg_path": {"const": "/fs/microsd/etc/iii-network-baseline.cfg"},
+        "net_cfg_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "extras_path": {"const": "/fs/microsd/etc/extras.txt"},
+        "extras_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  }
+}

@@ -210,6 +210,9 @@ def test_operation_contract_covers_every_settled_automation_boundary() -> None:
         "deployment-handoff",
     }
     assert CONTRACT["trusted_boundaries"]["pull_request_body"] == "untrusted transport only"
+    for family in ("feature-pr", "stacked-pr", "develop-to-main", "main-to-release"):
+        assert "pr-close" in CONTRACT["operations"][family]["mutation_kinds"]
+        assert "pr-merge" in CONTRACT["operations"][family]["mutation_kinds"]
 
 
 @pytest.mark.parametrize("operation", sorted(CONTRACT["operations"]))
@@ -298,6 +301,7 @@ def test_workflows_are_pinned_bounded_least_privilege_and_trust_explicit() -> No
         ROOT / ".github/workflows/dependency-governance.yml"
     ).read_text(encoding="utf-8")
     assert "context.payload.pull_request.body" not in workflow_source
+    assert "pip install --disable-pip-version-check ./src/III-Drone-Contracts" in workflow_source
 
     submodule_workflow = yaml.safe_load(
         (ROOT / "deployment/governance/submodule-workflow.yml").read_text(encoding="utf-8")

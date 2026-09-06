@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/gc-provisioning-report.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "operation_id", "plan_content_id", "platform_id", "state", "runs", "drift", "archive_import", "fresh_identity", "report_id"],
+  "properties": {
+    "schema": {"const": "iii.gc-provisioning-report/v1"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "plan_content_id": {"$ref": "#/definitions/hash"},
+    "platform_id": {"enum": ["ubuntu-22.04-x86_64", "ubuntu-24.04-x86_64"]},
+    "state": {"const": "provisioned"},
+    "runs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["first_convergence", "idempotence_check"],
+      "properties": {
+        "first_convergence": {"$ref": "#/definitions/recap"},
+        "idempotence_check": {"$ref": "#/definitions/recap"}
+      }
+    },
+    "drift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operational", "development", "application", "unmanaged_user_state"],
+      "properties": {
+        "operational": {"$ref": "#/definitions/managed_drift"},
+        "development": {"$ref": "#/definitions/managed_drift"},
+        "application": {"$ref": "#/definitions/managed_drift"},
+        "unmanaged_user_state": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["managed", "changed", "reason"],
+          "properties": {
+            "managed": {"const": false},
+            "changed": {"type": "null"},
+            "reason": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "archive_import": {"type": ["object", "null"]},
+    "fresh_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["machine_identity_sha256", "ssh_public_key_sha256", "private_material_exported", "runtime_enrollment_required"],
+      "properties": {
+        "machine_identity_sha256": {"$ref": "#/definitions/hash"},
+        "ssh_public_key_sha256": {"$ref": "#/definitions/hash"},
+        "private_material_exported": {"const": false},
+        "runtime_enrollment_required": {"const": true}
+      }
+    },
+    "report_id": {"$ref": "#/definitions/hash"}
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "managed_drift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["managed", "changed", "failures"],
+      "properties": {
+        "managed": {"const": true},
+        "changed": {"type": "integer", "minimum": 0},
+        "failures": {"type": "integer", "minimum": 0}
+      }
+    },
+    "recap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "check_mode", "hosts", "totals"],
+      "properties": {
+        "schema": {"const": "iii.ansible-run-result/v1"},
+        "check_mode": {"type": "boolean"},
+        "hosts": {"type": "object", "minProperties": 1},
+        "totals": {"type": "object"},
+        "categories": {"type": "object"}
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/receiver-readiness.schema.json",
+  "title": "Exact receiver bootstrap readiness proof",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "receiver_id", "generation", "socket_open", "self_tests_passed", "journal_compatible", "bootstrap_protocol", "cli_protocol", "request_protocol"],
+  "properties": {
+    "schema": {"const": "iii.receiver-readiness/v1"},
+    "receiver_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "generation": {"type": "integer", "minimum": 1},
+    "socket_open": {"const": true},
+    "self_tests_passed": {"const": true},
+    "journal_compatible": {"const": true},
+    "bootstrap_protocol": {"const": "1"},
+    "cli_protocol": {"const": "1"},
+    "request_protocol": {"const": "1"}
+  }
+}

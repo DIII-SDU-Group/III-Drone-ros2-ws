@@ -1,0 +1,38 @@
+---
+- name: Verify permanent receiver access before bootstrap revocation
+  ansible.builtin.command:
+    argv:
+      - /opt/iii/receiver/bootstrap/bin/iii-receiver-access-bootstrap
+      - --enrollment
+      - /etc/iii/bootstrap-machine-enrollment.json
+      - --transport-uid
+      - "{{ iii_deployment_uid | string }}"
+      - --transport-gid
+      - "{{ iii_deployment_gid | string }}"
+  register: iii_finalize_access
+  changed_when: false
+  check_mode: false
+
+- name: Require an unchanged active forced-command access set
+  ansible.builtin.assert:
+    that:
+      - not (iii_finalize_access.stdout | from_json).changed
+      - (iii_finalize_access.stdout | from_json).active_machines | length > 0
+      - (iii_finalize_access.stdout | from_json).forced_command == '/usr/bin/iii-deployment-ssh-gateway'
+
+- name: Finalize cloud-init sanitization and revoke bootstrap authority atomically
+  # The finalizer removes the authenticated account and its home. Raw transport
+  # deliberately avoids uploading an Ansible module beneath that home, while the
+  # already-authenticated SSH process can still return the canonical report.
+  ansible.builtin.raw: >-
+    /opt/iii/receiver/bootstrap/bin/iii-host-bootstrap-finalize
+    --baseline-id {{ iii_baseline_id }}
+  register: iii_host_finalize
+  changed_when: iii_host_finalize.rc == 0
+  when: not ansible_check_mode
+
+- name: Authenticate terminal finalizer completion after authority revocation
+  ansible.builtin.assert:
+    that:
+      - iii_host_finalize.rc == 0
+  when: not ansible_check_mode

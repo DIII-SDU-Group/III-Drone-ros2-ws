@@ -1,0 +1,9 @@
+{{ {
+  'schema': 'iii.host-hardware-baseline/v1',
+  'target_class': iii_target_class,
+  'target_definition_id': iii_target_definition_id,
+  'packages': iii_hardware_packages,
+  'udev_fragments': ['90-iii-hardware-roles.rules'],
+  'device_role_manifest': '/etc/iii/hardware-role-manifest.json',
+  'device_role_manifest_owner': 'shared-hardware-class'
+} | iii_canonical_json }}

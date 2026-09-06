@@ -1,0 +1,10 @@
+[Unit]
+Description=Open the III Ground Control operator interface
+PartOf=graphical-session.target
+After=iii-gc-frontend.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/xdg-open http://127.0.0.1:5173/
+
+# Deliberately no Install section: browser launch is always explicit.

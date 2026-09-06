@@ -3,13 +3,15 @@
   "$id": "https://iii-drone.invalid/schemas/v1/operational-policy.schema.json",
   "title": "III operational policy",
   "type": "object", "additionalProperties": false,
-  "required": ["schema_version", "safety", "activation", "receiver", "network", "storage", "logging", "signing", "transfer", "clock", "px4_mirror", "gc_cache", "backup", "authorization", "bundle", "status"],
+  "required": ["schema_version", "safety", "activation", "staging", "host_maintenance", "receiver", "network", "storage", "logging", "signing", "transfer", "clock", "px4_mirror", "gc_cache", "backup", "authorization", "bundle", "status"],
   "properties": {
     "schema_version": {"const": "1"},
     "safety": {"$ref": "#/definitions/safety"},
     "activation": {"$ref": "#/definitions/activation"},
+    "staging": {"type": "object", "additionalProperties": false, "required": ["target_acceptance_s", "hard_deadline_s", "rollback_target_s"], "properties": {"target_acceptance_s": {"const": 300}, "hard_deadline_s": {"const": 600}, "rollback_target_s": {"const": 60}}},
+    "host_maintenance": {"type": "object", "additionalProperties": false, "required": ["target_acceptance_s", "hard_deadline_s", "rollback_target_s"], "properties": {"target_acceptance_s": {"const": 1800}, "hard_deadline_s": {"const": 7200}, "rollback_target_s": {"const": 60}}},
     "receiver": {"type": "object", "additionalProperties": false, "required": ["self_update_deadline_s"], "properties": {"self_update_deadline_s": {"type": "integer", "minimum": 30}}},
-    "network": {"type": "object", "additionalProperties": false, "required": ["confirmation_deadline_s", "ethernet_dhcp_required"], "properties": {"confirmation_deadline_s": {"type": "integer", "minimum": 90}, "ethernet_dhcp_required": {"const": true}}},
+    "network": {"type": "object", "additionalProperties": false, "required": ["confirmation_deadline_s", "ethernet_dhcp_required"], "properties": {"confirmation_deadline_s": {"const": 90}, "ethernet_dhcp_required": {"const": true}}},
     "storage": {"type": "object", "additionalProperties": false, "required": ["minimum_reserve_bytes", "minimum_reserve_percent"], "properties": {"minimum_reserve_bytes": {"type": "integer", "minimum": 2147483648}, "minimum_reserve_percent": {"type": "number", "minimum": 10, "maximum": 100}}},
     "logging": {"$ref": "#/definitions/logging"},
     "signing": {"type": "object", "additionalProperties": false, "required": ["agent_timeout_h", "agent_max_timeout_h"], "properties": {"agent_timeout_h": {"type": "integer", "minimum": 8, "maximum": 24}, "agent_max_timeout_h": {"const": 24}}},
@@ -24,10 +26,9 @@
   },
   "definitions": {
     "safety": {"type": "object", "additionalProperties": false, "required": ["telemetry_max_age_ms", "stable_preflight_s", "acceptance_stable_s"], "properties": {"telemetry_max_age_ms": {"type": "integer", "maximum": 1000, "minimum": 1}, "stable_preflight_s": {"type": "number", "minimum": 3}, "acceptance_stable_s": {"type": "number", "minimum": 10}}},
-    "activation": {"type": "object", "additionalProperties": false, "required": ["target_acceptance_s", "hard_deadline_s", "rollback_target_s"], "properties": {"target_acceptance_s": {"type": "integer", "maximum": 60, "minimum": 1}, "hard_deadline_s": {"const": 120}, "rollback_target_s": {"type": "integer", "maximum": 60, "minimum": 1}}},
+    "activation": {"oneOf": [{"type": "object", "additionalProperties": false, "required": ["target_acceptance_s", "hard_deadline_s", "rollback_target_s"], "properties": {"target_acceptance_s": {"const": 180}, "hard_deadline_s": {"const": 300}, "rollback_target_s": {"const": 60}}}, {"type": "object", "additionalProperties": false, "required": ["target_acceptance_s", "hard_deadline_s", "rollback_target_s"], "properties": {"target_acceptance_s": {"const": 60}, "hard_deadline_s": {"const": 120}, "rollback_target_s": {"const": 60}}}]},
     "logging": {"type": "object", "additionalProperties": false, "required": ["degraded_max_records", "degraded_max_bytes", "protected_completed_sessions", "retention_days", "maximum_bytes", "maximum_filesystem_percent", "debug_session_max_bytes", "deployment_audits", "failed_diagnostics_days"], "properties": {"degraded_max_records": {"const": 10000}, "degraded_max_bytes": {"const": 16777216}, "protected_completed_sessions": {"type": "integer", "minimum": 4}, "retention_days": {"type": "integer", "minimum": 14}, "maximum_bytes": {"type": "integer", "maximum": 1073741824, "minimum": 1}, "maximum_filesystem_percent": {"type": "number", "maximum": 5, "exclusiveMinimum": 0}, "debug_session_max_bytes": {"type": "integer", "maximum": 268435456, "minimum": 1}, "deployment_audits": {"type": "integer", "minimum": 50}, "failed_diagnostics_days": {"type": "integer", "minimum": 30}}},
     "clock": {"type": "object", "additionalProperties": false, "required": ["minimum_samples", "maximum_rtt_ms", "gate_maximum_offset_ms", "backward_discontinuity_ms", "forward_discontinuity_ms", "active_warning_offset_ms", "active_resync_offset_ms"], "properties": {"minimum_samples": {"type": "integer", "minimum": 5}, "maximum_rtt_ms": {"type": "integer", "maximum": 500, "minimum": 1}, "gate_maximum_offset_ms": {"type": "integer", "maximum": 250, "minimum": 0}, "backward_discontinuity_ms": {"type": "integer", "maximum": 250, "minimum": 1}, "forward_discontinuity_ms": {"type": "integer", "maximum": 2000, "minimum": 1}, "active_warning_offset_ms": {"type": "integer", "maximum": 250, "minimum": 0}, "active_resync_offset_ms": {"type": "integer", "maximum": 1000, "minimum": 1}}},
     "bundle": {"type": "object", "additionalProperties": false, "required": ["maximum_unpacked_bytes", "maximum_entries", "maximum_path_bytes", "maximum_path_depth"], "properties": {"maximum_unpacked_bytes": {"const": 21474836480}, "maximum_entries": {"const": 200000}, "maximum_path_bytes": {"const": 255}, "maximum_path_depth": {"const": 32}}}
   }
 }
-

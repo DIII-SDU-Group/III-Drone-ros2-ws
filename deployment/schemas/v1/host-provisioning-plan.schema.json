@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iii-drone.local/schemas/v1/host-provisioning-plan.schema.json",
+  "title": "III retained host provisioning plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "operation_id", "target", "target_class", "logical_target", "profile",
+    "inventory", "input", "ansible", "ansible_playbook", "artifacts", "controller_inputs",
+    "repositories", "required_checks", "declared_permissions", "mutations", "content_id"
+  ],
+  "properties": {
+    "schema": {"const": "iii.host-provisioning-plan/v1"},
+    "operation_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"},
+    "target": {"type": "string", "minLength": 1, "maxLength": 255, "pattern": "^\\S+$"},
+    "target_class": {"const": "raspberry-pi-5-noble-arm64"},
+    "logical_target": {"const": "drone"},
+    "profile": {"enum": ["real", "opti_track", "hil"]},
+    "inventory": {"$ref": "#/definitions/fileIdentity"},
+    "input": {"$ref": "#/definitions/fileIdentity"},
+    "ansible": {"$ref": "#/definitions/treeIdentity"},
+    "ansible_playbook": {"type": "string", "minLength": 1},
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receiver_bundle_source", "receiver_wheelhouse_source"],
+      "properties": {
+        "receiver_bundle_source": {"$ref": "#/definitions/treeIdentity"},
+        "receiver_wheelhouse_source": {"$ref": "#/definitions/treeIdentity"}
+      }
+    },
+    "controller_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundle_trust_source", "release_status_trust_source", "receiver_update_trust_source",
+        "operator_enrollment_source", "maintenance_ssh_public_key_source", "runtime_api_secret_source"
+      ],
+      "properties": {
+        "bundle_trust_source": {"$ref": "#/definitions/fileIdentity"},
+        "release_status_trust_source": {"$ref": "#/definitions/fileIdentity"},
+        "receiver_update_trust_source": {"$ref": "#/definitions/fileIdentity"},
+        "operator_enrollment_source": {"$ref": "#/definitions/fileIdentity"},
+        "maintenance_ssh_public_key_source": {"$ref": "#/definitions/fileIdentity"},
+        "runtime_api_secret_source": {"$ref": "#/definitions/fileIdentity"}
+      }
+    },
+    "repositories": {
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["repository", "branch", "old_sha", "new_sha", "mutation"],
+        "properties": {
+          "repository": {"type": "string", "minLength": 1},
+          "branch": {"type": "string", "minLength": 1},
+          "old_sha": {"$ref": "#/definitions/gitSha"},
+          "new_sha": {"$ref": "#/definitions/gitSha"},
+          "mutation": {"const": "none"}
+        }
+      }
+    },
+    "required_checks": {"$ref": "#/definitions/nonemptyStrings"},
+    "declared_permissions": {"$ref": "#/definitions/nonemptyStrings"},
+    "mutations": {"$ref": "#/definitions/nonemptyStrings"},
+    "content_id": {"$ref": "#/definitions/sha256"}
+  },
+  "definitions": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "gitSha": {"type": "string", "pattern": "^[a-f0-9]{40,64}$"},
+    "fileIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/definitions/sha256"}
+      }
+    },
+    "treeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "content_id", "files"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "content_id": {"$ref": "#/definitions/sha256"},
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sha256", "size", "mode"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "sha256": {"$ref": "#/definitions/sha256"},
+              "size": {"type": "integer", "minimum": 0},
+              "mode": {"type": "string", "pattern": "^[0-7]{4}$"}
+            }
+          }
+        }
+      }
+    },
+    "nonemptyStrings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

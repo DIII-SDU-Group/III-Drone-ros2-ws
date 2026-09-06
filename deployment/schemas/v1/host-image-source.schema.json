@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/host-image-source.schema.json",
+  "title": "III pinned upstream host image source",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "source_id", "publisher", "product", "release", "series", "architecture", "platform", "filename", "url", "checksum_manifest_url", "sha256", "compression", "minimum_target_bytes", "partition_contract"],
+  "properties": {
+    "schema": {"const": "iii.host-image-source/v1"},
+    "source_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{7,127}$"},
+    "publisher": {"const": "Canonical"},
+    "product": {"const": "Ubuntu Server"},
+    "release": {"type": "string", "pattern": "^24\\.04\\.[0-9]+$"},
+    "series": {"const": "noble"},
+    "architecture": {"const": "arm64"},
+    "platform": {"const": "raspberry-pi"},
+    "filename": {"type": "string", "pattern": "^ubuntu-24\\.04\\.[0-9]+-preinstalled-server-arm64\\+raspi\\.img\\.xz$"},
+    "url": {"type": "string", "pattern": "^https://cdimage\\.ubuntu\\.com/releases/24\\.04/release/[^/]+\\.img\\.xz$"},
+    "checksum_manifest_url": {"const": "https://cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS"},
+    "sha256": {"$ref": "#/definitions/hash"},
+    "compression": {"const": "xz"},
+    "minimum_target_bytes": {"type": "integer", "minimum": 8589934592},
+    "partition_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "boot_partition", "root_filesystem", "custom_partitions", "lvm", "encryption", "ab_root", "persistent_paths_share_root"],
+      "properties": {
+        "strategy": {"const": "upstream-image"},
+        "boot_partition": {"const": "upstream-supported-raspberry-pi"},
+        "root_filesystem": {"const": "upstream-auto-expanded-ext4"},
+        "custom_partitions": {"const": false},
+        "lvm": {"const": false},
+        "encryption": {"const": false},
+        "ab_root": {"const": false},
+        "persistent_paths_share_root": {"const": ["/opt/iii", "/var/lib/iii", "/var/log/iii"]}
+      }
+    }
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

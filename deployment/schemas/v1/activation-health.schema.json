@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/activation-health.schema.json",
+  "title": "III onboard activation health observation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "evidence_id", "release_id", "profile", "boot_id", "observed_monotonic", "receiver", "bootstrap", "daemon", "runtime_api", "configuration", "hardware_roles", "services", "managed_nodes", "systemd_units", "px4", "operations"],
+  "properties": {
+    "schema": {"const": "iii.activation-health/v1"},
+    "evidence_id": {"$ref": "#/definitions/hash"},
+    "release_id": {"$ref": "#/definitions/hash"},
+    "profile": {"$ref": "#/definitions/entity"},
+    "boot_id": {"type": "string", "minLength": 1},
+    "observed_monotonic": {"type": "number", "minimum": 0},
+    "receiver": {"type": "object"},
+    "bootstrap": {"type": "object"},
+    "daemon": {"type": "object"},
+    "runtime_api": {"type": "object"},
+    "configuration": {"type": "object"},
+    "hardware_roles": {"type": "object"},
+    "services": {"type": "object"},
+    "managed_nodes": {"type": "object"},
+    "systemd_units": {"type": "object"},
+    "px4": {"type": "object"},
+    "operations": {"type": "object"}
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^(sha256:)?[a-f0-9]{64}$"},
+    "entity": {"type": "string", "pattern": "^[a-z][a-z0-9_.@-]{0,127}$"}
+  }
+}

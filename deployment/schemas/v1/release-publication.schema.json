@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/release-publication.schema.json",
+  "title": "III immutable qualified release publication",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "publication_type", "publication_id", "version", "release_id", "source_commit", "release_manifest_sha256", "qualification_evidence_sha256", "promotion_attestation_sha256", "release_notes_sha256", "release_record_sha256", "components", "signer_id", "signature_algorithm", "signature", "created_at"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "publication_type": {"const": "iii.qualified-release"},
+    "publication_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "version": {"type": "string", "pattern": "^v(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$"},
+    "release_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "source_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "release_manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "qualification_evidence_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "promotion_attestation_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "release_notes_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "release_record_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "components": {"type": "object", "minProperties": 2, "maxProperties": 2, "additionalProperties": false, "required": ["drone", "gc"], "properties": {"drone": {"$ref": "#/definitions/component"}, "gc": {"$ref": "#/definitions/component"}}},
+    "signer_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "signature_algorithm": {"const": "Ed25519"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "definitions": {
+    "component": {"type": "object", "additionalProperties": false, "required": ["archive_sha256", "bundle_manifest_sha256", "signature_sha256", "compressed_bytes"], "properties": {"archive_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "bundle_manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "signature_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "compressed_bytes": {"type": "integer", "minimum": 1}}}
+  }
+}

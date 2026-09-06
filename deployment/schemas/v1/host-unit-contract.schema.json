@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/host-unit-contract.schema.json",
+  "title": "III Ansible-owned production host-unit contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "contract_id", "environment", "launcher", "units"],
+  "properties": {
+    "schema": {"const": "iii.host-unit-contract/v1"},
+    "contract_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "environment": {"$ref": "#/definitions/asset"},
+    "launcher": {"$ref": "#/definitions/asset"},
+    "units": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {"$ref": "#/definitions/asset"}
+    }
+  },
+  "definitions": {
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^deployment/(?:host|systemd|ansible/roles/runtime_control_plane/templates)/[A-Za-z0-9_.-]+$"},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  }
+}

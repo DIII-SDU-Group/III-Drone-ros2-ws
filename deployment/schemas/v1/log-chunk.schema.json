@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/log-chunk.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "manifest_id", "content_id", "offset", "data", "eof"],
+  "properties": {
+    "schema": {"const": "iii.log-chunk/v1"},
+    "manifest_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "content_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "offset": {"type": "integer", "minimum": 0},
+    "data": {"type": "string", "contentEncoding": "base64"},
+    "eof": {"type": "boolean"}
+  }
+}

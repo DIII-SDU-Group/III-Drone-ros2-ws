@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/portable-backup-status.schema.json",
+  "title": "III state-bound portable backup freshness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "latest_backup_id", "current_state_marker", "backup_fresh", "backup_count"],
+  "properties": {
+    "schema": {"const": "iii.portable-backup-status/v1"},
+    "latest_backup_id": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/hash"}]},
+    "current_state_marker": {"$ref": "#/definitions/hash"},
+    "backup_fresh": {"type": "boolean"},
+    "backup_count": {"type": "integer", "minimum": 0}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

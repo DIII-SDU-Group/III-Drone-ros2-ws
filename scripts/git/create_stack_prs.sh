@@ -7,7 +7,7 @@ NAME
   create_stack_prs.sh - create/update coordinated submodule + workspace PR stack
 
 SYNOPSIS
-  scripts/git/create_stack_prs.sh --base <base-branch> [--feature <feature-branch>] [--all-iii] [--yes]
+  scripts/git/create_stack_prs.sh --base <base-branch> [--feature <feature-branch>] [--operation-id <id>] [--all-iii] [--yes]
   scripts/git/create_stack_prs.sh -h | --help
 
 DESCRIPTION
@@ -37,6 +37,10 @@ OPTIONS
   --feature <feature-branch>
       Optional feature branch. Default: current workspace branch.
 
+  --operation-id <id>
+      Stable lowercase/digit/hyphen operation identifier retained in PR handoff.
+      Default: a deterministic stack-<feature> identifier.
+
   --all-iii
       Target all III submodules instead of only changed ones.
 
@@ -63,6 +67,7 @@ USAGE
 
 base_branch=""
 feature_branch=""
+operation_id=""
 all_iii=0
 apply=0
 
@@ -79,6 +84,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --feature)
       feature_branch="${2:-}"
+      shift 2
+      ;;
+    --operation-id)
+      operation_id="${2:-}"
       shift 2
       ;;
     --all-iii)
@@ -116,6 +125,13 @@ cd "$root"
 if [[ -z "$feature_branch" ]]; then
   feature_branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 fi
+if [[ -z "$operation_id" ]]; then
+  operation_id="stack-$(printf '%s' "$feature_branch" | tr '[:upper:]_/' '[:lower:]--' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-57)"
+fi
+if [[ ! "$operation_id" =~ ^[a-z0-9][a-z0-9-]{7,63}$ ]]; then
+  echo "ERROR: --operation-id must match [a-z0-9][a-z0-9-]{7,63}" >&2
+  exit 1
+fi
 if [[ -z "$feature_branch" ]]; then
   echo "ERROR: workspace is detached HEAD; pass --feature explicitly and checkout a branch" >&2
   exit 1
@@ -141,7 +157,8 @@ fi
 
 # Policy + target detection in one place.
 audit_out="$(mktemp)"
-trap 'rm -f "$audit_out"' EXIT
+plan_output="${audit_out}.stack-plan.json"
+trap 'rm -f "$audit_out" "$plan_output"' EXIT
 
 if ! scripts/git/iii_branch_guard.sh audit --base "$base_branch" --feature "$feature_branch" >"$audit_out"; then
   cat "$audit_out"
@@ -219,6 +236,7 @@ fi
 
 echo "Workspace branch: $feature_branch"
 echo "Base branch: $base_branch"
+echo "Operation ID: $operation_id"
 target_mode="changed only"
 if (( all_iii == 1 )); then
   target_mode="all III"
@@ -255,7 +273,55 @@ for b in "${allowed_branches[@]}"; do
   echo "  - $b"
 done
 
+plan_state_root="${XDG_STATE_HOME:-$HOME/.local/state}/iii/automation-plans"
+plan_arguments=(
+  --base "$base_branch"
+  --feature "$feature_branch"
+  --operation-id "$operation_id"
+  --state-root "$plan_state_root"
+)
+for p in "${targets[@]}"; do
+  plan_arguments+=(--target "$p")
+done
+if (( apply == 1 )); then
+  plan_arguments+=(--verify-existing)
+fi
+python3 scripts/git/create_stack_plan.py "${plan_arguments[@]}" >"$plan_output"
+plan_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["plan_id"])' "$plan_output")"
+echo "Retained automation plan: $plan_state_root/$operation_id.plan.json"
+echo "Retained plan ID: $plan_id"
+
 workspace_repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
+
+planned_expected_old_sha() {
+  python3 - "$plan_output" "$1" <<'PY'
+import json
+import sys
+
+plan = json.load(open(sys.argv[1], encoding="utf-8"))
+matches = [
+    row for row in plan["repositories"] if row["repository"] == sys.argv[2]
+]
+if len(matches) != 1:
+    raise SystemExit(f"retained plan does not contain exactly one repository row for {sys.argv[2]}")
+print(matches[0]["expected_old_sha"] or "__MISSING__")
+PY
+}
+
+assert_remote_matches_plan() {
+  local repo="$1"
+  local current_sha="$2"
+  local expected_sha
+  expected_sha="$(planned_expected_old_sha "$repo")"
+  if [[ -z "$current_sha" ]]; then
+    current_sha="__MISSING__"
+  fi
+  if [[ "$current_sha" != "$expected_sha" ]]; then
+    echo "ERROR: stale retained plan for $repo:$feature_branch; expected $expected_sha, observed $current_sha" >&2
+    echo "Re-run dry-run planning before any mutation." >&2
+    exit 1
+  fi
+}
 
 pr_rows=()
 pr_markers=()
@@ -334,34 +400,57 @@ for p in "${targets[@]}"; do
     continue
   fi
 
+  local_feature_sha="$(git -C "$p" rev-parse "$feature_branch")"
+  remote_feature_sha="$(git -C "$p" ls-remote --heads origin "refs/heads/$feature_branch" | awk 'NR == 1 {print $1}')"
+  assert_remote_matches_plan "$repo_slug" "$remote_feature_sha"
   has_remote_feature=0
-  if git -C "$p" ls-remote --exit-code --heads origin "$feature_branch" >/dev/null 2>&1; then
+  if [[ -n "$remote_feature_sha" ]]; then
     has_remote_feature=1
   fi
 
   if (( has_remote_feature == 0 )); then
     if git -C "$p" rev-parse --verify --quiet "$feature_branch" >/dev/null; then
       if (( apply == 1 )); then
-        git -C "$p" push -u origin "$feature_branch"
+        git -C "$p" push -u \
+          --force-with-lease="refs/heads/$feature_branch:" \
+          origin "$local_feature_sha:refs/heads/$feature_branch"
       else
-        echo "DRY-RUN: would push $p:$feature_branch (remote branch missing)"
+        echo "DRY-RUN: would create $p:$feature_branch with an exact missing-ref lease"
       fi
     else
       echo "ERROR: $p has no remote branch '$feature_branch' and no local branch to push." >&2
       echo "Create/switch first (or run align): scripts/git/iii_branch_guard.sh align --base $base_branch --feature $feature_branch --yes" >&2
       exit 1
     fi
+  elif [[ "$remote_feature_sha" != "$local_feature_sha" ]]; then
+    if ! git -C "$p" merge-base --is-ancestor "$remote_feature_sha" "$local_feature_sha"; then
+      echo "ERROR: $p remote feature head is not an ancestor of the retained local head; refusing rewrite." >&2
+      exit 1
+    fi
+    if (( apply == 1 )); then
+      git -C "$p" push \
+        --force-with-lease="refs/heads/$feature_branch:$remote_feature_sha" \
+        origin "$local_feature_sha:refs/heads/$feature_branch"
+    else
+      echo "DRY-RUN: would update $p:$feature_branch from $remote_feature_sha to $local_feature_sha with an exact lease"
+    fi
   else
-    echo "Remote branch exists for $p: origin/$feature_branch"
+    echo "Remote branch already matches $p:$feature_branch at $local_feature_sha"
   fi
 
   sub_title="[${feature_branch}] ${p}: integration changes"
-  sub_body="$(printf '%s\n\n- Source branch: `%s`\n- Target branch: `%s`\n- Submodule path in workspace: `%s`\n\n%s\n' \
+  # Backticks are literal Markdown delimiters in this printf template.
+  # shellcheck disable=SC2016
+  sub_body="$(printf '%s\n\n- Operation ID: `%s`\n- Retained plan ID: `%s`\n- Source branch: `%s`\n- Source SHA: `%s`\n- Target branch: `%s`\n- Submodule path in workspace: `%s`\n\n%s\n\n%s\n' \
     "Automated stacked PR from workspace **$workspace_repo**." \
+    "$operation_id" \
+    "$plan_id" \
     "$feature_branch" \
+    "$local_feature_sha" \
     "$base_branch" \
     "$p" \
-    "This PR is part of a coordinated workspace integration stack.")"
+    "This PR is part of a coordinated workspace integration stack." \
+    "<!-- iii-pr-transport-v1; authenticate refs and checks through GitHub APIs -->")"
 
   sub_pr_url="$(upsert_pr "$repo_slug" "$feature_branch" "$base_branch" "$sub_title" "$sub_body")"
   echo "Submodule PR: $sub_pr_url"
@@ -397,13 +486,15 @@ if (( ${#pr_rows[@]} == 0 )); then
 fi
 
 workspace_body_file="$(mktemp)"
-trap 'rm -f "$audit_out" "$workspace_body_file"' EXIT
+trap 'rm -f "$audit_out" "$plan_output" "$workspace_body_file"' EXIT
 
 {
   echo "Coordinated workspace integration PR."
   echo
   echo "- Source branch: \`$feature_branch\`"
   echo "- Target branch: \`$base_branch\`"
+  echo "- Operation ID: \`$operation_id\`"
+  echo "- Retained plan ID: \`$plan_id\`"
   echo
   echo "### III Submodule PRs"
   echo
@@ -432,8 +523,18 @@ trap 'rm -f "$audit_out" "$workspace_body_file"' EXIT
   fi
 } > "$workspace_body_file"
 
-if (( apply == 1 )); then
-  git push -u origin "$feature_branch"
+workspace_local_sha="$(git rev-parse "$feature_branch")"
+workspace_remote_sha="$(git ls-remote --heads origin "refs/heads/$feature_branch" | awk 'NR == 1 {print $1}')"
+assert_remote_matches_plan "$workspace_repo" "$workspace_remote_sha"
+if [[ -n "$workspace_remote_sha" && "$workspace_remote_sha" != "$workspace_local_sha" ]] \
+  && ! git merge-base --is-ancestor "$workspace_remote_sha" "$workspace_local_sha"; then
+  echo "ERROR: workspace remote feature head is not an ancestor of the retained local head; refusing rewrite." >&2
+  exit 1
+fi
+if (( apply == 1 )) && [[ "$workspace_remote_sha" != "$workspace_local_sha" ]]; then
+  git push -u \
+    --force-with-lease="refs/heads/$feature_branch:$workspace_remote_sha" \
+    origin "$workspace_local_sha:refs/heads/$feature_branch"
 fi
 
 ws_title="[$feature_branch] workspace integration"

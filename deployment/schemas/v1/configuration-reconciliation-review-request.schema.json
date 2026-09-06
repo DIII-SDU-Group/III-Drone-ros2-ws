@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/configuration-reconciliation-review-request.schema.json",
+  "title": "III local aircraft configuration reconciliation review request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "review_id", "operation_id", "origin_command", "target", "release_id", "source_configuration_checkpoint_id", "explicit_qualified_action", "receiver_plan_id", "reconciliation"],
+  "properties": {
+    "schema": {"const": "iii.configuration-reconciliation-review-request/v1"},
+    "review_id": {"$ref": "#/definitions/identity"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "origin_command": {"enum": ["iii deploy activate", "iii deploy field"]},
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["endpoint", "logical_id", "runtime_profile"],
+      "properties": {
+        "endpoint": {"const": "iii.local"},
+        "logical_id": {"type": "string", "pattern": "^[a-z][a-z0-9.-]{0,63}$"},
+        "runtime_profile": {"enum": ["real", "opti_track", "hil"]}
+      }
+    },
+    "release_id": {"$ref": "#/definitions/identity"},
+    "source_configuration_checkpoint_id": {"$ref": "#/definitions/identity"},
+    "explicit_qualified_action": {"type": "boolean"},
+    "receiver_plan_id": {"$ref": "#/definitions/identity"},
+    "reconciliation": {
+      "type": "object",
+      "required": ["schema", "ready", "reconciliation_plan", "review_items", "rejection_reasons"],
+      "properties": {
+        "schema": {"const": "iii.receiver-configuration-reconciliation-preflight/v1"},
+        "ready": {"const": false},
+        "reconciliation_plan": {"type": "object"},
+        "review_items": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+        "rejection_reasons": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+      }
+    }
+  },
+  "definitions": {
+    "identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

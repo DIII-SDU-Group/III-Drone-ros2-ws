@@ -1,0 +1,17 @@
+[Unit]
+Description=III stable receiver A/B update preparation
+After=local-fs.target
+Before=iii-receiver-bootstrap-apply.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/iii/receiver/bootstrap/bin/iii-receiver-bootstrap --prepare
+User=root
+Group=root
+UMask=0027
+NoNewPrivileges=yes
+PrivateNetwork=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/iii/receiver/selectors /var/lib/iii/deployment
+RestrictAddressFamilies=AF_UNIX

@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/gc-application-journal.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "transaction_id", "operation_id", "phase", "candidate_release_id", "previous_release_id", "previous_qgc_sha256", "qgc_was_running", "qgc_config_backup_id", "previous_state", "override_id", "created_at", "updated_at"],
+  "properties": {
+    "schema": {"const": "iii.gc-application-journal/v1"},
+    "transaction_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "operation_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "phase": {"enum": ["planned", "qgc-backed-up", "qgc-configured", "switching", "selected", "services-started", "committed", "rolled-back"]},
+    "candidate_release_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "previous_release_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "previous_qgc_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "qgc_was_running": {"type": "boolean"},
+    "qgc_config_backup_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "previous_state": {"type": "object"},
+    "override_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"}
+  }
+}

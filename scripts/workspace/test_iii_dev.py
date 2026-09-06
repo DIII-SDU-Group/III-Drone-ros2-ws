@@ -126,6 +126,11 @@ class IiiDevTests(unittest.TestCase):
             ("sim", "attach"),
             ("sim", "status"),
             ("sim", "stop"),
+            ("hil",),
+            ("hil", "start"),
+            ("hil", "status"),
+            ("hil", "stop"),
+            ("hil", "restart"),
             ("system",),
             ("api",),
             ("api", "start"),
@@ -245,6 +250,17 @@ class IiiDevTests(unittest.TestCase):
         self.assertIn("accepts only --headless", result.stderr)
         self.assertEqual(self.exec_commands(), [])
 
+    def test_hil_actions_forward_to_the_split_host_launcher(self) -> None:
+        for action in ("start", "status", "stop"):
+            with self.subTest(action=action):
+                self.log.unlink(missing_ok=True)
+                result = self.run_cli("hil", action)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(
+                    self.exec_commands()[0][-2:],
+                    ["/home/iii/ws/tools/simulation/launch_hil_workstation.sh", action],
+                )
+
     def test_system_arguments_are_forwarded_to_the_in_container_cli(self) -> None:
         result = self.run_cli("system", "logs", "mission_executor", "--lines", "25")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -297,10 +313,15 @@ class IiiDevTests(unittest.TestCase):
         joined = [" ".join(command) for command in forwarded]
         self.assertIn("--no-attach --headless", joined[0])
         self.assertIn("III_SIM_TOOLS_STATUS_DISCOVERY_TIMEOUT_SEC=8", joined[1])
-        boot_index = next(
+        boot_plan_index = next(
             index
             for index, command in enumerate(joined)
-            if command.endswith("iii system boot")
+            if "iii system boot --dry-run --operation-id iii-dev-boot-" in command
+        )
+        boot_apply_index = next(
+            index
+            for index, command in enumerate(joined)
+            if "iii system boot --operation-id iii-dev-boot-" in command
         )
         api_start_index = next(
             index
@@ -312,14 +333,33 @@ class IiiDevTests(unittest.TestCase):
             for index, command in enumerate(joined)
             if "curl --fail --silent" in command
         )
-        system_start_index = next(
+        system_start_plan_index = next(
             index
             for index, command in enumerate(joined)
-            if command.endswith("iii system start")
+            if "iii system start --dry-run --operation-id iii-dev-start-" in command
         )
-        self.assertLess(boot_index, system_start_index)
-        self.assertLess(system_start_index, api_start_index)
+        system_start_apply_index = next(
+            index
+            for index, command in enumerate(joined)
+            if "iii system start --operation-id iii-dev-start-" in command
+        )
+        self.assertIn("--output=json", joined[boot_plan_index])
+        self.assertIn("--confirm --non-interactive --output=json", joined[boot_apply_index])
+        self.assertLess(boot_plan_index, boot_apply_index)
+        self.assertLess(boot_apply_index, system_start_plan_index)
+        self.assertLess(system_start_plan_index, system_start_apply_index)
+        self.assertLess(system_start_apply_index, api_start_index)
         self.assertLess(api_start_index, api_health_index)
+
+    def test_stack_stop_retains_and_applies_shutdown_operation(self) -> None:
+        result = self.run_cli("stack", "stop")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        joined = [" ".join(command) for command in self.exec_commands()]
+        shutdown = [command for command in joined if "iii system shutdown" in command]
+        self.assertEqual(len(shutdown), 2)
+        self.assertIn("--dry-run --operation-id iii-dev-shutdown-", shutdown[0])
+        self.assertIn("--operation-id iii-dev-shutdown-", shutdown[1])
+        self.assertIn("--confirm --non-interactive --output=json", shutdown[1])
 
     def test_runtime_api_control_is_explicit_and_systemd_scoped(self) -> None:
         result = self.run_cli("api", "restart")

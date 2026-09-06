@@ -25,3 +25,18 @@ artifact, and sealed evidence trees are excluded explicitly by
 `deployment/documentation-policy.json`. The reviewed inventory is
 `deployment/documentation-manifest.json` and is validated offline.
 
+`iii docs check --root <workspace>` is the canonical non-mutating gate. It binds
+the reviewed manifest to the governed submodule inventory, verifies router
+hierarchy, links and anchors, resolves fenced `iii` command paths against the live
+parser inventory, rejects forbidden retired paths/terms, and compares generated
+CLI help and Draft-7 schema references byte-for-byte with source. Human and JSON
+output share the `iii.command-result/v1` outcome and stable exit family.
+
+Generated references live at
+[`generated/iii-command-reference.md`](generated/iii-command-reference.md) and
+[`generated/deployment-schema-reference.md`](generated/deployment-schema-reference.md).
+They are qualified-release inputs, never handwritten authority. Update them only
+with `deployment/scripts/update_documentation_references.py`, review the diff,
+then update the manifest explicitly. A failed check changes nothing; interruption
+is resolved by rerunning generation to a complete atomic replacement and checking
+again.

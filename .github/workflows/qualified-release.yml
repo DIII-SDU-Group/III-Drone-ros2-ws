@@ -1,0 +1,581 @@
+name: Qualified Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+concurrency:
+  group: qualified-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  PYTHONPATH: deployment/src
+  RELEASE_VERSION: ${{ github.ref_name }}
+
+jobs:
+  eligibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout immutable tag
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          submodules: recursive
+      - name: Revalidate clean release-tag eligibility
+        run: |
+          mkdir -p .qualification
+          python scripts/release/qualified_release_pipeline.py eligibility \
+            --version "$RELEASE_VERSION" --event-ref "$GITHUB_REF" \
+            --release-ref refs/remotes/origin/release \
+            --output .qualification/source
+      - name: Verify dependency lock and retain check
+        run: |
+          started="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          ./scripts/git/verify_submodule_lock.sh 2>&1 | tee .qualification/source/dependency-lock.log
+          finished="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/release/qualified_release_pipeline.py check-record \
+            --check-id dependency-lock --source-commit "$GITHUB_SHA" --version "$RELEASE_VERSION" \
+            --started-at "$started" --finished-at "$finished" \
+            --command-json '["./scripts/git/verify_submodule_lock.sh"]' \
+            --log .qualification/source/dependency-lock.log \
+            --output-file lock=deps/submodule-lock.txt \
+            --output .qualification/source/dependency-lock.json
+      - name: Audit exact live governance and retain check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          started="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/governance/audit_github_rulesets.py --json 2>&1 | tee .qualification/source/governance-audit.log
+          cp .qualification/source/governance-audit.log .qualification/source/governance-audit.json
+          finished="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/release/qualified_release_pipeline.py check-record \
+            --check-id governance-audit --source-commit "$GITHUB_SHA" --version "$RELEASE_VERSION" \
+            --started-at "$started" --finished-at "$finished" \
+            --command-json '["python","scripts/governance/audit_github_rulesets.py","--json"]' \
+            --log .qualification/source/governance-audit.log \
+            --output-file audit=.qualification/source/governance-audit.json \
+            --output .qualification/source/governance-audit-check.json
+      - name: Authenticate retained promotion evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROMOTION_TRUST: ${{ vars.III_PROMOTION_SIGNERS_JSON }}
+        run: |
+          umask 077
+          printf '%s\n' "$PROMOTION_TRUST" > .qualification/source/promotion-trust.json
+          started="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          {
+            python scripts/release/qualified_release_pipeline.py fetch-promotion \
+              --repository "$GITHUB_REPOSITORY" --source-commit "$GITHUB_SHA" \
+              --output .qualification/source/promotion-attestation.json
+            python scripts/release/qualified_release_pipeline.py promotion-check \
+              --attestation .qualification/source/promotion-attestation.json \
+              --source-snapshot .qualification/source/source-snapshot.json \
+              --change-summary .qualification/source/release-change-summary.json \
+              --trusted-signers .qualification/source/promotion-trust.json
+          } 2>&1 | tee .qualification/source/promotion-evidence.log
+          finished="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/release/qualified_release_pipeline.py check-record \
+            --check-id promotion-evidence --source-commit "$GITHUB_SHA" --version "$RELEASE_VERSION" \
+            --started-at "$started" --finished-at "$finished" \
+            --command-json '["python","scripts/release/qualified_release_pipeline.py","promotion-check"]' \
+            --log .qualification/source/promotion-evidence.log \
+            --output-file attestation=.qualification/source/promotion-attestation.json \
+            --output .qualification/source/promotion-evidence-check.json
+      - name: Retain authenticated source evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: qualified-source-evidence
+          path: .qualification/source
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 90
+
+  deployment-contracts:
+    needs: eligibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout immutable tag
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Run deployment and CLI contract suite
+        run: |
+          mkdir -p .qualification/deployment
+          started="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python -m pip install --disable-pip-version-check ./src/III-Drone-Contracts ./tools/III-Drone-CLI ./src/III-Drone-Configuration './deployment[test]'
+          iii verify deployment --root . --audit-only \
+            --report .qualification/deployment/verification-matrix.json \
+            --junit .qualification/deployment/verification-matrix.xml
+          iii docs check --root . --output=json \
+            > .qualification/deployment/documentation-check.json
+          {
+            python -m pytest deployment/tests
+            python -m pytest tools/III-Drone-CLI/test
+          } 2>&1 | tee .qualification/deployment/tests.log
+          finished="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/release/qualified_release_pipeline.py check-record \
+            --check-id deployment-contracts --source-commit "$GITHUB_SHA" --version "$RELEASE_VERSION" \
+            --started-at "$started" --finished-at "$finished" \
+            --command-json '["bash","-lc","pytest deployment/tests; pytest tools/III-Drone-CLI/test"]' \
+            --log .qualification/deployment/tests.log \
+            --output-file junit=.qualification/deployment/tests.log \
+            --output .qualification/deployment/deployment-contracts.json
+      - name: Retain deployment contract evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: qualified-deployment-contracts
+          path: .qualification/deployment
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 90
+
+  gc-tests:
+    needs: eligibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout immutable tag
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Test ROS-free GC proxy and frontend
+        run: |
+          mkdir -p .qualification/gc-tests
+          started="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          {
+            python -m pip install --disable-pip-version-check ./src/III-Drone-Contracts ./src/III-Drone-GC pytest
+            python -m pytest src/III-Drone-Contracts/test src/III-Drone-GC/test
+            npm --prefix src/III-Drone-GC/frontend ci
+            npm --prefix src/III-Drone-GC/frontend audit --audit-level=high
+            npm --prefix src/III-Drone-GC/frontend test
+            npm --prefix src/III-Drone-GC/frontend run build
+          } 2>&1 | tee .qualification/gc-tests/tests.log
+          finished="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/release/qualified_release_pipeline.py check-record \
+            --check-id gc-tests --source-commit "$GITHUB_SHA" --version "$RELEASE_VERSION" \
+            --started-at "$started" --finished-at "$finished" \
+            --command-json '["bash","-lc","pytest III GC packages; npm ci; npm audit; npm test; npm build"]' \
+            --log .qualification/gc-tests/tests.log \
+            --output-file npm-lock=src/III-Drone-GC/frontend/package-lock.json \
+            --output .qualification/gc-tests/gc-tests.json
+      - name: Retain GC test evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: qualified-gc-tests
+          path: .qualification/gc-tests
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 90
+
+  arm64-build:
+    needs: eligibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout immutable tag
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          submodules: recursive
+      - name: Configure QEMU for target validation
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
+        with:
+          platforms: arm64
+      - name: Configure Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - name: Restore isolated ARM64 build cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .qualification/cache/arm64
+          key: arm64-${{ runner.os }}-${{ hashFiles('Dockerfile.cc', 'cc_ws/arm64-toolchain.cmake', 'deployment/python-wheel-lock.json', 'deps/submodule-lock.txt') }}
+      - name: Download authenticated source snapshot
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qualified-source-evidence
+          path: .qualification/source
+      - name: Build and validate clean ARM64 payload
+        run: |
+          mkdir -p .qualification/arm64 .qualification/cache/arm64
+          source_epoch="$(git show -s --format=%ct HEAD)"
+          started="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          {
+            python scripts/build/run_target_abi_probe.py --json
+            python scripts/build/materialize_arm64_wheelhouse.py \
+              --wheelhouse .qualification/arm64/wheelhouse --json
+            python scripts/build/build_arm64_release.py \
+              --snapshot .qualification/source/source-snapshot.json \
+              --component drone --qualified-paired \
+              --cache .qualification/cache/arm64/colcon \
+              --output .qualification/arm64/release \
+              --wheelhouse .qualification/arm64/wheelhouse \
+              --wheel-lock deployment/python-wheel-lock.json --json
+          } 2>&1 | tee .qualification/arm64/build.log
+          finished="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/release/qualified_release_pipeline.py check-record \
+            --check-id arm64-build --source-commit "$GITHUB_SHA" --version "$RELEASE_VERSION" \
+            --started-at "$started" --finished-at "$finished" \
+            --command-json '["python","scripts/build/build_arm64_release.py","--component","drone","--qualified-paired"]' \
+            --log .qualification/arm64/build.log \
+            --output-file build-record=.qualification/arm64/release/build-record.json \
+            --output .qualification/arm64/arm64-build.json
+          python scripts/release/qualified_release_pipeline.py check-record \
+            --check-id arm64-tests --source-commit "$GITHUB_SHA" --version "$RELEASE_VERSION" \
+            --started-at "$started" --finished-at "$finished" \
+            --command-json '["python","scripts/build/run_target_abi_probe.py","--json"]' \
+            --log .qualification/arm64/build.log \
+            --output-file validated-build=.qualification/arm64/release/build-record.json \
+            --output .qualification/arm64/arm64-tests.json
+          tar --sort=name --format=posix --mtime="@$source_epoch" --owner=0 --group=0 --numeric-owner \
+            -C .qualification/arm64/release -cf .qualification/arm64/drone-stage.tar .
+      - name: Retain ARM64 build and test evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: qualified-arm64
+          path: |
+            .qualification/arm64/drone-stage.tar
+            .qualification/arm64/arm64-build.json
+            .qualification/arm64/arm64-tests.json
+            .qualification/arm64/build.log
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 90
+
+  gc-build:
+    needs: [eligibility, gc-tests]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout immutable tag
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          submodules: recursive
+      - name: Configure Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - name: Restore isolated GC build cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .qualification/cache/gc
+          key: gc-${{ runner.os }}-${{ hashFiles('deployment/gc-application-policy.json', 'deployment/gc/compose.release.yml', 'src/III-Drone-GC/docker/**', 'src/III-Drone-GC/frontend/Dockerfile', 'src/III-Drone-GC/frontend/package-lock.json') }}
+      - name: Download source and GC test evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qualified-source-evidence
+          path: .qualification/source
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qualified-gc-tests
+          path: .qualification/gc-tests
+      - name: Build pinned x86_64 GC OCI artifacts
+        run: |
+          mkdir -p .qualification/gc .qualification/cache/gc
+          python scripts/build/fetch_qgc_appimage.py \
+            --output "$RUNNER_TEMP/QGroundControl.AppImage" --json
+          source_epoch="$(git show -s --format=%ct HEAD)"
+          started="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/build/build_gc_release.py \
+            --snapshot .qualification/source/source-snapshot.json \
+            --version "$RELEASE_VERSION" \
+            --test-record .qualification/gc-tests/gc-tests.json \
+            --cache .qualification/cache/gc \
+            --output .qualification/gc/release \
+            --qgc-appimage "$RUNNER_TEMP/QGroundControl.AppImage" \
+            --source-date-epoch "$source_epoch" --json \
+            2>&1 | tee .qualification/gc/build.log
+          finished="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/release/qualified_release_pipeline.py check-record \
+            --check-id gc-build --source-commit "$GITHUB_SHA" --version "$RELEASE_VERSION" \
+            --started-at "$started" --finished-at "$finished" \
+            --command-json '["python","scripts/build/build_gc_release.py","--json"]' \
+            --log .qualification/gc/build.log \
+            --output-file build-record=.qualification/gc/release/build-record.json \
+            --output .qualification/gc/gc-build.json
+          tar --sort=name --format=posix --mtime="@$source_epoch" --owner=0 --group=0 --numeric-owner \
+            -C .qualification/gc/release -cf .qualification/gc/gc-stage.tar .
+      - name: Retain GC build evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: qualified-gc
+          path: |
+            .qualification/gc/gc-stage.tar
+            .qualification/gc/gc-build.json
+            .qualification/gc/build.log
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 90
+
+  px4-build:
+    needs: eligibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout immutable tag and exact PX4 source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          submodules: recursive
+      - name: Install PX4 build toolchain
+        run: bash PX4-Autopilot/Tools/setup/ubuntu.sh --no-sim-tools
+      - name: Restore exact PX4 firmware cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .qualification/cache/px4
+          key: px4-${{ runner.os }}-${{ hashFiles('deployment/px4/firmware.json', 'deployment/px4/dds-topics.json', 'PX4-Autopilot/.git', 'deps/submodule-lock.txt') }}
+      - name: Build or authenticate cached V6X multicopter firmware
+        run: |
+          mkdir -p .qualification/px4 .qualification/cache/px4
+          started="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/build/generate_px4_release_contract.py --check
+          python scripts/build/build_px4_firmware.py \
+            --cache-root .qualification/cache/px4 \
+            --output .qualification/px4 2>&1 | tee .qualification/px4/build.log
+          finished="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/release/qualified_release_pipeline.py check-record \
+            --check-id px4-build --source-commit "$GITHUB_SHA" --version "$RELEASE_VERSION" \
+            --started-at "$started" --finished-at "$finished" \
+            --command-json '["python","scripts/build/build_px4_firmware.py"]' \
+            --log .qualification/px4/build.log \
+            --output-file firmware=.qualification/px4/px4_fmu-v6x_multicopter.px4 \
+            --output-file build-record=.qualification/px4/px4-firmware-build.json \
+            --output .qualification/px4/px4-build.json
+      - name: Retain exact PX4 build evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: qualified-px4
+          path: .qualification/px4
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 365
+
+  sign:
+    needs: [eligibility, deployment-contracts, gc-tests, arm64-build, gc-build, px4-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: qualified-signing
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout immutable tag without credentials
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          submodules: recursive
+      - name: Download retained qualification evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {name: qualified-source-evidence, path: .qualification/source}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {name: qualified-deployment-contracts, path: .qualification/deployment}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {name: qualified-gc-tests, path: .qualification/gc-tests}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {name: qualified-arm64, path: .qualification/arm64}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {name: qualified-gc, path: .qualification/gc}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: {name: qualified-px4, path: .qualification/px4}
+      - name: Assemble evidence, paired bundles, record, and signatures
+        env:
+          QUALIFIED_SIGNING_KEY: ${{ secrets.III_QUALIFIED_SIGNING_KEY_PEM }}
+          PROMOTION_TRUST: ${{ vars.III_PROMOTION_SIGNERS_JSON }}
+        run: |
+          umask 077
+          printf '%s\n' "$QUALIFIED_SIGNING_KEY" > "$RUNNER_TEMP/qualified-signing.pem"
+          printf '%s\n' "$PROMOTION_TRUST" > "$RUNNER_TEMP/promotion-trust.json"
+          mkdir -p .qualification/drone-payload .qualification/gc-payload
+          tar -C .qualification/drone-payload -xf .qualification/arm64/drone-stage.tar
+          tar -C .qualification/gc-payload -xf .qualification/gc/gc-stage.tar
+          check_args=(
+            --check arm64-build=.qualification/arm64/arm64-build.json
+            --check arm64-tests=.qualification/arm64/arm64-tests.json
+            --check dependency-lock=.qualification/source/dependency-lock.json
+            --check deployment-contracts=.qualification/deployment/deployment-contracts.json
+            --check gc-build=.qualification/gc/gc-build.json
+            --check gc-tests=.qualification/gc-tests/gc-tests.json
+            --check governance-audit=.qualification/source/governance-audit-check.json
+            --check promotion-evidence=.qualification/source/promotion-evidence-check.json
+            --check px4-build=.qualification/px4/px4-build.json
+          )
+          python scripts/release/qualified_release_pipeline.py evidence \
+            --version "$RELEASE_VERSION" --source-commit "$GITHUB_SHA" \
+            --dependency-lock deps/submodule-lock.txt "${check_args[@]}" \
+            --output .qualification/qualification-evidence.json
+          source_epoch="$(git show -s --format=%ct HEAD)"
+          built_at="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/release/qualified_release_pipeline.py manifest \
+            --version "$RELEASE_VERSION" \
+            --source-snapshot .qualification/source/source-snapshot.json \
+            --provenance .qualification/source/source-provenance.md \
+            --qualification-evidence .qualification/qualification-evidence.json \
+            --component drone=.qualification/drone-payload \
+            --component gc=.qualification/gc-payload \
+            --build-record drone=.qualification/drone-payload/build-record.json \
+            --build-record gc=.qualification/gc-payload/build-record.json \
+            --px4-build-record .qualification/px4/px4-firmware-build.json \
+            --px4-firmware .qualification/px4/px4_fmu-v6x_multicopter.px4 \
+            --private-key "$RUNNER_TEMP/qualified-signing.pem" \
+            --builder-id "github-actions:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT" \
+            --built-at "$built_at" --source-date-epoch "$source_epoch" \
+            --output .qualification/release-manifest.json
+          python scripts/release/qualified_release_pipeline.py sign \
+            --manifest .qualification/release-manifest.json \
+            --component drone=.qualification/drone-payload \
+            --component gc=.qualification/gc-payload \
+            --build-record drone=.qualification/drone-payload/build-record.json \
+            --build-record gc=.qualification/gc-payload/build-record.json \
+            --px4-build-record .qualification/px4/px4-firmware-build.json \
+            --px4-firmware .qualification/px4/px4_fmu-v6x_multicopter.px4 \
+            "${check_args[@]}" \
+            --qualification-evidence .qualification/qualification-evidence.json \
+            --promotion-attestation .qualification/source/promotion-attestation.json \
+            --promotion-trusted-signers "$RUNNER_TEMP/promotion-trust.json" \
+            --change-summary .qualification/source/release-change-summary.json \
+            --private-key "$RUNNER_TEMP/qualified-signing.pem" \
+            --output .qualification/signed --asset-map .qualification/asset-map.json \
+            --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" --created-at "$built_at"
+          rm -f "$RUNNER_TEMP/qualified-signing.pem"
+      - name: Retain signed release record and exact publication assets
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: qualified-signed-release
+          path: |
+            .qualification/signed
+            .qualification/asset-map.json
+            .qualification/release-manifest.json
+            .qualification/qualification-evidence.json
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 365
+
+  publish:
+    needs: sign
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout immutable trusted publisher
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Download exact signed publication assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qualified-signed-release
+          path: .qualification
+      - name: Verify and publish immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE_TRUST: ${{ vars.III_QUALIFIED_SIGNERS_JSON }}
+        run: |
+          umask 077
+          printf '%s\n' "$BUNDLE_TRUST" > "$RUNNER_TEMP/bundle-trust.json"
+          python scripts/release/qualified_release_pipeline.py publish \
+            --version "$RELEASE_VERSION" --source-commit "$GITHUB_SHA" \
+            --asset-directory .qualification/signed/publication-assets \
+            --bundle-trust "$RUNNER_TEMP/bundle-trust.json" \
+            --repository "$GITHUB_REPOSITORY"
+
+  initial-status:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release-status
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout trusted release-branch status publisher
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: refs/heads/release
+          persist-credentials: false
+          fetch-depth: 1
+          submodules: recursive
+      - name: Publish signed initial qualified status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATUS_SIGNING_KEY: ${{ secrets.III_RELEASE_STATUS_SIGNING_KEY_PEM }}
+          STATUS_TRUST: ${{ vars.III_RELEASE_STATUS_SIGNERS_JSON }}
+          BUNDLE_TRUST: ${{ vars.III_QUALIFIED_SIGNERS_JSON }}
+        run: |
+          umask 077
+          printf '%s\n' "$STATUS_SIGNING_KEY" > "$RUNNER_TEMP/status-signing.pem"
+          printf '%s\n' "$STATUS_TRUST" > "$RUNNER_TEMP/status-trust.json"
+          printf '%s\n' "$BUNDLE_TRUST" > "$RUNNER_TEMP/bundle-trust.json"
+          python scripts/release/publish_release_status.py \
+            --repository "$GITHUB_REPOSITORY" --version "$RELEASE_VERSION" \
+            --status qualified --reason 'qualified release pipeline passed' --initial \
+            --operation-id "qualified-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --recorded-at "$(date --utc +%Y-%m-%dT%H:%M:%SZ)" \
+            --private-key "$RUNNER_TEMP/status-signing.pem" \
+            --status-trust "$RUNNER_TEMP/status-trust.json" \
+            --bundle-trust "$RUNNER_TEMP/bundle-trust.json" \
+            --output "$RUNNER_TEMP/status-publication"
+
+  retain-failure:
+    if: >-
+      always() &&
+      (needs.eligibility.result == 'failure' || needs.deployment-contracts.result == 'failure' || needs.gc-tests.result == 'failure' ||
+       needs.arm64-build.result == 'failure' || needs.gc-build.result == 'failure' ||
+       needs.sign.result == 'failure' || needs.publish.result == 'failure' ||
+       needs.initial-status.result == 'failure')
+    needs: [eligibility, deployment-contracts, gc-tests, arm64-build, gc-build, sign, publish, initial-status]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout trusted release-branch failure recorder
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: refs/heads/release
+          persist-credentials: false
+          fetch-depth: 1
+          submodules: recursive
+      - name: Retain non-deployable failed qualification attempt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_RESULTS: >-
+            deployment-contracts=${{ needs.deployment-contracts.result }}
+            gc-tests=${{ needs.gc-tests.result }} arm64-build=${{ needs.arm64-build.result }}
+            gc-build=${{ needs.gc-build.result }} sign=${{ needs.sign.result }}
+            publish=${{ needs.publish.result }} initial-status=${{ needs.initial-status.result }}
+        run: |
+          umask 077
+          printf 'Qualified release workflow %s attempt %s failed.\n%s\n' \
+            "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$JOB_RESULTS" > "$RUNNER_TEMP/qualification-attempt.log"
+          python scripts/release/qualified_release_pipeline.py failure-record \
+            --version "$RELEASE_VERSION" --source-commit "$GITHUB_SHA" \
+            --failure-stage pipeline --finding-id QUALIFICATION_JOB_FAILED \
+            --detail "$JOB_RESULTS" --log "$RUNNER_TEMP/qualification-attempt.log" \
+            --output "$RUNNER_TEMP/qualification-attempt.json"
+          python scripts/release/qualified_release_pipeline.py publish-failure \
+            --attempt "$RUNNER_TEMP/qualification-attempt.json" \
+            --log "$RUNNER_TEMP/qualification-attempt.log" \
+            --repository "$GITHUB_REPOSITORY"

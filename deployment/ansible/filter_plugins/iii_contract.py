@@ -1,0 +1,88 @@
+"""Controller-side deterministic filters for the III host baseline."""
+
+from __future__ import annotations
+
+import hashlib
+import ipaddress
+import json
+from typing import Any, Mapping
+
+
+def canonical_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def content_id(value: Any) -> str:
+    return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def private_network(value: str) -> bool:
+    try:
+        network = ipaddress.ip_network(value, strict=True)
+    except ValueError:
+        return False
+    return network.version == 4 and network.is_private and not network.is_loopback
+
+
+def live_state(profile: str) -> dict[str, Any]:
+    configuration_hash = content_id(
+        {"schema": "iii.no-configuration/v1", "profile": profile}
+    )
+    commissioning_hash = content_id(
+        {"schema": "iii.not-commissioned/v1", "profile": profile}
+    )
+    value: dict[str, Any] = {
+        "schema": "iii.receiver-live-state/v1",
+        "target_state_hash": "0" * 64,
+        "active_release_id": None,
+        "configuration_hash": configuration_hash,
+        "commissioning_hash": commissioning_hash,
+        "profile": profile,
+    }
+    value["target_state_hash"] = content_id(
+        {key: item for key, item in value.items() if key != "target_state_hash"}
+    )
+    return value
+
+
+def valid_live_state(value: Any) -> bool:
+    required = {
+        "schema",
+        "target_state_hash",
+        "active_release_id",
+        "configuration_hash",
+        "commissioning_hash",
+        "profile",
+    }
+    if (
+        not isinstance(value, Mapping)
+        or set(value) != required
+        or value.get("schema") != "iii.receiver-live-state/v1"
+    ):
+        return False
+    expected = content_id(
+        {key: item for key, item in value.items() if key != "target_state_hash"}
+    )
+    return value.get("target_state_hash") == expected
+
+
+def valid_document_identity(value: Any, field: str) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and isinstance(field, str)
+        and field in value
+        and value.get(field)
+        == content_id({key: item for key, item in value.items() if key != field})
+    )
+
+
+class FilterModule:
+    def filters(self) -> Mapping[str, Any]:
+        return {
+            "iii_canonical_json": canonical_json,
+            "iii_content_id": content_id,
+            "iii_private_network": private_network,
+            "iii_live_state": live_state,
+            "iii_valid_live_state": valid_live_state,
+            "iii_valid_document_identity": valid_document_identity,
+        }

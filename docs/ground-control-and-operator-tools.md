@@ -64,6 +64,14 @@ GC proxy responsibilities:
 - `/identity` validation before target selection.
 - selected-target HTTP/WebSocket forwarding only; it is not an open proxy.
 
+The production host boundary is converged by `iii gc provision`, not by running
+Compose manually. On supported graphical Ubuntu 22.04/24.04 computers it retains
+an exact source/policy/cache plan, converges host-native user services and pinned
+ROS-free application/controller environments, then refuses success unless a
+second Ansible check predicts zero managed drift. See
+[`gc-host-provisioning.md`](gc-host-provisioning.md) for online, prepared-offline,
+replacement-host, login/logout, and persistent-state procedures.
+
 Key docs:
 
 - `src/III-Drone-GC/docs/gui-v2-deployment.md`
@@ -87,9 +95,56 @@ iii system start
 ```
 
 Remote runtime-control commands use `iii-runtime-api` with
-`III_RUNTIME_API_URL` and `III_RUNTIME_API_CLI_TOKEN`; they no longer forward
-runtime-control shell commands over SSH. SSH remains for deployment, sync,
-install, and explicit admin sessions.
+`III_RUNTIME_API_URL` and `III_RUNTIME_API_CLI_TOKEN`; they never forward shell
+commands over SSH. Deployment SSH is limited to key-only `iii-deploy@iii.local`, the
+fixed receiver gateway, and resumable SFTP uploads. Legacy install, workspace
+synchronization, arbitrary SSH, SCP, rsync, and source pull commands are absent.
+The separately keyed `iii@iii.local` shell is the explicit attended
+development/field-maintenance exception. It provides full sudo, is limited to the
+operator network with forwarding disabled, and is never invoked by the CLI,
+`iii-deploy` receiver, or Ansible inventory.
+
+Use the process-local field defaults and explicit target/profile overrides:
+
+```bash
+source setup/setup_field.bash
+iii field prepare v1.2.3 --dry-run
+iii field verify v1.2.3 --offline --json
+iii deploy plan --target real --json
+iii deploy field --bundle-set /operator/cache/<release>.iii-release-v1 \
+  --configuration-checkpoint-id <sha256> --target real --dry-run
+iii system clock sync --target real --profile real --dry-run
+iii field check --target real --json
+iii field check --target real --signing-key /secure/field.pem \
+  --trusted-signers /secure/trusted-signers.json --json
+```
+
+Every mutation first retains an exact operation plan. Applying it requires the
+same operation ID and explicit confirmation. Compact plans, grouped mission/tree/
+parameter impact, and actual phase results live under `.iii/operations/`; large
+build and bundle payloads live in a separate cache. `iii field check` is read-only
+against GC/aircraft state and its sealed result is evidence, never authorization.
+Unsigned results are explicitly diagnostic. A release/commissioning evidence
+record requires a private key whose active `workstation-field` identity is in the
+selected trusted-signer store. `iii field acknowledge` applies the same trust
+check, signs rationale for present warnings only, and cannot acknowledge a
+failure or change severity. `iii deploy operations prune --dry-run` includes the
+exact content identities of candidates and protected records; apply refuses a
+changed plan and never touches the artifact cache.
+
+The login-scoped GC clock companion invokes the same receiver-owned clock-sync
+operation once for each newly present `iii.local` real-profile runtime. Simulation
+and manually entered endpoints never trigger it. While the receiver advertises
+`DEGRADED_CLOCK` or `CLOCK_FAULT_ACTIVE`, new runtime mutations fail closed while
+status, diagnostics, deployment, recovery, and authenticated clock sync remain
+available.
+
+`iii field prepare` is the only cache-populating step and may refresh trusted
+online release status. `iii field verify --offline` subsequently opens only the
+authenticated local cache and proves representative GC-only, drone-only, and
+paired component packaging. It retains a content-identified report whose every
+scenario states `network_access: false` and `target_mutation: false`; absence of
+either signed component or omission of explicit `--offline` is rejected.
 
 Service-scoped CLI commands control daemon-managed services:
 

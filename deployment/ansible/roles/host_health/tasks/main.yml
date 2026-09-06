@@ -1,0 +1,194 @@
+---
+- name: Gather installed package identities
+  ansible.builtin.package_facts:
+    manager: apt
+
+- name: Inspect immutable receiver selectors and policy files
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - /opt/iii/receiver/bootstrap/pyvenv.cfg
+    - /opt/iii/receiver/selectors/current
+    - /opt/iii/receiver/selectors/fallback
+    - /run/iii/deployment-receiver.sock
+    - /run/iii/receiver-readiness.json
+    - /etc/iii/trust/bundle-signers.json
+    - /etc/iii/trust/release-status-signers.json
+    - /etc/iii/trust/receiver-update-signers.json
+    - /home/iii/.ssh/authorized_keys
+    - /home/iii-deploy/.ssh/authorized_keys
+    - /etc/sudoers.d/90-iii-maintenance
+    - /etc/iii/clock-policy.json
+    - /etc/iii/firewall-policy.json
+    - /etc/iii/hardware-baseline.json
+    - /etc/iii/boot-profile.json
+    - /etc/iii/boot-baseline.json
+    - /etc/iii/hardware-role-manifest.json
+    - /etc/udev/rules.d/90-iii-hardware-roles.rules
+    - /etc/iii/host-unit-contract.json
+    - /etc/iii/host-maintenance-policy.json
+    - /etc/iii/network-policy.json
+    - /etc/netplan/80-iii-px4.yaml
+    - /etc/avahi/avahi-daemon.conf
+    - /usr/share/iii/host-maintenance/aircraft-maintenance.yml
+    - /etc/iii/runtime.env
+    - /usr/libexec/iii/iii-release-launch
+    - /etc/systemd/system/iii-system-daemon.service
+    - /etc/systemd/system/iii-runtime-api.service
+    - /etc/systemd/system/iii-host-maintenance@.service
+    - /etc/systemd/system/iii-network-apply@.service
+    - /etc/systemd/system/iii-network-revert@.service
+    - /etc/systemd/system/iii-network-timeout@.service
+    - /etc/systemd/system/iii-network-revert@.timer
+    - /etc/systemd/system/iii.target
+  register: iii_health_paths
+
+- name: Require every receiver recovery and host-policy artifact
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+    fail_msg: "Required host-baseline artifact is absent: {{ item.item }}"
+  loop: "{{ iii_health_paths.results }}"
+  when: not ansible_check_mode
+
+- name: Inspect receiver readiness evidence
+  ansible.builtin.slurp:
+    src: /run/iii/receiver-readiness.json
+  register: iii_health_readiness_raw
+  check_mode: false
+
+- name: Parse authenticated receiver readiness evidence
+  ansible.builtin.set_fact:
+    iii_health_readiness: "{{ iii_health_readiness_raw.content | b64decode | from_json }}"
+
+- name: Verify receiver readiness identity
+  ansible.builtin.assert:
+    that:
+      - iii_health_readiness.schema == 'iii.receiver-readiness/v1'
+      - iii_health_readiness.socket_open
+      - iii_health_readiness.self_tests_passed
+
+- name: Verify every receiver and recovery unit is enabled
+  ansible.builtin.command:
+    argv: [/usr/bin/systemctl, is-enabled, "{{ item.name }}"]
+  changed_when: false
+  loop: "{{ iii_receiver_units }}"
+  when: not ansible_check_mode
+
+- name: Verify every application control-plane unit is enabled
+  ansible.builtin.command:
+    argv: [/usr/bin/systemctl, is-enabled, "{{ item }}"]
+  changed_when: false
+  loop: "{{ iii_application_units }}"
+  when: not ansible_check_mode
+
+- name: Verify the installed production unit dependency graph
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemd-analyze
+      - verify
+      - /etc/systemd/system/iii-system-daemon.service
+      - /etc/systemd/system/iii-runtime-api.service
+      - /etc/systemd/system/iii.target
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Verify long-running receiver units are active
+  ansible.builtin.command:
+    argv: [/usr/bin/systemctl, is-active, "{{ item.name }}"]
+  changed_when: false
+  loop: "{{ iii_receiver_units }}"
+  when:
+    - not ansible_check_mode
+    - item.active_required
+
+- name: Verify mDNS hostname publication is enabled and active
+  ansible.builtin.command:
+    argv: [/usr/bin/systemctl, "{{ item }}", avahi-daemon.service]
+  changed_when: false
+  loop: [is-enabled, is-active]
+  when: not ansible_check_mode
+
+- name: Inspect the effective aircraft hostname
+  ansible.builtin.command:
+    argv: [/usr/bin/hostname]
+  register: iii_effective_hostname
+  changed_when: false
+  check_mode: false
+
+- name: Require the stable iii.local host label
+  ansible.builtin.assert:
+    that:
+      - iii_effective_hostname.stdout == 'iii'
+
+- name: Verify Avahi reports a running daemon
+  ansible.builtin.command:
+    argv: [/usr/sbin/avahi-daemon, --check]
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Verify completed receiver recovery oneshots did not fail
+  ansible.builtin.command:
+    argv: [/usr/bin/systemctl, show, --property=Result, --value, "{{ item.name }}"]
+  register: iii_recovery_results
+  changed_when: false
+  failed_when: iii_recovery_results.stdout not in ['success', '']
+  loop: "{{ iii_receiver_units }}"
+  when:
+    - not ansible_check_mode
+    - not item.active_required
+
+- name: Refuse a step-capable chrony configuration
+  ansible.builtin.command:
+    argv: [/usr/bin/grep, -E, "^[[:space:]]*makestep", /etc/chrony/chrony.conf]
+  register: iii_health_chrony_step
+  changed_when: false
+  failed_when: iii_health_chrony_step.rc == 0
+  check_mode: false
+
+- name: Verify the firewall policy is syntactically loadable
+  ansible.builtin.command:
+    argv: [/usr/sbin/nft, --check, --file, /etc/nftables.conf]
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Verify hardened OpenSSH forced-command transport policy
+  ansible.builtin.command:
+    argv: [/usr/sbin/sshd, -t]
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Verify the human field-access sudo policy
+  ansible.builtin.command:
+    argv: [/usr/sbin/visudo, -cf, /etc/sudoers.d/90-iii-maintenance]
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Build deterministic installed-package evidence
+  ansible.builtin.set_fact:
+    iii_health_package_versions: >-
+      {{ iii_health_package_versions | default({}) | combine({
+        item: (ansible_facts.packages[item] | map(attribute='version') | sort | list)
+      }) }}
+  loop: "{{ (iii_host_packages + iii_ros_packages + iii_hardware_packages) | map('regex_replace', '=.*$', '') | unique | sort }}"
+  when: item in ansible_facts.packages
+
+- name: Require every governed host package
+  ansible.builtin.assert:
+    that:
+      - item in ansible_facts.packages
+    fail_msg: "Governed host package is absent: {{ item }}"
+  loop: "{{ (iii_host_packages + iii_ros_packages + iii_hardware_packages) | map('regex_replace', '=.*$', '') | unique | sort }}"
+  when: not ansible_check_mode
+
+- name: Record the deterministic converged-host health report
+  ansible.builtin.template:
+    src: host-baseline-report.json.j2
+    dest: /var/lib/iii/deployment/host-baseline-report.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"

@@ -1,0 +1,155 @@
+---
+- name: Inspect whether an immutable release is active before host mutation
+  ansible.builtin.stat:
+    path: /var/lib/iii/deployment/active-selector.json
+    follow: false
+  register: iii_active_selector
+
+- name: Read the active application selector before host mutation
+  ansible.builtin.slurp:
+    path: /var/lib/iii/deployment/active-selector.json
+  register: iii_active_selector_content
+  when: iii_active_selector.stat.exists
+
+- name: Parse the active application selector before host mutation
+  ansible.builtin.set_fact:
+    iii_active_selector_value: >-
+      {{ iii_active_selector_content.content | b64decode | from_json }}
+  when: iii_active_selector.stat.exists
+
+- name: Authenticate the active application selector before path use
+  ansible.builtin.assert:
+    that:
+      - iii_active_selector_value.schema == 'iii.activation-selector/v1'
+      - iii_active_selector_value | iii_valid_document_identity('selector_id')
+      - iii_active_selector_value.release_id is match('^[a-f0-9]{64}$')
+      - iii_active_selector_value.release_path == '/opt/iii/releases/' + iii_active_selector_value.release_id
+  when: iii_active_selector.stat.exists
+
+- name: Read the selected release manifest before host mutation
+  ansible.builtin.slurp:
+    path: "/opt/iii/releases/{{ iii_active_selector_value.release_id }}/release-manifest.json"
+  register: iii_active_release_manifest_content
+  when: iii_active_selector.stat.exists
+
+- name: Parse the selected release manifest before host mutation
+  ansible.builtin.set_fact:
+    iii_active_release_manifest: >-
+      {{ iii_active_release_manifest_content.content | b64decode | from_json }}
+  when: iii_active_selector.stat.exists
+
+- name: Authenticate the selected release manifest before host mutation
+  ansible.builtin.assert:
+    that:
+      - iii_active_release_manifest.schema_version == '1'
+      - iii_active_release_manifest.manifest_type == 'release'
+      - iii_active_release_manifest.release_id == iii_active_selector_value.release_id
+      - iii_active_release_manifest | iii_valid_document_identity('release_id')
+      - iii_active_release_manifest.target is mapping
+  when: iii_active_selector.stat.exists
+
+- name: Refuse host convergence with an incompatible active release
+  ansible.builtin.assert:
+    that:
+      - iii_active_selector_value.profile == iii_profile
+      - iii_active_release_manifest.target.host_baseline == iii_baseline_id
+      - iii_active_release_manifest.target.host_unit_contract == iii_unit_contract_id
+      - iii_active_release_manifest.target.definition_id == iii_target_definition_id
+    fail_msg: >-
+      The active release is incompatible with the requested host profile or
+      baseline. Use the explicit host-maintenance or reimage workflow; ordinary
+      convergence must not stop it, rewrite its selector, or discard rollback.
+  when: iii_active_selector.stat.exists
+
+- name: Create the fixed host-launcher and transient flush directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /usr/libexec/iii, owner: root, group: root, mode: "0755"}
+    - {path: /run/iii/clock-flush, owner: iii, group: iii, mode: "0750"}
+
+- name: Install the Ansible-owned selector-aware release launcher
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../host/iii-release-launch"
+    dest: /usr/libexec/iii/iii-release-launch
+    owner: root
+    group: root
+    mode: "0755"
+  register: iii_release_launcher_install
+
+- name: Install the host-unit contract for inspection and activation policy
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../systemd/unit-contract.json"
+    dest: /etc/iii/host-unit-contract.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
+
+- name: Install the public shared target profile
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../targets/v1/shared-aircraft.json"
+    dest: /etc/iii/shared-target-profile.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
+
+- name: Install the real-profile non-secret runtime environment
+  ansible.builtin.template:
+    src: runtime.env.j2
+    dest: /etc/iii/runtime.env
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
+  register: iii_runtime_environment_install
+
+- name: Install the fixed production daemon and API units
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../systemd/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ iii_application_units }}"
+  register: iii_application_unit_install
+  notify:
+    - Reload systemd for III control plane
+
+- name: Flush the unit reload before enablement
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the minimal control plane for every boot
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+  loop: "{{ iii_application_units }}"
+  when: not ansible_check_mode
+
+- name: Restart the control plane after compatible host-owned assets change
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: restarted
+  loop:
+    - iii-system-daemon.service
+    - iii-runtime-api.service
+  when:
+    - not ansible_check_mode
+    - iii_active_selector.stat.exists
+    - >-
+      iii_release_launcher_install.changed
+      or iii_runtime_environment_install.changed
+      or iii_application_unit_install.changed
+
+- name: Start the compatible selected control plane
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+  loop:
+    - iii-system-daemon.service
+    - iii-runtime-api.service
+  when:
+    - not ansible_check_mode
+    - iii_active_selector.stat.exists

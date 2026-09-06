@@ -79,6 +79,7 @@ cd "$root"
 source_branch="develop"
 target_branch="main"
 promotion_branch="promote/develop-to-main/$promotion_id"
+stack_operation_id="promote-$(printf '%s' "$promotion_id" | tr '[:upper:]_.' '[:lower:]--' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-//; s/-$//' | cut -c1-55)"
 
 echo "Promotion phase: $phase"
 echo "Source branch: $source_branch"
@@ -97,7 +98,8 @@ if (( apply == 0 )); then
     print_command ./scripts/git/post_pr_sync.sh --base "$source_branch" --yes
     print_command git switch -c "$promotion_branch"
     print_command ./scripts/git/iii_branch_guard.sh align --base "$target_branch" --feature "$promotion_branch" --all-iii --yes
-    print_command ./scripts/git/create_stack_prs.sh --base "$target_branch" --feature "$promotion_branch" --all-iii --yes
+    print_command ./scripts/git/create_stack_prs.sh --base "$target_branch" --feature "$promotion_branch" --operation-id "$stack_operation_id" --all-iii
+    print_command ./scripts/git/create_stack_prs.sh --base "$target_branch" --feature "$promotion_branch" --operation-id "$stack_operation_id" --all-iii --yes
   else
     print_command git switch "$promotion_branch"
     print_command ./scripts/git/refresh_workspace_submodule_pointers.sh --base "$target_branch" --feature "$promotion_branch" --all-iii --yes
@@ -137,7 +139,11 @@ if [[ "$phase" == "prepare" ]]; then
   ./scripts/git/iii_branch_guard.sh align \
     --base "$target_branch" --feature "$promotion_branch" --all-iii --yes
   ./scripts/git/create_stack_prs.sh \
-    --base "$target_branch" --feature "$promotion_branch" --all-iii --yes
+    --base "$target_branch" --feature "$promotion_branch" \
+    --operation-id "$stack_operation_id" --all-iii
+  ./scripts/git/create_stack_prs.sh \
+    --base "$target_branch" --feature "$promotion_branch" \
+    --operation-id "$stack_operation_id" --all-iii --yes
   echo
   echo "Prepare complete. Merge every linked submodule PR into main, then run:"
   echo "  $0 --promotion-id $promotion_id --phase refresh --yes"

@@ -1,0 +1,7 @@
+{
+  "schema": "iii.middleware-interface-policy/v1",
+  "loopback_interface": "lo",
+  "excluded_interface_prefixes": ["br-", "docker", "tailscale", "tun", "veth", "virbr"],
+  "aircraft_interface_selection": "default-route-then-stable-up-interface",
+  "future_simulator_peer": {"enabled": true, "allowed_profiles": ["hil"], "address": "10.42.0.1"}
+}

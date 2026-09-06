@@ -121,20 +121,41 @@ ALLOWED_STATUS_TRANSITIONS = {
 }
 
 
-def validate_status_transition(previous: Mapping[str, Any] | None, current: Mapping[str, Any]) -> None:
-    previous_status = previous and previous["status"]
+def validate_status_transition(
+    previous_release: Mapping[str, Any] | None,
+    current: Mapping[str, Any],
+    *,
+    previous_global: Mapping[str, Any] | None = None,
+) -> None:
+    """Validate one per-release transition inside the global append-only chain."""
+
+    previous_status = previous_release and previous_release["status"]
     if current["status"] not in ALLOWED_STATUS_TRANSITIONS[previous_status]:
         raise ContractError(f"non-monotonic status transition {previous_status!r} -> {current['status']!r}")
-    if previous is None:
-        if current["sequence"] != 1 or current["previous_statement"] is not None:
-            raise ContractError("first status statement must have sequence 1 and no predecessor")
-        return
-    if current["release_id"] != previous["release_id"] or current["version"] != previous["version"]:
-        raise ContractError("status transition changed release identity")
-    if current["sequence"] != previous["sequence"] + 1:
+    expected_sequence = 1 if previous_global is None else previous_global["sequence"] + 1
+    if current["sequence"] != expected_sequence:
         raise ContractError("status sequence is not contiguous")
-    predecessor = current["previous_statement"] or {}
-    if predecessor.get("statement_id") != previous["statement_id"]:
-        raise ContractError("status predecessor does not identify previous statement")
-    if predecessor.get("sha256") != content_identity(previous):
-        raise ContractError("status predecessor checksum mismatch")
+    global_reference = current["previous_statement"]
+    if previous_global is None:
+        if global_reference is not None:
+            raise ContractError("first global status statement must have no predecessor")
+    else:
+        expected = {
+            "statement_id": previous_global["statement_id"],
+            "sha256": content_identity(previous_global),
+        }
+        if global_reference != expected:
+            raise ContractError("global status predecessor mismatch")
+    release_reference = current["previous_release_statement"]
+    if previous_release is None:
+        if release_reference is not None:
+            raise ContractError("first release status must have no release predecessor")
+        return
+    if current["release_id"] != previous_release["release_id"] or current["version"] != previous_release["version"]:
+        raise ContractError("status transition changed release identity")
+    expected_release = {
+        "statement_id": previous_release["statement_id"],
+        "sha256": content_identity(previous_release),
+    }
+    if release_reference != expected_release:
+        raise ContractError("release status predecessor mismatch")

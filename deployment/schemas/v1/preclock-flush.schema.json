@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/preclock-flush.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "records_flushed", "dropped_records"],
+  "properties": {
+    "schema": {"const": "iii.preclock-flush/v1"},
+    "records_flushed": {"type": "integer", "minimum": 0, "maximum": 10000},
+    "dropped_records": {"type": "integer", "minimum": 0}
+  }
+}

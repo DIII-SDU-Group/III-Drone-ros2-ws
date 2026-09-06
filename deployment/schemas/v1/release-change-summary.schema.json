@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/release-change-summary.schema.json",
+  "title": "III machine-derived release change summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "summary_type", "version", "base_version", "base_commit", "source_commit", "commits", "changed_paths", "categories", "operator_changes"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "summary_type": {"const": "iii.release-change-summary"},
+    "version": {"type": "string", "pattern": "^v(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$"},
+    "base_version": {"type": ["string", "null"], "pattern": "^v(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$"},
+    "base_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "source_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "commits": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["sha", "subject"], "properties": {"sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"}, "subject": {"type": "string", "minLength": 1}}}},
+    "changed_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "categories": {
+      "type": "object", "additionalProperties": false,
+      "required": ["drone", "gc", "missions", "configuration", "px4", "qgc", "host_provisioning", "documentation"],
+      "properties": {
+        "drone": {"$ref": "#/definitions/paths"}, "gc": {"$ref": "#/definitions/paths"},
+        "missions": {"$ref": "#/definitions/paths"}, "configuration": {"$ref": "#/definitions/paths"},
+        "px4": {"$ref": "#/definitions/paths"}, "qgc": {"$ref": "#/definitions/paths"},
+        "host_provisioning": {"$ref": "#/definitions/paths"}, "documentation": {"$ref": "#/definitions/paths"}
+      }
+    },
+    "operator_changes": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+  },
+  "definitions": {"paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}}
+}

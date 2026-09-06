@@ -1,0 +1,16 @@
+# III host time policy: continuous synchronization is slew-only.
+# A wall-clock step is authorized only by the receiver while DEGRADED_CLOCK and
+# the real graph is stopped. Never add makestep here.
+pool ntp.ubuntu.com iburst maxsources 4
+pool time.cloudflare.com iburst maxsources 2
+driftfile /var/lib/chrony/chrony.drift
+rtcsync
+leapsectz right/UTC
+maxupdateskew 100.0
+maxslewrate 1000
+logdir /var/log/chrony
+log tracking measurements statistics
+bindcmdaddress 127.0.0.1
+bindcmdaddress ::1
+cmdallow 127.0.0.1
+cmdallow ::1

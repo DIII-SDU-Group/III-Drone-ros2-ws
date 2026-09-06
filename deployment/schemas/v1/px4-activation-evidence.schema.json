@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/px4-activation-evidence.schema.json",
+  "title": "Authenticated complete PX4 inventory evidence for activation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "evidence_id", "captured_at", "release_id", "profile", "manifest_id", "snapshot", "comparison", "healthy", "writes_performed"],
+  "properties": {
+    "schema": {"const": "iii.px4-activation-evidence/v1"},
+    "evidence_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "release_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "profile": {"enum": ["real", "sim"]},
+    "manifest_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "snapshot": {"type": "object"},
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "profile", "manifest_id", "snapshot_id", "inventory_complete", "missing", "unexpected", "drift", "preserved_calibration_identity", "required_match"],
+      "properties": {
+        "schema": {"const": "iii.px4-parameter-comparison/v1"},
+        "profile": {"enum": ["real", "sim"]},
+        "manifest_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "snapshot_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "inventory_complete": {"type": "boolean"},
+        "missing": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "unexpected": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "drift": {"type": "object", "additionalProperties": false, "required": ["release-required", "operator-tunable"], "properties": {"release-required": {"type": "array", "items": {"type": "object"}}, "operator-tunable": {"type": "array", "items": {"type": "object"}}}},
+        "preserved_calibration_identity": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "required_match": {"type": "boolean"}
+      }
+    },
+    "healthy": {"type": "boolean"},
+    "writes_performed": {"const": 0}
+  }
+}

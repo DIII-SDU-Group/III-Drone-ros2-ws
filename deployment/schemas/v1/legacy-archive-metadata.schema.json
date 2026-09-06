@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/legacy-archive-metadata.schema.json",
+  "title": "III legacy deployment repository archive metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "repository", "final_commit", "final_branch", "last_legacy_version", "state", "replacement_release_id", "replacement_manual", "replacement_documentation_manifest_id", "q131_retirement_evidence_id", "history_recovery_location", "archive_ruleset"],
+  "properties": {
+    "schema": {"const": "iii.legacy-archive-metadata/v1"},
+    "repository": {"const": "DIII-SDU-Group/III-Drone-deployment"},
+    "final_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "final_branch": {"type": "string", "minLength": 1},
+    "last_legacy_version": {"type": "string", "minLength": 1},
+    "state": {"enum": ["pending-q131", "archived"]},
+    "replacement_release_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "replacement_manual": {"const": "docs/deployment-and-field-operations.md"},
+    "replacement_documentation_manifest_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "q131_retirement_evidence_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "history_recovery_location": {"type": "string", "pattern": "^https://github\\.com/DIII-SDU-Group/III-Drone-deployment$"},
+    "archive_ruleset": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"state": {"const": "archived"}}},
+      "then": {
+        "properties": {
+          "replacement_release_id": {"type": "string"},
+          "replacement_documentation_manifest_id": {"type": "string"},
+          "q131_retirement_evidence_id": {"type": "string"}
+        }
+      }
+    }
+  ]
+}

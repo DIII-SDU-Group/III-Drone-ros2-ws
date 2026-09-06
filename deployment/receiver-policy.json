@@ -1,0 +1,109 @@
+{
+  "schema": "iii.receiver-policy/v1",
+  "transport": {
+    "kind": "unix-domain-socket",
+    "path": "/run/iii/deployment-receiver.sock",
+    "tcp_listener": false,
+    "ssh_forced_command": "/usr/bin/iii-deployment-ssh-gateway"
+  },
+  "normal_release_mutable_paths": [
+    "/opt/iii",
+    "/opt/iii/releases",
+    "/opt/iii/current",
+    "/var/lib/iii/configuration",
+    "/var/lib/iii/deployment",
+    "/var/lib/iii/backups",
+    "/var/lib/iii/portable-generations",
+    "/var/lib/iii/portable-selector",
+    "/var/log/iii",
+    "/home/iii-deploy/.ssh",
+    "/home/iii-deploy/.ssh/authorized_keys"
+  ],
+  "normal_release_read_only_paths": [
+    "/opt/iii/receiver"
+  ],
+  "host_control_mutable_paths": [
+    "/etc/netplan"
+  ],
+  "declared_systemd_units": [
+    "iii-system-daemon.service",
+    "iii-runtime-api.service"
+  ],
+  "normal_release_forbidden_paths": [
+    "/opt/iii/receiver/bootstrap",
+    "/opt/iii/receiver/selectors/fallback",
+    "/etc/iii/trust",
+    "/etc/apt/sources.list.d/ubuntu.sources",
+    "/etc/apt/sources.list.d/ros2.sources",
+    "/etc/iii/host-maintenance-policy.json",
+    "/etc/iii/hardware-role-manifest.json",
+    "/etc/iii/boot-profile.json",
+    "/etc/iii/boot-baseline.json",
+    "/etc/iii/network-policy.json",
+    "/etc/netplan",
+    "/etc/avahi/avahi-daemon.conf",
+    "/etc/hostname",
+    "/var/lib/iii/deployment/network",
+    "/boot",
+    "/etc/udev/rules.d/90-iii-hardware-roles.rules",
+    "/etc/systemd/system/iii-deployment-receiver-reconcile.service",
+    "/etc/systemd/system/iii-deployment-receiver.service",
+    "/etc/systemd/system/iii-host-maintenance@.service",
+    "/etc/systemd/system/iii-network-apply@.service",
+    "/etc/systemd/system/iii-network-revert@.service",
+    "/etc/systemd/system/iii-network-timeout@.service",
+    "/etc/systemd/system/iii-network-revert@.timer",
+    "/etc/systemd/system/iii-system-daemon.service",
+    "/etc/systemd/system/iii-runtime-api.service",
+    "/etc/systemd/system/iii.target",
+    "/usr/libexec/iii/iii-release-launch",
+    "/etc/iii/runtime.env",
+    "/etc/iii/host-unit-contract.json",
+    "/usr/share/iii/host-maintenance"
+  ],
+  "self_update_receiver_mutable_paths": [
+    "/opt/iii/receiver/slots",
+    "/var/lib/iii/deployment/receiver-update.json"
+  ],
+  "self_update_bootstrap_mutable_paths": [
+    "/opt/iii/receiver/selectors",
+    "/var/lib/iii/deployment",
+    "/run/iii"
+  ],
+  "self_update_forbidden_paths": [
+    "/opt/iii/receiver/bootstrap",
+    "/etc/iii/trust",
+    "/etc/systemd/system/iii-receiver-bootstrap-apply.service",
+    "/etc/systemd/system/iii-receiver-bootstrap-prepare.service",
+    "/etc/systemd/system/iii-receiver-bootstrap-reconcile.service",
+    "/etc/systemd/system/iii-deployment-receiver-reconcile.service",
+    "/etc/systemd/system/iii-deployment-receiver.service",
+    "/etc/systemd/system/iii-host-maintenance@.service",
+    "/etc/systemd/system/iii-network-apply@.service",
+    "/etc/systemd/system/iii-network-revert@.service",
+    "/etc/systemd/system/iii-network-timeout@.service",
+    "/etc/systemd/system/iii-network-revert@.timer",
+    "/etc/iii/host-maintenance-policy.json",
+    "/etc/iii/hardware-role-manifest.json",
+    "/etc/iii/boot-profile.json",
+    "/etc/iii/boot-baseline.json",
+    "/etc/iii/network-policy.json",
+    "/etc/netplan",
+    "/etc/avahi/avahi-daemon.conf",
+    "/etc/hostname",
+    "/var/lib/iii/deployment/network",
+    "/boot",
+    "/etc/udev/rules.d/90-iii-hardware-roles.rules",
+    "/usr/share/iii/host-maintenance"
+  ],
+  "deadlines_s": {
+    "target_acceptance": 60,
+    "hard": 120,
+    "rollback_target": 60
+  },
+  "authorization": {
+    "nonce_expiry_s": 300,
+    "single_use": true,
+    "target_wide_lease_count": 1
+  }
+}

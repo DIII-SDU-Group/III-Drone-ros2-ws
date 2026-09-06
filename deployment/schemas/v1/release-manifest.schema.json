@@ -4,7 +4,7 @@
   "title": "III release manifest",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "manifest_type", "release_id", "release_class", "components", "component_targets", "compatibility", "source", "target", "toolchain", "dependency_lock", "packages", "checksums", "configuration", "px4", "qgc", "profiles", "mission_catalog", "qualification", "signing", "operational_policy", "build"],
+  "required": ["schema_version", "manifest_type", "release_id", "release_class", "components", "component_targets", "compatibility", "source", "target", "toolchain", "dependency_lock", "packages", "checksums", "configuration", "px4", "qgc", "profiles", "mission_catalog", "qualification", "signing", "operational_policy", "documentation", "build"],
   "properties": {
     "schema_version": {"const": "1"},
     "manifest_type": {"const": "release"},
@@ -14,12 +14,13 @@
     "components": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["drone", "gc"]}},
     "source": {
       "type": "object", "additionalProperties": false,
-      "required": ["workspace_commit", "branch", "clean", "content_identity", "snapshot_sha256", "provenance_report_sha256", "tracked_patch_sha256", "untracked", "submodules"],
+      "required": ["workspace_commit", "branch", "clean", "content_identity", "snapshot_content_identity", "snapshot_sha256", "provenance_report_sha256", "tracked_patch_sha256", "untracked", "submodules"],
       "properties": {
         "workspace_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
         "branch": {"type": "string", "minLength": 1},
         "clean": {"type": "boolean"},
         "content_identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "snapshot_content_identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "snapshot_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "provenance_report_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "tracked_patch_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
@@ -44,7 +45,7 @@
     },
     "target": {
       "type": "object", "additionalProperties": false,
-      "required": ["definition_id", "target_id", "os", "os_version", "architecture", "python_abi", "host_baseline", "ros"],
+      "required": ["definition_id", "target_id", "os", "os_version", "architecture", "python_abi", "host_baseline", "host_unit_contract", "ros"],
       "properties": {
         "definition_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "target_id": {"enum": ["raspberry-pi-5-noble-arm64", "gc-ubuntu-x86_64"]},
@@ -52,6 +53,7 @@
         "architecture": {"enum": ["aarch64", "x86_64"]},
         "python_abi": {"type": "string", "pattern": "^cp3[0-9]+$"},
         "host_baseline": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "host_unit_contract": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "ros": {"type": ["string", "null"], "enum": ["jazzy", null]}
       }
     },
@@ -60,16 +62,46 @@
     "packages": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["name", "version", "content_sha256"], "properties": {"name": {"type": "string", "pattern": "^[a-z0-9_+-]+$"}, "version": {"type": "string"}, "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}},
     "checksums": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "propertyNames": {"pattern": "^(?!/)(?!.*\\.\\.).+$"}},
     "configuration": {"type": "object", "additionalProperties": false, "required": ["schema_version", "manifest_sha256", "compatible_from", "capture_contract"], "properties": {"schema_version": {"type": "integer", "minimum": 1}, "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "compatible_from": {"type": "array", "items": {"type": "integer", "minimum": 1}, "uniqueItems": true}, "capture_contract": {"const": "iii.capture/v1"}}},
-    "px4": {"type": "object", "additionalProperties": false, "required": ["manifests", "firmware_range", "interface_sha256"], "properties": {"manifests": {"type": "object", "required": ["real", "sim"], "minProperties": 2, "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "propertyNames": {"pattern": "^[a-z][a-z0-9_-]*$"}}, "firmware_range": {"type": "string", "minLength": 1}, "interface_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
-    "qgc": {"type": "object", "additionalProperties": false, "required": ["managed_settings_sha256", "compatible_versions"], "properties": {"managed_settings_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "compatible_versions": {"type": "array", "minItems": 1, "items": {"type": "string"}}}},
-    "profiles": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["id", "status", "bootable", "parameter_profile", "capabilities", "default_mission"], "properties": {"id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"}, "status": {"enum": ["commissioned", "not_commissioned"]}, "bootable": {"type": "boolean"}, "parameter_profile": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"}, "capabilities": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$"}, "uniqueItems": true}, "default_mission": {"type": "string", "minLength": 1}}}},
-    "mission_catalog": {"type": "object", "additionalProperties": false, "required": ["schema_version", "catalog_sha256"], "properties": {"schema_version": {"type": "integer", "minimum": 1}, "catalog_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+    "px4": {"type": "object", "additionalProperties": false, "required": ["manifests", "manifest_ids", "network_baseline_id", "network_baseline_sha256", "reference_snapshot_id", "reference_snapshot_sha256", "firmware_range", "interface_sha256", "spec_id", "firmware_version", "firmware_commit", "advertised_commit", "board_target", "dds_topics_id", "dds_topics_sha256", "firmware_build_id", "firmware_cache_key", "firmware_artifact"], "properties": {"manifests": {"type": "object", "required": ["real", "sim"], "minProperties": 2, "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "propertyNames": {"pattern": "^[a-z][a-z0-9_-]*$"}}, "manifest_ids": {"type": "object", "required": ["real", "sim"], "minProperties": 2, "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "propertyNames": {"pattern": "^[a-z][a-z0-9_-]*$"}}, "network_baseline_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "network_baseline_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "reference_snapshot_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "reference_snapshot_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "firmware_range": {"type": "string", "minLength": 1}, "interface_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "spec_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "firmware_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}, "firmware_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"}, "advertised_commit": {"type": "string", "pattern": "^[a-f0-9]{10}$"}, "board_target": {"const": "px4_fmu-v6x_multicopter"}, "dds_topics_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "dds_topics_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "firmware_build_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "firmware_cache_key": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "firmware_artifact": {"type": "object", "additionalProperties": false, "required": ["filename", "sha256", "bytes"], "properties": {"filename": {"const": "px4_fmu-v6x_multicopter.px4"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "bytes": {"type": "integer", "minimum": 1}}}}},
+    "qgc": {"type": "object", "additionalProperties": false, "required": ["managed_settings_sha256", "compatible_versions"], "properties": {"managed_settings_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "compatible_versions": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "selected_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}, "appimage_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "update_owner": {"const": "iii-gc-release"}}},
+    "profiles": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["id", "status", "bootable", "parameter_profile", "capabilities", "default_mission", "health"], "properties": {"id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"}, "status": {"enum": ["commissioned", "not_commissioned"]}, "bootable": {"type": "boolean"}, "parameter_profile": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"}, "capabilities": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$"}, "uniqueItems": true}, "default_mission": {"type": "string", "minLength": 1}, "health": {"$ref": "#/definitions/health"}}}},
+    "mission_catalog": {"type": "object", "additionalProperties": false, "required": ["schema_version", "scope", "catalog_hash", "catalog_sha256", "source_state_sha256"], "properties": {"schema_version": {"type": "integer", "minimum": 1}, "scope": {"enum": ["qualified", "field"]}, "catalog_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "catalog_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "source_state_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "entries": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}, "included_experimental": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}}},
     "qualification": {"type": "object", "additionalProperties": false, "required": ["explicit_action", "tag_on_release", "tests_complete", "evidence_sha256", "evidence_complete"], "properties": {"explicit_action": {"type": "boolean"}, "tag_on_release": {"type": "boolean"}, "tests_complete": {"type": "boolean"}, "evidence_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "evidence_complete": {"type": "boolean"}}},
     "signing": {"type": "object", "additionalProperties": false, "required": ["algorithm", "signer_id", "authority"], "properties": {"algorithm": {"const": "Ed25519"}, "signer_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "authority": {"enum": ["ci-qualified", "workstation-field"]}}},
     "operational_policy": {"type": "object", "additionalProperties": false, "required": ["schema_version", "sha256"], "properties": {"schema_version": {"const": "1"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+    "documentation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["manifest_id", "manifest_sha256", "policy_sha256", "review_id", "review_sha256", "operator_manual", "generated_references", "included_documents"],
+      "properties": {
+        "manifest_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "policy_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "review_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "review_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "operator_manual": {"const": "docs/deployment-and-field-operations.md"},
+        "generated_references": {"type": "array", "minItems": 2, "uniqueItems": true, "items": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"}},
+        "included_documents": {"type": "array", "minItems": 3, "items": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}}
+      }
+    },
     "build": {"type": "object", "additionalProperties": false, "required": ["builder_id", "built_at", "source_date_epoch"], "properties": {"builder_id": {"type": "string", "minLength": 1}, "built_at": {"type": "string", "format": "date-time"}, "source_date_epoch": {"type": "integer", "minimum": 0}}}
   },
   "definitions": {
+    "health": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "required_hardware_roles", "optional_hardware_roles", "required_services", "optional_services", "required_managed_nodes", "optional_managed_nodes", "required_systemd_units"],
+      "properties": {
+        "schema": {"const": "iii.activation-health-policy/v1"},
+        "required_hardware_roles": {"$ref": "#/definitions/entity_list"},
+        "optional_hardware_roles": {"$ref": "#/definitions/entity_list"},
+        "required_services": {"$ref": "#/definitions/entity_list"},
+        "optional_services": {"$ref": "#/definitions/entity_list"},
+        "required_managed_nodes": {"$ref": "#/definitions/lifecycle_map"},
+        "optional_managed_nodes": {"$ref": "#/definitions/lifecycle_map"},
+        "required_systemd_units": {"$ref": "#/definitions/entity_list"}
+      }
+    },
+    "entity_list": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.@-]{0,127}$"}},
+    "lifecycle_map": {"type": "object", "additionalProperties": {"enum": ["unconfigured", "inactive", "active"]}, "propertyNames": {"pattern": "^[a-z][a-z0-9_.@-]{0,127}$"}},
     "component_target": {
       "type": "object", "additionalProperties": false,
       "required": ["target_id", "os", "os_version", "architecture"],

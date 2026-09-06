@@ -1,0 +1,103 @@
+{
+  "schema": "iii.gc-host-policy/v1",
+  "supported_platforms": [
+    {"id": "ubuntu-22.04-x86_64", "os_id": "ubuntu", "version_id": "22.04", "architecture": "x86_64"},
+    {"id": "ubuntu-24.04-x86_64", "os_id": "ubuntu", "version_id": "24.04", "architecture": "x86_64"}
+  ],
+  "operational_packages": [
+    "avahi-utils",
+    "ca-certificates",
+    "curl",
+    "docker.io",
+    "docker-compose-v2",
+    "gstreamer1.0-gl",
+    "gstreamer1.0-libav",
+    "gstreamer1.0-plugins-bad",
+    "libegl1",
+    "libfontconfig1",
+    "libgl1",
+    "libnss-mdns",
+    "libopengl0",
+    "libxcb-cursor0",
+    "libxcb-xinerama0",
+    "libxkbcommon-x11-0",
+    "python3",
+    "python3-venv",
+    "skopeo",
+    "xdg-utils"
+  ],
+  "container_runtime": {
+    "default_packages": ["docker.io", "docker-compose-v2"],
+    "accepted_existing_provider": "docker-ce",
+    "accepted_existing_packages": [
+      "containerd.io",
+      "docker-buildx-plugin",
+      "docker-ce",
+      "docker-ce-cli",
+      "docker-compose-plugin"
+    ]
+  },
+  "development_packages": [
+    "build-essential",
+    "git",
+    "git-lfs",
+    "openssh-client",
+    "python3-pip"
+  ],
+  "forbidden_proxy_host_packages": [
+    "mavsdk",
+    "ros-*",
+    "ros-jazzy-*",
+    "cyclonedds-*"
+  ],
+  "managed_user_paths": [
+    {"path": ".config/iii", "mode": "0700", "class": "settings"},
+    {"path": ".config/iii/credentials", "mode": "0700", "class": "secret"},
+    {"path": ".config/iii/identity", "mode": "0700", "class": "machine-identity"},
+    {"path": ".config/iii/keys", "mode": "0700", "class": "secret"},
+    {"path": ".config/iii/keys/signing", "mode": "0700", "class": "secret"},
+    {"path": ".local/state/iii", "mode": "0700", "class": "state"},
+    {"path": ".local/state/iii/captures", "mode": "0700", "class": "portable-records"},
+    {"path": ".local/state/iii/gc", "mode": "0700", "class": "state"},
+    {"path": ".local/state/iii/registry", "mode": "0700", "class": "portable-records"},
+    {"path": ".local/state/iii/logs", "mode": "0700", "class": "logs"},
+    {"path": ".local/share/iii", "mode": "0700", "class": "application"},
+    {"path": ".local/share/iii/gc-applications", "mode": "0700", "class": "application"},
+    {"path": ".config/QGroundControl.org", "mode": "0700", "class": "settings"},
+    {"path": ".local/share/QGroundControl", "mode": "0700", "class": "state"},
+    {"path": "Documents/QGroundControl", "mode": "0700", "class": "logs"},
+    {"path": ".cache/iii", "mode": "0700", "class": "cache"}
+  ],
+  "login_units": [
+    "iii-gc-proxy.service",
+    "iii-gc-frontend.service",
+    "iii-gc-discovery.service",
+    "iii-gc-mirror.service",
+    "iii-gc-clock.service",
+    "iii-gc-px4-parameters.service"
+  ],
+  "manual_units": ["iii-gc-browser.service", "iii-qgc.service"],
+  "recovery_units": ["iii-gc-application-reconcile.service"],
+  "automatic_hostname": "iii.local",
+  "clock_profiles": ["real"],
+  "clock_skip_profiles": ["sim"],
+  "builder": {
+    "target": "cross-compiler",
+    "tag": "iii-cc:raspberry-pi-5-noble-arm64-v1",
+    "definition": "Dockerfile.cc",
+    "definition_sha256": "7f824ff2d57b51724d70f46036cb15d09d72c09f2783d2ae40b27791089069da"
+  },
+  "offline_roles": [
+    "ansible-controller-wheelhouse",
+    "gc-runtime-wheelhouse",
+    "arm64-builder-image",
+    "apt-packages"
+  ],
+  "excluded_prerequisites": [
+    "disk-partitioning",
+    "full-disk-encryption",
+    "proprietary-hardware-drivers",
+    "ubuntu-installation",
+    "vendor-firmware"
+  ]
+}

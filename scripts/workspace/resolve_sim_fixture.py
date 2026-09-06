@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -25,6 +26,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fixture-id", required=True)
     parser.add_argument("--workspace", default=str(Path(__file__).resolve().parents[2]))
     parser.add_argument("--container-workspace", default="/home/iii/ws")
+    parser.add_argument("--profile", choices=("sim", "hil"), default="sim")
     parser.add_argument("--apply", action="store_true", help="Set the Gazebo aircraft pose to the fixture pose.")
     parser.add_argument(
         "--hold-duration-s",
@@ -91,10 +93,30 @@ finally:
     tools.close()
 """
     encoded_snippet = base64.b64encode(snippet.encode("utf-8")).decode("ascii")
+    runtime_environment = ""
+    if args.profile == "hil":
+        workstation_address = os.environ.get("III_HIL_WORKSTATION_ADDRESS", "10.42.0.1")
+        pi_address = os.environ.get("III_HIL_PI_ADDRESS", "10.42.0.15")
+        ros_domain_id = os.environ.get("III_HIL_ROS_DOMAIN_ID", "42")
+        gz_partition = os.environ.get("III_HIL_GZ_PARTITION", "iii_hil_0")
+        cyclone_uri = (
+            "<CycloneDDS><Domain><General><Interfaces>"
+            f'<NetworkInterface address="{workstation_address}" priority="default" multicast="default"/>'
+            "</Interfaces></General><Discovery><Peers>"
+            f'<Peer address="{pi_address}"/>'
+            "</Peers></Discovery></Domain></CycloneDDS>"
+        )
+        runtime_environment = (
+            f"export ROS_DOMAIN_ID={ros_domain_id} ROS_LOCALHOST_ONLY=0 "
+            "ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET ROS2CLI_DISABLE_DAEMON=1 "
+            "RMW_IMPLEMENTATION=rmw_cyclonedds_cpp III_DRONE_MCP_KEEP_RMW=1 "
+            f"GZ_PARTITION={gz_partition!r} CYCLONEDDS_URI={cyclone_uri!r} && "
+        )
     shell = (
         "source /opt/ros/jazzy/setup.bash && "
         f"cd {args.container_workspace} && "
         "source setup/setup_dev.bash >/dev/null 2>&1 && "
+        f"{runtime_environment}"
         f"PYTHONPATH={args.container_workspace}/tools/III-Drone-MCP:$PYTHONPATH "
         "python3 -c \"import base64; exec(base64.b64decode('"
         + encoded_snippet

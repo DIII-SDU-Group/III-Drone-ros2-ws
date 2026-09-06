@@ -1,0 +1,36 @@
+{{ {
+  'schema': 'iii.host-baseline-report/v1',
+  'state': 'converged',
+  'baseline_id': iii_baseline_id,
+  'unit_contract_id': iii_unit_contract_id,
+  'target_definition_id': iii_target_definition_id,
+  'shared_target_profile_id': iii_shared_target_profile_id,
+  'target_class': iii_target_class,
+  'logical_target': iii_logical_target,
+  'profile': iii_profile,
+  'timezone': 'UTC',
+  'clock_policy': 'receiver-step-gate-plus-chrony-slew-only',
+  'journal_identity': 'boot-id-plus-monotonic',
+  'receiver': {
+    'receiver_id': iii_health_readiness.receiver_id,
+    'generation': iii_health_readiness.generation,
+    'socket': '/run/iii/deployment-receiver.sock',
+    'ssh_transport_only': true,
+    'independent_recovery': true,
+    'ssh_user': iii_deployment_user,
+    'uid': iii_deployment_uid,
+    'gid': iii_deployment_gid
+  },
+  'runtime_api': {'port': iii_runtime_api_port, 'operator_cidr': iii_provisioning_inputs.operator_cidr},
+  'maintenance_access': {
+    'user': iii_runtime_user,
+    'uid': iii_runtime_uid,
+    'gid': iii_runtime_gid,
+    'client_id': iii_maintenance_ssh_client_id,
+    'authentication': 'publickey-only',
+    'sudo': 'unrestricted-nopasswd',
+    'operator_cidr': iii_provisioning_inputs.operator_cidr,
+    'ansible_transport': false
+  },
+  'packages': iii_health_package_versions | default({})
+} | iii_canonical_json }}

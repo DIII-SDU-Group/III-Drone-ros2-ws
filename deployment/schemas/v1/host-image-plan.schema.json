@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/host-image-plan.schema.json",
+  "title": "III retained destructive host image plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "operation_id", "image", "source_path", "profile_path", "bootstrap_input_path", "bootstrap_input_sha256", "target", "enumerated_devices", "seed", "destructive_authority", "evidence_directory", "partition_contract"],
+  "properties": {
+    "schema": {"const": "iii.host-image-plan/v1"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "image": {"type": "object", "additionalProperties": false, "required": ["source_id", "filename", "path", "release", "compressed_sha256", "raw_sha256", "raw_bytes", "minimum_target_bytes", "verified"], "properties": {"source_id": {"type": "string", "minLength": 8}, "filename": {"type": "string", "minLength": 1}, "path": {"type": "string", "pattern": "^/"}, "release": {"type": "string", "minLength": 1}, "compressed_sha256": {"$ref": "#/definitions/hash"}, "raw_sha256": {"$ref": "#/definitions/hash"}, "raw_bytes": {"type": "integer", "minimum": 1}, "minimum_target_bytes": {"type": "integer", "minimum": 8589934592}, "verified": {"const": true}}},
+    "source_path": {"type": "string", "pattern": "^/"},
+    "profile_path": {"type": "string", "pattern": "^/"},
+    "bootstrap_input_path": {"type": "string", "pattern": "^/"},
+    "bootstrap_input_sha256": {"$ref": "#/definitions/hash"},
+    "target": {"$ref": "#/definitions/device"},
+    "enumerated_devices": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/device"}},
+    "seed": {"$ref": "#/definitions/seed"},
+    "destructive_authority": {"type": "object", "additionalProperties": false, "required": ["backup_record", "accepted_data_loss", "required_typed_proof", "unattended_override"], "properties": {"backup_record": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/backup"}]}, "accepted_data_loss": {"type": "boolean"}, "required_typed_proof": {"type": "string", "pattern": "^ERASE(?: AND ACCEPT DATA LOSS)? /dev/disk/by-id/.+ [a-f0-9]{16}$"}, "unattended_override": {"const": false}}},
+    "evidence_directory": {"type": "string", "pattern": "^/"},
+    "partition_contract": {"$ref": "#/definitions/partition"}
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "backup": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string", "pattern": "^/"}, "sha256": {"$ref": "#/definitions/hash"}}},
+    "file": {"type": "object", "additionalProperties": false, "required": ["path", "sha256", "size"], "properties": {"path": {"enum": ["user-data", "meta-data", "network-config"]}, "sha256": {"$ref": "#/definitions/hash"}, "size": {"type": "integer", "minimum": 1}}},
+    "seed": {"type": "object", "additionalProperties": false, "required": ["profile_id", "instance_id", "files", "contains_network_secret"], "properties": {"profile_id": {"type": "string", "minLength": 8}, "instance_id": {"type": "string", "minLength": 8}, "files": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/definitions/file"}}, "contains_network_secret": {"type": "boolean"}}},
+    "device": {"type": "object", "additionalProperties": false, "required": ["stable_path", "alternate_stable_paths", "kernel_path", "model", "serial", "size", "transport", "removable", "read_only", "mountpoints", "backs_running_system", "dependent_types", "eligible", "rejection_reasons", "fingerprint"], "properties": {"stable_path": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^/dev/disk/by-id/"}]}, "alternate_stable_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^/dev/disk/by-id/"}}, "kernel_path": {"type": "string", "pattern": "^/dev/"}, "model": {"type": ["string", "null"]}, "serial": {"type": ["string", "null"]}, "size": {"type": "integer", "minimum": 0}, "transport": {"type": "string", "minLength": 1}, "removable": {"type": "boolean"}, "read_only": {"type": "boolean"}, "mountpoints": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}, "backs_running_system": {"type": "boolean"}, "dependent_types": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}, "eligible": {"type": "boolean"}, "rejection_reasons": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}, "fingerprint": {"$ref": "#/definitions/hash"}}},
+    "partition": {"type": "object", "additionalProperties": false, "required": ["strategy", "boot_partition", "root_filesystem", "custom_partitions", "lvm", "encryption", "ab_root", "persistent_paths_share_root"], "properties": {"strategy": {"const": "upstream-image"}, "boot_partition": {"const": "upstream-supported-raspberry-pi"}, "root_filesystem": {"const": "upstream-auto-expanded-ext4"}, "custom_partitions": {"const": false}, "lvm": {"const": false}, "encryption": {"const": false}, "ab_root": {"const": false}, "persistent_paths_share_root": {"const": ["/opt/iii", "/var/lib/iii", "/var/log/iii"]}}}
+  }
+}

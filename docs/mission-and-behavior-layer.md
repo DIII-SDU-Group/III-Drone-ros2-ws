@@ -13,7 +13,7 @@
 1. `mission_executor` (lifecycle node)
 - Configures TF buffer, mission spec, tree provider, maneuver reference client.
 - Starts/stops mission execution and mode integration in lifecycle transitions.
-- Exposes `write_behavior_tree_model_xml` service.
+- Exposes `get_mission_catalog` and `select_mission_catalog_entry` services.
 
 2. `powerline_overview_provider` (lifecycle node)
 - Subscribes to mapped powerline data.
@@ -22,8 +22,8 @@
 ## 3. Internal Mission Flow
 
 Runtime flow implemented by `MissionExecutorNode` + `MissionExecutor`:
-1. `mission_executor` lifecycle node configures `Configurator` and reads parameter `mission_specification_file`.
-2. `MissionSpecification` parses that YAML into:
+1. `mission_executor` loads and verifies the installed `iii_drone_mission` catalog through the ament resource index. Runtime APIs accept catalog IDs only; source paths and environment fallbacks are not supported.
+2. `MissionSpecification` resolves the selected catalog entry and its content-addressed YAML/XML assets into:
 - `executor_owned_mode` (the key of the mode owned by `GenericModeExecutor`)
 - `entries` map (each entry contains `key`, `mode_name`, `behavior_tree_xml_file`, optional `next_mode`, optional `allow_activate_when_disarmed`).
 3. `MissionExecutor` creates a `TreeProvider` and one `TreeExecutor` per mission entry key.
@@ -54,19 +54,24 @@ Registered BT nodes include command/decision primitives such as:
 
 ## 5. Mission Specification
 
-Primary file:
-- `mission_specification/mission_specification.yaml`
+Mission specifications are registered with `iii_register_mission(...)` in the
+package CMake configuration. The build produces deterministic local, qualified,
+and explicit field-candidate catalogs. Production releases install the qualified
+catalog; local development catalogs retain classified test and legacy entries.
 
 Defines:
 - `executor_owned_mode`
 - mode entries (`key`, display name, BT file, activation constraints, next mode)
 
-This is the bridge between operational mode sequencing and concrete BT XML files.
+The catalog entry is the bridge between operational mode sequencing and concrete
+BT XML assets. Each entry and asset is content-addressed and verified before use.
 
 Important behavior:
 - `executor_owned_mode` must match an existing `entries[].key`.
 - `next_mode` values are mode-entry keys (not display names).
-- `behavior_tree_xml_file` is expanded with shell-style expansion (`wordexp`), so environment variables like `$BEHAVIOR_TREES_DIR/...` are valid.
+- `behavior_tree_xml_file` is a package-relative logical asset name. Absolute paths, traversal, environment expansion, missing assets, unknown nodes, and node-port mismatches fail catalog generation.
+- Experimental entries require explicit field-artifact inclusion and emit a prominent runtime warning. They never enter qualified catalogs.
+- Runtime selection is a session-scoped transactional override; `--default` restores the profile default and a cold restart restores it automatically.
 
 ## 6. Behavior Tree Assets
 
@@ -88,3 +93,36 @@ The trees encode robust patterns:
 
 Mission package uses `px4_ros2_cpp` and custom mode executor wrappers.
 It is not only consuming telemetry; it attempts to own/drive mode behavior through explicit mode registration and action requests (arm/disarm/takeoff/land patterns in BT nodes).
+
+## 8. Catalog Operations
+
+The operator surface is the III CLI:
+
+```bash
+iii mission status
+iii mission list
+iii mission list --all
+iii mission show inspection-production
+iii mission select inspection-production
+iii mission select --default
+```
+
+Read commands return catalog IDs, hashes, classification, profile compatibility,
+dependency identities, default/override state, and readiness without target
+filesystem paths. Selection is a retained runtime mutation and is accepted only
+when mission/custom-operation state is fresh and idle; real and opti-track
+profiles additionally require fresh PX4 state, a disarmed landed vehicle, and a
+maintenance-safe navigation mode.
+
+`iii system boot` performs a simulation-only source/install preflight. It verifies
+the installed local catalog and its source-state attestation, runs an incremental
+`iii_drone_mission` build when drift is detected, and refuses to launch if the
+rebuilt catalog remains stale or invalid.
+
+Qualified ARM64 builds replace the local catalog with the production-only
+qualified reduction and remove all local/field variants. The shared GC/drone
+release manifest and each component bundle manifest bind the same logical catalog
+hash; the release manifest also binds the exact `catalog.json` and source-state
+hashes. Field catalogs may include onboard-compatible experimental IDs only via
+explicit materialization and retain the experimental warning in catalog and
+runtime state.

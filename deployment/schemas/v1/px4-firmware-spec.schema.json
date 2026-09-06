@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/px4-firmware-spec.schema.json",
+  "title": "Exact PX4 firmware release input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "spec_id", "family", "version", "git_commit", "advertised_commit", "board", "source", "build", "dds_topics_id", "network_baseline_id", "parameter_manifest_id"],
+  "properties": {
+    "schema": {"const": "iii.px4-firmware-spec/v1"},
+    "spec_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "family": {"const": "PX4"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "git_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "advertised_commit": {"type": "string", "pattern": "^[a-f0-9]{10}$"},
+    "board": {
+      "type": "object", "additionalProperties": false,
+      "required": ["target", "board_id", "architecture"],
+      "properties": {
+        "target": {"const": "px4_fmu-v6x_multicopter"},
+        "board_id": {"const": 53},
+        "architecture": {"const": "PX4_FMU_V6X"}
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["submodule", "dds_topics"],
+      "properties": {
+        "submodule": {"const": "PX4-Autopilot"},
+        "dds_topics": {"const": "src/modules/uxrce_dds_client/dds_topics.yaml"}
+      }
+    },
+    "build": {
+      "type": "object", "additionalProperties": false,
+      "required": ["command", "artifact"],
+      "properties": {
+        "command": {"type": "array", "minItems": 2, "items": {"type": "string", "minLength": 1}},
+        "artifact": {"const": "px4_fmu-v6x_multicopter.px4"}
+      }
+    },
+    "dds_topics_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "network_baseline_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "parameter_manifest_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

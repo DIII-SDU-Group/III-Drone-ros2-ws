@@ -219,7 +219,7 @@ def _audit_ruleset(
                     "TAG_PROTECTION_DRIFT",
                     repository,
                     name,
-                    "qualified v* tags are not active, immutable, exactly scoped, and bypass-free",
+                    "declared release tags are not active, immutable, exactly scoped, and bypass-free",
                     reconcile,
                 )
             )

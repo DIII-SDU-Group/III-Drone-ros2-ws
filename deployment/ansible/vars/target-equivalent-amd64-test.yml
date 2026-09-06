@@ -1,0 +1,15 @@
+---
+# The available Docker host is amd64 and user-mode ARM64 emulation cannot run a
+# stable systemd PID 1. This overlay is used only by the privileged integration
+# harness; production convergence always loads the ARM64 value from the target
+# class file and rejects any mismatch.
+iii_expected_architecture: x86_64
+iii_boot_files_required: false
+iii_hostname_manage: false
+iii_ros_packages:
+  - ros-jazzy-ros-base
+  - ros-jazzy-generate-parameter-library=0.7.3-1noble.20260615.164514
+  - ros-jazzy-generate-parameter-library-py=0.7.3-1noble.20260507.105821
+  - ros-jazzy-parameter-traits=0.7.3-1noble.20260615.164126
+  - ros-jazzy-rmw-cyclonedds-cpp=2.2.3-1noble.20260615.123728
+  - ros-jazzy-usb-cam=0.8.1-1noble.20260615.174515

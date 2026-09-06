@@ -1,0 +1,249 @@
+---
+- name: Inventory installed packages for an accepted existing Docker CE runtime
+  ansible.builtin.package_facts:
+    manager: apt
+  when: iii_gc_container_runtime.provider == 'docker-ce'
+
+- name: Reauthenticate every retained Docker CE package and version
+  ansible.builtin.assert:
+    that:
+      - item.name in ansible_facts.packages
+      - ansible_facts.packages[item.name] | selectattr('version', 'equalto', item.version) | list | length == 1
+    fail_msg: "Retained Docker CE package changed or is unavailable: {{ item.name }}"
+  loop: "{{ iii_gc_container_runtime.existing_packages }}"
+  when: iii_gc_container_runtime.provider == 'docker-ce'
+
+- name: Refresh online Ubuntu package metadata for the GC baseline
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  when: not iii_gc_offline and not iii_gc_test_mode
+
+- name: Install the ROS-free GC operational host packages
+  ansible.builtin.apt:
+    name: "{{ iii_gc_operational_packages }}"
+    state: present
+    install_recommends: false
+  become: true
+  when: not iii_gc_offline and not iii_gc_test_mode
+
+- name: Stage authenticated prepared-offline deb packages in the apt archive
+  ansible.builtin.unarchive:
+    src: "{{ iii_gc_offline_artifacts['apt-packages'] }}"
+    dest: /var/cache/apt/archives
+    remote_src: true
+    creates: "/var/cache/apt/archives/.iii-{{ iii_gc_cache_id }}"
+  become: true
+  when: iii_gc_offline and not iii_gc_test_mode
+
+- name: Commit the prepared-offline apt cache identity
+  ansible.builtin.copy:
+    content: "{{ iii_gc_cache_id }}\n"
+    dest: "/var/cache/apt/archives/.iii-{{ iii_gc_cache_id }}"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  when: iii_gc_offline and not iii_gc_test_mode
+
+- name: Install prepared-offline GC operational packages without network access
+  ansible.builtin.command:
+    argv: "{{ ['/usr/bin/apt-get', '--no-download', '--yes', 'install'] + iii_gc_operational_packages }}"
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+    LC_ALL: C
+  become: true
+  when: iii_gc_offline and not iii_gc_test_mode
+  changed_when: "'0 upgraded, 0 newly installed, 0 to remove' not in iii_gc_offline_operational_apt.stdout"
+  register: iii_gc_offline_operational_apt
+
+- name: Add the graphical operator to the local Docker group
+  ansible.builtin.user:
+    name: "{{ iii_gc_user }}"
+    groups: docker
+    append: true
+  become: true
+  when: not iii_gc_test_mode
+
+- name: Create declared persistent GC user paths
+  ansible.builtin.file:
+    path: "{{ iii_gc_home }}/{{ item.path }}"
+    state: directory
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "{{ item.mode }}"
+  become: true
+  loop: "{{ iii_gc_policy_value.managed_user_paths }}"
+
+- name: Create the SSH-key storage boundary
+  ansible.builtin.file:
+    path: "{{ iii_gc_home }}/.config/iii/keys/ssh"
+    state: directory
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0700"
+  become: true
+
+- name: Create a fresh non-exported GC machine identity when absent
+  ansible.builtin.shell: >-
+    umask 077 && /usr/bin/openssl rand -hex 32 >
+    {{ iii_gc_home | quote }}/.config/iii/identity/machine-id
+  args:
+    creates: "{{ iii_gc_home }}/.config/iii/identity/machine-id"
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  no_log: true
+
+- name: Create a fresh per-computer SSH key when absent
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/ssh-keygen
+      - -q
+      - -t
+      - ed25519
+      - -N
+      - ""
+      - -C
+      - "iii-gc@{{ ansible_hostname }}"
+      - -f
+      - "{{ iii_gc_home }}/.config/iii/keys/ssh/id_ed25519"
+    creates: "{{ iii_gc_home }}/.config/iii/keys/ssh/id_ed25519"
+  become: true
+  become_user: "{{ iii_gc_user }}"
+  no_log: true
+
+- name: Enforce private identity and SSH key permissions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "{{ item.mode }}"
+  become: true
+  loop:
+    - {path: "{{ iii_gc_home }}/.config/iii/identity/machine-id", mode: "0600"}
+    - {path: "{{ iii_gc_home }}/.config/iii/keys/ssh/id_ed25519", mode: "0600"}
+    - {path: "{{ iii_gc_home }}/.config/iii/keys/ssh/id_ed25519.pub", mode: "0644"}
+
+- name: Install the non-secret GC environment contract
+  ansible.builtin.template:
+    src: gc.env.j2
+    dest: "{{ iii_gc_home }}/.config/iii/gc.env"
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0600"
+  become: true
+
+- name: Preserve the operator-selected target identity/profile overlay
+  ansible.builtin.copy:
+    content: |
+      # Set only after positively identifying the intended target.
+      # III_GC_EXPECTED_PROFILE=real
+      # III_GC_EXPECTED_RUNTIME_ID=iii-aircraft-runtime
+      # III_GC_EXPECTED_SYSTEM_ID=iii-aircraft
+    dest: "{{ iii_gc_home }}/.config/iii/gc-profile.env"
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0600"
+    force: false
+  become: true
+
+- name: Preserve an operator-owned browser secret file
+  ansible.builtin.copy:
+    content: |
+      # Owner-provisioned secrets only. Ansible never overwrites this file.
+      # III_RUNTIME_API_BROWSER_PASSWORD=
+    dest: "{{ iii_gc_home }}/.config/iii/ground-control-secrets.env"
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0600"
+    force: false
+  become: true
+
+- name: Install GC user-systemd directory
+  ansible.builtin.file:
+    path: "{{ iii_gc_home }}/.config/systemd/user"
+    state: directory
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0700"
+  become: true
+
+- name: Install GC user-session units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ iii_gc_home }}/.config/systemd/user/{{ item }}"
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0644"
+  become: true
+  loop:
+    - iii-gc.target
+    - iii-gc-application-reconcile.service
+    - iii-gc-proxy.service
+    - iii-gc-frontend.service
+    - iii-gc-discovery.service
+    - iii-gc-mirror.service
+    - iii-gc-clock.service
+    - iii-gc-px4-parameters.service
+    - iii-gc-browser.service
+    - iii-qgc.service
+  notify: Reload GC user unit manager
+
+- name: Enable the GC target only for graphical login sessions
+  ansible.builtin.file:
+    path: "{{ iii_gc_home }}/.config/systemd/user/graphical-session.target.wants"
+    state: directory
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0700"
+  become: true
+
+- name: Link the GC target into the graphical session
+  ansible.builtin.file:
+    src: ../iii-gc.target
+    dest: "{{ iii_gc_home }}/.config/systemd/user/graphical-session.target.wants/iii-gc.target"
+    state: link
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    force: true
+  become: true
+  notify: Reload GC user unit manager
+
+- name: Reconcile an interrupted application transaction before graphical GC start
+  ansible.builtin.file:
+    src: ../iii-gc-application-reconcile.service
+    dest: "{{ iii_gc_home }}/.config/systemd/user/graphical-session.target.wants/iii-gc-application-reconcile.service"
+    state: link
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    force: true
+  become: true
+  notify: Reload GC user unit manager
+
+- name: Install the explicit III Ground Control desktop launcher
+  ansible.builtin.file:
+    path: "{{ iii_gc_home }}/.local/share/applications"
+    state: directory
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0700"
+  become: true
+
+- name: Render the explicit III Ground Control desktop launcher
+  ansible.builtin.template:
+    src: iii-ground-control.desktop.j2
+    dest: "{{ iii_gc_home }}/.local/share/applications/iii-ground-control.desktop"
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0755"
+  become: true
+
+- name: Render the explicit QGroundControl desktop launcher
+  ansible.builtin.template:
+    src: iii-qgroundcontrol.desktop.j2
+    dest: "{{ iii_gc_home }}/.local/share/applications/iii-qgroundcontrol.desktop"
+    owner: "{{ iii_gc_user }}"
+    group: "{{ iii_gc_user }}"
+    mode: "0755"
+  become: true

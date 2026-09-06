@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/host-image-record.schema.json",
+  "title": "III physical host image commissioning evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "record_id", "operation_id", "recorded_at", "image", "target", "destructive_authority", "write", "seed", "flush", "eject", "outcome"],
+  "properties": {
+    "schema": {"const": "iii.host-image-record/v1"},
+    "record_id": {"$ref": "#/definitions/hash"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "image": {"type": "object", "additionalProperties": false, "required": ["source_id", "filename", "compressed_sha256", "raw_sha256", "raw_bytes"], "properties": {"source_id": {"type": "string", "minLength": 8}, "filename": {"type": "string", "minLength": 1}, "compressed_sha256": {"$ref": "#/definitions/hash"}, "raw_sha256": {"$ref": "#/definitions/hash"}, "raw_bytes": {"type": "integer", "minimum": 1}}},
+    "target": {"$ref": "#/definitions/device"},
+    "destructive_authority": {"type": "object", "additionalProperties": false, "required": ["typed_device_proof", "backup_record", "accepted_data_loss"], "properties": {"typed_device_proof": {"const": true}, "backup_record": {"oneOf": [{"type": "null"}, {"type": "object", "required": ["path", "sha256"], "properties": {"path": {"type": "string", "minLength": 1}, "sha256": {"$ref": "#/definitions/hash"}}}]}, "accepted_data_loss": {"type": "boolean"}}},
+    "write": {"type": "object", "additionalProperties": false, "required": ["bytes", "stream_sha256", "readback_sha256", "verified"], "properties": {"bytes": {"type": "integer", "minimum": 1}, "stream_sha256": {"$ref": "#/definitions/hash"}, "readback_sha256": {"$ref": "#/definitions/hash"}, "verified": {"const": true}}},
+    "seed": {"type": "object", "additionalProperties": false, "required": ["profile_id", "instance_id", "files", "verified", "contains_network_secret"], "properties": {"profile_id": {"type": "string", "minLength": 8}, "instance_id": {"type": "string", "minLength": 8}, "files": {"type": "array", "minItems": 3, "items": {"type": "object", "additionalProperties": false, "required": ["path", "sha256", "size"], "properties": {"path": {"enum": ["user-data", "meta-data", "network-config"]}, "sha256": {"$ref": "#/definitions/hash"}, "size": {"type": "integer", "minimum": 1}}}}, "verified": {"const": true}, "contains_network_secret": {"type": "boolean"}}},
+    "flush": {"type": "object", "additionalProperties": false, "required": ["fsync", "block_buffers"], "properties": {"fsync": {"const": true}, "block_buffers": {"const": true}}},
+    "eject": {"type": "object", "additionalProperties": false, "required": ["requested", "method"], "properties": {"requested": {"const": true}, "method": {"type": "string", "minLength": 1}}},
+    "outcome": {"const": "verified"}
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "device": {"type": "object", "additionalProperties": false, "required": ["stable_path", "alternate_stable_paths", "kernel_path", "model", "serial", "size", "transport", "removable", "read_only", "mountpoints", "backs_running_system", "dependent_types", "eligible", "rejection_reasons", "fingerprint"], "properties": {"stable_path": {"type": "string", "pattern": "^/dev/disk/by-id/"}, "alternate_stable_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^/dev/disk/by-id/"}}, "kernel_path": {"type": "string", "pattern": "^/dev/"}, "model": {"type": ["string", "null"]}, "serial": {"type": ["string", "null"]}, "size": {"type": "integer", "minimum": 1}, "transport": {"type": "string", "minLength": 1}, "removable": {"const": true}, "read_only": {"const": false}, "mountpoints": {"type": "array", "maxItems": 0}, "backs_running_system": {"const": false}, "dependent_types": {"type": "array", "maxItems": 0}, "eligible": {"const": true}, "rejection_reasons": {"type": "array", "maxItems": 0}, "fingerprint": {"$ref": "#/definitions/hash"}}}
+  }
+}

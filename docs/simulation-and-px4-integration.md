@@ -18,7 +18,65 @@ In simulation mode (`SIMULATION=true`):
 6. `depth_cam_to_mmwave` converts incoming depth cloud to mmWave-like output topic (`/sensor/mmwave/points`).
 7. `tf_sim.launch.py` publishes sim-specific static transforms and dynamic drone frame updates.
 
-QGroundControl is outside III supervision. Connecting or disconnecting it affects PX4/operator telemetry, not III lifecycle bringup.
+QGroundControl runs only as the pinned host-native application owned by `iii qgc`.
+The devcontainer uses host networking, so PX4 SITL emits MAVLink to the host UDP
+14550 endpoint used by the same QGroundControl binary as real operation. The
+simulation launcher owns only PX4/Gazebo and never starts, stops, or embeds QGC.
+Connecting or disconnecting QGC affects PX4/operator telemetry, not III lifecycle
+bringup.
+
+Simulation uses the host/devcontainer clock directly and therefore skips the
+aircraft-to-GC clock-alignment gate. HIL remains a reserved, non-bootable
+selector scope; no maintained procedure treats it as an implemented simulation
+profile. OptiTrack is a separately commissioned real-aircraft profile and is not
+part of simulation acceptance.
+
+Start the two independent surfaces explicitly:
+
+```bash
+iii qgc start --dry-run
+iii qgc start --operation-id <retained-operation-id> --confirm
+tools/simulation/launch_simulation_tools.sh --headless --no-attach
+tools/simulation/launch_simulation_tools.sh --status
+```
+
+The status output reports whether host UDP 14550 has a listener, but it never
+starts or stops that listener. `iii qgc stop` and the simulation helper's
+`--stop` remain independent. Host-network transport is part of the devcontainer
+contract; Docker bridge/NAT port inference is not supported for this flow.
+
+QGC forwards a second loopback-only MAVLink stream to UDP 14551. The login-scoped
+`iii-gc-px4-parameters.service` uses that stream to mirror complete, disarmed PX4
+inventories. It debounces observed parameter events for two seconds, reconciles
+the full set every 60 seconds while connected and disarmed, and reconciles once
+more at a clean session end. It never requests a bulk transfer or writes while
+armed. Captures from direct QGC edits are therefore attributed only to a MAVLink
+observation; the companion does not invent an operator or transaction identity.
+
+Both real and simulation use the versioned `iii.px4-parameter-manifest/v1`
+contract. The release owns complete profile-specific manifests and binds their
+content identities to the exact PX4 firmware commit. Inspect and manage them with
+the read/plan/confirm sequence below:
+
+```bash
+iii px4 params pull --profile sim --json
+iii px4 params plan --profile sim --snapshot <snapshot-id> --key <parameter> --json
+iii px4 params apply --plan-id <plan-id> --key <parameter> --dry-run --json
+iii px4 params apply --plan-id <plan-id> --key <parameter> \
+  --operation-id <retained-operation-id> --confirm --json
+iii px4 params verify --plan-id <plan-id> --json
+```
+
+Every write begins from a fresh complete backup, requires exact per-key
+confirmation, verifies readback, and attempts byte-equivalent parameter recovery
+on failure. Pull, activation validation, and ordinary field deployment are
+read-only. Real activation sends the complete disarmed inventory as authenticated,
+release-bound receiver evidence; required drift rejects activation without a
+`PARAM_SET`.
+
+Named snapshots use `capture`, `list`, `show`, `diff`, `export`, and `import`.
+`promote` accepts only reviewed non-calibration keys and writes the corresponding
+manifest on a normal feature branch; it does not commit or push.
 
 ## 3. PX4 SITL Asset Injection
 

@@ -1,0 +1,17 @@
+[Unit]
+Description=III pinned host-native QGroundControl
+PartOf=graphical-session.target
+After=graphical-session.target network-online.target
+ConditionPathIsExecutable={{ iii_gc_home }}/.local/share/iii/gc-applications/qgc/current/QGroundControl.AppImage
+
+[Service]
+Type=simple
+Environment=APPIMAGE_EXTRACT_AND_RUN=1
+ExecStartPre={{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/iii qgc status --require-selected --output=json
+ExecStart={{ iii_gc_home }}/.local/share/iii/gc-applications/qgc/current/QGroundControl.AppImage
+ExecStopPost={{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/iii-qgc-config-clean-exit
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+
+# Deliberately no Install section: every QGC launch is explicit.

@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/activation-transaction.schema.json",
+  "title": "Durable III activation selector transaction",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "transaction_id", "operation_id", "previous", "candidate", "checkpoint", "autonomy_started"],
+  "properties": {
+    "schema": {"const": "iii.activation-transaction/v1"},
+    "transaction_id": {"$ref": "#/definitions/hash"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "previous": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/tuple"}]},
+    "candidate": {"$ref": "#/definitions/tuple"},
+    "checkpoint": {"enum": ["prepared", "units-stopped", "code-selector-switched", "configuration-selector-switched", "selector-committed", "rollback-prepared", "rollback-code-selector-switched", "rollback-selector-committed"]},
+    "autonomy_started": {"const": false}
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "tuple": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["release_id", "release_path", "configuration_checkpoint_id", "configuration_checkpoint_path", "configuration_schema_version", "mission_catalog_hash", "profile"],
+      "properties": {
+        "release_id": {"$ref": "#/definitions/hash"},
+        "release_path": {"type": "string", "minLength": 1},
+        "configuration_checkpoint_id": {"$ref": "#/definitions/hash"},
+        "configuration_checkpoint_path": {"type": "string", "minLength": 1},
+        "configuration_schema_version": {"type": "integer", "minimum": 1},
+        "mission_catalog_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "profile": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$"}
+      }
+    }
+  }
+}

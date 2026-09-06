@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/qgc-key-policy.schema.json",
+  "title": "III QGroundControl key ownership policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "policy_id", "qgc_versions", "classes", "value_guards"],
+  "properties": {
+    "schema": {"const": "iii.qgc-key-policy/v1"},
+    "policy_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "qgc_versions": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}},
+    "classes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["managed", "local_preference", "generated_cache", "sensitive", "prohibited"],
+      "properties": {
+        "managed": {"$ref": "#/definitions/matchers"},
+        "local_preference": {"$ref": "#/definitions/matchers"},
+        "generated_cache": {"$ref": "#/definitions/matchers"},
+        "sensitive": {"$ref": "#/definitions/matchers"},
+        "prohibited": {"$ref": "#/definitions/matchers"}
+      }
+    },
+    "value_guards": {
+      "type": "object",
+      "additionalProperties": {"type": "object", "additionalProperties": false, "required": ["allowed"], "properties": {"allowed": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": ["string", "boolean", "number"]}}}},
+      "propertyNames": {"pattern": "^[^/]+/.+$"}
+    }
+  },
+  "definitions": {
+    "matchers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exact", "prefixes", "patterns"],
+      "properties": {
+        "exact": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[^/]+/.+$"}},
+        "prefixes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 2}},
+        "patterns": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    }
+  }
+}

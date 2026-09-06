@@ -4,6 +4,8 @@ from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
+import shutil
+import subprocess
 import zipfile
 
 import pytest
@@ -11,10 +13,12 @@ import pytest
 from iii_deployment.build import (
     classify_package_cache,
     commit_package_cache_state,
+    docker_build_resource_arguments,
     isolated_colcon_command,
     install_locked_wheels,
     installed_package_names,
     load_build_policy,
+    materialize_build_source,
     make_build_record,
     normalize_install_tree,
     package_cache_keys,
@@ -22,9 +26,13 @@ from iii_deployment.build import (
     parse_compiler_cache_stats,
     prepare_package_cache,
     run_offboard_command,
+    run_bounded_target_check,
     select_build_packages,
     verify_installed_release_assets,
+    verify_configuration_contract_source,
+    install_deployment_release_resources,
     target_import_command,
+    target_wheel_tag_compatible,
     target_elf_closure_command,
     validate_release_tree,
     write_release_wrapper,
@@ -37,6 +45,28 @@ REGISTRY = ContractRegistry(ROOT / "deployment/schemas/v1")
 POLICY = load_build_policy(ROOT / "deployment/build-policy.json", REGISTRY)
 
 
+@pytest.mark.parametrize("value", [
+    "cp312-cp312-manylinux2014_aarch64",
+    "cp310-abi3-manylinux2014_aarch64",
+    "py3-none-any",
+])
+def test_target_wheel_accepts_cp312_and_compatible_stable_abi(value: str) -> None:
+    from packaging.tags import parse_tag
+
+    assert all(target_wheel_tag_compatible(tag) for tag in parse_tag(value))
+
+
+@pytest.mark.parametrize("value", [
+    "cp313-abi3-manylinux2014_aarch64",
+    "cp312-cp312-manylinux2014_x86_64",
+    "cp311-cp311-manylinux2014_aarch64",
+])
+def test_target_wheel_rejects_newer_or_wrong_native_abi(value: str) -> None:
+    from packaging.tags import parse_tag
+
+    assert not any(target_wheel_tag_compatible(tag) for tag in parse_tag(value))
+
+
 def test_cross_toolchain_maps_absolute_and_colcon_relative_builder_paths() -> None:
     toolchain = (ROOT / "cc_ws/arm64-toolchain.cmake").read_text()
     for path in ("/home/iii/ws", "../../../home/iii/ws", "/opt/iii/sysroot", "/cache"):
@@ -44,6 +74,106 @@ def test_cross_toolchain_maps_absolute_and_colcon_relative_builder_paths() -> No
         assert f"-fdebug-prefix-map={path}=" in toolchain
     assert "-fmacro-prefix-map=../../../home/iii/ws=" in toolchain
     assert "-fmacro-prefix-map=/opt/iii/sysroot=" in toolchain
+    configuration_cmake = (ROOT / "src/III-Drone-Configuration/CMakeLists.txt").read_text()
+    assert POLICY["target_python_extension_suffix"] in configuration_cmake
+
+
+def test_build_source_omits_local_frontend_dependency_tree(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    frontend = workspace / "src/III-Drone-GC/frontend"
+    frontend.mkdir(parents=True)
+    (frontend / "package.json").write_text('{"name":"fixture"}\n')
+    node_modules = frontend / "node_modules"
+    node_modules.mkdir()
+    (node_modules / "external-tool").symlink_to("/outside/workspace/tool")
+
+    result = materialize_build_source(workspace, tmp_path / "build-source")
+
+    assert (result / "src/III-Drone-GC/frontend/package.json").is_file()
+    assert not (result / "src/III-Drone-GC/frontend/node_modules").exists()
+
+
+def test_cross_build_runs_target_generators_with_pinned_sysroot_emulator() -> None:
+    toolchain = (ROOT / "cc_ws/arm64-toolchain.cmake").read_text()
+    runner = (ROOT / "cc_ws/run-target-emulated.sh").read_text()
+    dockerfile = (ROOT / "Dockerfile.cc").read_text()
+    mission_cmake = (ROOT / "src/III-Drone-Mission/CMakeLists.txt").read_text()
+
+    assert '"/usr/local/bin/iii-run-target-emulated"' in toolchain
+    assert "/usr/bin/qemu-aarch64-static" in runner
+    assert '-L "${sysroot}"' in runner
+    assert '"${sysroot}/opt/ros/jazzy/lib"' in runner
+    assert '"${sysroot}/usr/lib/aarch64-linux-gnu/blas"' in runner
+    assert '"${sysroot}/usr/lib/aarch64-linux-gnu/lapack"' in runner
+    assert '"${release_install}"/*/lib' in runner
+    assert "COPY cc_ws/run-target-emulated.sh /usr/local/bin/iii-run-target-emulated" in dockerfile
+    assert "COMMAND iii_behavior_node_contract_exporter" in mission_cmake
+    assert 'COMMAND "$<TARGET_FILE:iii_behavior_node_contract_exporter>"' not in mission_cmake
+
+
+def test_configuration_contract_source_validation_catches_stale_artifact_hash(tmp_path) -> None:
+    source = ROOT / "src/III-Drone-Configuration/config"
+    destination = tmp_path / "src/III-Drone-Configuration/config"
+    destination.parent.mkdir(parents=True)
+    shutil.copytree(source, destination)
+
+    assert len(verify_configuration_contract_source(tmp_path)) == 64
+    tracked = destination / "parameter_sets/sim/tracked/default.yaml"
+    tracked.write_text(tracked.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    with pytest.raises(ContractError, match="artifact hash mismatch"):
+        verify_configuration_contract_source(tmp_path)
+
+
+def test_configuration_contract_source_validation_catches_stale_tracked_set_hash(tmp_path) -> None:
+    source = ROOT / "src/III-Drone-Configuration/config"
+    destination = tmp_path / "src/III-Drone-Configuration/config"
+    destination.parent.mkdir(parents=True)
+    shutil.copytree(source, destination)
+    manifest_path = destination / "configuration_contract/package-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["tracked_sets"][1]["sha256"] = "0" * 64
+    manifest["manifest_id"] = hashlib.sha256(
+        json.dumps(
+            {key: value for key, value in manifest.items() if key != "manifest_id"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+    with pytest.raises(ContractError, match="not bound to an authenticated artifact"):
+        verify_configuration_contract_source(tmp_path)
+
+
+def test_target_emulation_checks_are_bounded() -> None:
+    builder = (ROOT / "scripts/build/build_arm64_release.py").read_text()
+    assert builder.count("run_bounded_target_check(") == 2
+
+
+def test_bounded_target_check_removes_container_after_timeout(monkeypatch, tmp_path) -> None:
+    removed = []
+
+    def fake_offboard(command, *, cwd):
+        assert cwd == tmp_path
+        cidfile = Path(command[command.index("--cidfile") + 1])
+        cidfile.write_text("a" * 64, encoding="utf-8")
+        raise ContractError("timed out")
+
+    def fake_run(command, **kwargs):
+        removed.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr("iii_deployment.build.run_offboard_command", fake_offboard)
+    monkeypatch.setattr("iii_deployment.build.subprocess.run", fake_run)
+
+    with pytest.raises(ContractError, match="timed out"):
+        run_bounded_target_check(
+            ["docker", "run", "--rm", "target:locked", "true"],
+            cwd=tmp_path,
+            timeout_sec=1,
+        )
+
+    assert removed[0][0] == ["docker", "rm", "--force", "a" * 64]
 
 
 def _release(path: Path) -> Path:
@@ -71,6 +201,7 @@ def test_package_graph_and_clean_build_select_all_component_packages() -> None:
     command = isolated_colcon_command(
         selected, build_base=Path("/cache/build"), install_base=Path("/stage/install"),
         log_base=Path("/cache/log"), skip_packages=set(graph) - set(selected),
+        parallel_workers=16,
     )
     assert "--symlink-install" not in command
     assert command[command.index("--install-base") + 1] == "/stage/install"
@@ -78,6 +209,29 @@ def test_package_graph_and_clean_build_select_all_component_packages() -> None:
     assert command[command.index("--packages-skip") + 1:]
     assert "iii_drone_simulation" in command
     assert command.index("iii_drone_simulation") > command.index("--packages-skip")
+    assert command[command.index("--parallel-workers") + 1] == "16"
+
+
+def test_cross_build_rejects_non_positive_parallel_worker_cap() -> None:
+    with pytest.raises(ContractError, match="worker count must be positive"):
+        isolated_colcon_command(
+            ["iii_drone_core"],
+            build_base=Path("/cache/build"),
+            install_base=Path("/stage/install"),
+            log_base=Path("/cache/log"),
+            parallel_workers=0,
+        )
+
+
+def test_cross_build_worker_cap_is_enforced_by_docker_and_build_tools() -> None:
+    assert docker_build_resource_arguments(16) == [
+        "--cpus", "16",
+        "-e", "CMAKE_BUILD_PARALLEL_LEVEL=16",
+        "-e", "MAKEFLAGS=-j16",
+    ]
+    assert docker_build_resource_arguments(None) == []
+    with pytest.raises(ContractError, match="worker count must be positive"):
+        docker_build_resource_arguments(0)
 
 
 def test_no_change_rebuild_has_stable_cache_keys() -> None:
@@ -162,6 +316,19 @@ def test_valid_release_is_isolated_relocatable_and_recorded(tmp_path: Path) -> N
     assert wrapper.index('source "${root}/install/setup.bash"') < wrapper.index("set -u")
 
 
+def test_release_rejects_host_named_target_python_extension(tmp_path: Path) -> None:
+    release = _release(tmp_path / "release")
+    extension = (
+        release
+        / "install/pkg/lib/python3.12/site-packages/pkg/_native.cpython-312-x86_64-linux-gnu.so"
+    )
+    extension.parent.mkdir(parents=True, exist_ok=True)
+    extension.write_bytes(b"not needed to prove the filename contract")
+
+    with pytest.raises(ContractError, match="wrong target ABI"):
+        validate_release_tree(release, POLICY, python_lock_sha256="b" * 64)
+
+
 def test_escaping_symlink_builder_path_and_development_tree_fail(tmp_path: Path) -> None:
     release = _release(tmp_path / "release")
     (release / "install/pkg/bad-link").symlink_to("/home/iii/ws/source")
@@ -198,6 +365,10 @@ def test_hashed_cp312_wheels_install_offline_and_target_import_has_no_network(tm
     wheel = wheelhouse / filename
     with zipfile.ZipFile(wheel, "w") as archive:
         archive.writestr("demo/__init__.py", "VALUE = 1\n")
+        executable = zipfile.ZipInfo("demo/bin/helper")
+        executable.create_system = 3
+        executable.external_attr = 0o100755 << 16
+        archive.writestr(executable, "#!/bin/sh\n")
         archive.writestr("demo/assets.data/resource.txt", "ordinary dotted package data\n")
         archive.writestr("demo-1.0.dist-info/WHEEL", "Wheel-Version: 1.0\nTag: py3-none-any\n")
     lock = {
@@ -219,6 +390,7 @@ def test_hashed_cp312_wheels_install_offline_and_target_import_has_no_network(tm
     site = tmp_path / "release/python/cp312/site-packages"
     assert len(install_locked_wheels(wheelhouse, site, lock)) == 64
     assert (site / "demo/__init__.py").is_file()
+    assert (site / "demo/bin/helper").stat().st_mode & 0o111
     assert (site / "demo/assets.data/resource.txt").is_file()
     command = target_import_command("target:locked", tmp_path / "release", ["demo"])
     assert "none" in command
@@ -269,3 +441,21 @@ def test_assets_install_inventory_and_sysroot_prefix_normalization(tmp_path: Pat
     assert setup.read_text() == "/opt/ros/jazzy/setup.bash\n"
     assert not bytecode.exists()
     assert installed_package_names(release, POLICY) == ["iwr6843aop_pub", "pkg"]
+
+
+def test_deployment_px4_contract_is_installed_for_receiver_audit(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    source = workspace / "deployment/px4"
+    source.mkdir(parents=True)
+    (source / "firmware.json").write_text("{}\n")
+    (source / "real.json").write_text("{}\n")
+    install = tmp_path / "release/install"
+
+    metadata = install_deployment_release_resources(workspace, install)
+
+    destination = install / "share/iii-deployment/px4"
+    assert metadata["files"] == 2
+    assert (destination / "firmware.json").read_bytes() == b"{}\n"
+    assert (destination / "real.json").read_bytes() == b"{}\n"
+    with pytest.raises(ContractError, match="destination already exists"):
+        install_deployment_release_resources(workspace, install)

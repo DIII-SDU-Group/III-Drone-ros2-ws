@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/portable-restore-plan.schema.json",
+  "title": "III staged portable restore plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "plan_id", "operation_id", "backup_id", "archive_path", "archive_sha256", "policy_id", "portable_schema_version", "active_release_id", "clean_converged_host", "mutations"],
+  "properties": {
+    "schema": {"const": "iii.portable-restore-plan/v1"},
+    "plan_id": {"$ref": "#/definitions/hash"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "backup_id": {"$ref": "#/definitions/hash"},
+    "archive_path": {"type": "string", "pattern": "^/"},
+    "archive_sha256": {"$ref": "#/definitions/hash"},
+    "policy_id": {"$ref": "#/definitions/hash"},
+    "portable_schema_version": {"const": 1},
+    "active_release_id": {"$ref": "#/definitions/hash"},
+    "clean_converged_host": {"const": true},
+    "mutations": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

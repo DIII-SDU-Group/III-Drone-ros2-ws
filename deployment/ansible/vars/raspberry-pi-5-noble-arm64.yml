@@ -1,0 +1,138 @@
+---
+iii_baseline_schema: iii.ansible-host-baseline/v1
+iii_baseline_id: c1228801c9539857cd3356101749ea5f6732880d7fb81eb262d61d3abc23c68d
+iii_unit_contract_id: 37a21d8d1db67eef1d2beeb173bebca21518ddf7a41c39727a90fe93500bb628
+iii_target_definition_id: 6ab9561c20513dd715729a1185a60010966932f6faaf9fb136e650756c4140b9
+iii_expected_distribution: Ubuntu
+iii_expected_release: "24.04"
+iii_expected_codename: noble
+iii_expected_architecture: aarch64
+iii_runtime_user: iii
+iii_runtime_group: iii
+iii_runtime_uid: 1100
+iii_runtime_gid: 1100
+iii_deployment_user: iii-deploy
+iii_deployment_group: iii-deploy
+iii_deployment_uid: 1101
+iii_deployment_gid: 1101
+iii_deployment_owner_effective: "{{ (iii_deployment_uid | string) if ansible_check_mode else iii_deployment_user }}"
+iii_deployment_group_effective: "{{ (iii_deployment_gid | string) if ansible_check_mode else iii_deployment_group }}"
+iii_runtime_owner_effective: "{{ (iii_runtime_uid | string) if ansible_check_mode else iii_runtime_user }}"
+iii_runtime_group_effective: "{{ (iii_runtime_gid | string) if ansible_check_mode else iii_runtime_group }}"
+iii_runtime_api_port: 8765
+iii_mdns_port: 5353
+iii_hostname_manage: true
+iii_operator_interface_match: "enx*"
+iii_px4_interface: eth0
+iii_px4_host_ip: 10.41.10.1
+iii_px4_host_address: 10.41.10.1/24
+iii_px4_peer_address: 10.41.10.2
+iii_px4_subnet: 10.41.10.0/24
+iii_px4_mavlink_udp_port: 14540
+iii_px4_system_id: 1
+iii_px4_mavlink_audit_udp_port: 14541
+iii_px4_uxrce_dds_udp_port: 8888
+iii_hil_uxrce_dds_udp_port: 8889
+iii_hil_mavlink_udp_port: 14542
+iii_hil_px4_system_id: 8
+iii_hil_mavlink_audit_udp_port: 14543
+# Cyclone DDS domain 0 metatraffic and participant user-data ports. Locally
+# emitted multicast discovery frames re-enter through eth0 and therefore pass
+# through the nftables input hook even when every ROS process is on this host.
+iii_real_dds_discovery_udp_ports: 7400-7650
+# RTPS port mapping for ROS_DOMAIN_ID=42: 7400 + (250 * 42), with room
+# for participant-specific metatraffic and user-data ports.
+iii_hil_dds_discovery_udp_ports: 17900-18150
+iii_shared_target_profile_id: 80e6d4dc7721661fc83659a3b3c2f64c2fca22487e267efb5a67581fa4ea05b5
+iii_boot_profile_id: 3a2147e380558975eb301c2af6a425919fac6be6b2312570cbb70f03032b5f31
+iii_boot_files_required: true
+iii_runtime_api_id: iii-aircraft-runtime
+iii_runtime_system_id: iii-aircraft
+iii_runtime_display_name: III Aircraft Runtime
+iii_runtime_mdns_instance: III Aircraft Runtime
+iii_ubuntu_snapshot: https://snapshot.ubuntu.com/ubuntu/20260801T000000Z
+iii_ros_snapshot: http://snapshots.ros.org/jazzy/2026-06-18/ubuntu
+iii_ros_key_sha256: 6d2ff4af9d56b304213de7664551f6986174a68bae76476b7ad21469b27a28c4
+iii_ros_key_fingerprint: 4B63CF8FDE49746E98FA01DDAD19BAB3CBF125EA
+iii_host_packages:
+  - ansible-core
+  - avahi-daemon
+  - ca-certificates
+  - chrony
+  - curl
+  - gnupg
+  - jq
+  - netplan.io
+  - nftables
+  - openssh-server
+  - python3
+  - python3-apt
+  - python3-pip
+  - python3-venv
+  - rsync
+  - sudo
+  - udev
+  - usbutils
+  - util-linux
+  - v4l-utils
+  - xz-utils
+iii_ros_packages:
+  - ros-jazzy-ros-base
+  - ros-jazzy-generate-parameter-library=0.7.3-1noble.20260612.124157
+  - ros-jazzy-generate-parameter-library-py=0.7.3-1noble.20260514.121849
+  - ros-jazzy-parameter-traits=0.7.3-1noble.20260612.123910
+  - ros-jazzy-rmw-cyclonedds-cpp=2.2.3-1noble.20260612.091852
+  - ros-jazzy-usb-cam=0.8.1-1noble.20260614.090116
+iii_hardware_packages:
+  - udev
+  - usbutils
+  - v4l-utils
+iii_runtime_supplementary_groups:
+  - dialout
+  - render
+  - video
+iii_receiver_units:
+  - {name: iii-receiver-bootstrap-reconcile.service, active_required: false}
+  - {name: iii-deployment-receiver-reconcile.service, active_required: false}
+  - {name: iii-deployment-receiver.service, active_required: true}
+  - {name: iii-log-maintenance.timer, active_required: true}
+iii_application_units:
+  - iii-system-daemon.service
+  - iii-runtime-api.service
+  - iii.target
+iii_bootstrap_seed_paths:
+  - /boot/firmware/user-data
+  - /boot/firmware/meta-data
+  - /boot/firmware/network-config
+  - /var/lib/cloud/seed/nocloud
+  - /var/lib/cloud/seed/nocloud-net
+  - /var/lib/cloud/instances
+iii_filesystem_directories:
+  - {path: /opt/iii, owner: root, group: root, mode: "0755"}
+  - {path: /opt/iii/releases, owner: root, group: iii, mode: "0750"}
+  - {path: /opt/iii/receiver, owner: root, group: root, mode: "0755"}
+  - {path: /opt/iii/receiver/slots, owner: root, group: root, mode: "0755"}
+  - {path: /opt/iii/receiver/selectors, owner: root, group: root, mode: "0755"}
+  - {path: /etc/iii, owner: root, group: iii, mode: "0750"}
+  - {path: /etc/iii/trust, owner: root, group: iii, mode: "0750"}
+  - {path: /etc/iii/secrets, owner: root, group: iii, mode: "0750"}
+  - {path: /var/cache/iii, owner: root, group: root, mode: "0755"}
+  - {path: /var/cache/iii/wheels, owner: root, group: root, mode: "0755"}
+  - {path: /var/lib/iii, owner: iii, group: iii, mode: "0751"}
+  - {path: /var/lib/iii/configuration, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/configuration/checkpoints, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/backups, owner: root, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/portable-generations, owner: root, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/portable-selector, owner: root, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/tuning, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/px4, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/hardware, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/diagnostics, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/deployment, owner: root, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/deployment/activation-transactions, owner: root, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/deployment/activation, owner: root, group: iii, mode: "0750"}
+  - {path: /var/lib/iii/incoming, owner: iii-deploy, group: iii-deploy, mode: "0700"}
+  - {path: /var/log/iii, owner: iii, group: iii, mode: "0750"}
+  - {path: /var/log/iii/deployment, owner: root, group: iii, mode: "0750"}
+  - {path: /run/iii, owner: iii, group: iii, mode: "0751"}
+  - {path: /run/iii/deployment-upload, owner: iii-deploy, group: iii-deploy, mode: "0700"}

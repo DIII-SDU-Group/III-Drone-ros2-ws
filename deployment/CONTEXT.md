@@ -90,6 +90,19 @@ current hardware/PX4/activation/rollback/GC/recovery evidence. A provisioned hos
 or a field-development release alone cannot establish this state.
 _Avoid_: Installed
 
+**Boot Profile**:
+The content-identified, stock-preserving Raspberry Pi 5 policy for effective
+firmware settings, overlays, kernel command line, model, and architecture.
+Provisioning installs it without rewriting stock boot inputs; only retained host
+maintenance may repair or change its managed settings.
+_Avoid_: Custom config.txt, boot tweak
+
+**Host Inspection**:
+One authenticated read-only receiver observation that composes independent
+hardware-role and boot-profile evidence from the same boot and verifies both
+against trusted local policy.
+_Avoid_: SSH inventory script, application health claim
+
 **Readiness Record**:
 A sealed, non-mutating observation of local GC and connected-target state using
 stable PASS/WARN/FAIL findings. It becomes stale on relevant state changes and is
@@ -112,6 +125,20 @@ A deterministic checksummed export of selected non-secret local records and
 referenced blobs for operator-managed offline disaster recovery.
 _Avoid_: Repository backup
 
+**GC Host Baseline**:
+The retained, idempotent convergence of one supported graphical Ubuntu operator
+computer into separately reported operational, application, and development
+boundaries. It owns native user-session services, private persistent paths, exact
+ROS-free Python/container environments, and a pinned cross-builder, but never
+owns the aircraft process graph or unmanaged operator state.
+_Avoid_: Workstation setup script, devcontainer authority
+
+**Verified Log Pull**:
+An immutable local copy of one receiver-created log or deployment-diagnostic
+manifest whose every file has been size/hash verified before the receiver may
+record the exact client receipt. Pulling never deletes aircraft content.
+_Avoid_: SCP logs, download-and-delete
+
 **Cutover**:
 The evidence-gated retirement of all legacy deployment paths after one exact
 candidate set passes the Q131 acceptance matrix. Cutover archives legacy history;
@@ -123,6 +150,10 @@ _Avoid_: Removing old scripts first
 - Builds run only on supported operator/CI builders, never on the aircraft.
 - Host systemd owns the receiver, daemon, and runtime API. The daemon remains the
   sole owner of the canonical ROS process graph.
+- Ansible binds the fixed application units and selector-aware launcher as a
+  content-identified host-unit contract. Releases declare that identity;
+  activation refuses contract-version drift before selector mutation, and the
+  launcher refuses installed launcher/unit byte drift before every process start.
 - Releases are immutable and side by side; mutable aircraft state lives under
   persistent host paths outside release directories.
 - The CLI plans and submits operations. Once accepted, the receiver owns their
@@ -143,3 +174,116 @@ _Avoid_: Removing old scripts first
   physical reimage, restore of portable state, fresh enrollment, and recommissioning.
 - The operating manual, CLI schemas, CI, and agent instructions share one policy
   implementation; PR text and decorative output are never trusted inputs.
+- GC host provisioning starts from stock Ubuntu 22.04/24.04 plus the local clone,
+  retains the exact source/policy/cache/controller plan before mutation, and
+  proves zero managed drift with a second convergence. Login owns only local
+  frontend/proxy/discovery/mirror/clock services; it never opens the browser or
+  QGroundControl and never sends an aircraft stop. Replacement hosts import only
+  verified non-secret record archives before creating fresh local keys.
+- Runtime events are grouped by boot-bound runtime session. Before receiver clock
+  trust they remain in a 10,000-record/16-MiB monotonic ring; synchronization
+  flushes that ring once with an uncertainty interval. The current and four newest
+  completed sessions are protected, while remaining ordinary logs obey both the
+  14-day limit and the lesser of 1 GiB or five percent of the filesystem.
+- Deployment audits, active transactions, retained-release evidence,
+  configuration/shadow checkpoints, tuning journals, and rosbag/dataset content
+  are not ordinary disposable logs. Receipt-backed pruning recomputes these
+  protections at apply time.
+
+### Receiver transaction boundary
+
+- Key-only SSH to the fixed `iii-deploy@iii.local` endpoint carries files only into the
+  unprivileged, content-addressed incoming area. The initial local-network model
+  intentionally does not authenticate the server host key; the CLI reports that
+  accepted spoofing/MITM risk and never presents logical runtime identity as
+  physical-host authentication. A forced `iii-deployment-ssh-gateway` confines
+  SFTP writes to the incoming root and forwards receiver requests over the
+  permission-controlled Unix socket; it exposes no arbitrary shell, command,
+  path, environment, unit-name, or receiver TCP transport.
+- Every target mutation begins with a content-addressed plan bound to receiver
+  generation, logical target/profile, active release, configuration,
+  commissioning, access state, client, and operation. The receiver issues a
+  five-minute monotonic nonce that is consumed once, atomically with acquisition
+  of the single target-wide mutation lease.
+- Before durable acceptance, application input is copied from the unprivileged
+  upload slot into an operation-scoped receiver-owned directory and rechecked
+  against the retained archive/release/status identities. Execution and boot
+  reconciliation never consume mutable input from the SSH account.
+- The operation journal is durable before the receiver returns `accepted`.
+  Disconnecting SSH or the CLI therefore cannot cancel work. Read-only status
+  remains available by operation ID; cancellation succeeds only at a journaled
+  safe checkpoint, and stale-lease recovery is receiver-owned and audit logged.
+- Receiver startup reconciles journals and the derived forced-command key file
+  before application services. It can resume an accepted mutation or fail it
+  closed, but it never starts Mission Execution or any other autonomy.
+- Operator-key rotation is receiver-owned `add -> prove from a new SSH session ->
+  revoke`. Pending keys can request only their own proof, and the final active key
+  cannot be revoked in band. Final host policy grants `iii-deploy` no
+  passwordless sudo; the separately keyed human `iii` account deliberately has
+  full attended maintenance authority.
+- Normal application release operations cannot modify receiver bootstrap/fallback,
+  stable receiver systemd units, or trust roots. Those belong to separately
+  qualified host convergence or receiver A/B self-update transactions.
+- `log-export` and bounded `log-chunk` are authenticated read-only receiver
+  actions. Receipt and prune are separate nonce-bound durable mutations. A receipt
+  is accepted only for the complete manifest file set; prune carries the exact
+  locator, hash, and size set and is rejected if live protection state changes.
+- `hardware-inspect` is an authenticated read-only receiver action over the one
+  shared hardware-class manifest. It emits only allowlisted USB/V4L2 evidence,
+  verifies stable `/dev/iii/*` links, reports missing/ambiguous/optional roles,
+  and never learns or rewrites policy from observations. Activation health uses
+  this root-owned evidence rather than a release-produced hardware claim.
+- `host-inspect` composes that hardware report with effective Raspberry Pi boot
+  evidence from the same boot. Normal releases and receiver self-update cannot
+  write `/boot` or the installed boot policy. A boot repair/change is a separate
+  backup-bound host-maintenance transaction that records setting/file deltas,
+  requires an explicit reboot, validates the new boot, and invalidates the
+  affected commissioning evidence.
+- `network-plan` accepts owner-only operator input but returns only content hashes,
+  hashed Wi-Fi identities, counts, and declared host impact. `network-apply`
+  claims the plaintext into root-only state and invokes a fixed privileged helper;
+  the private-network receiver never writes Netplan directly. A systemd monotonic
+  timer restores the exact prior profile after 90 seconds unless a separately
+  nonce-bound confirmation commits it. Every candidate retains USB-Ethernet
+  operator/recovery DHCP; the built-in Ethernet PX4 link is a separate
+  host-owned static baseline,
+  application/receiver-update payloads cannot modify host network policy, and
+  Avahi publishes `iii.local` without a fixed IP or onboard access point.
+- Every III release owns one exact PX4 companion: full source commit and version,
+  V6X multicopter firmware/build identities, normalized compile-time uXRCE-DDS
+  topics, Ethernet baseline, and complete parameter defaults. Qualified builds
+  cache only that authenticated identity. The receiver's `px4-audit` action reads
+  the staged release and the disarmed FMU over dedicated Ethernet MAVLink without
+  writes. Deployment stages the Pi first but refuses activation with
+  `III_PX4_RELEASE_REQUIRED` until firmware, parameters, and microSD artifacts all
+  match; PX4 installation remains a separate explicit USB/microSD operation.
+- Normal activation requires a content-identified runtime observation proving the
+  configured logical target/profile, fresh runtime and PX4 state, three continuous
+  seconds landed/disarmed/failsafe-clear in a maintenance-safe navigation state,
+  no Mission, Custom Operation, Direct Operation, or Reference Owner, and a ready
+  configuration checkpoint. Unknown and stale fields fail closed.
+- Broken-runtime recovery has a separate single-operation maintenance override.
+  It is unavailable without an attended TTY, stops `iii.target` before prompting,
+  retains the actor/operation/release/target/observation binding in audit, and
+  cannot waive any known armed, airborne, or active-control evidence or an
+  unready configuration migration.
+- `active-selector.json` is the atomic code/configuration/catalog identity. The
+  `/opt/iii/current` and persistent-configuration symlinks are materialized views;
+  a durable activation journal precedes each view change so boot reconciliation
+  can finish or restore the matching tuple. Selector mutation never starts Mission
+  Execution, Direct Operation, or any application autonomy.
+- Receiver updates use their own deterministic payload manifest, detached
+  `receiver-update` signing domain and trust authority. The running receiver may
+  populate only the inactive immutable A/B slot after authenticating every
+  retained release, journal, audit, activation transaction, configuration
+  checkpoint, and installed bootstrap/CLI/request protocol against the candidate.
+- Receiver `current` and `fallback` live in the dedicated selector directory.
+  Only the Ansible-owned bootstrap units can write that directory. Before an old
+  inactive slot is replaced, the bootstrap advances fallback to the current
+  working slot; update payloads cannot write selectors, bootstrap code, trust,
+  systemd units, or host-maintenance policy.
+- After a receiver selector switch, the bootstrap launches the candidate in its
+  own host unit and requires exact generation/identity, socket, self-test, journal,
+  and protocol readiness within 30 monotonic seconds. It restores fallback on any
+  failure and reconciles every persisted stage after reboot. A committed compatible
+  receiver stays selected if a later application activation rolls back.

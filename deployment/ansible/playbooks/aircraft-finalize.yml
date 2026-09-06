@@ -1,0 +1,12 @@
+---
+- name: Revoke bootstrap authority after converged-host proofs
+  hosts: aircraft
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vars/raspberry-pi-5-noble-arm64.yml
+  roles:
+    - role: preflight
+      tags: [always]
+    - role: bootstrap_finalize
+      tags: [finalize]

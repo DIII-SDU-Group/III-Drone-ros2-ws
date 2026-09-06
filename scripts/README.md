@@ -33,16 +33,25 @@ This is the bucket for:
 Rule of thumb: if it changes or validates git state across the workspace or III
 submodules, it belongs here.
 
+The canonical chain is feature/work-sweep -> `develop` ->
+`promote/develop-to-main/<operation-id>` -> `main` -> workspace-only `release`
+-> immutable `vX.Y.Z`. Use `create_stack_prs.sh` for the feature stack,
+`create_develop_to_main_prs.sh` for promotion, and
+`create_main_to_release_pr.sh` for the final workspace PR. Each defaults to a
+read-only plan; apply requires its explicit flag. Full ref, evidence, retry, and
+gitlink rules are in [`../docs/dependency-governance.md`](../docs/dependency-governance.md).
+
 ### `scripts/remote`
 
-Scripts for bootstrapping or operating remote-development/deployment workflows.
+Retained compatibility location for retired remote bootstrap entry points.
 
 Current scope:
 
-- local machine setup for remote III workflows
+- `install_remote.bash` fails without mutation and prints the native GC and
+  checkout-development replacements
 
-Rule of thumb: if the script prepares SSH, remote CLI, or deployment-host
-interaction, it belongs here.
+Current host provisioning is owned by `iii gc provision`; remote runtime and
+receiver operations are owned by the canonical III CLI.
 
 ### `scripts/workspace`
 

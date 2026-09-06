@@ -33,7 +33,7 @@
     }}},
     "mutations": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["id", "kind", "repository", "ref", "expected_old_sha", "new_sha", "parameters"], "properties": {
       "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,63}$"},
-      "kind": {"enum": ["push", "pr-upsert", "tag-publish", "release-publish", "artifact-fetch", "deployment-handoff"]},
+      "kind": {"enum": ["push", "pr-upsert", "pr-close", "pr-merge", "tag-publish", "release-publish", "artifact-fetch", "deployment-handoff"]},
       "repository": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
       "ref": {"type": "string", "pattern": "^refs/(?:heads|tags)/[^ ]+$"},
       "expected_old_sha": {"type": ["string", "null"], "pattern": "^[a-f0-9]{40}$"},

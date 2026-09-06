@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "candidate_set": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_set_id": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "documentation_manifest_id": {"minLength": 1, "type": "string"},
+        "release_id": {"minLength": 1, "type": "string"},
+        "release_version": {"minLength": 1, "type": "string"},
+        "submodule_lock_sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "verification_policy_id": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "workspace_commit": {"pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$", "type": "string"}
+      },
+      "required": ["candidate_set_id", "documentation_manifest_id", "release_id", "release_version", "submodule_lock_sha256", "verification_policy_id", "workspace_commit"],
+      "type": "object"
+    },
+    "environment": {
+      "additionalProperties": {"type": "string"},
+      "type": "object"
+    },
+    "finished_at": {"format": "date-time", "type": "string"},
+    "impact_categories": {
+      "items": {"enum": ["static-unit", "local-simulation", "provisioned-drone-bench-smoke", "field-flight", "opti-track"]},
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "level": {"enum": ["host-independent", "target-equivalent", "physical"]},
+    "matrix_id": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "policy_id": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "record_id": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "rows": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "path": {"minLength": 1, "type": "string"},
+                "sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"}
+              },
+              "required": ["path", "sha256"],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "id": {"minLength": 1, "type": "string"},
+          "reason": {"type": ["string", "null"]},
+          "status": {"enum": ["pass", "warn", "fail", "skipped"]}
+        },
+        "required": ["id", "status", "reason", "evidence"],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "schema": {"const": "iii.deployment-verification-evidence/v1"},
+    "signature": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "additionalProperties": false,
+          "properties": {
+            "algorithm": {"const": "Ed25519"},
+            "authority": {"enum": ["ci-qualified", "workstation-field"]},
+            "signer_id": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+            "value": {"minLength": 1, "type": "string"}
+          },
+          "required": ["algorithm", "authority", "signer_id", "value"],
+          "type": "object"
+        }
+      ]
+    },
+    "started_at": {"format": "date-time", "type": "string"}
+  },
+  "required": ["schema", "record_id", "matrix_id", "policy_id", "level", "candidate_set", "started_at", "finished_at", "environment", "impact_categories", "rows", "signature"],
+  "title": "III deployment verification evidence",
+  "type": "object"
+}

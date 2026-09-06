@@ -26,7 +26,6 @@ from .signers import (
     verify,
 )
 
-
 ARCHIVE_NAME = "bundle.tar.zst"
 BUNDLE_MANIFEST_NAME = "bundle.manifest.json"
 RELEASE_MANIFEST_NAME = "release-manifest.json"
@@ -130,14 +129,46 @@ def validate_release_metadata(
     )
     if manifest["signing"]["authority"] != expected_authority:
         raise ContractError("release signer authority does not match release class")
+    if manifest["release_class"] == "qualified":
+        if manifest["version"] is None:
+            raise ContractError("qualified release must bind a version")
+        if manifest["mission_catalog"]["scope"] != "qualified":
+            raise ContractError("qualified release must bind a qualified mission catalog")
+        if manifest["qualification"] != {
+            **manifest["qualification"],
+            "explicit_action": True,
+            "tag_on_release": True,
+            "tests_complete": True,
+            "evidence_complete": True,
+        } or manifest["qualification"]["evidence_sha256"] is None:
+            raise ContractError("qualified release must bind complete qualification evidence")
+    else:
+        if manifest["version"] is not None:
+            raise ContractError("field-development release cannot claim a version")
+        if manifest["mission_catalog"]["scope"] != "field":
+            raise ContractError("field-development release must bind a field mission catalog")
+        if manifest["qualification"] != {
+            "explicit_action": False,
+            "tag_on_release": False,
+            "tests_complete": False,
+            "evidence_sha256": None,
+            "evidence_complete": False,
+        }:
+            raise ContractError("field-development release cannot claim qualification")
     profile_ids: set[str] = set()
     parameter_profiles = set(manifest["px4"]["manifests"])
+    if set(manifest["px4"]["manifest_ids"]) != parameter_profiles:
+        raise ContractError(
+            "PX4 manifest identities do not exactly match parameter profiles"
+        )
     for profile in manifest["profiles"]:
         if profile["id"] in profile_ids:
             raise ContractError("release profile identifiers must be unique")
         profile_ids.add(profile["id"])
         if profile["parameter_profile"] not in parameter_profiles:
-            raise ContractError("release profile references an unknown PX4 parameter manifest")
+            raise ContractError(
+                "release profile references an unknown PX4 parameter manifest"
+            )
         if profile["bootable"] and profile["status"] != "commissioned":
             raise ContractError("uncommissioned release profiles must fail closed")
 
@@ -176,7 +207,9 @@ def _index_payload(root: Path, host_limits: Mapping[str, int]) -> list[dict[str,
     if root.is_symlink() or not root.is_dir():
         raise ContractError(f"component payload root is missing or unsafe: {root}")
     content: list[dict[str, Any]] = []
-    for current, directories, filenames in os.walk(root, topdown=True, followlinks=False):
+    for current, directories, filenames in os.walk(
+        root, topdown=True, followlinks=False
+    ):
         directories.sort()
         filenames.sort()
         current_path = Path(current)
@@ -185,25 +218,38 @@ def _index_payload(root: Path, host_limits: Mapping[str, int]) -> list[dict[str,
             forbidden = (set(directories) | set(filenames)) & FORBIDDEN_PAYLOAD_ROOTS
             if forbidden:
                 raise ContractError(
-                    "component payload contains source/build root: " + ", ".join(sorted(forbidden))
+                    "component payload contains source/build root: "
+                    + ", ".join(sorted(forbidden))
                 )
         for name in directories:
             source = current_path / name
             metadata = source.lstat()
             if not stat.S_ISDIR(metadata.st_mode) or source.is_symlink():
-                raise ContractError(f"payload directory is a link or special file: {source}")
-            archive_path = PurePosixPath("payload", relative_parent.as_posix(), name).as_posix()
+                raise ContractError(
+                    f"payload directory is a link or special file: {source}"
+                )
+            archive_path = PurePosixPath(
+                "payload", relative_parent.as_posix(), name
+            ).as_posix()
             archive_path = archive_path.replace("payload/./", "payload/")
             _validate_path(archive_path, host_limits)
             content.append(
-                {"path": archive_path, "type": "directory", "mode": 0o755, "size": 0, "sha256": None}
+                {
+                    "path": archive_path,
+                    "type": "directory",
+                    "mode": 0o755,
+                    "size": 0,
+                    "sha256": None,
+                }
             )
         for name in filenames:
             source = current_path / name
             metadata = source.lstat()
             if not stat.S_ISREG(metadata.st_mode) or source.is_symlink():
                 raise ContractError(f"payload file is a link or special file: {source}")
-            archive_path = PurePosixPath("payload", relative_parent.as_posix(), name).as_posix()
+            archive_path = PurePosixPath(
+                "payload", relative_parent.as_posix(), name
+            ).as_posix()
             archive_path = archive_path.replace("payload/./", "payload/")
             _validate_path(archive_path, host_limits)
             content.append(
@@ -260,7 +306,9 @@ def _manifest_with_limits(
     raise ContractError("bundle manifest limits did not converge")
 
 
-def _tar_info(name: str, *, mode: int, size: int, directory: bool = False) -> tarfile.TarInfo:
+def _tar_info(
+    name: str, *, mode: int, size: int, directory: bool = False
+) -> tarfile.TarInfo:
     info = tarfile.TarInfo(name=name)
     info.mode = mode
     info.uid = 0
@@ -274,7 +322,9 @@ def _tar_info(name: str, *, mode: int, size: int, directory: bool = False) -> ta
 
 
 class _VerifiedSource(io.RawIOBase):
-    def __init__(self, stream: BinaryIO, expected_size: int, expected_sha256: str) -> None:
+    def __init__(
+        self, stream: BinaryIO, expected_size: int, expected_sha256: str
+    ) -> None:
         self.stream = stream
         self.remaining = expected_size
         self.expected_sha256 = expected_sha256
@@ -305,38 +355,64 @@ def _write_archive(
     content: list[dict[str, Any]],
     manifest_bytes: bytes,
     release_bytes: bytes,
+    additional_sources: Mapping[str, Path] | None = None,
 ) -> None:
+    additional_sources = additional_sources or {}
     with destination.open("xb") as raw:
         compressor = zstandard.ZstdCompressor(
             level=19, write_checksum=True, write_content_size=False, threads=0
         )
         with compressor.stream_writer(raw, closefd=False) as encoded:
-            with tarfile.open(fileobj=encoded, mode="w|", format=tarfile.USTAR_FORMAT) as archive:
-                for name, data in ((META_BUNDLE, manifest_bytes), (META_RELEASE, release_bytes)):
-                    archive.addfile(_tar_info(name, mode=0o644, size=len(data)), io.BytesIO(data))
+            with tarfile.open(
+                fileobj=encoded, mode="w|", format=tarfile.USTAR_FORMAT
+            ) as archive:
+                for name, data in (
+                    (META_BUNDLE, manifest_bytes),
+                    (META_RELEASE, release_bytes),
+                ):
+                    archive.addfile(
+                        _tar_info(name, mode=0o644, size=len(data)), io.BytesIO(data)
+                    )
                 for entry in content:
                     relative = PurePosixPath(entry["path"]).relative_to("payload")
-                    source = root.joinpath(*relative.parts)
+                    source = additional_sources.get(
+                        entry["path"], root.joinpath(*relative.parts)
+                    )
                     if entry["type"] == "directory":
                         metadata = source.lstat()
                         if not stat.S_ISDIR(metadata.st_mode) or source.is_symlink():
-                            raise ContractError("payload directory changed while packaging")
-                        archive.addfile(_tar_info(entry["path"], mode=0o755, size=0, directory=True))
+                            raise ContractError(
+                                "payload directory changed while packaging"
+                            )
+                        archive.addfile(
+                            _tar_info(entry["path"], mode=0o755, size=0, directory=True)
+                        )
                         continue
                     descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
                     try:
                         metadata = os.fstat(descriptor)
-                        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size != entry["size"]:
+                        if (
+                            not stat.S_ISREG(metadata.st_mode)
+                            or metadata.st_size != entry["size"]
+                        ):
                             raise ContractError("payload file changed while packaging")
                         with os.fdopen(descriptor, "rb", closefd=False) as stream:
-                            verified = _VerifiedSource(stream, entry["size"], entry["sha256"])
+                            verified = _VerifiedSource(
+                                stream, entry["size"], entry["sha256"]
+                            )
                             archive.addfile(
-                                _tar_info(entry["path"], mode=entry["mode"], size=entry["size"]),
+                                _tar_info(
+                                    entry["path"],
+                                    mode=entry["mode"],
+                                    size=entry["size"],
+                                ),
                                 verified,
                             )
                             verified.finish()
                             if os.fstat(descriptor).st_size != entry["size"]:
-                                raise ContractError("payload file changed while packaging")
+                                raise ContractError(
+                                    "payload file changed while packaging"
+                                )
                     finally:
                         os.close(descriptor)
         raw.flush()
@@ -357,6 +433,7 @@ def package_bundle_set(
     *,
     registry: ContractRegistry,
     host_limits: Mapping[str, int],
+    shared_files: Mapping[str, Path] | None = None,
 ) -> dict[str, BundlePaths]:
     """Atomically create paired release components with identical shared evidence."""
     try:
@@ -367,7 +444,9 @@ def package_bundle_set(
         raise ContractError("release manifest must contain an object")
     validate_release_metadata(release, registry)
     if set(component_roots) != set(release["components"]):
-        raise ContractError("component payload roots do not exactly match release components")
+        raise ContractError(
+            "component payload roots do not exactly match release components"
+        )
     key = load_private_key(private_key_path)
     signer_id = signer_id_for_public_key(key.public_key())
     if signer_id != release["signing"]["signer_id"]:
@@ -378,14 +457,46 @@ def package_bundle_set(
         component: _index_payload(Path(component_roots[component]), host_limits)
         for component in release["components"]
     }
-    payloads = {component: _payload_identity(indexed[component]) for component in release["components"]}
+    shared_sources: dict[str, Path] = {}
+    for raw_name, source in sorted((shared_files or {}).items()):
+        relative = PurePosixPath(raw_name)
+        if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+            raise ContractError("shared bundle payload path is unsafe")
+        archive_name = (PurePosixPath("payload") / relative).as_posix()
+        _validate_path(archive_name, host_limits)
+        path = Path(source)
+        if path.is_symlink() or not path.is_file():
+            raise ContractError("shared bundle payload is missing or linked")
+        shared_sources[archive_name] = path
+        entry = {
+            "path": archive_name,
+            "type": "file",
+            "mode": 0o644,
+            "size": path.stat().st_size,
+            "sha256": _sha256_file(path),
+        }
+        for component in release["components"]:
+            if any(item["path"] == archive_name for item in indexed[component]):
+                raise ContractError("shared bundle payload collides with component content")
+            indexed[component].append(entry)
+            indexed[component].sort(key=lambda item: item["path"])
+    payloads = {
+        component: _payload_identity(indexed[component])
+        for component in release["components"]
+    }
     compatibility_sha = _compatibility_identity(release)
 
     output_directory = output_directory.absolute()
     output_directory.parent.mkdir(parents=True, exist_ok=True)
     if output_directory.exists() or output_directory.is_symlink():
-        raise ContractError(f"refusing to replace release bundle set: {output_directory}")
-    staging = Path(tempfile.mkdtemp(prefix=f".{output_directory.name}.", dir=output_directory.parent))
+        raise ContractError(
+            f"refusing to replace release bundle set: {output_directory}"
+        )
+    staging = Path(
+        tempfile.mkdtemp(
+            prefix=f".{output_directory.name}.", dir=output_directory.parent
+        )
+    )
     result: dict[str, BundlePaths] = {}
     try:
         for component in release["components"]:
@@ -406,12 +517,15 @@ def package_bundle_set(
                 "release_class": release["release_class"],
                 "component": component,
                 "release_manifest_sha256": release_sha,
+                "mission_catalog_hash": release["mission_catalog"]["catalog_hash"],
                 "compatibility_sha256": compatibility_sha,
                 "component_payloads": payloads,
                 "target": release["component_targets"][component],
                 "content": indexed[component],
             }
-            manifest, manifest_bytes = _manifest_with_limits(base, release_bytes, host_limits)
+            manifest, manifest_bytes = _manifest_with_limits(
+                base, release_bytes, host_limits
+            )
             registry.validate("bundle-manifest", manifest)
             paths.bundle_manifest.write_bytes(manifest_bytes)
             paths.release_manifest.write_bytes(release_bytes)
@@ -421,9 +535,12 @@ def package_bundle_set(
                 indexed[component],
                 manifest_bytes,
                 release_bytes,
+                shared_sources,
             )
             archive_sha = _sha256_file(paths.archive)
-            paths.checksum.write_text(f"{archive_sha}  {ARCHIVE_NAME}\n", encoding="ascii")
+            paths.checksum.write_text(
+                f"{archive_sha}  {ARCHIVE_NAME}\n", encoding="ascii"
+            )
             signature = {
                 "schema_version": "1",
                 "signature_type": "iii.bundle-signature",
@@ -461,10 +578,15 @@ def package_bundle_set(
 
 
 def _validate_bundle_semantics(
-    bundle: Mapping[str, Any], release: Mapping[str, Any], host_limits: Mapping[str, int]
+    bundle: Mapping[str, Any],
+    release: Mapping[str, Any],
+    host_limits: Mapping[str, int],
 ) -> None:
     component = bundle["component"]
-    if bundle["release_id"] != release["release_id"] or bundle["release_class"] != release["release_class"]:
+    if (
+        bundle["release_id"] != release["release_id"]
+        or bundle["release_class"] != release["release_class"]
+    ):
         raise ContractError("bundle/release identity disagreement")
     if component not in release["components"]:
         raise ContractError("bundle component is absent from release")
@@ -476,15 +598,23 @@ def _validate_bundle_semantics(
         raise ContractError("bundle payload identity disagrees with its content index")
     if bundle["compatibility_sha256"] != _compatibility_identity(release):
         raise ContractError("bundle compatibility evidence disagrees with release")
+    if bundle["mission_catalog_hash"] != release["mission_catalog"]["catalog_hash"]:
+        raise ContractError("bundle mission catalog identity disagrees with release")
     paths = [entry["path"] for entry in bundle["content"]]
     if paths != sorted(set(paths), key=lambda value: value.encode("utf-8")):
-        raise ContractError("bundle content paths must be unique and canonically sorted")
+        raise ContractError(
+            "bundle content paths must be unique and canonically sorted"
+        )
     for entry in bundle["content"]:
         _validate_path(entry["path"], host_limits)
         if not entry["path"].startswith("payload/"):
             raise ContractError("bundle content must remain below payload")
         if entry["type"] == "directory":
-            if entry["size"] != 0 or entry["sha256"] is not None or entry["mode"] != 0o755:
+            if (
+                entry["size"] != 0
+                or entry["sha256"] is not None
+                or entry["mode"] != 0o755
+            ):
                 raise ContractError("bundle directory metadata is inconsistent")
         elif entry["sha256"] is None:
             raise ContractError("bundle file checksum is missing")
@@ -493,7 +623,9 @@ def _validate_bundle_semantics(
         "entries": len(expected_names),
         "unpacked_bytes": sum(entry["size"] for entry in bundle["content"]),
         "maximum_path_bytes": max(len(name.encode("utf-8")) for name in expected_names),
-        "maximum_path_depth": max(len(PurePosixPath(name).parts) for name in expected_names),
+        "maximum_path_depth": max(
+            len(PurePosixPath(name).parts) for name in expected_names
+        ),
     }
     # Metadata byte sizes are added by inspect_bundle after canonical documents are available.
     if bundle["limits"]["entries"] != actual_limits["entries"]:
@@ -518,11 +650,12 @@ def inspect_bundle(
         raise ContractError("bundle component directory is missing or unsafe")
     directory_entries = list(paths.directory.iterdir())
     entries = {item.name for item in directory_entries}
-    if (
-        entries != COMPONENT_FILES
-        or any(item.is_symlink() or not item.is_file() for item in directory_entries)
+    if entries != COMPONENT_FILES or any(
+        item.is_symlink() or not item.is_file() for item in directory_entries
     ):
-        raise ContractError("bundle component directory has missing, extra, or linked files")
+        raise ContractError(
+            "bundle component directory has missing, extra, or linked files"
+        )
     release = _canonical_document(paths.release_manifest, label="release manifest")
     bundle = _canonical_document(paths.bundle_manifest, label="bundle manifest")
     signature = _canonical_document(paths.signature, label="bundle signature")
@@ -611,8 +744,16 @@ def _expected_tar_bytes(entries: list[tuple[str, int]]) -> int:
 
 def _member_matches(member: tarfile.TarInfo, expected: Mapping[str, Any]) -> None:
     if member.name != expected["path"]:
-        raise ContractError("archive ordering or path disagrees with signed content index")
-    if member.uid != 0 or member.gid != 0 or member.uname or member.gname or member.mtime != 0:
+        raise ContractError(
+            "archive ordering or path disagrees with signed content index"
+        )
+    if (
+        member.uid != 0
+        or member.gid != 0
+        or member.uname
+        or member.gname
+        or member.mtime != 0
+    ):
         raise ContractError("archive header metadata is not normalized")
     if member.pax_headers or member.linkname:
         raise ContractError("archive extensions and links are forbidden")
@@ -625,12 +766,26 @@ def _member_matches(member: tarfile.TarInfo, expected: Mapping[str, Any]) -> Non
         raise ContractError("archive links and special files are forbidden")
 
 
-def _stream_archive_unchecked(verified: VerifiedBundle, destination: Path | None) -> None:
+def _stream_archive_unchecked(
+    verified: VerifiedBundle, destination: Path | None
+) -> None:
     manifest_bytes = canonical_json(verified.bundle_manifest) + b"\n"
     release_bytes = canonical_json(verified.release_manifest) + b"\n"
     expected: list[dict[str, Any]] = [
-        {"path": META_BUNDLE, "type": "file", "mode": 0o644, "size": len(manifest_bytes), "sha256": hashlib.sha256(manifest_bytes).hexdigest()},
-        {"path": META_RELEASE, "type": "file", "mode": 0o644, "size": len(release_bytes), "sha256": hashlib.sha256(release_bytes).hexdigest()},
+        {
+            "path": META_BUNDLE,
+            "type": "file",
+            "mode": 0o644,
+            "size": len(manifest_bytes),
+            "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        },
+        {
+            "path": META_RELEASE,
+            "type": "file",
+            "mode": 0o644,
+            "size": len(release_bytes),
+            "sha256": hashlib.sha256(release_bytes).hexdigest(),
+        },
         *verified.bundle_manifest["content"],
     ]
     tar_size = _expected_tar_bytes([(item["path"], item["size"]) for item in expected])
@@ -648,19 +803,38 @@ def _stream_archive_unchecked(verified: VerifiedBundle, destination: Path | None
         decompressor = zstandard.ZstdDecompressor(max_window_size=128 * 1024 * 1024)
         with decompressor.stream_reader(encoded, read_across_frames=True) as decoded:
             counted = _CountingReader(decoded)
-            with tarfile.open(fileobj=counted, mode="r|", format=tarfile.USTAR_FORMAT) as archive:
+            with tarfile.open(
+                fileobj=counted, mode="r|", format=tarfile.USTAR_FORMAT
+            ) as archive:
                 seen = 0
                 for member in archive:
                     if seen >= len(expected):
                         raise ContractError("archive contains unsigned extra entries")
                     signed = expected[seen]
-                    _validate_path(member.name, {
-                        "maximum_path_bytes": min(verified.bundle_manifest["limits"]["maximum_path_bytes"], 255),
-                        "maximum_path_depth": min(verified.bundle_manifest["limits"]["maximum_path_depth"], 32),
-                    })
+                    _validate_path(
+                        member.name,
+                        {
+                            "maximum_path_bytes": min(
+                                verified.bundle_manifest["limits"][
+                                    "maximum_path_bytes"
+                                ],
+                                255,
+                            ),
+                            "maximum_path_depth": min(
+                                verified.bundle_manifest["limits"][
+                                    "maximum_path_depth"
+                                ],
+                                32,
+                            ),
+                        },
+                    )
                     _member_matches(member, signed)
                     seen += 1
-                    target = destination.joinpath(*PurePosixPath(member.name).parts) if destination else None
+                    target = (
+                        destination.joinpath(*PurePosixPath(member.name).parts)
+                        if destination
+                        else None
+                    )
                     if member.isdir():
                         if target is not None:
                             target.mkdir(mode=0o755, parents=True, exist_ok=False)
@@ -674,7 +848,11 @@ def _stream_archive_unchecked(verified: VerifiedBundle, destination: Path | None
                     output: BinaryIO | None = None
                     if target is not None:
                         target.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
-                        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, signed["mode"])
+                        descriptor = os.open(
+                            target,
+                            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                            signed["mode"],
+                        )
                         output = os.fdopen(descriptor, "wb")
                     try:
                         for block in iter(lambda: source.read(1024 * 1024), b""):
@@ -689,14 +867,21 @@ def _stream_archive_unchecked(verified: VerifiedBundle, destination: Path | None
                     finally:
                         if output is not None:
                             output.close()
-                    if written != signed["size"] or digest.hexdigest() != signed["sha256"]:
-                        raise ContractError("archive content disagrees with signed content index")
+                    if (
+                        written != signed["size"]
+                        or digest.hexdigest() != signed["sha256"]
+                    ):
+                        raise ContractError(
+                            "archive content disagrees with signed content index"
+                        )
                 if seen != len(expected):
                     raise ContractError("archive is missing signed entries")
             while counted.read(1024 * 1024):
                 pass
             if counted.count != tar_size:
-                raise ContractError("archive has non-canonical framing or trailing content")
+                raise ContractError(
+                    "archive has non-canonical framing or trailing content"
+                )
 
 
 def _stream_archive(verified: VerifiedBundle, destination: Path | None) -> None:
@@ -737,7 +922,9 @@ def extract_bundle(
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists() or destination.is_symlink():
         raise ContractError(f"refusing to replace extracted release: {destination}")
-    staging = Path(tempfile.mkdtemp(prefix=f".{destination.name}.", dir=destination.parent))
+    staging = Path(
+        tempfile.mkdtemp(prefix=f".{destination.name}.", dir=destination.parent)
+    )
     try:
         _stream_archive(verified, staging)
         directory = os.open(staging, os.O_RDONLY | os.O_DIRECTORY)

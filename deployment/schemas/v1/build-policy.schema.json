@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://iii-drone.invalid/schemas/v1/build-policy.schema.json",
   "type": "object", "additionalProperties": false,
-  "required": ["schema", "version", "target_definition", "layout", "release_install", "activation_root", "python_site_packages", "release_wrapper", "forbidden_output_directories", "forbidden_path_fragments", "release_assets", "host_elf_allowlist", "host_library_prefixes", "components", "interface_packages", "normal_build_transports", "target_package_manager_allowed"],
+  "required": ["schema", "version", "target_definition", "layout", "release_install", "activation_root", "python_site_packages", "release_wrapper", "forbidden_output_directories", "forbidden_path_fragments", "release_assets", "host_elf_allowlist", "host_library_prefixes", "components", "interface_packages", "target_python_imports", "target_python_extension_suffix", "normal_build_transports", "target_package_manager_allowed"],
   "properties": {
     "schema": {"const": "iii.build-policy/v1"}, "version": {"const": 1},
     "target_definition": {"const": "deployment/targets/v1/raspberry-pi-5-noble-arm64.json"},
@@ -17,6 +17,8 @@
     "host_library_prefixes": {"const": ["/opt/ros/jazzy"]},
     "components": {"type": "object", "additionalProperties": false, "required": ["drone", "gc"], "properties": {"drone": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}, "gc": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}}},
     "interface_packages": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+    "target_python_imports": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$"}},
+    "target_python_extension_suffix": {"const": ".cpython-312-aarch64-linux-gnu.so"},
     "normal_build_transports": {"const": ["local-docker"]},
     "target_package_manager_allowed": {"const": false}
   },

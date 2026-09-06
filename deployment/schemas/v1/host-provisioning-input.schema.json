@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iii-drone.local/schemas/v1/host-provisioning-input.schema.json",
+  "title": "III owner-controlled host provisioning input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "target_class",
+    "logical_target",
+    "profile",
+    "operator_cidr",
+    "receiver_bundle_source",
+    "receiver_wheelhouse_source",
+    "bundle_trust_source",
+    "release_status_trust_source",
+    "receiver_update_trust_source",
+    "operator_enrollment_source",
+    "maintenance_ssh_public_key_source",
+    "runtime_api_secret_source"
+  ],
+  "properties": {
+    "schema": {"const": "iii.host-provisioning-input/v1"},
+    "target_class": {"const": "raspberry-pi-5-noble-arm64"},
+    "logical_target": {"const": "drone"},
+    "profile": {"enum": ["real", "opti_track", "hil"]},
+    "operator_cidr": {"type": "string", "minLength": 9, "maxLength": 18},
+    "receiver_bundle_source": {"type": "string", "minLength": 1},
+    "receiver_wheelhouse_source": {"type": "string", "minLength": 1},
+    "bundle_trust_source": {"type": "string", "minLength": 1},
+    "release_status_trust_source": {"type": "string", "minLength": 1},
+    "receiver_update_trust_source": {"type": "string", "minLength": 1},
+    "operator_enrollment_source": {"type": "string", "minLength": 1},
+    "maintenance_ssh_public_key_source": {"type": "string", "minLength": 1},
+    "runtime_api_secret_source": {"type": "string", "minLength": 1},
+    "offline": {"type": "boolean", "default": false}
+  }
+}

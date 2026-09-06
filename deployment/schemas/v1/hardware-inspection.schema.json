@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/hardware-inspection.schema.json",
+  "title": "III sanitized host hardware inspection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "inspection_id", "manifest_id", "profile", "boot_id", "captured_monotonic_ns", "accepted", "roles", "devices", "unmatched_device_ids", "automatic_learning"],
+  "properties": {
+    "schema": {"const": "iii.hardware-inspection/v1"},
+    "inspection_id": {"$ref": "#/definitions/hash"},
+    "manifest_id": {"$ref": "#/definitions/hash"},
+    "profile": {"enum": ["real", "opti_track", "hil"]},
+    "boot_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "captured_monotonic_ns": {"type": "integer", "minimum": 0},
+    "accepted": {"type": "boolean"},
+    "roles": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {"$ref": "#/definitions/resolution"}
+    },
+    "devices": {"type": "array", "items": {"$ref": "#/definitions/device"}},
+    "unmatched_device_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/hash"}},
+    "automatic_learning": {"const": false}
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirement", "state", "unambiguous", "stable_path", "stable_path_ok", "matched_device_ids"],
+      "properties": {
+        "requirement": {"enum": ["required", "optional"]},
+        "state": {"enum": ["present", "missing", "ambiguous"]},
+        "unambiguous": {"type": "boolean"},
+        "stable_path": {"type": "string", "pattern": "^/dev/iii/[a-z][a-z0-9-]*$"},
+        "stable_path_ok": {"type": "boolean"},
+        "matched_device_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/hash"}}
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device_id", "subsystem", "device_node", "sysfs_path", "id_bus", "vendor_id", "product_id", "serial", "interface_number", "id_path", "driver", "v4l_index", "v4l_capabilities", "product_name"],
+      "properties": {
+        "device_id": {"$ref": "#/definitions/hash"},
+        "subsystem": {"enum": ["tty", "video4linux"]},
+        "device_node": {"type": "string", "pattern": "^/dev/(tty[A-Za-z0-9._-]+|video[0-9]+)$"},
+        "sysfs_path": {"type": "string", "pattern": "^/sys/"},
+        "id_bus": {"const": "usb"},
+        "vendor_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{4}$"},
+        "product_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{4}$"},
+        "serial": {"type": ["string", "null"], "maxLength": 256},
+        "interface_number": {"type": ["string", "null"], "pattern": "^[0-9A-F]{2}$"},
+        "id_path": {"type": ["string", "null"], "maxLength": 512},
+        "driver": {"type": ["string", "null"], "maxLength": 128},
+        "v4l_index": {"type": ["string", "null"], "pattern": "^[0-9]+$"},
+        "v4l_capabilities": {"type": ["string", "null"], "maxLength": 256},
+        "product_name": {"type": ["string", "null"], "maxLength": 256}
+      }
+    }
+  }
+}

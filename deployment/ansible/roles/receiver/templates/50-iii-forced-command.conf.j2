@@ -1,0 +1,19 @@
+PasswordAuthentication no
+PermitRootLogin no
+PubkeyAuthentication yes
+
+Match User iii-deploy
+    AuthenticationMethods publickey
+    AllowAgentForwarding no
+    AllowTcpForwarding no
+    PermitTunnel no
+    PermitTTY no
+    X11Forwarding no
+
+Match User iii
+    AuthenticationMethods publickey
+    AllowAgentForwarding no
+    AllowTcpForwarding no
+    PermitTunnel no
+    PermitTTY yes
+    X11Forwarding no

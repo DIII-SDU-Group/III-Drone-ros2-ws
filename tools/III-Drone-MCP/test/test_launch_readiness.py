@@ -123,19 +123,21 @@ def test_terminal_reach_charge_leave_requires_inactive_mission():
 def test_battery_reset_toggles_px4_reset_token_and_verifies_percentage():
     tools = DroneAgentTools.__new__(DroneAgentTools)
     calls = []
+    reset_token = 0
+    acknowledgement_token = 0
 
     def px4(command, **kwargs):
+        nonlocal reset_token, acknowledgement_token
         calls.append((command, kwargs))
         if command == "get_param" and kwargs["param_name"] == "SIM_BAT_MIN_PCT":
             return ToolResult(True, {"param_value": 20.0})
         if command == "get_param" and kwargs["param_name"] == "SIM_BAT_RESET":
-            return ToolResult(True, {"param_value": 0.0})
+            return ToolResult(True, {"param_value": float(reset_token)})
         if command == "get_param" and kwargs["param_name"] == "SIM_BAT_RST_ACK":
-            ack_reads = sum(
-                1 for name, params in calls
-                if name == "get_param" and params["param_name"] == "SIM_BAT_RST_ACK"
-            )
-            return ToolResult(True, {"param_value": 0.0 if ack_reads == 1 else 1.0})
+            return ToolResult(True, {"param_value": float(acknowledgement_token)})
+        if command == "set_param" and kwargs["param_name"] == "SIM_BAT_RESET":
+            reset_token = int(kwargs["param_value"])
+            acknowledgement_token = reset_token
         return ToolResult(True, {"param_value": kwargs["param_value"]})
 
     samples = iter([SimpleNamespace(remaining=0.42), SimpleNamespace(remaining=0.999)])
@@ -156,10 +158,17 @@ def test_battery_reset_toggles_px4_reset_token_and_verifies_percentage():
     assert result.success is True
     assert result.data["observed_remaining_pct"] == 99.9
     assert result.data["acknowledgement_token"] == 1
+    assert result.data["cleanup_acknowledgement_token"] == 0
     assert ("set_param", {
         "param_name": "SIM_BAT_INIT_PCT",
         "param_value": 100.0,
         "param_type": 9,
+        "timeout_sec": 2.0,
+    }) in calls
+    assert ("set_param", {
+        "param_name": "SIM_BAT_RESET",
+        "param_value": 0,
+        "param_type": 6,
         "timeout_sec": 2.0,
     }) in calls
     assert ("set_param", {

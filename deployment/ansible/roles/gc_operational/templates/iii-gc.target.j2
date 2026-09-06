@@ -1,0 +1,8 @@
+[Unit]
+Description=III ground-control login session
+PartOf=graphical-session.target
+After=graphical-session.target network-online.target iii-gc-application-reconcile.service
+Wants=iii-gc-proxy.service iii-gc-frontend.service iii-gc-discovery.service iii-gc-mirror.service iii-gc-clock.service iii-gc-px4-parameters.service
+
+[Install]
+WantedBy=graphical-session.target

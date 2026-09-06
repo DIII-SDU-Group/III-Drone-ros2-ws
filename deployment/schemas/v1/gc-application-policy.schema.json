@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/gc-application-policy.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "qgroundcontrol", "application", "retention", "cache", "safety"],
+  "properties": {
+    "schema": {"const": "iii.gc-application-policy/v1"},
+    "qgroundcontrol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "filename", "source_url", "sha256", "bytes", "appimage_update_information", "update_owner"],
+      "properties": {
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "filename": {"const": "QGroundControl.AppImage"},
+        "source_url": {"type": "string", "pattern": "^https://github\\.com/mavlink/qgroundcontrol/releases/download/v[0-9]+\\.[0-9]+\\.[0-9]+/QGroundControl-x86_64\\.AppImage$"},
+        "sha256": {"$ref": "#/definitions/hash"},
+        "bytes": {"type": "integer", "minimum": 1},
+        "appimage_update_information": {"const": ""},
+        "update_owner": {"const": "iii-gc-release"}
+      }
+    },
+    "application": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["compose_source", "compose_slot_name", "environment_slot_name", "gc_unit", "qgc_unit", "health_urls"],
+      "properties": {
+        "compose_source": {"const": "deployment/gc/compose.release.yml"},
+        "compose_slot_name": {"const": "compose.yml"},
+        "environment_slot_name": {"const": "application.env"},
+        "gc_unit": {"const": "iii-gc.target"},
+        "qgc_unit": {"const": "iii-qgc.service"},
+        "health_urls": {"type": "array", "minItems": 2, "uniqueItems": true, "items": {"type": "string", "pattern": "^http://127\\.0\\.0\\.1:[0-9]+/"}}
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protect", "field_history"],
+      "properties": {
+        "protect": {"type": "array", "const": ["qualified-anchor", "active", "previous-field", "staged-candidate"]},
+        "field_history": {"const": 1}
+      }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["non_protected_quota_bytes", "minimum_free_bytes", "minimum_free_fraction", "maximum_free_bytes", "protected_domains"],
+      "properties": {
+        "non_protected_quota_bytes": {"type": "integer", "minimum": 1},
+        "minimum_free_bytes": {"type": "integer", "minimum": 1},
+        "minimum_free_fraction": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "maximum_free_bytes": {"type": "integer", "minimum": 1},
+        "protected_domains": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}}
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["real_safe_continuity_seconds", "safe_navigation_states", "override_warning"],
+      "properties": {
+        "real_safe_continuity_seconds": {"type": "number", "minimum": 3},
+        "safe_navigation_states": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"}},
+        "override_warning": {"type": "string", "minLength": 40}
+      }
+    }
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

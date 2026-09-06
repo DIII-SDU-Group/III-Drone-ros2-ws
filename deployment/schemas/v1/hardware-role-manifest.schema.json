@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/hardware-role-manifest.schema.json",
+  "title": "III shared aircraft hardware-role manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "manifest_id", "target_class", "inventory_mode", "serial_policy", "requirements", "roles", "replacement_policy", "legacy_rule_retirement"],
+  "properties": {
+    "schema": {"const": "iii.hardware-role-manifest/v1"},
+    "manifest_id": {"$ref": "#/definitions/hash"},
+    "target_class": {"const": "raspberry-pi-5-noble-arm64"},
+    "inventory_mode": {"const": "shared-hardware-class"},
+    "serial_policy": {"const": "commissioned-allowlist-only"},
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "optional"],
+      "properties": {
+        "required": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}},
+        "optional": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}}
+      }
+    },
+    "roles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/definitions/role"}
+    },
+    "replacement_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matching", "unmatched", "automatic_learning"],
+      "properties": {
+        "matching": {"const": "functional-evidence-and-recommission"},
+        "unmatched": {"const": "capture-feature-branch-test-converge-recommission"},
+        "automatic_learning": {"const": false}
+      }
+    },
+    "legacy_rule_retirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "required_phases", "evidence_record"],
+      "properties": {
+        "state": {"enum": ["retained-pending-physical-evidence", "retired"]},
+        "required_phases": {"const": ["baseline", "unplug-replug", "reboot", "port-swap", "simultaneous-enumeration"]},
+        "evidence_record": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/hash"}]}
+      }
+    }
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nullable_string": {"type": ["string", "null"]},
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subsystem", "vendor_id", "product_id", "interface_number", "serial_allowlist", "v4l_index", "properties"],
+      "properties": {
+        "subsystem": {"enum": ["tty", "video4linux"]},
+        "vendor_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{4}$"},
+        "product_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{4}$"},
+        "interface_number": {"type": ["string", "null"], "pattern": "^[0-9A-F]{2}$"},
+        "serial_allowlist": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "v4l_index": {"type": ["string", "null"], "pattern": "^[0-9]+$"},
+        "properties": {
+          "type": "object",
+          "additionalProperties": {"type": "string", "minLength": 1},
+          "propertyNames": {"enum": ["ID_BUS", "ID_V4L_CAPABILITIES"]}
+        }
+      }
+    },
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "requirement", "stable_path", "group", "mode", "match", "matching_evidence", "functional_evidence"],
+      "properties": {
+        "role": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "requirement": {"enum": ["required", "optional"]},
+        "stable_path": {"type": "string", "pattern": "^/dev/iii/[a-z][a-z0-9-]*$"},
+        "group": {"enum": ["dialout", "video"]},
+        "mode": {"const": "0660"},
+        "match": {"$ref": "#/definitions/match"},
+        "matching_evidence": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "functional_evidence": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

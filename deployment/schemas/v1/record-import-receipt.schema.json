@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/record-import-receipt.schema.json",
+  "title": "III verified portable record import receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "receipt_id", "archive_id", "archive_sha256", "archive_size", "source_path", "imported_at", "record_ids", "materialized_locators", "verification_state", "creation_source"],
+  "properties": {
+    "schema": {"const": "iii.record-import-receipt/v1"},
+    "receipt_id": {"$ref": "#/definitions/hash"},
+    "archive_id": {"$ref": "#/definitions/hash"},
+    "archive_sha256": {"$ref": "#/definitions/hash"},
+    "archive_size": {"type": "integer", "minimum": 1},
+    "source_path": {"type": "string", "minLength": 1},
+    "imported_at": {"type": "string", "format": "date-time"},
+    "record_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/hash"}},
+    "materialized_locators": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "verification_state": {"const": "verified"},
+    "creation_source": {"const": "iii records import"}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

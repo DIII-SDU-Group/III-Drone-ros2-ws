@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/runtime-target-catalog.schema.json",
+  "title": "III runtime target descriptor catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "defaults", "targets"],
+  "properties": {
+    "schema": {"const": "iii.runtime-target-catalog/v1"},
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dev", "field"],
+      "properties": {"dev": {"const": "sim"}, "field": {"const": "real"}}
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 4,
+      "items": {"$ref": "#/definitions/target"}
+    }
+  },
+  "definitions": {
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selector", "endpoint", "logical_id", "execution_host", "runtime_profile", "parameter_profile", "simulator_provider", "profile_alias", "bootable", "capabilities", "middleware_policy"],
+      "properties": {
+        "selector": {"enum": ["sim", "real", "opti_track", "hil"]},
+        "endpoint": {"type": "string", "minLength": 1},
+        "logical_id": {"const": "drone"},
+        "execution_host": {"enum": ["operator", "aircraft"]},
+        "runtime_profile": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+        "parameter_profile": {"enum": ["sim", "real"]},
+        "simulator_provider": {"enum": ["gazebo-local", "gazebo-workstation", "none"]},
+        "profile_alias": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9_-]*$"},
+        "bootable": {"type": "boolean"},
+        "capabilities": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$"}},
+        "middleware_policy": {"const": "iii.middleware-interface-policy/v1"}
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/px4-parameter-snapshot.schema.json",
+  "title": "Complete disarmed PX4 parameter snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "snapshot_id", "captured_at", "profile", "provenance", "target", "complete", "parameter_count", "parameters"],
+  "properties": {
+    "schema": {"const": "iii.px4-parameter-snapshot/v1"},
+    "snapshot_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "profile": {"enum": ["real", "sim"]},
+    "provenance": {"enum": ["mavlink-complete-inventory", "receiver-px4-ethernet", "qgc-forwarded-mavlink-observation", "imported-verified-capture"]},
+    "target": {"type": "object", "additionalProperties": false, "required": ["system_id", "component_id", "armed", "firmware_version", "firmware_commit"], "properties": {"system_id": {"type": "integer", "minimum": 1, "maximum": 255}, "component_id": {"type": "integer", "minimum": 0, "maximum": 255}, "armed": {"const": false}, "firmware_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}, "firmware_commit": {"type": ["string", "null"], "pattern": "^[a-f0-9]{8,40}$"}}},
+    "complete": {"const": true},
+    "parameter_count": {"type": "integer", "minimum": 1},
+    "parameters": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["name", "mav_type", "value", "index"], "properties": {"name": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,15}$"}, "mav_type": {"enum": ["UINT32", "INT32", "REAL32"]}, "value": {"type": ["integer", "number"]}, "index": {"type": "integer", "minimum": 0}}}}
+  }
+}

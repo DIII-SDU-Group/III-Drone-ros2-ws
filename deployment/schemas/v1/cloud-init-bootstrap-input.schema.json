@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/cloud-init-bootstrap-input.schema.json",
+  "title": "III untracked per-imaging cloud-init input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "hostname", "ssh_public_key", "bootstrap_credential", "network"],
+  "properties": {
+    "schema": {"const": "iii.cloud-init-bootstrap-input/v1"},
+    "hostname": {"const": "iii"},
+    "ssh_public_key": {"type": "string", "pattern": "^ssh-(ed25519|rsa) [A-Za-z0-9+/]+={0,3}(?: [^\\r\\n]+)?$", "maxLength": 8192},
+    "bootstrap_credential": {"type": "string", "pattern": "^[A-Za-z0-9_-]{32,128}$"},
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ethernet_dhcp4", "wifi"],
+      "properties": {
+        "ethernet_dhcp4": {"const": true},
+        "wifi": {"type": "array", "maxItems": 16, "items": {"type": "object", "additionalProperties": false, "required": ["ssid", "password"], "properties": {"ssid": {"type": "string", "minLength": 1, "maxLength": 32}, "password": {"type": "string", "minLength": 8, "maxLength": 63}, "hidden": {"type": "boolean"}}}}
+      }
+    }
+  }
+}

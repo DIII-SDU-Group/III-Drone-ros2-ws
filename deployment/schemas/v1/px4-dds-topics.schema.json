@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/px4-dds-topics.schema.json",
+  "title": "Normalized PX4 uXRCE-DDS topic contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "contract_id", "firmware_commit", "source", "publications", "subscriptions", "subscriptions_multi"],
+  "properties": {
+    "schema": {"const": "iii.px4-dds-topics/v1"},
+    "contract_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "firmware_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"const": "src/modules/uxrce_dds_client/dds_topics.yaml"},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "publications": {"$ref": "#/definitions/topics"},
+    "subscriptions": {"$ref": "#/definitions/topics"},
+    "subscriptions_multi": {"$ref": "#/definitions/topics"}
+  },
+  "definitions": {
+    "topics": {
+      "type": "array", "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["topic", "type"],
+        "properties": {
+          "topic": {"type": "string", "pattern": "^/fmu/(?:in|out)/[a-z0-9_]+$"},
+          "type": {"type": "string", "pattern": "^px4_msgs::msg::[A-Za-z0-9_]+$"}
+        }
+      }
+    }
+  }
+}

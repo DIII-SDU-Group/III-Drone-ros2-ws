@@ -53,7 +53,6 @@
     "runArgs": [
         "--cap-add", "SYS_ADMIN",
         "--cap-add", "SYS_PTRACE",
-        "--device", "/dev/fuse",
         "--security-opt", "apparmor:unconfined",
         "--ipc","host",
         "--network","host",

@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/local-log-pull.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "local_manifest_id", "source_manifest_id", "domain", "target", "completed_at", "files"],
+  "properties": {
+    "schema": {"const": "iii.local-log-pull/v1"},
+    "local_manifest_id": {"$ref": "#/definitions/identity"},
+    "source_manifest_id": {"$ref": "#/definitions/identity"},
+    "domain": {"enum": ["logs", "diagnostics"]},
+    "target": {"type": "object", "additionalProperties": false, "required": ["logical_id", "profile"], "properties": {"logical_id": {"type": "string"}, "profile": {"type": "string"}}},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "files": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["locator", "content_id", "size"], "properties": {"locator": {"type": "string", "minLength": 1}, "content_id": {"$ref": "#/definitions/identity"}, "size": {"type": "integer", "minimum": 0}}}}
+  },
+  "definitions": {"identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

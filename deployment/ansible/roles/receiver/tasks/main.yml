@@ -1,0 +1,381 @@
+---
+- name: Load the signed receiver manifest on the controller
+  ansible.builtin.set_fact:
+    iii_receiver_manifest: >-
+      {{ lookup('ansible.builtin.file', iii_provisioning_inputs.receiver_bundle_source + '/receiver-update.manifest.json') | from_json }}
+  no_log: true
+
+- name: Validate initial receiver manifest identity fields
+  ansible.builtin.assert:
+    that:
+      - iii_receiver_manifest.schema == 'iii.receiver-update-manifest/v1'
+      - iii_receiver_manifest.generation | int >= 1
+      - iii_receiver_manifest.receiver_id is match('^[a-f0-9]{64}$')
+      - "'1' in iii_receiver_manifest.compatibility.bootstrap_protocols"
+      - "'1' in iii_receiver_manifest.compatibility.cli_protocols"
+      - "'1' in iii_receiver_manifest.compatibility.request_protocols"
+
+- name: Install immutable public trust roots
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
+  loop:
+    - {src: "{{ iii_provisioning_inputs.bundle_trust_source }}", dest: /etc/iii/trust/bundle-signers.json}
+    - {src: "{{ iii_provisioning_inputs.release_status_trust_source }}", dest: /etc/iii/trust/release-status-signers.json}
+    - {src: "{{ iii_provisioning_inputs.receiver_update_trust_source }}", dest: /etc/iii/trust/receiver-update-signers.json}
+
+- name: Install the runtime API credential outside release directories
+  ansible.builtin.copy:
+    src: "{{ iii_provisioning_inputs.runtime_api_secret_source }}"
+    dest: /etc/iii/secrets/runtime-api.env
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
+  no_log: true
+
+- name: Stage the first public machine enrollment
+  ansible.builtin.copy:
+    src: "{{ iii_provisioning_inputs.operator_enrollment_source }}"
+    dest: /etc/iii/bootstrap-machine-enrollment.json
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Copy the complete offline receiver wheelhouse
+  ansible.builtin.copy:
+    src: "{{ iii_provisioning_inputs.receiver_wheelhouse_source }}/"
+    dest: /var/cache/iii/wheels/
+    owner: root
+    group: root
+    mode: preserve
+  register: iii_receiver_wheelhouse_copy
+
+- name: Require hash-locked stable-bootstrap requirements
+  ansible.builtin.stat:
+    path: /var/cache/iii/wheels/receiver-requirements.txt
+  register: iii_receiver_requirements
+
+- name: Refuse an incomplete stable-bootstrap wheelhouse
+  ansible.builtin.assert:
+    that:
+      - iii_receiver_requirements.stat.exists
+      - iii_receiver_requirements.stat.isreg
+
+- name: Create the stable receiver recovery virtual environment
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -m
+      - venv
+      - /opt/iii/receiver/bootstrap
+    creates: /opt/iii/receiver/bootstrap/pyvenv.cfg
+  register: iii_receiver_bootstrap_venv
+
+- name: Inspect the installed stable-bootstrap wheel lock
+  ansible.builtin.stat:
+    path: /opt/iii/receiver/bootstrap/receiver-requirements.txt
+    checksum_algorithm: sha256
+  register: iii_receiver_installed_requirements
+
+- name: Inspect the staged stable-bootstrap wheel lock
+  ansible.builtin.stat:
+    path: /var/cache/iii/wheels/receiver-requirements.txt
+    checksum_algorithm: sha256
+  register: iii_receiver_staged_requirements
+
+- name: Install the stable recovery substrate from only hash-locked local wheels
+  ansible.builtin.command:
+    argv:
+      - /opt/iii/receiver/bootstrap/bin/python
+      - -m
+      - pip
+      - install
+      - --force-reinstall
+      - --no-index
+      - --require-hashes
+      - --find-links
+      - /var/cache/iii/wheels
+      - --requirement
+      - /var/cache/iii/wheels/receiver-requirements.txt
+  register: iii_receiver_pip
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - >-
+      iii_receiver_bootstrap_venv.changed
+      or not iii_receiver_installed_requirements.stat.exists
+      or iii_receiver_installed_requirements.stat.checksum != iii_receiver_staged_requirements.stat.checksum
+
+- name: Record the installed stable-bootstrap wheel lock
+  ansible.builtin.copy:
+    src: /var/cache/iii/wheels/receiver-requirements.txt
+    dest: /opt/iii/receiver/bootstrap/receiver-requirements.txt
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0444"
+
+- name: Install fixed bootstrap and CLI protocol declarations
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0444"
+  loop:
+    - {src: "{{ playbook_dir }}/../../host/receiver-bootstrap-protocol.json", dest: /opt/iii/receiver/bootstrap/protocol.json}
+    - {src: "{{ playbook_dir }}/../../host/receiver-cli-protocol.json", dest: /etc/iii/receiver-cli-protocol.json}
+    - {src: "{{ playbook_dir }}/../../host/receiver-privilege-policy.json", dest: /etc/iii/receiver-privilege-policy.json}
+
+- name: Install receiver and operational policy
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
+  loop:
+    - {src: "{{ playbook_dir }}/../../receiver-policy.json", dest: /etc/iii/receiver-policy.json}
+    - {src: "{{ playbook_dir }}/../../operational-policy.json", dest: /etc/iii/operational-policy.json}
+
+- name: Stage the separately signed initial receiver update
+  ansible.builtin.copy:
+    src: "{{ iii_provisioning_inputs.receiver_bundle_source }}/"
+    dest: /var/lib/iii/deployment/initial-receiver-bundle/
+    owner: root
+    group: root
+    mode: preserve
+
+- name: Install or resume the first signed receiver slot
+  ansible.builtin.command:
+    argv:
+      - /opt/iii/receiver/bootstrap/bin/iii-receiver-initial-install
+      - --bundle
+      - /var/lib/iii/deployment/initial-receiver-bundle
+  register: iii_initial_receiver_install
+  changed_when: >-
+    iii_initial_receiver_install.rc == 0
+    and (iii_initial_receiver_install.stdout | from_json).installed
+  when: not ansible_check_mode
+
+- name: Retain the authenticated effective receiver identity
+  ansible.builtin.set_fact:
+    iii_effective_receiver: "{{ iii_initial_receiver_install.stdout | from_json }}"
+  when: not ansible_check_mode
+
+- name: Inspect whether the long-running receiver already owns its singleton
+  ansible.builtin.command:
+    argv: [/usr/bin/systemctl, is-active, iii-deployment-receiver.service]
+  register: iii_receiver_active
+  changed_when: false
+  failed_when: iii_receiver_active.rc not in [0, 3, 4]
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Render root-owned receiver configuration
+  ansible.builtin.template:
+    src: deployment-receiver.json.j2
+    dest: /etc/iii/deployment-receiver.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
+  notify: Restart active receiver
+
+- name: Inspect the existing receiver live-state path
+  ansible.builtin.stat:
+    path: /var/lib/iii/deployment/live-state.json
+  register: iii_live_state_stat
+
+- name: Refuse an unsafe receiver live-state path
+  ansible.builtin.assert:
+    that:
+      - not iii_live_state_stat.stat.exists or iii_live_state_stat.stat.isreg
+      - not iii_live_state_stat.stat.exists or not iii_live_state_stat.stat.islnk
+
+- name: Read the existing receiver live state
+  ansible.builtin.slurp:
+    path: /var/lib/iii/deployment/live-state.json
+  register: iii_live_state_content
+  when: iii_live_state_stat.stat.exists
+  no_log: true
+
+- name: Authenticate the existing receiver live state
+  ansible.builtin.assert:
+    that:
+      - (iii_live_state_content.content | b64decode | from_json) | iii_valid_live_state
+      - >-
+        (iii_live_state_content.content | b64decode | from_json).profile == iii_profile
+        or (iii_live_state_content.content | b64decode | from_json).active_release_id is none
+    fail_msg: >-
+      Refusing to change receiver profile while a release is active or the
+      existing live state is unauthenticated.
+  when: iii_live_state_stat.stat.exists
+  no_log: true
+
+- name: Initialize or safely transition the no-release live-state document
+  ansible.builtin.template:
+    src: live-state.json.j2
+    dest: /var/lib/iii/deployment/live-state.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"
+    force: >-
+      {{
+        not iii_live_state_stat.stat.exists
+        or (iii_live_state_content.content | b64decode | from_json).active_release_id is none
+      }}
+  notify: Restart active receiver
+
+- name: Bootstrap or reconcile permanent forced-command operator access
+  ansible.builtin.command:
+    argv:
+      - /opt/iii/receiver/bootstrap/bin/iii-receiver-access-bootstrap
+      - --enrollment
+      - /etc/iii/bootstrap-machine-enrollment.json
+      - --transport-uid
+      - "{{ iii_deployment_uid | string }}"
+      - --transport-gid
+      - "{{ iii_deployment_gid | string }}"
+  register: iii_access_bootstrap
+  changed_when: (iii_access_bootstrap.stdout | from_json).changed
+  when: not ansible_check_mode
+
+- name: Link fixed SSH gateway and receiver client commands to the active slot
+  ansible.builtin.file:
+    src: "/opt/iii/receiver/selectors/current/bin/{{ item }}"
+    dest: "/usr/bin/{{ item }}"
+    state: link
+    owner: root
+    group: root
+    force: true
+  loop:
+    - iii-deployment-ssh-gateway
+    - iii-deploymentctl
+
+- name: Install hardened forced-command SSH policy
+  ansible.builtin.template:
+    src: 50-iii-forced-command.conf.j2
+    dest: /etc/ssh/sshd_config.d/50-iii-forced-command.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload ssh
+
+- name: Validate the complete OpenSSH configuration
+  ansible.builtin.command:
+    argv: [/usr/sbin/sshd, -t]
+  changed_when: false
+  check_mode: false
+
+- name: Install Ansible-owned receiver and log maintenance units
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../systemd/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - iii-receiver-bootstrap-apply.service
+    - iii-receiver-bootstrap-apply.timer
+    - iii-receiver-bootstrap-prepare.service
+    - iii-receiver-bootstrap-reconcile.service
+    - iii-deployment-receiver-reconcile.service
+    - iii-deployment-receiver-candidate.service
+    - iii-deployment-receiver.service
+    - iii-log-maintenance.service
+    - iii-log-maintenance.timer
+    - iii-network-apply@.service
+    - iii-network-revert@.service
+    - iii-network-timeout@.service
+    - iii-network-revert@.timer
+  notify: Reload systemd
+
+- name: Create the root-only transactional network state root
+  ansible.builtin.file:
+    path: /var/lib/iii/deployment/network
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Flush unit and SSH handlers before receiver verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable independent recovery and receiver services for host boot
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+  loop:
+    - iii-receiver-bootstrap-reconcile.service
+    - iii-deployment-receiver-reconcile.service
+    - iii-deployment-receiver.service
+    - iii-log-maintenance.timer
+  when: not ansible_check_mode
+
+- name: Reconcile receiver recovery state before the first service start
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+  loop:
+    - iii-receiver-bootstrap-reconcile.service
+    - iii-deployment-receiver-reconcile.service
+  when:
+    - not ansible_check_mode
+    - iii_receiver_active.rc != 0
+
+- name: Start the long-running receiver and bounded log-maintenance timer
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+  loop:
+    - iii-deployment-receiver.service
+    - iii-log-maintenance.timer
+  when: not ansible_check_mode
+
+- name: Wait for the root-owned receiver socket
+  ansible.builtin.wait_for:
+    path: /run/iii/deployment-receiver.sock
+    state: present
+    timeout: 30
+  when: not ansible_check_mode
+
+- name: Verify the restricted deployment account can traverse to the receiver socket
+  ansible.builtin.command:
+    argv: [/usr/sbin/runuser, -u, iii-deploy, --, /usr/bin/test, -x, /run/iii]
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Wait for authenticated receiver readiness evidence
+  ansible.builtin.wait_for:
+    path: /run/iii/receiver-readiness.json
+    state: present
+    timeout: 30
+  when: not ansible_check_mode
+
+- name: Inspect receiver readiness evidence
+  ansible.builtin.slurp:
+    src: /run/iii/receiver-readiness.json
+  register: iii_receiver_readiness_raw
+  when: not ansible_check_mode
+
+- name: Authenticate receiver readiness identity
+  ansible.builtin.assert:
+    that:
+      - (iii_receiver_readiness_raw.content | b64decode | from_json).schema == 'iii.receiver-readiness/v1'
+      - (iii_receiver_readiness_raw.content | b64decode | from_json).receiver_id == iii_effective_receiver.receiver_id
+      - (iii_receiver_readiness_raw.content | b64decode | from_json).generation == iii_effective_receiver.generation
+      - (iii_receiver_readiness_raw.content | b64decode | from_json).socket_open
+      - (iii_receiver_readiness_raw.content | b64decode | from_json).self_tests_passed
+  when: not ansible_check_mode
+
+- name: Verify deployment transport has no passwordless sudo grant
+  ansible.builtin.command:
+    argv: [/usr/sbin/runuser, -u, iii-deploy, --, /usr/bin/sudo, -n, /usr/bin/true]
+  register: iii_deployment_sudo_probe
+  changed_when: false
+  failed_when: iii_deployment_sudo_probe.rc == 0
+  check_mode: false

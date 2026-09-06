@@ -27,6 +27,24 @@ The lock file ensures everyone uses the same dependency commits unless a change 
 
 ## Team Workflow
 
+### Canonical branch matrix
+
+This matrix is policy, not a suggestion:
+
+| Repository class | Source | PR base | Result |
+|---|---|---|---|
+| Workspace and changed editable III repos | normal feature/work-sweep branch | `develop` | reviewed integration head |
+| Workspace and all editable III repos | `promote/develop-to-main/<operation-id>` created from `develop` | `main` | reviewed stable heads |
+| Workspace only | `main` | `release` | exact qualified-release candidate |
+| Workspace only | exact clean `release` commit | immutable `vX.Y.Z` | qualified publication trigger |
+
+Every other protected-branch source/base pair is rejected. Editable submodules
+stop at `main`; they never receive `release` branches or tags coordinated by the
+workspace release flow. A normal feature name has no reserved prefix, but must be
+the same branch in every affected editable repository. Direct protected-branch
+pushes, release-only implementation commits, moving/reusing a qualified tag, and
+floating deployment branches are unsupported.
+
 ### 1. Normal feature work
 
 Do not edit `deps/submodule-lock.txt` unless intentionally updating dependency versions.
@@ -69,8 +87,10 @@ For those same protected-branch PRs, CI also verifies that every linked III subm
 Use the workspace helper to create/update a coordinated PR stack:
 
 ```bash
-./scripts/git/create_stack_prs.sh --base develop --feature <feature-branch>
-./scripts/git/create_stack_prs.sh --base develop --feature <feature-branch> --yes
+./scripts/git/create_stack_prs.sh --base develop --feature <feature-branch> \
+  --operation-id <stable-operation-id>
+./scripts/git/create_stack_prs.sh --base develop --feature <feature-branch> \
+  --operation-id <stable-operation-id> --yes
 ./scripts/git/create_stack_prs.sh --base main --feature promote/develop-to-main/<id> --all-iii --yes
 ```
 
@@ -79,12 +99,17 @@ What it does:
 - pushes each changed III submodule feature branch
 - creates/updates submodule PRs (`<feature> -> <base>`)
 - creates/updates workspace PR (`<feature> -> <base>`) with linked submodule PRs
+- compares every local feature SHA with the authenticated remote feature SHA and
+  pushes the exact local head when the remote is stale
 
 Notes:
 - `--yes` is required to actually push and create/edit PRs
 - `--all-iii` targets all III submodules instead of only changed ones
 - without `--yes`, it is a dry-run
 - requires authenticated `gh` CLI
+- dry-run output and PR markers are untrusted transport; Git/GitHub refs,
+  rulesets, required checks, and schema/content/signature verification are the
+  authority
 - after submodule PRs are merged, refresh pointers to capture merge commits:
   ```bash
   ./scripts/git/refresh_workspace_submodule_pointers.sh --base develop --feature <feature-branch> --yes
@@ -240,9 +265,26 @@ Behavior:
 
 ## Suggested Policy
 
-1. Only bump submodule refs via dedicated PRs (or clearly isolated commits).
-2. Require passing dependency governance check before merge.
-3. Deploy robots from tags on stable branches so lock state is immutable.
+The solo-maintainer policy still requires pull requests, all required checks,
+resolved conversations, immutable history, and evidence-bearing promotion. It
+sets required approvals to zero because a second person is not assumed; it does
+not authorize self-fabricated evidence, check bypass, force push, direct protected
+push, or mutation from a read-only plan.
+
+1. Change gitlinks only for reviewed submodule commits and update the lock in the
+   same workspace change.
+2. Require the exact target's dependency, source-pair, linked-PR, and package
+   checks before merge.
+3. Use Q118 signed local evidence only for its exact source/policy identity.
+4. Select Q121 evidence categories from the changed paths; Q122 may waive only
+   declared physical categories with explicit scope/reason/expiry. Never waive
+   governance, build, static, integrity, signing, or deployment safety.
+5. Reuse Q120 evidence only while source, toolchain, policy, environment, and
+   declared validity window are identical.
+6. Apply SemVer: MAJOR for intentional contract breaks, MINOR for compatible
+   capabilities/profiles/missions, PATCH for compatible fixes/defaults/docs.
+7. Publish only protected, signed, immutable tags and append-only signed status
+   statements. Withdrawal/unsafe status never rewrites a release.
 
 ## Useful Commands
 

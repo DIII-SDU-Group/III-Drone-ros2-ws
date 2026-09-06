@@ -12,6 +12,8 @@ source "${SCRIPT_DIR}/lib/iii_dev_container.sh"
 source "${SCRIPT_DIR}/lib/iii_dev_readiness.sh"
 
 SIM_SCRIPT="${III_DEV_CONTAINER_WORKSPACE}/tools/simulation/launch_simulation_tools.sh"
+HIL_SCRIPT="${III_DEV_CONTAINER_WORKSPACE}/tools/simulation/launch_hil_workstation.sh"
+HIL_RESTART_SCRIPT="${III_DEV_WORKSPACE_ROOT}/scripts/workspace/coordinate_hil_restart.py"
 GC_SCRIPT="${III_DEV_WORKSPACE_ROOT}/scripts/workspace/iii_ground_control.sh"
 RUNTIME_API_SERVICE="${III_DEV_RUNTIME_API_SERVICE:-iii-runtime-api.service}"
 RUNTIME_API_HEALTH_URL="${III_DEV_RUNTIME_API_HEALTH_URL:-http://127.0.0.1:8765/health}"
@@ -30,6 +32,9 @@ Host workspace commands:
   sim restart [options]     Recreate the simulation without attaching
   sim attach                Attach to the simulation tmux session
   sim status|stop           Inspect or stop the simulation
+
+  hil start|status|stop     Operate workstation-owned split-host HIL processes
+  hil restart              Safely restart Pi runtime and workstation HIL together
 
   system <iii arguments>    Forward arguments to in-container `iii system`
   api start|stop|restart|status|logs [--follow]
@@ -98,6 +103,12 @@ command_usage() {
             ;;
         sim:attach|sim:status|sim:stop)
             printf 'Usage: ./iii-dev sim %s\n' "${action}"
+            ;;
+        hil:)
+            printf 'Usage: ./iii-dev hil {start|status|stop|restart}\n'
+            ;;
+        hil:start|hil:status|hil:stop|hil:restart)
+            printf 'Usage: ./iii-dev hil %s\n' "${action}"
             ;;
         system:)
             printf 'Usage: ./iii-dev system <iii system arguments>\n'
@@ -193,7 +204,23 @@ system_needs_tty() {
 run_system() {
     local tty_mode=never
     system_needs_tty "$@" && tty_mode=interactive
+    if [[ "${1:-}" == "boot" ]]; then
+        iii_dev_repair_generated_ownership
+    fi
     iii_dev_exec "${tty_mode}" iii system "$@"
+}
+
+run_system_mutation() {
+    local action="$1"
+    shift
+    local operation_id="iii-dev-${action}-$(date +%s)-${BASHPID}"
+
+    # System mutations use the same durable two-stage contract as direct CLI
+    # operation: retain the exact plan first, then apply that plan explicitly.
+    run_system "${action}" "$@" \
+        --dry-run --operation-id "${operation_id}" --output=json
+    run_system "${action}" "$@" \
+        --operation-id "${operation_id}" --confirm --non-interactive --output=json
 }
 
 run_sim() {
@@ -242,6 +269,37 @@ run_sim() {
             ;;
         *)
             iii_dev_die "Unknown simulation action: ${action}"
+            ;;
+    esac
+}
+
+run_hil() {
+    local action="${1:-}"
+    if [[ -z "${action}" || "${action}" == "-h" || "${action}" == "--help" ]]; then
+        command_usage hil
+        return
+    fi
+    shift
+    if help_requested "$@"; then
+        command_usage hil "${action}"
+        return
+    fi
+    case "${action}" in
+        start|status|stop)
+            require_no_args "hil ${action}" "$@" || return
+            iii_dev_exec never "${HIL_SCRIPT}" "${action}"
+            ;;
+        restart)
+            require_no_args "hil restart" "$@" || return
+            lock_stack_mutation || return
+            (
+                # shellcheck source=setup/setup_hil.bash
+                source "${III_DEV_WORKSPACE_ROOT}/setup/setup_hil.bash"
+                exec python3 "${HIL_RESTART_SCRIPT}"
+            )
+            ;;
+        *)
+            iii_dev_die "Unknown HIL action: ${action}"
             ;;
     esac
 }
@@ -374,8 +432,8 @@ stack_start() {
         2 \
         simulation_ready
 
-    run_system boot
-    run_system start
+    run_system_mutation boot
+    run_system_mutation start
     run_runtime_api start
     iii_dev_wait_until \
         "III runtime API" \
@@ -435,7 +493,7 @@ stack_stop() {
     section "Ground control"
     run_gui stop || result=1
     section "III system"
-    run_system shutdown || result=1
+    run_system_mutation shutdown || result=1
     section "III runtime API"
     run_runtime_api stop || result=1
     section "Simulation"
@@ -541,6 +599,9 @@ main() {
             ;;
         sim)
             run_sim "$@"
+            ;;
+        hil)
+            run_hil "$@"
             ;;
         system)
             if (($# == 0)); then

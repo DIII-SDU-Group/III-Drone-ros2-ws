@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/px4-parameter-plan.schema.json",
+  "title": "Retained PX4 parameter write plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "plan_id", "created_at", "profile", "manifest_id", "snapshot_id", "target", "changes"],
+  "properties": {
+    "schema": {"const": "iii.px4-parameter-plan/v1"},
+    "plan_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "profile": {"enum": ["real", "sim"]},
+    "manifest_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "snapshot_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "target": {"type": "object"},
+    "changes": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["name", "mav_type", "old", "new", "classification", "tolerance"], "properties": {"name": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,15}$"}, "mav_type": {"enum": ["UINT32", "INT32", "REAL32"]}, "old": {"type": ["integer", "number"]}, "new": {"type": ["integer", "number"]}, "classification": {"enum": ["release-required", "operator-tunable"]}, "tolerance": {"type": "number", "minimum": 0}}}}
+  }
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=III privileged network apply for %i
+After=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/iii/receiver/selectors/current/bin/iii-network-apply --operation-id %i
+User=root
+Group=root
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/etc/netplan /var/lib/iii/deployment/network
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6

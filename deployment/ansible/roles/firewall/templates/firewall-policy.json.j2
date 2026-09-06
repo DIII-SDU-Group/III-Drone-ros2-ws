@@ -1,0 +1,8 @@
+{{ {
+  'schema': 'iii.host-firewall-policy/v1',
+  'operator_cidr': iii_provisioning_inputs.operator_cidr,
+  'tcp': {'22': 'forced-command-ssh', (iii_runtime_api_port | string): 'runtime-http-ws'},
+  'udp': {(iii_mdns_port | string): 'mdns'},
+  'receiver_transport': 'unix-socket-via-ssh-only',
+  'privileged_tcp_ports': []
+} | iii_canonical_json }}

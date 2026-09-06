@@ -1,0 +1,212 @@
+---
+- name: Apply one fixed III aircraft host-maintenance transaction
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  become: false
+  tasks:
+    - name: Require root and the fixed Noble ARM64 platform
+      ansible.builtin.assert:
+        that:
+          - ansible_user_uid == 0
+          - ansible_distribution == iii_maintenance_policy.platform.distribution
+          - ansible_distribution_version is version(iii_maintenance_policy.platform.release, '==')
+          - ansible_distribution_release == iii_maintenance_policy.platform.codename
+          - ansible_architecture == iii_maintenance_policy.platform.architecture
+          - iii_maintenance_policy.platform.ros_distro == 'jazzy'
+        fail_msg: Major platform transitions require SD-card reprovisioning.
+
+    - name: Keep unattended package mutation disabled during maintenance
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: false
+        masked: true
+        state: stopped
+      loop:
+        - apt-daily.timer
+        - apt-daily-upgrade.timer
+        - unattended-upgrades.service
+      failed_when: false
+      when: iii_maintenance_kind == 'packages'
+
+    - name: Install the requested governed Ubuntu snapshot
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/ubuntu.sources
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          Types: deb
+          URIs: {{ iii_maintenance_policy.snapshots.ubuntu }}
+          Suites: noble noble-updates noble-security
+          Components: main universe
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          Check-Valid-Until: no
+      when: iii_maintenance_kind == 'packages'
+
+    - name: Install the requested governed ROS snapshot
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/ros2.sources
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          Types: deb
+          URIs: {{ iii_maintenance_policy.snapshots.ros }}
+          Suites: noble
+          Components: main
+          Signed-By: /usr/share/keyrings/ros-snapshot-builder.gpg
+          Check-Valid-Until: no
+      when: iii_maintenance_kind == 'packages'
+
+    - name: Create the transaction-local apt source boundary
+      ansible.builtin.file:
+        path: "{{ iii_maintenance_result_path | dirname }}/apt-sources"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      when: iii_maintenance_kind == 'packages'
+
+    - name: Retain the transaction-local Ubuntu source
+      ansible.builtin.copy:
+        dest: "{{ iii_maintenance_result_path | dirname }}/apt-sources/ubuntu.sources"
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          Types: deb
+          URIs: {{ iii_maintenance_policy.snapshots.ubuntu }}
+          Suites: noble noble-updates noble-security
+          Components: main universe
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          Check-Valid-Until: no
+      when: iii_maintenance_kind == 'packages'
+
+    - name: Retain the transaction-local ROS source
+      ansible.builtin.copy:
+        dest: "{{ iii_maintenance_result_path | dirname }}/apt-sources/ros2.sources"
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          Types: deb
+          URIs: {{ iii_maintenance_policy.snapshots.ros }}
+          Suites: noble
+          Components: main
+          Signed-By: /usr/share/keyrings/ros-snapshot-builder.gpg
+          Check-Valid-Until: no
+      when: iii_maintenance_kind == 'packages'
+
+    - name: Refresh only the governed signed snapshots
+      ansible.builtin.command:
+        argv:
+          - apt-get
+          - -o
+          - Dir::Etc::sourcelist=/dev/null
+          - -o
+          - "Dir::Etc::sourceparts={{ iii_maintenance_result_path | dirname }}/apt-sources"
+          - update
+      register: iii_maintenance_apt_update
+      changed_when: true
+      when:
+        - iii_maintenance_kind == 'packages'
+        - not iii_maintenance_offline | bool
+
+    - name: Converge only the governed package set from the isolated sources
+      ansible.builtin.command:
+        argv: >-
+          {{
+            [
+              'apt-get',
+              '-o', 'Dir::Etc::sourcelist=/dev/null',
+              '-o', 'Dir::Etc::sourceparts=' + (iii_maintenance_result_path | dirname) + '/apt-sources',
+              '-o', 'APT::Get::Allow-Downgrades=true',
+              '--assume-yes',
+              '--no-remove',
+              '--no-install-recommends'
+            ]
+            + (['--no-download'] if iii_maintenance_offline | bool else [])
+            + ['install']
+            + iii_maintenance_policy.governed_packages
+          }}
+      register: iii_maintenance_apt_install
+      changed_when: "'0 upgraded, 0 newly installed, 0 to remove' not in iii_maintenance_apt_install.stdout"
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+        LC_ALL: C
+      when: iii_maintenance_kind == 'packages'
+
+    - name: Commit the content-identified package maintenance policy
+      ansible.builtin.copy:
+        dest: /etc/iii/host-maintenance-policy.json
+        owner: root
+        group: iii
+        mode: "0640"
+        content: "{{ iii_maintenance_policy | to_json(sort_keys=True, separators=[',', ':']) }}\n"
+      when: iii_maintenance_kind == 'packages'
+
+    - name: Replace exactly one public trust store
+      ansible.builtin.copy:
+        dest: "{{ iii_maintenance_trust_path }}"
+        owner: root
+        group: iii
+        mode: "0640"
+        content: "{{ iii_maintenance_trust_store | to_json(sort_keys=True, separators=[',', ':']) }}\n"
+      when: iii_maintenance_kind in ['bundle-trust', 'release-status-trust']
+
+    - name: Replace the release-status index under the commissioned trust boundary
+      ansible.builtin.copy:
+        dest: /var/lib/iii/deployment/release-status-index.json
+        owner: root
+        group: iii
+        mode: "0640"
+        content: "{{ iii_maintenance_release_status_index | to_json(sort_keys=True, separators=[',', ':']) }}\n"
+      when: iii_maintenance_kind == 'release-status-trust'
+
+    - name: Converge only the III-owned Raspberry Pi boot block
+      ansible.builtin.blockinfile:
+        path: /boot/firmware/config.txt
+        marker: "# {mark} III MANAGED BOOT PROFILE"
+        block: |
+          {% for item in iii_maintenance_boot_profile.firmware.managed_settings | dict2items | sort(attribute='key') %}
+          {{ item.key }}={{ item.value }}
+          {% endfor %}
+          {% for overlay in iii_maintenance_boot_profile.firmware.managed_overlays | sort %}
+          dtoverlay={{ overlay }}
+          {% endfor %}
+      when: iii_maintenance_kind == 'boot-settings'
+
+    - name: Commit the exact retained Raspberry Pi boot profile
+      ansible.builtin.copy:
+        dest: /etc/iii/boot-profile.json
+        owner: root
+        group: iii
+        mode: "0640"
+        content: "{{ iii_maintenance_boot_profile | to_json(sort_keys=True, separators=[',', ':']) }}\n"
+      when: iii_maintenance_kind == 'boot-settings'
+
+    - name: Gather post-maintenance package identities
+      ansible.builtin.package_facts:
+        manager: apt
+
+    - name: Inspect the explicit reboot-required marker
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: iii_maintenance_reboot_marker
+
+    - name: Retain the Ansible-owned maintenance result
+      ansible.builtin.copy:
+        dest: "{{ iii_maintenance_result_path }}"
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          {{ {
+            'schema': 'iii.host-maintenance-ansible-result/v1',
+            'kind': iii_maintenance_kind,
+            'policy_id': iii_maintenance_policy.policy_id,
+            'boot_profile_id': (iii_maintenance_boot_profile.profile_id if iii_maintenance_kind == 'boot-settings' else none),
+            'packages': ansible_facts.packages,
+            'reboot_required': (iii_maintenance_reboot_marker.stat.exists | bool) or iii_maintenance_kind == 'boot-settings'
+          } | to_json(sort_keys=True, separators=[',', ':']) }}

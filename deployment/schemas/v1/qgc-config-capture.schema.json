@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/qgc-config-capture.schema.json",
+  "title": "Redacted immutable QGroundControl configuration capture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "capture_id", "captured_at", "clean_exit", "release_id", "qgc_version", "policy_id", "baseline_id", "managed", "classification", "violations"],
+  "properties": {
+    "schema": {"const": "iii.qgc-config-capture/v1"},
+    "capture_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "clean_exit": {"type": "boolean"},
+    "release_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "qgc_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "policy_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "baseline_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "managed": {"type": "object", "additionalProperties": {"type": ["string", "boolean", "number"]}, "propertyNames": {"pattern": "^[^/]+/.+$"}},
+    "classification": {"type": "object", "additionalProperties": false, "required": ["managed", "local_preference", "generated_cache", "sensitive", "prohibited", "unknown"], "properties": {"managed": {"$ref": "#/definitions/names"}, "local_preference": {"$ref": "#/definitions/names"}, "generated_cache": {"$ref": "#/definitions/names"}, "sensitive": {"$ref": "#/definitions/names"}, "prohibited": {"$ref": "#/definitions/names"}, "unknown": {"$ref": "#/definitions/names"}}},
+    "violations": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["key", "reason"], "properties": {"key": {"type": "string"}, "reason": {"type": "string"}}}}
+  },
+  "definitions": {"names": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}}
+}

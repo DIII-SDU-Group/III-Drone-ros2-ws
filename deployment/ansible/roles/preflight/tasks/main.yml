@@ -1,0 +1,126 @@
+---
+- name: Validate the fixed hardware class and host operating system
+  ansible.builtin.assert:
+    that:
+      - iii_target_class == 'raspberry-pi-5-noble-arm64'
+      - ansible_distribution == iii_expected_distribution
+      - ansible_distribution_version is version(iii_expected_release, '==')
+      - ansible_distribution_release == iii_expected_codename
+      - ansible_architecture == iii_expected_architecture
+      - iii_profile in ['real', 'opti_track', 'hil']
+      - iii_logical_target == 'drone'
+    fail_msg: The target does not match the governed Raspberry Pi 5 Noble ARM64 baseline.
+
+- name: Validate provisioning input shape and private operator network
+  ansible.builtin.assert:
+    that:
+      - iii_provisioning_inputs is mapping
+      - iii_provisioning_inputs.operator_cidr | iii_private_network
+      - iii_provisioning_inputs.receiver_bundle_source is string
+      - iii_provisioning_inputs.receiver_wheelhouse_source is string
+      - iii_provisioning_inputs.bundle_trust_source is string
+      - iii_provisioning_inputs.release_status_trust_source is string
+      - iii_provisioning_inputs.receiver_update_trust_source is string
+      - iii_provisioning_inputs.operator_enrollment_source is string
+      - iii_provisioning_inputs.maintenance_ssh_public_key_source is string
+      - iii_provisioning_inputs.maintenance_ssh_public_key is match('^ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI[A-Za-z0-9+/]{43}$')
+      - iii_provisioning_inputs.runtime_api_secret_source is string
+    fail_msg: Supply all host inputs through an owner-only Git-ignored extra-vars file.
+  no_log: true
+
+- name: Load the governed shared target profile on the controller
+  ansible.builtin.set_fact:
+    iii_shared_target_profile: >-
+      {{ lookup('ansible.builtin.file', playbook_dir ~ '/../../targets/v1/shared-aircraft.json') | from_json }}
+
+- name: Bind provisioning to the governed shared target profile
+  ansible.builtin.assert:
+    that:
+      - iii_shared_target_profile.schema == 'iii.shared-target-profile/v1'
+      - iii_shared_target_profile.profile_id == iii_shared_target_profile_id
+      - iii_shared_target_profile.logical_target == iii_logical_target
+      - iii_shared_target_profile.target_class == iii_target_class
+      - iii_shared_target_profile.runtime.runtime_id == iii_runtime_api_id
+      - iii_shared_target_profile.runtime.system_id == iii_runtime_system_id
+      - iii_profile in iii_shared_target_profile.profiles
+      - iii_shared_target_profile.credentials.committed_secrets == false
+    fail_msg: The host inputs differ from the governed shared aircraft target profile.
+
+- name: Load the solo-operator browser secret on the controller
+  ansible.builtin.set_fact:
+    iii_runtime_api_secret_text: >-
+      {{ lookup('ansible.builtin.file', iii_provisioning_inputs.runtime_api_secret_source) }}
+  no_log: true
+
+- name: Reject shared CLI tokens and development browser credentials
+  ansible.builtin.assert:
+    that:
+      - iii_runtime_api_secret_text is match('^III_RUNTIME_API_BROWSER_PASSWORD=.{16,}$')
+      - iii_runtime_api_secret_text not in ['III_RUNTIME_API_BROWSER_PASSWORD=dev-password', 'III_RUNTIME_API_BROWSER_PASSWORD=change-me-browser-password']
+    fail_msg: Runtime secret input must contain only one non-development browser password; CLI credentials are per-machine verifiers.
+  no_log: true
+
+- name: Inspect image-provided HTTPS bootstrap trust
+  ansible.builtin.stat:
+    path: /etc/ssl/certs/ca-certificates.crt
+  register: iii_bootstrap_ca_bundle
+
+- name: Require a non-empty image-provided CA bundle before snapshot access
+  ansible.builtin.assert:
+    that:
+      - iii_bootstrap_ca_bundle.stat.exists
+      - iii_bootstrap_ca_bundle.stat.isreg
+      - iii_bootstrap_ca_bundle.stat.size | int > 0
+    fail_msg: The pinned Canonical image is missing HTTPS bootstrap trust; reimage instead of disabling certificate verification.
+
+- name: Inspect required controller-side files
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: true
+  loop:
+    - "{{ iii_provisioning_inputs.bundle_trust_source }}"
+    - "{{ iii_provisioning_inputs.release_status_trust_source }}"
+    - "{{ iii_provisioning_inputs.receiver_update_trust_source }}"
+    - "{{ iii_provisioning_inputs.operator_enrollment_source }}"
+    - "{{ iii_provisioning_inputs.maintenance_ssh_public_key_source }}"
+    - "{{ iii_provisioning_inputs.runtime_api_secret_source }}"
+  register: iii_controller_files
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: Require real owner-controlled controller files
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg
+      - not item.stat.islnk
+      - (item.stat.mode | int(base=8)) % 64 == 0
+    fail_msg: A required controller input is missing, linked, or writable by other users.
+  loop: "{{ iii_controller_files.results }}"
+  no_log: true
+
+- name: Identify the independent maintenance SSH key
+  ansible.builtin.set_fact:
+    iii_maintenance_ssh_client_id: >-
+      {{ iii_provisioning_inputs.maintenance_ssh_public_key | hash('sha256') }}
+  no_log: true
+
+- name: Inspect receiver bundle and wheelhouse sources
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ iii_provisioning_inputs.receiver_bundle_source }}"
+    - "{{ iii_provisioning_inputs.receiver_wheelhouse_source }}"
+  register: iii_controller_directories
+  delegate_to: localhost
+  become: false
+
+- name: Require real controller artifact directories
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isdir
+      - not item.stat.islnk
+    fail_msg: Receiver bundle and wheelhouse inputs must be real directories.
+  loop: "{{ iii_controller_directories.results }}"

@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/bundle-upload.schema.json",
+  "title": "III resumable unprivileged bundle upload manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "upload_id", "release_id", "client_id", "files"],
+  "properties": {
+    "schema": {"const": "iii.bundle-upload/v1"},
+    "upload_id": {"$ref": "#/definitions/hash"},
+    "release_id": {"$ref": "#/definitions/hash"},
+    "client_id": {"$ref": "#/definitions/hash"},
+    "files": {
+      "type": "array", "minItems": 5, "maxItems": 6,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["path", "size", "sha256"],
+        "properties": {
+          "path": {"enum": ["drone/bundle.manifest.json", "drone/bundle.sha256", "drone/bundle.sig.json", "drone/bundle.tar.zst", "drone/release-manifest.json", "release-status-index.json"]},
+          "size": {"type": "integer", "minimum": 0},
+          "sha256": {"$ref": "#/definitions/hash"}
+        }
+      }
+    }
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

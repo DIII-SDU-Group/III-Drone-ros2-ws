@@ -1,0 +1,18 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Reload ssh
+  ansible.builtin.systemd_service:
+    name: ssh.service
+    state: reloaded
+  when: not ansible_check_mode
+
+- name: Restart active receiver
+  ansible.builtin.systemd_service:
+    name: iii-deployment-receiver.service
+    state: restarted
+  when:
+    - not ansible_check_mode
+    - iii_receiver_active.rc == 0

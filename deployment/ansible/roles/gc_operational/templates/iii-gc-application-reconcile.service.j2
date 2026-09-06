@@ -1,0 +1,12 @@
+[Unit]
+Description=Reconcile interrupted III GC application selection
+PartOf=graphical-session.target
+Before=iii-gc.target
+
+[Service]
+Type=oneshot
+EnvironmentFile={{ iii_gc_home }}/.config/iii/gc.env
+ExecStart={{ iii_gc_home }}/.local/share/iii/gc-runtime/venv/bin/iii gc application reconcile --confirm --non-interactive --output=json
+
+[Install]
+WantedBy=graphical-session.target

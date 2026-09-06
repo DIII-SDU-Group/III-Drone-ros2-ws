@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/px4-firmware-build.schema.json",
+  "title": "Verified PX4 firmware build",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "build_id", "spec_id", "cache_key", "firmware", "source", "toolchain", "cache_hit"],
+  "properties": {
+    "schema": {"const": "iii.px4-firmware-build/v1"},
+    "build_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "spec_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "cache_key": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "firmware": {
+      "type": "object", "additionalProperties": false,
+      "required": ["filename", "sha256", "bytes", "magic", "board_id", "git_identity"],
+      "properties": {
+        "filename": {"const": "px4_fmu-v6x_multicopter.px4"},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "bytes": {"type": "integer", "minimum": 1},
+        "magic": {"const": "PX4FWv1"},
+        "board_id": {"const": 53},
+        "git_identity": {"type": "string", "pattern": "^[a-z0-9.-]+-g[a-f0-9]{10}$"}
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["git_commit", "git_describe", "submodules_sha256", "dds_topics_id"],
+      "properties": {
+        "git_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "git_describe": {"type": "string", "pattern": "^[A-Za-z0-9._-]+-g[a-f0-9]{10}$"},
+        "submodules_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "dds_topics_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "toolchain": {
+      "type": "object", "additionalProperties": false,
+      "required": ["compiler", "compiler_version", "compiler_sha256"],
+      "properties": {
+        "compiler": {"const": "arm-none-eabi-gcc"},
+        "compiler_version": {"type": "string", "minLength": 1},
+        "compiler_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "cache_hit": {"type": "boolean"}
+  }
+}

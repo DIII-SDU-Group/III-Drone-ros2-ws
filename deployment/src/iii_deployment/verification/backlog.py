@@ -9,7 +9,9 @@ import re
 from typing import Iterable
 
 
-DECISION_START = re.compile(r"^- \*\*Q(?P<number>[1-9][0-9]*) — (?P<title>.+?):\*\*\s*(?P<body>.*)$")
+DECISION_START = re.compile(
+    r"^- \*\*Q(?P<number>[1-9][0-9]*) — (?P<title>.+?):\*\*\s*(?P<body>.*)$"
+)
 TASK_START = re.compile(r"^#### (?P<id>P[0-9]+\.T[0-9]+): (?P<title>.+)$")
 COVERAGE_ROW = re.compile(r"^\| Q(?P<number>[1-9][0-9]*) \| (?P<owners>[^|]+) \|$")
 SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+(?=(?:[A-Z0-9`]|Do\b|Never\b))")
@@ -90,7 +92,11 @@ def _clean_markdown(lines: Iterable[str]) -> str:
 def _split_clauses(text: str) -> list[str]:
     clauses: list[str] = []
     for sentence in SENTENCE_BOUNDARY.split(text):
-        for part in re.split(r";\s+(?=(?:do\b|never\b|require\b|reject\b|keep\b|allow\b|the\b))", sentence, flags=re.I):
+        for part in re.split(
+            r";\s+(?=(?:do\b|never\b|require\b|reject\b|keep\b|allow\b|the\b))",
+            sentence,
+            flags=re.I,
+        ):
             cleaned = part.strip()
             if cleaned:
                 clauses.append(cleaned)
@@ -113,7 +119,11 @@ def _parse_decisions(lines: list[str]) -> tuple[Clause, ...]:
         if match:
             if current is not None:
                 decisions.append(current)
-            current = (int(match.group("number")), match.group("title"), [match.group("body")])
+            current = (
+                int(match.group("number")),
+                match.group("title"),
+                [match.group("body")],
+            )
         elif current is not None:
             current[2].append(line)
     if current is not None:
@@ -124,7 +134,9 @@ def _parse_decisions(lines: list[str]) -> tuple[Clause, ...]:
         text = _clean_markdown(body_lines)
         for index, clause_text in enumerate(_split_clauses(text), start=1):
             digest = hashlib.sha256(clause_text.encode("utf-8")).hexdigest()
-            clauses.append(Clause(f"Q{number}.c{index}", f"Q{number}", title, clause_text, digest))
+            clauses.append(
+                Clause(f"Q{number}.c{index}", f"Q{number}", title, clause_text, digest)
+            )
     return tuple(clauses)
 
 
@@ -141,7 +153,9 @@ def _parse_tasks(lines: list[str]) -> dict[str, Task]:
         if current_id is not None:
             if current_id in tasks:
                 raise BacklogError(f"duplicate task {current_id}")
-            tasks[current_id] = Task(current_id, current_title, tuple(acceptance), tuple(tests))
+            tasks[current_id] = Task(
+                current_id, current_title, tuple(acceptance), tuple(tests)
+            )
         current_id = None
         current_title = ""
         section = None
@@ -190,15 +204,22 @@ def _parse_coverage(lines: list[str]) -> dict[str, tuple[str, ...]]:
         if decision in owners:
             raise BacklogError(f"duplicate coverage row {decision}")
         values = tuple(value.strip() for value in match.group("owners").split(","))
+        if not values or any(
+            not re.fullmatch(r"P[0-9]+\.T[0-9]+", value) for value in values
+        ):
+            raise BacklogError(f"invalid coverage owner list for {decision}")
+        if len(values) != len(set(values)):
+            raise BacklogError(f"duplicate coverage owner for {decision}")
         owners[decision] = values
     return owners
 
 
 def parse_backlog(path: Path) -> Backlog:
     lines = path.read_text(encoding="utf-8").splitlines()
-    backlog = Backlog(_parse_decisions(lines), _parse_tasks(lines), _parse_coverage(lines))
+    backlog = Backlog(
+        _parse_decisions(lines), _parse_tasks(lines), _parse_coverage(lines)
+    )
     errors = backlog.audit()
     if errors:
         raise BacklogError("\n".join(errors))
     return backlog
-

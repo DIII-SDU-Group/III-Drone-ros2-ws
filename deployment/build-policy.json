@@ -172,6 +172,8 @@
     "gc": ["iii_drone_contracts", "iii_drone_gc"]
   },
   "interface_packages": ["iii_drone_interfaces", "iii_drone_contracts"],
+  "target_python_imports": ["iii_drone_configuration._native", "mavsdk"],
+  "target_python_extension_suffix": ".cpython-312-aarch64-linux-gnu.so",
   "normal_build_transports": ["local-docker"],
   "target_package_manager_allowed": false
 }

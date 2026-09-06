@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/field-digest-signature.schema.json",
+  "title": "Constrained workstation field signature",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "contract", "digest_sha256", "signer_id", "authority", "algorithm", "signature"],
+  "properties": {
+    "schema": {"const": "iii.field-digest-signature/v1"},
+    "contract": {"enum": ["release-manifest", "release-status", "release-status-index", "promotion-evidence", "qualification-evidence", "field-readiness"]},
+    "digest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "signer_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "authority": {"const": "workstation-field"},
+    "algorithm": {"const": "Ed25519"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"}
+  }
+}

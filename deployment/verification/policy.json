@@ -1,0 +1,149 @@
+{
+  "candidate_set_fields": [
+    "workspace_commit",
+    "submodule_lock_sha256",
+    "release_id",
+    "release_version",
+    "documentation_manifest_id",
+    "verification_policy_id"
+  ],
+  "change_impact_policy": {
+    "content_id": "208baea2e9c937d2311368545f95841f8853e7cebe0dcd451ad13f77ebac6302",
+    "path": "deployment/governance/change-impact-policy.json",
+    "schema": "iii.change-impact-policy/v1"
+  },
+  "levels": {
+    "host-independent": {
+      "ci": true,
+      "impact_categories": ["static-unit", "local-simulation"],
+      "owner_command": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "deployment/tests",
+        "tools/III-Drone-CLI/test"
+      ],
+      "required_evidence": "junit"
+    },
+    "physical": {
+      "ci": false,
+      "impact_categories": ["field-flight", "opti-track"],
+      "owner_command": [
+        "python3",
+        "deployment/scripts/commission_aircraft.py",
+        "--candidate-set",
+        "<candidate-set.json>",
+        "--signing-key",
+        "<workstation-field-key.pem>",
+        "--impact-category",
+        "field-flight"
+      ],
+      "required_evidence": "signed-local-acceptance"
+    },
+    "target-equivalent": {
+      "ci": false,
+      "impact_categories": ["provisioned-drone-bench-smoke"],
+      "owner_command": [
+        "python3",
+        "deployment/scripts/run_target_equivalent_acceptance.py",
+        "--candidate-set",
+        "<candidate-set.json>",
+        "--signing-key",
+        "<workstation-field-key.pem>",
+        "--impact-category",
+        "provisioned-drone-bench-smoke"
+      ],
+      "required_evidence": "signed-local-acceptance"
+    }
+  },
+  "level_overrides": [
+    {
+      "level": "physical",
+      "pattern": "Q74.c8",
+      "rationale": "The pre-field profile cycle must run against the commissioned physical aircraft and native GC."
+    },
+    {
+      "level": "physical",
+      "pattern": "P5.T0.a8",
+      "rationale": "The pre-field profile cycle must run against the commissioned physical aircraft and native GC."
+    },
+    {
+      "level": "physical",
+      "pattern": "P5.T1.a*",
+      "rationale": "First-aircraft commissioning criteria can be authorized only by signed evidence from the intended physical target and attached hardware."
+    },
+    {
+      "level": "physical",
+      "pattern": "Q131.cutover.*",
+      "rationale": "Final cutover scenarios share one signed physical-candidate set even when supporting subchecks are host-independent."
+    }
+  ],
+  "command_overrides": [
+    {
+      "owner_command": [
+        "python3",
+        "deployment/scripts/run_pre_field_profile_matrix.py",
+        "--expected-release-id",
+        "<release-id>",
+        "--output-dir",
+        "<external-evidence-root>/pre-field-profile",
+        "--apply"
+      ],
+      "pattern": "Q74.c8",
+      "rationale": "This decision owns the exact fail-safe real to OptiTrack to real physical workflow."
+    },
+    {
+      "owner_command": [
+        "python3",
+        "deployment/scripts/run_pre_field_profile_matrix.py",
+        "--expected-release-id",
+        "<release-id>",
+        "--output-dir",
+        "<external-evidence-root>/pre-field-profile",
+        "--apply"
+      ],
+      "pattern": "P5.T0.a8",
+      "rationale": "This acceptance criterion owns the exact fail-safe real to OptiTrack to real physical workflow."
+    }
+  ],
+  "q131_scenarios": [
+    {
+      "description": "A raw supported image reaches provisioned and then separately commissioned state with exact first-boot, Ansible, identity, release, and recovery evidence.",
+      "id": "factory"
+    },
+    {
+      "description": "The exact qualified candidate is fetched, verified, deployed, activated, rolled back, withdrawn or marked unsafe, and replaced without bypassing protected publication policy.",
+      "id": "release"
+    },
+    {
+      "description": "Prepared online and fully offline field-development and qualified workflows operate through III CLI with native GC and no onboard source or build dependency.",
+      "id": "field"
+    },
+    {
+      "description": "Interrupted transfer, activation, receiver update, network, storage, clock, power, and credential failures recover to an authenticated old or new pair.",
+      "id": "failure"
+    },
+    {
+      "description": "Real and simulation tuning, cold restart, capture, reconciliation, comparison, deliberate promotion, release deployment, and rollback preserve exact provenance.",
+      "id": "configuration"
+    },
+    {
+      "description": "A replacement GC verifies, restores, and rearchives all declared non-secret records while new machine identity and credentials are generated.",
+      "id": "evidence"
+    },
+    {
+      "description": "Representative GC-only, aircraft-only, paired deploy, diagnostics, tuning capture, rollback, and recovery complete from prepared caches with network denied.",
+      "id": "offline"
+    },
+    {
+      "description": "The offline operator manual, generated CLI and schema references, package links, and documentation manifest match the exact candidate and pass the documentation gate.",
+      "id": "documentation"
+    },
+    {
+      "description": "A clean workstation and commissioned target operate with legacy clones and caches absent, every retired entry point fails with the canonical replacement, and archive metadata is verified.",
+      "id": "retirement"
+    }
+  ],
+  "schema": "iii.deployment-verification-policy/v1"
+}

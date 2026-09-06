@@ -1,0 +1,23 @@
+[Unit]
+Description=III deployment receiver boot reconciliation
+Requires=iii-receiver-bootstrap-reconcile.service
+After=local-fs.target iii-receiver-bootstrap-reconcile.service
+Before=iii-deployment-receiver.service iii-system-daemon.service iii-runtime-api.service
+ConditionPathExists=/opt/iii/receiver/selectors/current/bin/iii-deployment-receiver
+
+[Service]
+Type=oneshot
+ExecStart=/opt/iii/receiver/selectors/current/bin/iii-deployment-receiver --config /etc/iii/deployment-receiver.json --reconcile-only
+User=root
+Group=root
+UMask=0027
+NoNewPrivileges=yes
+PrivateNetwork=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/iii /var/lib/iii/configuration /var/lib/iii/deployment /var/lib/iii/incoming /var/lib/iii/backups /var/lib/iii/portable-generations /var/lib/iii/portable-selector /var/log/iii /home/iii-deploy/.ssh /run/iii
+ReadOnlyPaths=/opt/iii/receiver
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

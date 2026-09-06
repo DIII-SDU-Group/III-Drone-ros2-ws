@@ -1,0 +1,22 @@
+[Unit]
+Description=III deployment receiver A/B readiness candidate
+After=local-fs.target
+Before=iii-deployment-receiver.service
+Conflicts=iii-deployment-receiver.service
+
+[Service]
+Type=simple
+ExecStart=/opt/iii/receiver/selectors/current/bin/iii-deployment-receiver --config /etc/iii/deployment-receiver.json --foreground
+Restart=on-failure
+RestartSec=500ms
+User=root
+Group=root
+UMask=0027
+NoNewPrivileges=yes
+# Keep candidate behavior equivalent to the committed receiver for PX4 audits.
+PrivateNetwork=no
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/iii /opt/iii/receiver/slots /var/lib/iii/configuration /var/lib/iii/deployment /var/lib/iii/incoming /var/lib/iii/backups /var/lib/iii/portable-generations /var/lib/iii/portable-selector /var/log/iii /home/iii-deploy/.ssh /run/iii
+ReadOnlyPaths=/opt/iii/receiver/bootstrap /opt/iii/receiver/selectors
+RestrictAddressFamilies=AF_UNIX AF_INET

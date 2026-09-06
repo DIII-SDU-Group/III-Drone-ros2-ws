@@ -116,12 +116,8 @@ RUN pip3 install -r /requirements.txt
 
 RUN sudo rm -rf /requirements.txt
 
-RUN wget https://github.com/mavlink/qgroundcontrol/releases/download/v5.0.8/QGroundControl-x86_64.AppImage -P "/home/${USERNAME}" -O "/home/${USERNAME}/QGroundControl.AppImage"
-RUN chmod +x "/home/${USERNAME}/QGroundControl.AppImage"
-
 # Install development tools
 COPY tools/terminator /home/${USERNAME}/.config/terminator
-COPY tools/QGroundControl.org /home/${USERNAME}/.config/QGroundControl.org
 
 RUN sudo chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.config"
 
@@ -131,15 +127,13 @@ RUN sudo chown "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.bashrc"
 
 USER root
 
-# GUI/simulation operator tools. Keep this after Python and QGC layers so
+# GUI/simulation operator tools. Keep this after Python layers so
 # transient Ubuntu mirror failures do not invalidate the stable base layer.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    fuse \
     gstreamer1.0-plugins-bad \
     gstreamer1.0-plugins-good \
     gstreamer1.0-libav \
     gstreamer1.0-gl \
-    libfuse2 \
     libgstreamer1.0-dev \
     libgstreamer-plugins-base1.0-dev \
     libxcb-xinerama0 \
@@ -149,7 +143,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 # Workspace runtime/build dependencies. Keep this late so adding package
-# dependencies does not invalidate the stable tooling, Python, or QGC layers.
+# dependencies does not invalidate the stable tooling or Python layers.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-pcl-ros \
     libopencv-dev \

@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/network-confirmation-plan.schema.json",
+  "title": "III bound network confirmation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "confirmation_id", "operation_id", "client_id", "target_operation_id", "network_id"],
+  "properties": {
+    "schema": {"const": "iii.network-confirmation-plan/v1"},
+    "confirmation_id": {"$ref": "#/definitions/identity"},
+    "operation_id": {"$ref": "#/definitions/operation"},
+    "client_id": {"$ref": "#/definitions/identity"},
+    "target_operation_id": {"$ref": "#/definitions/operation"},
+    "network_id": {"$ref": "#/definitions/identity"}
+  },
+  "definitions": {
+    "identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "operation": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"}
+  }
+}

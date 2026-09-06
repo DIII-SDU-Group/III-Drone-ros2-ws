@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/host-salvage-record.schema.json",
+  "title": "III removed-media read-only salvage record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "salvage_id", "backup_id", "outcome", "verified", "recorded_at", "source_device", "filesystem", "recoverable_domains", "omissions", "target_state_hash", "archive_sha256", "credentials_recovered", "recommissioning_required", "operator_notice"],
+  "properties": {
+    "schema": {"const": "iii.host-salvage-record/v1"},
+    "salvage_id": {"$ref": "#/definitions/hash"},
+    "backup_id": {"$ref": "#/definitions/hash"},
+    "outcome": {"const": "verified"},
+    "verified": {"const": true},
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "source_device": {"type": "object", "additionalProperties": false, "required": ["stable_path", "resolved_path", "fingerprint", "root_partition", "layout"], "properties": {"stable_path": {"type": "string", "pattern": "^/dev/disk/by-id/"}, "resolved_path": {"type": "string", "pattern": "^/dev/"}, "fingerprint": {"$ref": "#/definitions/hash"}, "root_partition": {"type": "string", "pattern": "^/dev/"}, "layout": {"const": "ubuntu-raspi-single-ext4-root"}}},
+    "filesystem": {"type": "object", "additionalProperties": false, "required": ["type", "mount_enforcement", "transaction_consistency", "source_modified"], "properties": {"type": {"const": "ext4"}, "mount_enforcement": {"const": "kernel-read-only-ro-noload-nodev-nosuid-noexec"}, "transaction_consistency": {"const": "e2fsck-read-only-clean"}, "source_modified": {"const": false}}},
+    "recoverable_domains": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "omissions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "target_state_hash": {"$ref": "#/definitions/hash"},
+    "archive_sha256": {"$ref": "#/definitions/hash"},
+    "credentials_recovered": {"const": false},
+    "recommissioning_required": {"const": true},
+    "operator_notice": {"type": "string", "minLength": 80}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

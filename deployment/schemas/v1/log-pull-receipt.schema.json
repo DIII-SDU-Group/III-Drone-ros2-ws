@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/log-pull-receipt.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "receipt_id", "manifest_id", "client_id", "domain", "verified_at", "files"],
+  "properties": {
+    "schema": {"const": "iii.log-pull-receipt/v1"},
+    "receipt_id": {"$ref": "#/definitions/identity"},
+    "manifest_id": {"$ref": "#/definitions/identity"},
+    "client_id": {"$ref": "#/definitions/identity"},
+    "domain": {"enum": ["logs", "diagnostics"]},
+    "verified_at": {"type": "string", "format": "date-time"},
+    "files": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["locator", "content_id", "size"], "properties": {"locator": {"type": "string", "minLength": 1}, "content_id": {"$ref": "#/definitions/identity"}, "size": {"type": "integer", "minimum": 0}}}}
+  },
+  "definitions": {"identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

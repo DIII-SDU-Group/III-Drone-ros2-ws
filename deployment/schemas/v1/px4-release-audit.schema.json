@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/px4-release-audit.schema.json",
+  "title": "Zero-write PX4 companion release audit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "audit_id", "release_id", "spec_id", "provenance", "status", "snapshot_id", "parameter_manifest_id", "network_baseline_id", "dds_topics_id", "dds_topics_observation", "findings", "healthy", "writes_performed"],
+  "properties": {
+    "schema": {"const": "iii.px4-release-audit/v1"},
+    "audit_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "release_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "spec_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "provenance": {"const": "receiver-px4-ethernet"},
+    "status": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["connected", "armed", "system_id", "component_id", "firmware_version", "firmware_commit"],
+      "properties": {
+        "connected": {"const": true}, "armed": {"type": "boolean"},
+        "system_id": {"type": "integer", "minimum": 1, "maximum": 255},
+        "component_id": {"type": "integer", "minimum": 0, "maximum": 255},
+        "firmware_version": {"type": "string"},
+        "firmware_commit": {"type": ["string", "null"]}
+      }
+    },
+    "snapshot_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "parameter_manifest_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "network_baseline_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "dds_topics_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "dds_topics_observation": {"enum": ["proven-by-exact-firmware-commit", "not-proven"]},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["code"],
+        "properties": {"code": {"type": "string"}, "detail": {"type": "string"}, "expected": {}, "observed": {}}
+      }
+    },
+    "healthy": {"type": "boolean"},
+    "writes_performed": {"const": 0}
+  }
+}

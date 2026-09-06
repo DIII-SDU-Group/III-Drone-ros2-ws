@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/record-archive-manifest.schema.json",
+  "title": "III deterministic portable record archive manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "archive_id", "format", "mode", "base_archive_id", "domains", "records", "blobs", "included_blob_ids", "coverage_blob_ids", "omitted", "missing", "secret_exclusions"],
+  "properties": {
+    "schema": {"const": "iii.record-archive-manifest/v1"},
+    "archive_id": {"$ref": "#/definitions/hash"},
+    "format": {"const": "ustar"},
+    "mode": {"enum": ["full", "incremental"]},
+    "base_archive_id": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/hash"}]},
+    "domains": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}},
+    "records": {"type": "array", "items": {"$ref": "#/definitions/record"}},
+    "blobs": {"type": "array", "items": {"$ref": "#/definitions/blob"}},
+    "included_blob_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/hash"}},
+    "coverage_blob_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/hash"}},
+    "omitted": {"type": "array", "items": {"$ref": "#/definitions/omitted"}},
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["record_id", "issues"],
+        "properties": {"record_id": {"$ref": "#/definitions/hash"}, "issues": {"type": "array", "items": {"type": "string", "minLength": 1}}}
+      }
+    },
+    "secret_exclusions": {
+      "const": ["machine-identity", "runtime-api-credentials", "signing-private-keys", "ssh-private-keys", "unredacted-secret-inputs", "wifi-secrets"]
+    }
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "blob": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_id", "size"],
+      "properties": {"content_id": {"$ref": "#/definitions/hash"}, "size": {"type": "integer", "minimum": 0}}
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["locator", "content_id", "size"],
+      "properties": {"locator": {"type": "string", "minLength": 1}, "content_id": {"$ref": "#/definitions/hash"}, "size": {"type": "integer", "minimum": 0}}
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "record_id", "domain", "locator", "unit_kind", "directories", "files", "creation_source", "target", "references", "irreplaceable", "protection", "integrity"],
+      "properties": {
+        "schema": {"const": "iii.local-record/v1"},
+        "record_id": {"$ref": "#/definitions/hash"},
+        "domain": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+        "locator": {"type": "string", "minLength": 1},
+        "unit_kind": {"enum": ["file", "directory"]},
+        "directories": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "files": {"type": "array", "items": {"$ref": "#/definitions/file"}},
+        "creation_source": {"type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": {"kind": {"type": "string", "minLength": 1}, "value": {"type": "string", "minLength": 1}}},
+        "target": {"oneOf": [{"type": "null"}, {"type": "object", "additionalProperties": false, "required": ["logical_id", "profile"], "properties": {"logical_id": {"type": "string", "minLength": 1}, "profile": {"type": "string", "minLength": 1}}}]},
+        "references": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/hash"}},
+        "irreplaceable": {"type": "boolean"},
+        "protection": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "integrity": {"type": "object", "additionalProperties": false, "required": ["state", "issues"], "properties": {"state": {"enum": ["verified", "corrupt"]}, "issues": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}}}
+      }
+    },
+    "omitted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["locator", "reason"],
+      "properties": {"locator": {"type": "string", "minLength": 1}, "reason": {"const": "incomplete-staging"}}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"mode": {"const": "full"}}},
+      "then": {"properties": {"base_archive_id": {"type": "null"}}},
+      "else": {"properties": {"base_archive_id": {"$ref": "#/definitions/hash"}}}
+    }
+  ]
+}

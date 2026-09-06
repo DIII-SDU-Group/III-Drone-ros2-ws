@@ -1,0 +1,221 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/receiver-mutation-plan.schema.json",
+  "title": "III receiver state-bound mutation plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "plan_id", "action", "operation_id", "client_id", "receiver_generation", "parameters", "target", "expected_state"],
+  "properties": {
+    "schema": {"const": "iii.receiver-mutation-plan/v1"},
+    "plan_id": {"$ref": "#/definitions/identity"},
+    "action": {"enum": ["stage", "activate", "rollback", "clock-sync", "access-add", "access-revoke", "log-receipt", "log-prune", "host-maintenance", "host-reboot", "receiver-update", "network-apply", "backup-seal", "backup-restore"]},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "client_id": {"$ref": "#/definitions/identity"},
+    "receiver_generation": {"type": "integer", "minimum": 1},
+    "parameters": {"type": "object"},
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["logical_id", "profile"],
+      "properties": {
+        "logical_id": {"type": "string", "pattern": "^[a-z][a-z0-9.-]{0,63}$"},
+        "profile": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$"}
+      }
+    },
+    "expected_state": {
+      "type": "object", "additionalProperties": false,
+      "required": ["active_release_id", "configuration_hash", "commissioning_hash", "profile", "target_state_hash", "access_state_id"],
+      "properties": {
+        "active_release_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "configuration_hash": {"$ref": "#/definitions/identity"},
+        "commissioning_hash": {"$ref": "#/definitions/identity"},
+        "profile": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$"},
+        "target_state_hash": {"$ref": "#/definitions/identity"},
+        "access_state_id": {"$ref": "#/definitions/identity"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"action": {"const": "stage"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/stage_parameters"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "activate"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/activation_parameters"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "rollback"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/rollback_parameters"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "access-add"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/access_add_parameters"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "access-revoke"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/access_revoke_parameters"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "host-maintenance"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/host_maintenance_parameters"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "host-reboot"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/host_reboot_parameters"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "network-apply"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/network_plan"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "receiver-update"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/receiver_update_parameters"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "backup-seal"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/backup_seal_parameters"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "backup-restore"}}},
+      "then": {"properties": {"parameters": {"$ref": "#/definitions/backup_restore_parameters"}}}
+    }
+  ],
+  "definitions": {
+    "identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "stage_parameters": {
+      "type": "object", "additionalProperties": false,
+      "required": ["release_id", "archive_sha256", "upload_id", "status_index_id"],
+      "properties": {
+        "release_id": {"$ref": "#/definitions/identity"},
+        "archive_sha256": {"$ref": "#/definitions/identity"},
+        "upload_id": {"$ref": "#/definitions/identity"},
+        "status_index_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "activation_parameters": {
+      "type": "object", "additionalProperties": false,
+      "required": ["release_id", "configuration_checkpoint_id", "explicit_qualified_action", "px4_activation_evidence"],
+      "properties": {
+        "release_id": {"$ref": "#/definitions/identity"},
+        "configuration_checkpoint_id": {"$ref": "#/definitions/identity"},
+        "explicit_qualified_action": {"type": "boolean"},
+        "px4_activation_evidence": {"type": "object"},
+        "configuration_reconciliation_decisions": {"$ref": "#/definitions/configuration_reconciliation_decisions"}
+      }
+    },
+    "configuration_reconciliation_decisions": {
+      "type": "object",
+      "maxProperties": 20000,
+      "propertyNames": {"pattern": "^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*:/[A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)*$"},
+      "additionalProperties": {"enum": ["use_old", "use_new_default"]}
+    },
+    "rollback_parameters": {
+      "type": "object", "additionalProperties": false,
+      "required": ["release_id", "configuration_checkpoint_id", "px4_activation_evidence"],
+      "properties": {
+        "release_id": {"$ref": "#/definitions/identity"},
+        "configuration_checkpoint_id": {"$ref": "#/definitions/identity"},
+        "px4_activation_evidence": {"type": "object"}
+      }
+    },
+    "access_add_parameters": {
+      "type": "object", "additionalProperties": false,
+      "required": ["phase", "client_id", "public_key"],
+      "properties": {
+        "phase": {"enum": ["add", "prove"]},
+        "client_id": {"$ref": "#/definitions/identity"},
+        "public_key": {"type": "string", "pattern": "^ssh-ed25519 [A-Za-z0-9+/]{43}=$"}
+      }
+    },
+    "access_revoke_parameters": {
+      "type": "object", "additionalProperties": false,
+      "required": ["client_id"],
+      "properties": {"client_id": {"$ref": "#/definitions/identity"}}
+    },
+    "host_maintenance_parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "maintenance_id", "operation_id", "client_id", "request", "before", "installed_policy_id", "playbook_sha256", "executor_sha256", "expected_package_changes", "trust_change", "boot_change", "mutations", "required_checks", "declared_permissions", "reboot_expected", "no_change"],
+      "properties": {
+        "schema": {"const": "iii.host-maintenance-plan/v1"},
+        "maintenance_id": {"$ref": "#/definitions/identity"},
+        "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+        "client_id": {"$ref": "#/definitions/identity"},
+        "request": {"type": "object"},
+        "before": {"type": "object"},
+        "installed_policy_id": {"$ref": "#/definitions/identity"},
+        "playbook_sha256": {"$ref": "#/definitions/identity"},
+        "executor_sha256": {"$ref": "#/definitions/identity"},
+        "expected_package_changes": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "trust_change": {"type": ["object", "null"]},
+        "boot_change": {"type": ["object", "null"]},
+        "mutations": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "required_checks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+        "declared_permissions": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "reboot_expected": {"type": "boolean"},
+        "no_change": {"type": "boolean"}
+      }
+    },
+    "host_reboot_parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maintenance_id"],
+      "properties": {"maintenance_id": {"$ref": "#/definitions/identity"}}
+    },
+    "receiver_update_parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receiver_id", "generation", "archive_sha256", "upload_id"],
+      "properties": {
+        "receiver_id": {"$ref": "#/definitions/identity"},
+        "generation": {"type": "integer", "minimum": 1},
+        "archive_sha256": {"$ref": "#/definitions/identity"},
+        "upload_id": {"$ref": "#/definitions/identity"}
+      }
+    },
+    "backup_seal_parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {"source": {"const": "receiver"}}
+    },
+    "backup_restore_parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "plan_id", "operation_id", "backup_id", "archive_path", "archive_sha256", "policy_id", "portable_schema_version", "active_release_id", "clean_converged_host", "mutations"],
+      "properties": {
+        "schema": {"const": "iii.portable-restore-plan/v1"},
+        "plan_id": {"$ref": "#/definitions/identity"},
+        "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+        "backup_id": {"$ref": "#/definitions/identity"},
+        "archive_path": {"type": "string", "pattern": "^/(?:[^/]+/)*portable-state\\.tar$"},
+        "archive_sha256": {"$ref": "#/definitions/identity"},
+        "policy_id": {"$ref": "#/definitions/identity"},
+        "portable_schema_version": {"type": "integer", "minimum": 1},
+        "active_release_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "clean_converged_host": {"type": "boolean"},
+        "mutations": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+      }
+    },
+    "network_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "network_id", "operation_id", "client_id", "candidate_sha256", "desired_netplan_sha256", "previous_netplan_sha256", "profile", "connectivity_impacting", "confirmation_deadline_s", "no_change", "declared_permissions", "required_checks"],
+      "properties": {
+        "schema": {"const": "iii.network-plan/v1"},
+        "network_id": {"$ref": "#/definitions/identity"},
+        "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+        "client_id": {"$ref": "#/definitions/identity"},
+        "candidate_sha256": {"$ref": "#/definitions/identity"},
+        "desired_netplan_sha256": {"$ref": "#/definitions/identity"},
+        "previous_netplan_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "profile": {"type": "object"},
+        "connectivity_impacting": {"type": "boolean"},
+        "confirmation_deadline_s": {"const": 90},
+        "no_change": {"type": "boolean"},
+        "declared_permissions": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "required_checks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}
+      }
+    }
+  }
+}

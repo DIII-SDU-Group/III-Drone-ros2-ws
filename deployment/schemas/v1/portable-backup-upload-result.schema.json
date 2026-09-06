@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/portable-backup-upload-result.schema.json",
+  "title": "III resumable portable backup upload status",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "backup_id", "upload_id", "state", "resumed", "archive"],
+  "properties": {
+    "schema": {"const": "iii.portable-backup-upload-result/v1"},
+    "backup_id": {"$ref": "#/definitions/hash"},
+    "upload_id": {"$ref": "#/definitions/hash"},
+    "state": {"enum": ["partial", "complete"]},
+    "resumed": {"type": "boolean"},
+    "archive": {"type": "object", "additionalProperties": false, "required": ["size", "sha256"], "properties": {"size": {"type": "integer", "minimum": 0}, "sha256": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/hash"}]}}}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

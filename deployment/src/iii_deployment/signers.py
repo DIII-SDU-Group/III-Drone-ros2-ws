@@ -22,8 +22,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 from .contracts import ContractError, ContractRegistry, canonical_json
 
-
-AUTHORITIES = {"ci-qualified", "workstation-field"}
+AUTHORITIES = {
+    "ci-qualified",
+    "workstation-field",
+    "release-status",
+    "receiver-update",
+}
 PROOF_DOMAIN = b"iii.release-signer-proof/v1\0"
 
 
@@ -113,11 +117,17 @@ def generate_signer(
     public_descriptor_path = public_descriptor_path.absolute()
     for root in forbidden_roots:
         if private_key_path.is_relative_to(root.resolve()):
-            raise ContractError("private signer key must be generated outside the repository")
+            raise ContractError(
+                "private signer key must be generated outside the repository"
+            )
     if private_key_path.exists() or private_key_path.is_symlink():
-        raise ContractError(f"refusing to replace private signer key: {private_key_path}")
+        raise ContractError(
+            f"refusing to replace private signer key: {private_key_path}"
+        )
     if public_descriptor_path.exists() or public_descriptor_path.is_symlink():
-        raise ContractError(f"refusing to replace public signer descriptor: {public_descriptor_path}")
+        raise ContractError(
+            f"refusing to replace public signer descriptor: {public_descriptor_path}"
+        )
 
     key = Ed25519PrivateKey.generate()
     public = key.public_key()
@@ -148,9 +158,21 @@ def load_private_key(path: Path) -> Ed25519PrivateKey:
         with os.fdopen(descriptor, "rb") as stream:
             metadata = os.fstat(stream.fileno())
             if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o077:
-                raise ContractError("private signer key must be a regular user-only file")
+                raise ContractError(
+                    "private signer key must be a regular user-only file"
+                )
             encoded = stream.read()
-        key = serialization.load_pem_private_key(encoded, password=None)
+        # Field-development keys are deliberately encrypted at rest.  A release
+        # command may opt into the existing OS-keyring provider by naming a
+        # non-secret account; the passphrase itself never enters argv, files,
+        # logs, or the process environment.
+        password: bytes | None = None
+        if b"ENCRYPTED PRIVATE KEY" in encoded:
+            account = os.environ.get("III_FIELD_SIGNING_KEYRING_ACCOUNT", "")
+            if account:
+                from .field_signing_agent import passphrase_from_keyring
+                password = passphrase_from_keyring(account)
+        key = serialization.load_pem_private_key(encoded, password=password)
     except (OSError, ValueError, TypeError) as exc:
         raise ContractError(f"cannot load private signer key: {exc}") from exc
     if not isinstance(key, Ed25519PrivateKey):
@@ -195,6 +217,14 @@ def _verify_proof(descriptor: Mapping[str, Any], proof: Mapping[str, str]) -> No
         raise ContractError("signer proof-of-possession is invalid") from exc
 
 
+def verify_signer_proof(signer: Mapping[str, Any], proof: Mapping[str, str]) -> None:
+    """Verify possession for a trusted-store entry without private material."""
+
+    if signer.get("algorithm") != "Ed25519":
+        raise ContractError("signer proof requires an Ed25519 trust entry")
+    _verify_proof(signer, proof)
+
+
 @contextmanager
 def _store_lock(path: Path) -> Iterator[None]:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -218,10 +248,11 @@ def _empty_store() -> dict[str, Any]:
     }
 
 
-def load_trusted_signers(path: Path, registry: ContractRegistry) -> dict[str, Any]:
-    if path.is_symlink():
-        raise ContractError(f"refusing signer-store symlink: {path}")
-    value = _empty_store() if not path.exists() else _load_json(path)
+def validate_trusted_signers(
+    value: Mapping[str, Any], registry: ContractRegistry
+) -> dict[str, Any]:
+    """Validate a trust store including identities not expressible in JSON Schema."""
+
     registry.validate("trusted-signers", value)
     identities = [item["signer_id"] for item in value["signers"]]
     if identities != sorted(set(identities)):
@@ -232,10 +263,26 @@ def load_trusted_signers(path: Path, registry: ContractRegistry) -> dict[str, An
         )
         if signer_id_for_public_key(public) != item["signer_id"]:
             raise ContractError("trusted signer public-key identity mismatch")
-    return value
+        boundary = item.get("trusted_through")
+        if boundary is not None and (
+            item["authority"] != "release-status" or item["state"] != "revoked"
+        ):
+            raise ContractError(
+                "only revoked release-status signers may retain a history boundary"
+            )
+    return dict(value)
 
 
-def _write_store(path: Path, value: Mapping[str, Any], registry: ContractRegistry) -> None:
+def load_trusted_signers(path: Path, registry: ContractRegistry) -> dict[str, Any]:
+    if path.is_symlink():
+        raise ContractError(f"refusing signer-store symlink: {path}")
+    value = _empty_store() if not path.exists() else _load_json(path)
+    return validate_trusted_signers(value, registry)
+
+
+def _write_store(
+    path: Path, value: Mapping[str, Any], registry: ContractRegistry
+) -> None:
     registry.validate("trusted-signers", value)
     _atomic_write(path, canonical_json(value) + b"\n", mode=0o600)
 
@@ -258,12 +305,18 @@ def add_trusted_signer(
             "state": "active",
         }
         existing = next(
-            (item for item in store["signers"] if item["signer_id"] == entry["signer_id"]),
+            (
+                item
+                for item in store["signers"]
+                if item["signer_id"] == entry["signer_id"]
+            ),
             None,
         )
         if existing is not None:
             if existing != entry:
-                raise ContractError("trusted signer identity already exists with different state or metadata")
+                raise ContractError(
+                    "trusted signer identity already exists with different state or metadata"
+                )
             return store
         store["signers"].append(entry)
         store["signers"].sort(key=lambda item: item["signer_id"])
@@ -283,8 +336,13 @@ def revoke_trusted_signer(
             raise ContractError("unknown trusted signer")
         if selected["state"] == "revoked":
             return store
+        if selected["authority"] == "release-status":
+            raise ContractError(
+                "release-status signer revocation requires a commissioned history cutover"
+            )
         remaining = [
-            item for item in store["signers"]
+            item
+            for item in store["signers"]
             if item["state"] == "active"
             and item["authority"] == selected["authority"]
             and item["signer_id"] != signer_id
@@ -299,14 +357,18 @@ def revoke_trusted_signer(
 
 
 def trusted_public_key(
-    store: Mapping[str, Any], signer_id: str, authority: str
+    store: Mapping[str, Any],
+    signer_id: str,
+    authority: str,
+    *,
+    allow_revoked_history: bool = False,
 ) -> Ed25519PublicKey:
     selected = next(
         (item for item in store["signers"] if item["signer_id"] == signer_id), None
     )
     if selected is None:
         raise ContractError("bundle signer is unknown")
-    if selected["state"] != "active":
+    if selected["state"] != "active" and not allow_revoked_history:
         raise ContractError("bundle signer is revoked")
     if selected["authority"] != authority:
         raise ContractError("bundle signer authority does not match release class")

@@ -1,0 +1,20 @@
+[Unit]
+Description=III static ground-control frontend container
+PartOf=iii-gc.target graphical-session.target
+Requires=iii-gc-proxy.service
+After=iii-gc-proxy.service
+ConditionPathExists={{ iii_gc_home }}/.local/share/iii/gc-applications/current/application.env
+
+[Service]
+Type=simple
+EnvironmentFile={{ iii_gc_home }}/.config/iii/gc.env
+EnvironmentFile={{ iii_gc_home }}/.config/iii/gc-profile.env
+EnvironmentFile={{ iii_gc_home }}/.local/share/iii/gc-applications/current/application.env
+ExecStart=/usr/bin/docker compose --project-name iii-ground-control --file {{ iii_gc_home }}/.local/share/iii/gc-applications/current/payload/compose.yml up --no-build --no-deps --force-recreate frontend
+ExecStop=/usr/bin/docker compose --project-name iii-ground-control --file {{ iii_gc_home }}/.local/share/iii/gc-applications/current/payload/compose.yml stop --timeout 10 frontend
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+
+[Install]
+WantedBy=iii-gc.target

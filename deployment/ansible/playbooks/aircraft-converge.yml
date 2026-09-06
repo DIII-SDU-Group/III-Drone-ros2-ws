@@ -1,0 +1,34 @@
+---
+- name: Converge the III aircraft host baseline
+  hosts: aircraft
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vars/raspberry-pi-5-noble-arm64.yml
+  roles:
+    - role: preflight
+      tags: [always]
+    - role: identity
+      tags: [identity]
+    - role: filesystem
+      tags: [filesystem]
+    - role: apt_baseline
+      tags: [packages]
+    - role: host_maintenance_install
+      tags: [maintenance]
+    - role: hardware_baseline
+      tags: [hardware]
+    - role: boot_baseline
+      tags: [boot]
+    - role: time
+      tags: [time]
+    - role: network_baseline
+      tags: [network]
+    - role: firewall
+      tags: [firewall]
+    - role: receiver
+      tags: [receiver]
+    - role: runtime_control_plane
+      tags: [runtime]
+    - role: host_health
+      tags: [health]

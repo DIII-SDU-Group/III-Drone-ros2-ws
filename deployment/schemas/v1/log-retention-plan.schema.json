@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/log-retention-plan.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "plan_id", "cap_bytes", "current_bytes", "projected_bytes", "protected_session_ids", "remove", "protected_overage"],
+  "properties": {
+    "schema": {"const": "iii.log-retention-plan/v1"},
+    "plan_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "cap_bytes": {"type": "integer", "minimum": 0},
+    "current_bytes": {"type": "integer", "minimum": 0},
+    "projected_bytes": {"type": "integer", "minimum": 0},
+    "protected_session_ids": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"}, "uniqueItems": true},
+    "remove": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["session_id", "session_identity", "bytes", "files"], "properties": {
+      "session_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+      "session_identity": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+      "bytes": {"type": "integer", "minimum": 0},
+      "files": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["locator", "content_id", "size", "protected_domain"], "properties": {"locator": {"type": "string", "minLength": 1}, "content_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "size": {"type": "integer", "minimum": 0}, "protected_domain": {"type": "boolean"}}}}
+    }}},
+    "protected_overage": {"type": "boolean"}
+  }
+}

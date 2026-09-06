@@ -99,6 +99,32 @@ def test_secrets_generated_outputs_datasets_and_unrelated_files_are_excluded(tmp
     assert {"path": "notes.txt", "reason": "unrelated"} in snapshot["excluded"]
 
 
+def test_tracked_unrelated_workspace_change_does_not_dirty_deployment_snapshot(tmp_path: Path) -> None:
+    repo = _repo(tmp_path / "repo")
+    _write(repo / "scripts/workspace/research.py", "EXPERIMENT = 1\n")
+    _git(repo, "add", "scripts/workspace/research.py")
+    _git(repo, "commit", "-qm", "research helper")
+    clean = capture_source_snapshot(repo, _policy(), REGISTRY)
+    _write(repo / "scripts/workspace/research.py", "EXPERIMENT = 2\n")
+    snapshot = capture_source_snapshot(repo, _policy(), REGISTRY)
+    assert snapshot["repositories"][0]["state"] == "clean"
+    assert snapshot["content_identity"] == clean["content_identity"]
+    assert snapshot["changed_paths"] == []
+
+
+def test_python_egg_info_generated_by_a_local_build_is_excluded(tmp_path: Path) -> None:
+    repo = _repo(tmp_path / "repo")
+    _write(repo / "src/iii_drone_core.egg-info/PKG-INFO", "generated metadata\n")
+    snapshot = capture_source_snapshot(repo, _policy(), REGISTRY)
+    assert "src/iii_drone_core.egg-info/PKG-INFO" not in {
+        entry["path"] for entry in snapshot["repositories"][0]["untracked"]
+    }
+    assert {
+        "path": "src/iii_drone_core.egg-info/PKG-INFO",
+        "reason": "generated",
+    } in snapshot["excluded"]
+
+
 def test_source_directory_named_build_is_not_mistaken_for_generated_output(tmp_path: Path) -> None:
     repo = _repo(tmp_path / "repo")
     _write(repo / "scripts/build/release.py", "RELEASE = True\n")

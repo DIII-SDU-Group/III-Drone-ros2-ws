@@ -1,0 +1,16 @@
+{
+  "name": "Immutable release record tags",
+  "target": "tag",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "exclude": [],
+      "include": ["refs/tags/iii-attempt-v*", "refs/tags/iii-status-*"]
+    }
+  },
+  "rules": [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"}
+  ]
+}

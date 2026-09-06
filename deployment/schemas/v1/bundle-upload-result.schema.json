@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/bundle-upload-result.schema.json",
+  "title": "III fixed SSH upload gateway result",
+  "type": "object",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "required": ["schema", "release_id", "upload_id", "state", "resumed", "files"],
+      "properties": {
+        "schema": {"const": "iii.bundle-upload-result/v1"},
+        "release_id": {"$ref": "#/definitions/hash"},
+        "upload_id": {"$ref": "#/definitions/hash"},
+        "state": {"enum": ["partial", "complete"]},
+        "resumed": {"type": "boolean"},
+        "files": {
+          "type": "object",
+          "minProperties": 5,
+          "maxProperties": 6,
+          "propertyNames": {"$ref": "#/definitions/path"},
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["size", "sha256"],
+            "properties": {
+              "size": {"type": "integer", "minimum": 0},
+              "sha256": {"anyOf": [{"$ref": "#/definitions/hash"}, {"type": "null"}]}
+            }
+          }
+        }
+      }
+    },
+    {
+      "additionalProperties": false,
+      "required": ["schema", "state", "removed_release_ids", "retained_release_ids"],
+      "properties": {
+        "schema": {"const": "iii.bundle-upload-result/v1"},
+        "state": {"const": "cleanup-complete"},
+        "removed_release_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/hash"}
+        },
+        "retained_release_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/hash"}
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "path": {
+      "enum": [
+        "drone/bundle.manifest.json",
+        "drone/bundle.sha256",
+        "drone/bundle.sig.json",
+        "drone/bundle.tar.zst",
+        "drone/release-manifest.json",
+        "release-status-index.json"
+      ]
+    }
+  }
+}

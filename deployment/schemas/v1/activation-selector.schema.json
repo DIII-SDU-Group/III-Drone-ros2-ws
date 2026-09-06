@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/activation-selector.schema.json",
+  "title": "Atomic III application release selector",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "selector_id", "release_id", "release_path", "configuration_checkpoint_id", "configuration_checkpoint_path", "configuration_schema_version", "mission_catalog_hash", "profile"],
+  "properties": {
+    "schema": {"const": "iii.activation-selector/v1"},
+    "selector_id": {"$ref": "#/definitions/hash"},
+    "release_id": {"$ref": "#/definitions/hash"},
+    "release_path": {"type": "string", "pattern": "^/opt/iii/releases/[a-f0-9]{64}$"},
+    "configuration_checkpoint_id": {"$ref": "#/definitions/hash"},
+    "configuration_checkpoint_path": {"type": "string", "pattern": "^/var/lib/iii/configuration/checkpoints/[a-f0-9]{64}$"},
+    "configuration_schema_version": {"type": "integer", "minimum": 1},
+    "mission_catalog_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "profile": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$"}
+  },
+  "definitions": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

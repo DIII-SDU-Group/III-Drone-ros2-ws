@@ -1,0 +1,40 @@
+{
+  "schema": "iii.cloud-init-profile/v1",
+  "profile_id": "iii-raspberry-pi-5-noble-v2",
+  "image_source_id": "ubuntu-24.04.4-preinstalled-server-arm64-raspi",
+  "datasource": "NoCloud",
+  "bootstrap_user": "iii-bootstrap",
+  "password_authentication": false,
+  "root_login": false,
+  "ethernet_recovery": {
+    "required": true,
+    "match_name": "enx*",
+    "dhcp4": true
+  },
+  "px4_ethernet": {
+    "required": true,
+    "match_name": "eth0",
+    "address": "10.41.10.1/24",
+    "peer_address": "10.41.10.2",
+    "mavlink_udp_port": 14540,
+    "mavlink_audit_udp_port": 14541,
+    "uxrce_dds_udp_port": 8888
+  },
+  "wifi_interface": "wlan0",
+  "application_installation": false,
+  "diagnostics": {
+    "cloud_init_log": "/var/log/cloud-init.log",
+    "cloud_init_output_log": "/var/log/cloud-init-output.log",
+    "iii_bootstrap_log": "/var/log/iii/bootstrap-cloud-init.log",
+    "iii_bootstrap_status": "/var/lib/iii/bootstrap/cloud-init-status.json"
+  },
+  "sanitization_contract": {
+    "required_before_provisioned": true,
+    "copy_network_to_root_only_host_configuration": true,
+    "remove_seed_and_instance_secrets": true,
+    "disable_unintended_cloud_init_reruns": true,
+    "revoke_bootstrap_authority": true,
+    "residual_secret_inspection": true,
+    "failure_blocks_commissioning": true
+  }
+}

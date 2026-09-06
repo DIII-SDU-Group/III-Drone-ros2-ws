@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/gc-application-state.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "state_id", "generation", "active_release_id", "previous_release_id", "staged_release_id", "qualified_anchor_release_id", "active_qgc_sha256", "previous_qgc_sha256", "releases"],
+  "properties": {
+    "schema": {"const": "iii.gc-application-state/v1"},
+    "state_id": {"$ref": "#/definitions/hash"},
+    "generation": {"type": "integer", "minimum": 0},
+    "active_release_id": {"$ref": "#/definitions/nullable_hash"},
+    "previous_release_id": {"$ref": "#/definitions/nullable_hash"},
+    "staged_release_id": {"$ref": "#/definitions/nullable_hash"},
+    "qualified_anchor_release_id": {"$ref": "#/definitions/nullable_hash"},
+    "active_qgc_sha256": {"$ref": "#/definitions/nullable_hash"},
+    "previous_qgc_sha256": {"$ref": "#/definitions/nullable_hash"},
+    "releases": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-f0-9]{64}$"},
+      "additionalProperties": {"$ref": "#/definitions/release"}
+    }
+  },
+  "definitions": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nullable_hash": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["release_id", "release_class", "version", "slot", "archive_sha256", "compatibility", "qgroundcontrol", "images", "installed_at"],
+      "properties": {
+        "release_id": {"$ref": "#/definitions/hash"},
+        "release_class": {"enum": ["qualified", "field-development"]},
+        "version": {"type": ["string", "null"], "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "slot": {"type": "string", "pattern": "^releases/[a-f0-9]{64}$"},
+        "archive_sha256": {"$ref": "#/definitions/hash"},
+        "compatibility": {"type": "object"},
+        "qgroundcontrol": {
+          "type": "object", "additionalProperties": false,
+          "required": ["version", "sha256", "slot"],
+          "properties": {
+            "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+            "sha256": {"$ref": "#/definitions/hash"},
+            "slot": {"type": "string", "pattern": "^qgc/slots/[a-f0-9]{64}$"}
+          }
+        },
+        "images": {
+          "type": "array", "minItems": 2, "maxItems": 2,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["name", "tag", "manifest_digest", "archive_sha256"],
+            "properties": {
+              "name": {"enum": ["frontend", "proxy"]},
+              "tag": {"type": "string", "pattern": "^iii-drone-gc-(frontend|proxy):[a-f0-9]{64}$"},
+              "manifest_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+              "archive_sha256": {"$ref": "#/definitions/hash"}
+            }
+          }
+        },
+        "installed_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

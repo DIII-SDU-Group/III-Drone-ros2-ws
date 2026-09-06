@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://iii-drone.invalid/schemas/v1/receiver-update-actual.schema.json",
+  "title": "III receiver update accepted operation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "actual_id", "operation_id", "receiver_id", "generation", "target", "transfer", "receiver_plan", "receiver_acceptance"],
+  "properties": {
+    "schema": {"const": "iii.receiver-update-actual/v1"},
+    "actual_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "receiver_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "generation": {"type": "integer", "minimum": 1},
+    "target": {"type": "object"},
+    "transfer": {"type": "object"},
+    "receiver_plan": {"type": "object"},
+    "receiver_acceptance": {"type": "object"}
+  }
+}

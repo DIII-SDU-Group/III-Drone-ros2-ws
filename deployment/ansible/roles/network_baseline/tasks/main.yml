@@ -1,0 +1,39 @@
+---
+- name: Enforce the stable aircraft mDNS hostname
+  ansible.builtin.hostname:
+    name: iii
+  notify: Restart Avahi for III hostname
+  when: iii_hostname_manage
+
+- name: Install the fail-closed III Avahi policy
+  ansible.builtin.template:
+    src: avahi-daemon.conf.j2
+    dest: /etc/avahi/avahi-daemon.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Avahi for III hostname
+
+- name: Enable mDNS hostname publication on active operator networks
+  ansible.builtin.systemd_service:
+    name: avahi-daemon.service
+    state: started
+    enabled: true
+  when: not ansible_check_mode
+
+- name: Install the host-owned PX4 Ethernet link
+  ansible.builtin.template:
+    src: 80-iii-px4.yaml.j2
+    dest: /etc/netplan/80-iii-px4.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Apply host-owned PX4 Ethernet
+
+- name: Record host-owned operator networking policy
+  ansible.builtin.template:
+    src: network-policy.json.j2
+    dest: /etc/iii/network-policy.json
+    owner: root
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0640"

@@ -22,7 +22,7 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -56,9 +56,26 @@ MUTATING_WORKFLOW_COMMANDS = [
     ("payload-gripper-close", "payload.gripper.close", {}),
     ("perception-pl-mapper-start", "perception.pl_mapper.start", {}),
     ("perception-pl-mapper-pause", "perception.pl_mapper.pause", {}),
+    ("perception-pl-mapper-resume-after-pause", "perception.pl_mapper.start", {}),
     ("perception-pl-mapper-freeze", "perception.pl_mapper.freeze", {}),
-    ("perception-pl-mapper-stop", "perception.pl_mapper.stop", {}),
+    ("perception-pl-mapper-resume-after-freeze", "perception.pl_mapper.start", {}),
+    (
+        "rosbag-smoke-start",
+        "rosbag.start",
+        {
+            "all_topics": False,
+            "topics": [
+                "/clock",
+                "/fmu/out/vehicle_status_v1",
+                "/perception/pl_mapper/powerline",
+                "/perception/pl_mapper/state",
+                "/supervision/system_health",
+            ],
+        },
+    ),
+    ("rosbag-smoke-stop", "rosbag.stop", {}),
     ("powerline-overview-update", "powerline.overview.update", {"timeout_s": 5}),
+    ("perception-pl-mapper-stop", "perception.pl_mapper.stop", {}),
     (
         "configuration-list-snapshots",
         "configuration.snapshot.list",
@@ -85,6 +102,7 @@ MUTATING_WORKFLOW_COMMANDS = [
         "custom_operation.hover.start",
         {
             "operation": "hover",
+            "hold_confirmed": True,
             "arguments": {
                 "duration_s": 1.0,
                 "sustain": False,
@@ -100,6 +118,11 @@ FLIGHT_COMMANDS = [
     ("px4-hold", "px4.hold", {}),
     ("px4-land", "px4.land", {}),
 ]
+
+EXPECTED_BENCH_DEGRADED_COMMANDS = {
+    "powerline.overview.update": "at least 4 live powerline lines are required",
+    "custom_operation.hover.start": "CustomOperation mode is not active",
+}
 
 # Acceptance evidence deliberately excludes raw images and point clouds. Those
 # streams can exceed 50 MiB/s and are validated through the dedicated perception
@@ -130,6 +153,16 @@ INSPECTION_EVIDENCE_TOPICS = [
 
 class SmokeFailure(RuntimeError):
     pass
+
+
+def recovery_required(args: argparse.Namespace) -> bool:
+    """Return whether this run may have changed vehicle state."""
+    return bool(args.run_mutating_workflows or args.run_flight_commands or args.run_inspection_cycle)
+
+
+def fixture_flight_altitude(recorded_z: float, *, cable_aware: bool) -> float:
+    """Preserve CAFTP clearance while retaining the generic ground margin."""
+    return recorded_z if cable_aware else recorded_z + 0.06
 
 
 class SmokeRunner:
@@ -174,15 +207,21 @@ class SmokeRunner:
 
             runtime_identity = self.http_json("GET", f"{self.args.runtime_url}/identity", step_name="runtime-identity")
             self.summary["runtime_identity"] = runtime_identity
-            if runtime_identity.get("profile") != "sim":
-                raise SmokeFailure(f"expected sim runtime profile, got {runtime_identity.get('profile')!r}")
+            if runtime_identity.get("profile") != self.args.expected_profile:
+                raise SmokeFailure(
+                    f"expected {self.args.expected_profile} runtime profile, "
+                    f"got {runtime_identity.get('profile')!r}"
+                )
 
             self.http_json("GET", f"{self.args.proxy_url}/identity", step_name="proxy-identity")
             self.http_json("GET", f"{self.args.proxy_url}/runtime/discovery?timeout_s=2", step_name="runtime-discovery")
             endpoint = self.http_json(
                 "POST",
                 f"{self.args.proxy_url}/runtime/discovery/manual",
-                {"base_url": self.args.runtime_url, "runtime_name": "local-sim"},
+                {
+                    "base_url": self.args.runtime_url,
+                    "runtime_name": f"iii-{self.args.expected_profile}",
+                },
                 step_name="manual-runtime-endpoint",
             )
             endpoint_id = endpoint["endpoint_id"]
@@ -231,6 +270,7 @@ class SmokeRunner:
 
             self.stop_session_heartbeat()
             self.http_json("POST", f"{self.args.proxy_url}/proxy/session/logout", headers=headers, step_name="session-logout")
+            self.session_headers = None
             self.summary["completed_at"] = datetime.now(timezone.utc).isoformat()
             self.summary["status"] = "passed"
             return 0
@@ -240,11 +280,22 @@ class SmokeRunner:
             self.summary["failure"] = str(exc)
             print(f"GUI v2 sim E2E smoke failed: {exc}", file=sys.stderr)
             print(f"Artifacts: {self.artifacts}", file=sys.stderr)
-            if self.args.run_inspection_cycle and self.session_headers:
+            if recovery_required(self.args) and self.session_headers:
                 self.recover_vehicle(self.session_headers)
             return 1
         finally:
             self.stop_session_heartbeat()
+            if self.session_headers:
+                try:
+                    self.http_json(
+                        "POST",
+                        f"{self.args.proxy_url}/proxy/session/logout",
+                        headers=self.session_headers,
+                        step_name="session-logout-after-failure",
+                    )
+                except Exception as exc:
+                    self.summary["session_logout_warning"] = str(exc)
+                self.session_headers = None
             if compose_started:
                 self.capture_compose_logs()
                 if not self.args.keep_compose:
@@ -252,12 +303,174 @@ class SmokeRunner:
             self.write_summary()
 
     def run_mutating_workflows(self, headers: dict[str, str]) -> None:
+        recording_id: str | None = None
         for name, command_id, parameters in MUTATING_WORKFLOW_COMMANDS:
-            self.dispatch_command(name, command_id, parameters, headers)
+            parameters = dict(parameters)
+            if command_id == "runtime.boot":
+                parameters["profile"] = self.args.expected_profile
+            expected_degraded_message = EXPECTED_BENCH_DEGRADED_COMMANDS.get(command_id)
+            result = self.dispatch_command(
+                name,
+                command_id,
+                parameters,
+                headers,
+                require_accepted=expected_degraded_message is None,
+            )
+            if command_id == "rosbag.start":
+                rosbag = (result.get("result") or {}).get("rosbag") or {}
+                recording_id = rosbag.get("recording_id")
+                if not recording_id:
+                    raise SmokeFailure("rosbag.start did not return a recording ID")
+                self.wait_for_state(
+                    "rosbag-smoke-active",
+                    "/proxy/rosbag/status",
+                    headers,
+                    lambda state: state.get("recording") is True
+                    and state.get("recording_id") == recording_id,
+                    timeout_s=10.0,
+                    interval_s=0.5,
+                )
+                # MCAP output is buffered and can legitimately remain zero bytes
+                # until SIGINT closes the writer. Give live topics time to arrive,
+                # then prove non-empty persistence after the stop below.
+                time.sleep(self.args.rosbag_observation_s)
+            elif command_id == "rosbag.stop" and recording_id:
+                state = self.get_state("/proxy/rosbag/status", headers)
+                recordings = (state.get("latest") or {}).get("recordings") or []
+                saved = next(
+                    (item for item in recordings if item.get("recording_id") == recording_id),
+                    None,
+                )
+                if saved is None or int(saved.get("size_bytes") or 0) <= 0:
+                    raise SmokeFailure(
+                        f"rosbag recording {recording_id} was not retained with data after stop"
+                    )
+            if expected_degraded_message is not None and not result.get("accepted"):
+                rejection = result.get("rejection") or result
+                if rejection.get("code") != "degraded_state" or expected_degraded_message not in str(
+                    rejection.get("message", "")
+                ):
+                    raise SmokeFailure(
+                        f"{command_id} had an unexpected rejection: "
+                        f"{json.dumps(rejection, sort_keys=True)}"
+                    )
+        self.round_trip_safe_configuration_parameter(headers)
+
+    def round_trip_safe_configuration_parameter(self, headers: dict[str, str]) -> None:
+        name = "/control/trajectory_interpolator/interpolation_avg_velocity_m_s"
+        initial = self.wait_for_state(
+            "configuration-round-trip-ready",
+            "/proxy/configuration/status",
+            headers,
+            configuration_manifest_available,
+            timeout_s=30.0,
+        )
+        parameter = configuration_parameter(initial, name)
+        if parameter is None or not isinstance(parameter.get("current_value"), (int, float)):
+            raise SmokeFailure(f"safe configuration round-trip parameter is unavailable: {name}")
+        original = float(parameter["current_value"])
+        constraints = parameter.get("constraints") or {}
+        maximum = constraints.get("maximum")
+        candidate = original + 0.01
+        if isinstance(maximum, (int, float)) and candidate > float(maximum):
+            candidate = original - 0.01
+        edit = {"node_id": parameter["node_id"], "name": name, "value": candidate}
+        changed = False
+        changed_state = initial
+        try:
+            self.apply_configuration_edit_with_retry(
+                "configuration-round-trip-apply",
+                edit,
+                headers,
+                timeout_s=60.0,
+            )
+            changed = True
+            changed_state = self.wait_for_state(
+                "configuration-round-trip-changed",
+                "/proxy/configuration/status",
+                headers,
+                lambda current: numeric_values_match(
+                    (configuration_parameter(current, name) or {}).get("current_value"), candidate
+                )
+                and numeric_values_match(
+                    (configuration_parameter(current, name) or {}).get("persisted_value"), candidate
+                ),
+                timeout_s=30.0,
+            )
+        finally:
+            if changed:
+                self.apply_configuration_edit_with_retry(
+                    "configuration-round-trip-restore",
+                    {"node_id": parameter["node_id"], "name": name, "value": original},
+                    headers,
+                    timeout_s=60.0,
+                )
+                self.wait_for_state(
+                    "configuration-round-trip-restored",
+                    "/proxy/configuration/status",
+                    headers,
+                    lambda current: numeric_values_match(
+                        (configuration_parameter(current, name) or {}).get("current_value"), original
+                    )
+                    and numeric_values_match(
+                        (configuration_parameter(current, name) or {}).get("persisted_value"), original
+                    ),
+                    timeout_s=30.0,
+                )
 
     def run_flight_commands(self, headers: dict[str, str]) -> None:
-        for name, command_id, parameters in FLIGHT_COMMANDS:
-            self.dispatch_command(name, command_id, parameters, headers)
+        self.wait_for_stable_state(
+            "px4-arming-ready",
+            "/proxy/vehicle/status",
+            headers,
+            lambda state: state.get("arming_checks_passed") is True
+            and (state.get("latest") or {}).get("command_transport", {}).get("command_available") is True,
+            timeout_s=90.0,
+            consecutive_samples=3,
+        )
+        self.dispatch_command("px4-arm", "px4.arm", {}, headers)
+        self.wait_for_stable_state(
+            "px4-armed",
+            "/proxy/vehicle/status",
+            headers,
+            lambda state: state.get("armed") is True
+            and telemetry_field_matches(state, "armed", True),
+            timeout_s=30.0,
+            consecutive_samples=2,
+        )
+
+        self.dispatch_command("px4-takeoff", "px4.takeoff", {"altitude_m": 1.5}, headers)
+        self.wait_for_state(
+            "px4-airborne",
+            "/proxy/vehicle/status",
+            headers,
+            lambda state: state.get("armed") is True
+            and state.get("in_air") is True
+            and telemetry_field_matches(state, "in_air", True),
+            timeout_s=45.0,
+        )
+
+        self.dispatch_command("px4-hold", "px4.hold", {}, headers)
+        self.wait_for_stable_state(
+            "px4-holding",
+            "/proxy/vehicle/status",
+            headers,
+            lambda state: nav_is(state, "hold")
+            and state.get("in_air") is True
+            and telemetry_field_matches(state, "nav_state", "hold"),
+            timeout_s=30.0,
+            consecutive_samples=2,
+        )
+
+        self.dispatch_command("px4-land", "px4.land", {}, headers)
+        self.wait_for_stable_state(
+            "px4-landed-disarmed",
+            "/proxy/vehicle/status",
+            headers,
+            vehicle_landed_and_disarmed,
+            timeout_s=120.0,
+            consecutive_samples=4,
+        )
 
     def run_inspection_cycle(self, headers: dict[str, str]) -> None:
         """Exercise the operator inspection path through the GUI runtime API."""
@@ -310,14 +523,7 @@ class SmokeRunner:
             lambda state: nav_is(state, "hold"),
             timeout_s=60.0,
         )
-        self.dispatch_command(
-            "inspection-recording-start",
-            "rosbag.start",
-            {"all_topics": False, "topics": INSPECTION_EVIDENCE_TOPICS},
-            headers,
-        )
-
-        self.position_fixture(self.args.overview_fixture, headers)
+        self.position_fixture(self.args.overview_fixture, headers, cable_aware=True)
         self.dispatch_command("inspection-mapper-start", "perception.pl_mapper.start", {}, headers)
         self.wait_for_state(
             "inspection-mapper-live",
@@ -326,23 +532,33 @@ class SmokeRunner:
             mapper_active,
             timeout_s=30.0,
         )
-        self.wait_for_stable_state(
-            "inspection-powerline-capture-ready",
-            "/proxy/powerline/status",
-            headers,
-            lambda state: state.get("latest", {}).get("capture_ready") is True
-            and live_line_count(state) >= self.args.min_powerline_lines,
-            timeout_s=60.0,
-            consecutive_samples=3,
-        )
-        self.dispatch_retryable_command(
-            "inspection-overview-store",
-            "powerline.overview.update",
-            {"timeout_s": 10},
-            headers,
-            timeout_s=self.args.overview_guard_s - 5.0,
-            interval_s=0.5,
-        )
+        powerline_state = self.get_state("/proxy/powerline/status", headers)
+        if (
+            powerline_state.get("stored_overview_valid") is True
+            and powerline_state.get("stored_overview_source") == "live_mapper_store"
+        ):
+            self.record_structured_artifact(
+                "inspection-powerline-overview-reused",
+                {"source": "live_mapper_store", "reason": "current-session live overview is already qualified"},
+            )
+        else:
+            self.wait_for_stable_state(
+                "inspection-powerline-capture-ready",
+                "/proxy/powerline/status",
+                headers,
+                lambda state: state.get("latest", {}).get("capture_ready") is True
+                and visible_live_line_count(state) >= self.args.min_powerline_lines,
+                timeout_s=60.0,
+                consecutive_samples=3,
+            )
+            self.dispatch_retryable_command(
+                "inspection-overview-store",
+                "powerline.overview.update",
+                {"timeout_s": 10},
+                headers,
+                timeout_s=self.args.overview_guard_s - 5.0,
+                interval_s=0.5,
+            )
         self.dispatch_command("inspection-pylons-clear", "pylon.overview.clear", {}, headers)
         # Exercise the same component-by-component GUI commands used in the
         # field without teleporting an armed PX4 vehicle. The simulation-only
@@ -509,6 +725,7 @@ class SmokeRunner:
         *,
         artifact_name: str,
         timeout_s: float = 30.0,
+        acceptable_result: Callable[[dict[str, Any]], bool] | None = None,
     ) -> dict[str, Any]:
         discovery = subprocess.run(
             [
@@ -531,6 +748,30 @@ class SmokeRunner:
                 f"{discovery.stderr.strip()}"
             )
         serialized_arguments = json.dumps(arguments, separators=(",", ":"))
+        px4_system_address = "udpin://0.0.0.0:14540"
+        runtime_environment = ""
+        if self.args.expected_profile == "hil":
+            workstation_address = os.environ.get("III_HIL_WORKSTATION_ADDRESS", "10.42.0.1")
+            pi_address = os.environ.get("III_HIL_PI_ADDRESS", "10.42.0.15")
+            ros_domain_id = os.environ.get("III_HIL_ROS_DOMAIN_ID", "42")
+            gz_partition = os.environ.get("III_HIL_GZ_PARTITION", "iii_hil_0")
+            parameter_port = os.environ.get("III_HIL_MAVLINK_PARAMETER_REMOTE_PORT", "14551")
+            px4_system_address = f"udpin://0.0.0.0:{parameter_port}"
+            cyclone_uri = (
+                "<CycloneDDS><Domain><General><Interfaces>"
+                f'<NetworkInterface address="{workstation_address}" priority="default" multicast="default"/>'
+                "</Interfaces></General><Discovery><Peers>"
+                f'<Peer address="{pi_address}"/>'
+                "</Peers></Discovery></Domain></CycloneDDS>"
+            )
+            runtime_environment = (
+                f"export ROS_DOMAIN_ID={shlex.quote(ros_domain_id)} "
+                "ROS_LOCALHOST_ONLY=0 ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET "
+                "ROS2CLI_DISABLE_DAEMON=1 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp "
+                "III_DRONE_MCP_KEEP_RMW=1 III_MAVSDK_SERVER_PORT=50052 "
+                f"GZ_PARTITION={shlex.quote(gz_partition)} "
+                f"CYCLONEDDS_URI={shlex.quote(cyclone_uri)} && "
+            )
         try:
             artifact_relative = self.artifacts.relative_to(self.workspace)
         except ValueError as exc:
@@ -539,7 +780,9 @@ class SmokeRunner:
         shell = (
             "source /opt/ros/jazzy/setup.bash && "
             "cd /home/iii/ws && source install/setup.bash && "
+            f"{runtime_environment}"
             f"iii-drone-mcp-call --json --artifact-dir {shlex.quote(str(mcp_artifacts))} "
+            f"--px4-system-address {shlex.quote(px4_system_address)} "
             f"{shlex.quote(tool)} {shlex.quote(serialized_arguments)}"
         )
         result = subprocess.run(
@@ -557,7 +800,10 @@ class SmokeRunner:
                 f"{tool} returned invalid JSON: {(result.stdout + result.stderr).strip()}"
             ) from exc
         self.record_structured_artifact(artifact_name, payload)
-        if result.returncode != 0 or payload.get("success") is not True:
+        accepted = result.returncode == 0 and payload.get("success") is True
+        if not accepted and acceptable_result is not None:
+            accepted = acceptable_result(payload)
+        if not accepted:
             raise SmokeFailure(f"{tool} failed: {payload.get('message') or result.stderr.strip()}")
         return payload
 
@@ -566,6 +812,11 @@ class SmokeRunner:
             "battery.reset",
             {"remaining_pct": float(remaining_pct), "timeout_sec": 15.0, "tolerance_pct": 1.0},
             artifact_name="inspection-battery-reset",
+            acceptable_result=(
+                acknowledged_hil_battery_reset
+                if self.args.expected_profile == "hil"
+                else None
+            ),
         )
 
     def seed_sim_pylon_overview(self, fixture_ids: tuple[str, str]) -> None:
@@ -594,7 +845,13 @@ class SmokeRunner:
                 {"setup_only": True, "fixture_id": fixture_id, "mapped_world_target": target},
             )
 
-    def position_fixture(self, fixture_id: str, headers: dict[str, str]) -> None:
+    def position_fixture(
+        self,
+        fixture_id: str,
+        headers: dict[str, str],
+        *,
+        cable_aware: bool = False,
+    ) -> None:
         target = self.resolve_fixture(fixture_id)
         self.dispatch_command(f"fixture-{fixture_id}-release-hold", "custom_operation.activate", {}, headers)
         self.wait_for_state(
@@ -604,19 +861,30 @@ class SmokeRunner:
             lambda state: state.get("latest", {}).get("control_owner") == "custom_operation",
             timeout_s=15.0,
         )
+        command_id = (
+            "custom_operation.cable_aware_fly_to_position.start"
+            if cable_aware
+            else "custom_operation.fly_to_position.start"
+        )
         started = self.dispatch_command(
             f"fixture-{fixture_id}-flight-start",
-            "custom_operation.cable_aware_fly_to_position.start",
+            command_id,
             {
                 "hold_confirmed": True,
                 "arguments": {
                     "frame_id": str(target.get("frame_id") or "world"),
                     "x": float(target["x"]),
                     "y": float(target["y"]),
-                    "z": float(target["z"]),
+                    # Generic fixtures need a small live-ground-estimate
+                    # margin. Cable-aware fixtures are recorded as CAFTP-safe;
+                    # raising them moves them toward the overhead conductor and
+                    # can cross the exact cable-clearance gate.
+                    "z": fixture_flight_altitude(
+                        float(target["z"]), cable_aware=cable_aware
+                    ),
                     "yaw": float(target["yaw"]),
                     "blend_to_next": False,
-                    "ignore_altitude": True,
+                    "ignore_altitude": False,
                 },
             },
             headers,
@@ -661,6 +929,8 @@ class SmokeRunner:
             fixture_id,
             "--workspace",
             str(self.workspace),
+            "--profile",
+            self.args.expected_profile,
         ]
         if apply:
             command.append("--apply")
@@ -984,6 +1254,51 @@ class SmokeRunner:
             f"{json.dumps(last_rejection or {}, sort_keys=True)}"
         )
 
+    def apply_configuration_edit_with_retry(
+        self,
+        name: str,
+        edit: dict[str, Any],
+        headers: dict[str, str],
+        *,
+        timeout_s: float,
+        interval_s: float = 1.0,
+    ) -> dict:
+        """Apply one edit while respecting the configuration revision CAS."""
+
+        deadline = time.monotonic() + timeout_s
+        attempt = 0
+        last_rejection: dict[str, Any] | None = None
+        while time.monotonic() < deadline:
+            state = self.get_state("/proxy/configuration/status", headers)
+            current = configuration_parameter(state, str(edit["name"]))
+            if current and numeric_values_match(current.get("current_value"), edit["value"]):
+                return {"accepted": True, "result": {"already_applied": True}}
+            attempt += 1
+            result = self.dispatch_command(
+                f"{name}-attempt-{attempt}",
+                "configuration.apply",
+                {"edits": [edit], "expected_revision": configuration_revision(state)},
+                headers,
+                require_accepted=False,
+            )
+            if result.get("accepted"):
+                return result
+            rejection = result.get("rejection") or result
+            last_rejection = rejection
+            stale_revision = (
+                rejection.get("code") == "forbidden"
+                and "stale expected revision" in str(rejection.get("message", ""))
+            )
+            if rejection.get("retryable") is not True and not stale_revision:
+                raise SmokeFailure(
+                    f"configuration.apply rejected: {json.dumps(rejection, sort_keys=True)}"
+                )
+            time.sleep(interval_s)
+        raise SmokeFailure(
+            f"configuration.apply remained rejected for {timeout_s:.1f}s: "
+            f"{json.dumps(last_rejection or {}, sort_keys=True)}"
+        )
+
     def wait_for_url(self, url: str, label: str) -> None:
         deadline = time.monotonic() + self.args.timeout_s
         last_error = ""
@@ -1080,8 +1395,14 @@ class SmokeRunner:
         print(f"[{self.step_index:02d}] {name}: HTTP {status}")
 
     def compose_up(self) -> None:
+        # A prior interrupted smoke may leave same-project containers whose
+        # published ports no longer match this invocation.  Clean only this
+        # explicitly named test project before recreating it.
+        self.compose_down()
         env = os.environ.copy()
+        proxy_port = port_from_url(self.args.proxy_url, default="18780")
         frontend_port = port_from_url(self.args.frontend_url, default="5174")
+        env.setdefault("III_GC_PROXY_PORT", proxy_port)
         env.setdefault("III_GC_FRONTEND_PORT", frontend_port)
         env.setdefault("III_GC_PROXY_PUBLIC_URL", self.args.proxy_url)
         cors_origins = merge_csv_values(
@@ -1160,31 +1481,75 @@ class SmokeRunner:
             pass
 
 
+def default_browser_password() -> str:
+    explicit = os.environ.get("III_RUNTIME_API_BROWSER_PASSWORD")
+    if explicit:
+        return explicit
+    token_file = os.environ.get("III_RUNTIME_API_TOKEN_FILE")
+    if token_file:
+        try:
+            token = Path(token_file).read_text(encoding="ascii").strip()
+        except OSError:
+            token = ""
+        if token:
+            return token
+    return "dev-password"
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     workspace = Path(__file__).resolve().parents[2]
     parser.add_argument("--workspace", default=str(workspace), help="Workspace root.")
     parser.add_argument("--runtime-url", default=os.environ.get("III_RUNTIME_API_URL", "http://127.0.0.1:8765"))
-    parser.add_argument("--proxy-url", default=os.environ.get("III_GC_PROXY_URL", "http://127.0.0.1:8780"))
-    parser.add_argument("--frontend-url", default=os.environ.get("III_GC_FRONTEND_URL", "http://127.0.0.1:5174"))
-    parser.add_argument("--password", default=os.environ.get("III_RUNTIME_API_BROWSER_PASSWORD", "dev-password"))
+    parser.add_argument(
+        "--proxy-url",
+        default=os.environ.get(
+            "III_GC_PROXY_URL",
+            f"http://127.0.0.1:{os.environ.get('III_GC_PROXY_PORT', '18780')}",
+        ),
+    )
+    parser.add_argument(
+        "--frontend-url",
+        default=os.environ.get(
+            "III_GC_FRONTEND_URL",
+            f"http://127.0.0.1:{os.environ.get('III_GC_FRONTEND_PORT', '15174')}",
+        ),
+    )
+    parser.add_argument("--password", default=default_browser_password())
+    parser.add_argument(
+        "--expected-profile",
+        choices=("sim", "hil"),
+        default=os.environ.get("III_GUI_V2_E2E_EXPECTED_PROFILE", "sim"),
+        help="Runtime profile expected and requested by the smoke workflow.",
+    )
     parser.add_argument("--artifacts-dir", default=os.environ.get("III_GUI_V2_E2E_ARTIFACTS", "log/gui-v2-sim-e2e-smoke"))
     parser.add_argument("--timeout-s", type=float, default=float(os.environ.get("III_GUI_V2_E2E_TIMEOUT_SEC", "60")))
-    parser.add_argument("--http-timeout-s", type=float, default=30.0)
+    parser.add_argument(
+        "--http-timeout-s",
+        type=float,
+        default=float(os.environ.get("III_GUI_V2_E2E_HTTP_TIMEOUT_SEC", "190")),
+        help="Per-request timeout; defaults above the GC proxy's 180 s runtime-operation budget.",
+    )
     parser.add_argument("--start-compose", action="store_true", help="Start the GC compose stack before running checks.")
     parser.add_argument("--keep-compose", action="store_true", help="Leave compose services running after the smoke.")
     parser.add_argument("--compose-file", default="src/III-Drone-GC/docker-compose.prod.yml")
     parser.add_argument("--compose-project", default=os.environ.get("III_GUI_V2_E2E_COMPOSE_PROJECT", "iii-gc-e2e-smoke"))
-    parser.add_argument("--run-mutating-workflows", action="store_true", help="Run sim-only runtime, payload, perception, configuration, rosbag, and operation commands.")
-    parser.add_argument("--run-flight-commands", action="store_true", help="Run sim-only arm, takeoff, hold, and land commands. Requires --run-mutating-workflows.")
-    parser.add_argument("--run-inspection-cycle", action="store_true", help="Run the complete sim inspection/recharge/resume/Hold/land acceptance cycle.")
+    parser.add_argument("--run-mutating-workflows", action="store_true", help="Run bench-safe runtime, payload, perception, configuration, rosbag, and operation commands.")
+    parser.add_argument(
+        "--rosbag-observation-s",
+        type=float,
+        default=5.0,
+        help="Seconds to capture live messages before stopping the bench-safe rosbag smoke.",
+    )
+    parser.add_argument("--run-flight-commands", action="store_true", help="Run simulated arm, takeoff, hold, and land commands. Requires --run-mutating-workflows.")
+    parser.add_argument("--run-inspection-cycle", action="store_true", help="Run the complete simulated inspection/recharge/resume/Hold/land acceptance cycle.")
     parser.add_argument("--capture-frontend", action="store_true", help="Capture an authenticated final GUI screenshot without running a flight cycle.")
     parser.add_argument("--overview-fixture", default="mid_corridor_taken_off_conductors_visible")
     parser.add_argument("--inspection-start-fixture", default="low_entry_side")
     parser.add_argument("--min-powerline-lines", type=int, default=4)
     parser.add_argument("--inspection-observation-s", type=float, default=20.0)
     parser.add_argument("--charging-observation-s", type=float, default=10.0)
-    parser.add_argument("--inspection-translation-speed-m-s", type=float, default=0.75)
+    parser.add_argument("--inspection-translation-speed-m-s", type=float, default=0.5)
     parser.add_argument("--inspection-yaw-rate-rad-s", type=float, default=0.5)
     parser.add_argument("--initial-battery-pct", type=float, default=100.0)
     parser.add_argument("--fixture-settle-s", type=float, default=0.1)
@@ -1323,10 +1688,11 @@ def capture_authenticated_chromium(
                             "Boolean(sessionStorage.getItem('iii-gc-v2-session')) && "
                             "Boolean(document.querySelector('.app-shell:not(.app-shell--login)')) && "
                             "Boolean(document.querySelector('[aria-label=\"Runtime session\"]')) && "
-                            "Boolean(document.querySelector('[aria-label=\"Mission command and current state\"]')) && "
-                            "Boolean(document.querySelector('.page-mode')) && "
+                            "Boolean(document.querySelector('[aria-label=\"Diagnostic dashboard\"], "
+                            "[aria-label=\"Mission command and current state\"]')) && "
+                            "Boolean(document.querySelector('.page-context[role=\"status\"]')) && "
                             "!['disconnected', 'connecting'].includes("
-                            "document.querySelector('.page-mode').textContent.trim().toLowerCase())"
+                            "document.querySelector('.page-context').textContent.trim().toLowerCase())"
                         ),
                         "returnByValue": True,
                     },
@@ -1447,6 +1813,17 @@ def live_line_count(state: dict[str, Any]) -> int:
     return 0
 
 
+def visible_live_line_count(state: dict[str, Any]) -> int:
+    lines = state.get("live_geometry", {}).get("lines", [])
+    if not isinstance(lines, list):
+        return 0
+    return sum(
+        1
+        for line in lines
+        if isinstance(line, dict) and line.get("in_field_of_view") is True
+    )
+
+
 def overviews_complete(state: dict[str, Any]) -> bool:
     pylon = state.get("pylon_overview", {})
     powerline_valid = state.get("valid") is True or state.get("stored_overview_valid") is True
@@ -1469,6 +1846,13 @@ def configuration_parameter(state: dict[str, Any], name: str) -> dict[str, Any] 
                 if parameter.get("name") == name:
                     return parameter
     return None
+
+
+def configuration_revision(state: dict[str, Any]) -> int:
+    revision = state.get("latest", {}).get("manifest", {}).get("status", {}).get("tuning_revision")
+    if not isinstance(revision, int) or isinstance(revision, bool):
+        raise SmokeFailure("configuration manifest has no valid tuning revision")
+    return revision
 
 
 def numeric_values_match(actual: Any, expected: float) -> bool:
@@ -1513,6 +1897,27 @@ def simulated_battery_reset_visible(state: dict[str, Any], requested_pct: float)
         _battery_remaining(state) * 100.0 >= minimum_pct
         and evidence.get("freshness") == "fresh"
         and evidence.get("source_availability") == "available"
+    )
+
+
+def acknowledged_hil_battery_reset(payload: dict[str, Any]) -> bool:
+    """Accept PX4's token proof when onboard ROS owns telemetry observation."""
+    data = payload.get("data") or {}
+    reset_token = data.get("reset_token")
+    acknowledgement_token = data.get("acknowledgement_token")
+    target = data.get("target_remaining_pct")
+    initial = (data.get("initial_percentage_parameter") or {}).get("param_value")
+    return (
+        payload.get("success") is False
+        and payload.get("message")
+        == "battery reset was acknowledged but no battery status was observed"
+        and isinstance(reset_token, int)
+        and reset_token == acknowledgement_token
+        and isinstance(target, (int, float))
+        and isinstance(initial, (int, float))
+        and abs(float(target) - float(initial)) <= 0.01
+        and data.get("battery_after") is None
+        and data.get("observed_remaining_pct") is None
     )
 
 

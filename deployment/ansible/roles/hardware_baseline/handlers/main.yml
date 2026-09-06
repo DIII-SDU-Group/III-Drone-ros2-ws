@@ -1,0 +1,26 @@
+---
+- name: Reload udev
+  ansible.builtin.command:
+    argv: [/usr/bin/udevadm, control, --reload-rules]
+  changed_when: true
+  when: not ansible_check_mode
+  listen: Reconcile III hardware udev
+
+- name: Re-evaluate attached III hardware
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/udevadm
+      - trigger
+      - --action=add
+      - --subsystem-match=tty
+      - --subsystem-match=video4linux
+  changed_when: true
+  when: not ansible_check_mode
+  listen: Reconcile III hardware udev
+
+- name: Wait for III hardware udev events
+  ansible.builtin.command:
+    argv: [/usr/bin/udevadm, settle, --timeout=10]
+  changed_when: true
+  when: not ansible_check_mode
+  listen: Reconcile III hardware udev

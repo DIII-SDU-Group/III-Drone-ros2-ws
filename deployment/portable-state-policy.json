@@ -1,0 +1,75 @@
+{
+  "schema": "iii.portable-state-policy/v1",
+  "portable_schema_version": 1,
+  "external_archive_warning_days": 30,
+  "domains": [
+    {
+      "name": "configuration",
+      "path": "var/lib/iii/configuration",
+      "optional": false,
+      "exclude": ["current"]
+    },
+    {
+      "name": "tuning",
+      "path": "var/lib/iii/tuning",
+      "optional": true,
+      "exclude": ["selectors"]
+    },
+    {
+      "name": "px4",
+      "path": "var/lib/iii/px4",
+      "optional": true,
+      "exclude": []
+    },
+    {
+      "name": "hardware",
+      "path": "var/lib/iii/hardware",
+      "optional": true,
+      "exclude": []
+    },
+    {
+      "name": "activation-evidence",
+      "path": "var/lib/iii/deployment/activation",
+      "optional": true,
+      "exclude": ["transactions"]
+    },
+    {
+      "name": "deployment-audits",
+      "path": "var/log/iii/deployment",
+      "optional": true,
+      "exclude": [
+        "activation-transactions",
+        "network",
+        "receiver-audit.jsonl",
+        "receiver-audit.jsonl.lock",
+        "transactions"
+      ]
+    },
+    {
+      "name": "diagnostics",
+      "path": "var/lib/iii/diagnostics",
+      "optional": true,
+      "exclude": []
+    }
+  ],
+  "structural_exclusions": [
+    "etc/iii",
+    "home",
+    "opt/iii/current",
+    "opt/iii/receiver/selectors",
+    "var/lib/iii/deployment/activation-transactions",
+    "var/lib/iii/deployment/network",
+    "var/lib/iii/incoming"
+  ],
+  "invalidating_mutations": [
+    "activate",
+    "configuration-apply",
+    "configuration-reset",
+    "parameter-apply",
+    "px4-parameter-apply",
+    "restore",
+    "rollback",
+    "tuning-commit",
+    "tuning-reset"
+  ]
+}

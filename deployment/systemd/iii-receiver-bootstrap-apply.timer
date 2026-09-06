@@ -1,0 +1,7 @@
+[Unit]
+Description=Delay III receiver A/B handoff outside the running receiver transaction
+
+[Timer]
+OnActiveSec=1s
+AccuracySec=100ms
+Unit=iii-receiver-bootstrap-apply.service

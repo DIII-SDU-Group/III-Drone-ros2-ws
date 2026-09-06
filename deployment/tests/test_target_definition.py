@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from iii_deployment.contracts import ContractError, ContractRegistry, content_identity
 from iii_deployment.target import (
@@ -14,7 +15,6 @@ from iii_deployment.target import (
     verify_release_target,
     verify_target_probe,
 )
-
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ContractRegistry(ROOT / "deployment/schemas/v1")
@@ -35,7 +35,9 @@ def probe() -> dict:
     return _json(ROOT / "deployment/tests/fixtures/target_abi_probe.json")
 
 
-def test_definition_and_host_baseline_have_verified_content_identities(definition: dict) -> None:
+def test_definition_and_host_baseline_have_verified_content_identities(
+    definition: dict,
+) -> None:
     assert definition["definition_id"] == content_identity(
         {key: value for key, value in definition.items() if key != "definition_id"}
     )
@@ -43,12 +45,16 @@ def test_definition_and_host_baseline_have_verified_content_identities(definitio
     assert baseline["contract_id"] == content_identity(
         {key: value for key, value in baseline.items() if key != "contract_id"}
     )
+    shared_profile = _json(ROOT / "deployment/targets/v1/shared-aircraft.json")
+    assert baseline["shared_target_profile_id"] == shared_profile["profile_id"]
     assert definition["sysroot"]["aircraft_derived"] is False
     sysroot = definition["sysroot"]
     assert sysroot["content_id"] == content_identity(
         {key: value for key, value in sysroot.items() if key != "content_id"}
     )
-    assert not set(definition["host_baseline"]["owns"]) & set(definition["release_boundary"]["owns"])
+    assert not set(definition["host_baseline"]["owns"]) & set(
+        definition["release_boundary"]["owns"]
+    )
     package_names = {
         item["name"] for item in definition["host_baseline"]["package_constraints"]
     }
@@ -64,7 +70,9 @@ def test_manifest_metadata_is_derived_from_one_definition(definition: dict) -> N
     REGISTRY.validate("release-manifest", manifest)
 
 
-def test_canonical_probe_and_release_are_compatible(definition: dict, probe: dict) -> None:
+def test_canonical_probe_and_release_are_compatible(
+    definition: dict, probe: dict
+) -> None:
     verify_target_probe(definition, probe, REGISTRY)
     manifest = _json(ROOT / "deployment/tests/fixtures/release_manifest.json")
     verify_release_target(manifest, definition, probe, REGISTRY)
@@ -82,7 +90,9 @@ def test_canonical_probe_and_release_are_compatible(definition: dict, probe: dic
         ("compiler_version", "12.3.0"),
     ],
 )
-def test_target_incompatibility_fails_closed(definition: dict, probe: dict, field: str, value: object) -> None:
+def test_target_incompatibility_fails_closed(
+    definition: dict, probe: dict, field: str, value: object
+) -> None:
     incompatible = deepcopy(probe)
     incompatible[field] = value
     with pytest.raises(ContractError, match=field):
@@ -102,9 +112,12 @@ def test_build_and_real_runtime_files_match_the_definition(definition: dict) -> 
     dockerfile = (ROOT / "Dockerfile.cc").read_text(encoding="utf-8")
     runtime_dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     real_setup = (ROOT / "setup/setup_real.bash").read_text(encoding="utf-8")
-    all_runtime = dockerfile + runtime_dockerfile + real_setup + (
-        ROOT / "entrypoint_real.sh"
-    ).read_text(encoding="utf-8")
+    all_runtime = (
+        dockerfile
+        + runtime_dockerfile
+        + real_setup
+        + (ROOT / "entrypoint_real.sh").read_text(encoding="utf-8")
+    )
     target = definition["target"]
     assert definition["images"]["target_seed"]["index_digest"] in dockerfile
     assert definition["images"]["builder"]["index_digest"] in dockerfile
@@ -125,8 +138,57 @@ def test_build_and_real_runtime_files_match_the_definition(definition: dict) -> 
     assert "/arm64-sysroot" not in all_runtime
 
 
-def test_sysroot_source_and_release_boundary_forbid_aircraft_mutability(definition: dict) -> None:
+def test_sysroot_source_and_release_boundary_forbid_aircraft_mutability(
+    definition: dict,
+) -> None:
     assert definition["sysroot"]["source"] == "pinned-oci-seed-plus-snapshots"
-    assert definition["release_boundary"]["normal_deployment_may_run_package_manager"] is False
+    assert (
+        definition["release_boundary"]["normal_deployment_may_run_package_manager"]
+        is False
+    )
     forbidden = set(definition["release_boundary"]["must_not_bundle"])
     assert {"glibc", "dynamic-loader", "ros-jazzy", "system-python"} <= forbidden
+
+
+def test_production_ansible_baseline_is_derived_from_target_definition(
+    definition: dict,
+) -> None:
+    variables = yaml.safe_load(
+        (ROOT / "deployment/ansible/vars/raspberry-pi-5-noble-arm64.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    target = definition["target"]
+    assert variables["iii_target_definition_id"] == definition["definition_id"]
+    assert variables["iii_baseline_id"] == definition["host_baseline"]["contract_id"]
+    unit_contract = _json(ROOT / "deployment/systemd/unit-contract.json")
+    assert variables["iii_unit_contract_id"] == unit_contract["contract_id"]
+    assert (
+        definition["host_baseline"]["unit_contract_id"]
+        == unit_contract["contract_id"]
+    )
+    assert variables["iii_target_definition_id"] != variables["iii_baseline_id"]
+    assert {
+        "path": "/opt/iii",
+        "owner": "root",
+        "group": "root",
+        "mode": "0755",
+    } in variables["iii_filesystem_directories"]
+    assert variables["iii_expected_release"] == target["os_version"]
+    assert variables["iii_expected_codename"] == target["os_codename"]
+    assert variables["iii_expected_architecture"] == target["architecture"]
+    assert variables["iii_ubuntu_snapshot"] == definition["apt_snapshot"]["uri"]
+    assert variables["iii_ros_snapshot"] == definition["sysroot"]["ros_snapshot"]["uri"]
+    assert (
+        variables["iii_ros_key_sha256"]
+        == definition["sysroot"]["ros_snapshot"]["key_sha256"]
+    )
+    assert (
+        variables["iii_ros_key_fingerprint"]
+        == definition["sysroot"]["ros_snapshot"]["key_fingerprint"]
+    )
+    exact_ros_packages = {item for item in variables["iii_ros_packages"] if "=" in item}
+    assert exact_ros_packages == {
+        f"{package['name']}={package['version']}"
+        for package in definition["sysroot"]["packages"]
+    }
