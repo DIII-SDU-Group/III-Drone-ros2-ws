@@ -212,6 +212,7 @@ def main(argv: list[str] | None = None) -> int:
                 "III_MICRO_ROS_AGENT_UDP_PORT": "8889",
                 "III_MICRO_ROS_AGENT_DOMAIN_ID": "42",
                 "III_RUNTIME_API_PX4_MAVLINK_ENDPOINT": "udpin://0.0.0.0:14542",
+                "III_RUNTIME_API_PX4_SYSTEM_ID": "8",
                 "ROS_DOMAIN_ID": "42",
                 "ROS_AUTOMATIC_DISCOVERY_RANGE": "SUBNET",
                 "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",

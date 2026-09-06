@@ -248,6 +248,7 @@ def test_launcher_injects_isolated_split_host_hil_networking(tmp_path, monkeypat
     assert (
         environment["III_RUNTIME_API_PX4_MAVLINK_ENDPOINT"] == "udpin://0.0.0.0:14542"
     )
+    assert environment["III_RUNTIME_API_PX4_SYSTEM_ID"] == "8"
     assert environment["III_HIL_SIMULATOR_PEER"] == "10.42.0.1"
     assert environment["RMW_IMPLEMENTATION"] == "rmw_cyclonedds_cpp"
     assert 'address="10.42.0.15"' in environment["CYCLONEDDS_URI"]

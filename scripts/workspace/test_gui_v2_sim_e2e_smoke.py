@@ -164,6 +164,11 @@ def test_hil_profile_is_an_explicit_smoke_target():
     assert args.expected_profile == "hil"
 
 
+def test_cable_aware_fixture_preserves_recorded_clearance_altitude():
+    assert smoke.fixture_flight_altitude(0.611, cable_aware=True) == 0.611
+    assert smoke.fixture_flight_altitude(0.611, cable_aware=False) == pytest.approx(0.671)
+
+
 def test_default_http_timeout_exceeds_proxy_operation_budget(monkeypatch):
     monkeypatch.delenv("III_GUI_V2_E2E_HTTP_TIMEOUT_SEC", raising=False)
 

@@ -160,6 +160,11 @@ def recovery_required(args: argparse.Namespace) -> bool:
     return bool(args.run_mutating_workflows or args.run_flight_commands or args.run_inspection_cycle)
 
 
+def fixture_flight_altitude(recorded_z: float, *, cable_aware: bool) -> float:
+    """Preserve CAFTP clearance while retaining the generic ground margin."""
+    return recorded_z if cable_aware else recorded_z + 0.06
+
+
 class SmokeRunner:
     def __init__(self, args: argparse.Namespace):
         self.args = args
@@ -870,10 +875,13 @@ class SmokeRunner:
                     "frame_id": str(target.get("frame_id") or "world"),
                     "x": float(target["x"]),
                     "y": float(target["y"]),
-                    # Recorded fixture height can sit just below the maneuver
-                    # controller's live ground-clearance estimate. Keep the
-                    # real altitude guard enabled and add a small setup margin.
-                    "z": float(target["z"]) + 0.06,
+                    # Generic fixtures need a small live-ground-estimate
+                    # margin. Cable-aware fixtures are recorded as CAFTP-safe;
+                    # raising them moves them toward the overhead conductor and
+                    # can cross the exact cable-clearance gate.
+                    "z": fixture_flight_altitude(
+                        float(target["z"]), cable_aware=cable_aware
+                    ),
                     "yaw": float(target["yaw"]),
                     "blend_to_next": False,
                     "ignore_altitude": False,
