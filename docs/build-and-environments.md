@@ -61,6 +61,9 @@ Shared env and path conventions:
 - `III_SYSTEM_RUNTIME_DIR`
 - `III_SYSTEM_DAEMON_SOCKET`
 - `III_SYSTEM_DAEMON_LOG`
+- `ROS_LOG_DIR=/var/log/iii/ros` for systemd-managed ROS 2 processes; this
+  avoids the inaccessible `$HOME/.ros/log` default while `ProtectHome=yes` is
+  enforced.
 - `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`
 
 Mission specifications and behavior trees are installed, content-addressed

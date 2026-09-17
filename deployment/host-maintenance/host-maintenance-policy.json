@@ -42,10 +42,10 @@
     "xz-utils"
   ],
   "host_contract": {
-    "baseline_id": "11c9178e91cd75b6f94288177f7bebc5c3c69a15bdf85439067b9c078c2835ee",
+    "baseline_id": "b2e8431c6e0e9052791f9936e9d68c1f875a099e9b7ca9dbc36c00cf056a009f",
     "shared_target_profile_id": "80e6d4dc7721661fc83659a3b3c2f64c2fca22487e267efb5a67581fa4ea05b5",
-    "target_definition_id": "60ff90e65138c3132b61840101ea0c3df7e1af504dde724732db3a12faab787f",
-    "unit_contract_id": "17574b614989316af7e25a75d9b7f591fd91ce6169d014f197e186b878050ed7"
+    "target_definition_id": "055b692cfc924dfd0a4039e4c8f8d469b0e9b5d26ec29b1bba6fdf685640f10d",
+    "unit_contract_id": "f73fc594c37814913745f317f870716d3b8873011e21f62e7606b321dafe8f6b"
   },
   "platform": {
     "architecture": "aarch64",
@@ -54,7 +54,7 @@
     "release": "24.04",
     "ros_distro": "jazzy"
   },
-  "policy_id": "2aaa6d4e241154ac8d0f79587ea3632f69a7450b320070a0d0960ab7b905dbef",
+  "policy_id": "5127985e2bd66875769e54d59d2d7232b6108b463d0b2f6c55ae0ff97012cbbf",
   "reboot": {
     "automatic": false,
     "package_prefixes": [

@@ -66,6 +66,7 @@ def test_production_units_are_real_profile_host_owned_and_independently_stoppabl
         ROOT / "deployment/ansible/roles/runtime_control_plane/templates/runtime.env.j2"
     ).read_text(encoding="utf-8")
     assert "III_TUNING_STATE_ROOT=/var/lib/iii/tuning" in runtime_environment
+    assert "ROS_LOG_DIR=/var/log/iii/ros" in runtime_environment
     assert "III_LOGICAL_TARGET={{ iii_logical_target }}" in runtime_environment
 
 

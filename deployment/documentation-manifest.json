@@ -321,7 +321,7 @@
       "qualified_release_inclusion": true,
       "repository": "runtime",
       "repository_path": "src/III-Drone-Runtime",
-      "sha256": "b43c901a38c6618b3143b853e564b24fdf0dd35298118168925210f8bb156b6e",
+      "sha256": "a1dd156162666dbbfb985b18536640a661804e4032b1eda5994443df0c49ec7f",
       "source_of_truth": "docs/runtime-api-configuration.md"
     },
     {
@@ -1489,7 +1489,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "3a12f1b20d61d73c6dcbbe9c29f63eb9577e788039f498fc854608ca1706da3c",
+      "sha256": "fc833072e3ebf86d4fc89ff677a29a32044bfb941a52b8900ff2ad1b9de92a4c",
       "source_of_truth": "docs/build-and-environments.md"
     },
     {
@@ -2309,7 +2309,7 @@
       "source_of_truth": "tools/III-Drone-MCP/README.md"
     }
   ],
-  "manifest_id": "67f9771966e6c131067f545c38aa622598f50992debd6a8045d7cdabde157968",
+  "manifest_id": "99ebed94d8a7e4ca306bd0c0d6b3e7c1526b895287354d0d143a45d629e49be0",
   "policy_schema": "iii.documentation-policy/v1",
   "schema": "iii.documentation-manifest/v1"
 }
