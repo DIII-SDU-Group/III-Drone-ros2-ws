@@ -11,7 +11,7 @@
     "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
     "previous": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/tuple"}]},
     "candidate": {"$ref": "#/definitions/tuple"},
-    "checkpoint": {"enum": ["prepared", "units-stopped", "code-selector-switched", "configuration-selector-switched", "selector-committed", "rollback-prepared", "rollback-code-selector-switched", "rollback-selector-committed"]},
+    "checkpoint": {"enum": ["prepared", "units-stopped", "code-selector-switched", "configuration-selector-switched", "selector-committed", "rollback-prepared", "rollback-initial-selector-cleared", "rollback-code-selector-switched", "rollback-selector-committed"]},
     "autonomy_started": {"const": false}
   },
   "definitions": {
