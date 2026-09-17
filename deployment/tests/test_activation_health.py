@@ -536,6 +536,19 @@ def test_initial_transaction_rollback_clears_selectors_without_inventing_a_basel
     assert not transactions.configuration_selector.exists()
 
 
+def test_hil_bootstrap_uses_verified_px4_without_requiring_a_running_runtime(
+    tmp_path: Path,
+) -> None:
+    env = _environment(tmp_path)
+    coordinator = env["coordinator"]
+    coordinator.profile = "hil"
+    safety = coordinator._hil_bootstrap_safety(_px4_evidence(NEW_RELEASE))
+
+    assert safety.runtime_api_available is False
+    assert safety.armed is False
+    assert coordinator._hil_bootstrap_safety_reasons(safety) == []
+
+
 def test_activation_waits_for_bounded_runtime_health_startup(tmp_path: Path):
     env = _environment(tmp_path)
     calls = 0

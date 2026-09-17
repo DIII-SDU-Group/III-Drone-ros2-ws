@@ -924,6 +924,10 @@ class ActivationCoordinator:
             "Direct Operation is not confirmed inactive",
             "active Reference Owner is not confirmed clear",
             "configuration migration checkpoint is not ready",
+            "vehicle is not confirmed landed",
+            "PX4 failsafe state is not confirmed clear",
+            "PX4 navigation state is not maintenance-safe",
+            "maintenance-safe state was not continuous for three seconds",
         }
         return [
             reason
@@ -932,6 +936,53 @@ class ActivationCoordinator:
             ).rejection_reasons(safety)
             if reason not in deferred
         ]
+
+    def _hil_bootstrap_safety(
+        self, px4_evidence: Mapping[str, Any]
+    ) -> ActivationSafetySnapshot:
+        """Describe the pre-application HIL safety boundary without a runtime.
+
+        The normal observation is authored by the running application and is
+        therefore unavailable before its first start.  HIL bootstrap instead
+        binds the independently verified, zero-write PX4 audit: it proves the
+        physical vehicle is disarmed.  Every application-owned field remains
+        explicitly unavailable (rather than being guessed safe), and is
+        required again by the post-start health gate.
+        """
+
+        target = px4_evidence["snapshot"]["target"]
+        value: dict[str, Any] = {
+            "logical_target": self.logical_target,
+            "profile": self.profile,
+            "observation_id": "0" * 64,
+            "runtime_api_available": False,
+            "runtime_identity_matches": False,
+            "runtime_fresh": False,
+            "px4_available": True,
+            "px4_fresh": True,
+            "armed": target["armed"],
+            "in_air": None,
+            "nav_state": None,
+            "failsafe": None,
+            "mission_fresh": False,
+            "mission_active": None,
+            "mission_control_owner": None,
+            "operation_fresh": False,
+            "custom_operation_active": None,
+            "custom_operation_control_owner": None,
+            "direct_operation_active": None,
+            "reference_owner_active": None,
+            "configuration_migration_ready": False,
+            "configuration_checkpoint_id": None,
+            "continuously_safe_for_s": 0.0,
+            "schema": "iii.activation-safety/v1",
+        }
+        value["observation_id"] = content_identity(
+            {key: item for key, item in value.items() if key != "observation_id"}
+        )
+        snapshot = ActivationSafetySnapshot(**value)
+        snapshot.validate()
+        return snapshot
 
     def bootstrap_configuration_preflight(self, *, release_id: str) -> dict[str, Any]:
         """Predict the only valid first HIL checkpoint without mutating it."""
@@ -976,7 +1027,14 @@ class ActivationCoordinator:
                 raise ContractError(
                     "HIL bootstrap checkpoint differs from the retained activation plan"
                 )
-        safety = self.safety_provider()
+        px4_evidence = self.validate_px4_evidence(
+            release_id=release_id, evidence=px4_activation_evidence
+        )
+        safety = (
+            self._hil_bootstrap_safety(px4_evidence)
+            if bootstrap_configuration
+            else self.safety_provider()
+        )
         if (
             not operator_rollback
             and self.configuration_reconciler is not None
@@ -1013,9 +1071,6 @@ class ActivationCoordinator:
         candidate, policy, runtime_range = self._candidate(
             release_id=release_id,
             configuration_checkpoint_id=configuration_checkpoint_id,
-        )
-        px4_evidence = self.validate_px4_evidence(
-            release_id=release_id, evidence=px4_activation_evidence
         )
         if bootstrap_configuration:
             if maintenance_override is not None:
@@ -1315,7 +1370,11 @@ class ActivationCoordinator:
                 if operator_rollback
                 else "release is not the staged candidate"
             )
-        safety = self.safety_provider()
+        safety = (
+            self._hil_bootstrap_safety(px4_evidence)
+            if bootstrap_configuration
+            else self.safety_provider()
+        )
         if (
             not operator_rollback
             and self.configuration_reconciler is not None
