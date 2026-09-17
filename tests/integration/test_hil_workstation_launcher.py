@@ -13,7 +13,11 @@ def test_hil_workstation_launcher_is_shell_valid_and_uses_isolated_links():
     assert "III_HIL_XRCE_PORT:-8889" in source
     assert 'PI_ENDPOINT="${III_HIL_PI_ENDPOINT:-iii.local}"' in source
     assert 'PI_ADDRESS="${III_HIL_PI_ADDRESS:-}"' in source
+    assert 'HIL_PEER_ADDRESS_FILE="${III_HIL_PEER_ADDRESS_FILE:-${HIL_RUNTIME_DIR}/pi-address-${PX4_INSTANCE}}"' in source
     assert "getent ahostsv4" in source
+    assert "session_pi_address" in source
+    assert "record_pi_address" in source
+    assert "rm -f \"${HIL_PEER_ADDRESS_FILE}\"" in source
     assert "10.42.0.15" not in source
     assert 'SCRIPT_WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"' in source
     assert "elif [[ -x /home/iii/ws/tools/simulation/launch_simulation_tools.sh ]]" in source

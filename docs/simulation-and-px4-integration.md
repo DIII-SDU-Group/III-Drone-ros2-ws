@@ -38,7 +38,10 @@ workstation resolves the Pi as `iii.local` by default; the Pi selects its
 Cyclone DDS interface from the kernel route to workstation peer `10.42.0.1`.
 This avoids binding either side to the previous image-specific Pi address
 `10.42.0.15`. Set `III_HIL_PI_ADDRESS` only as an attended fallback when mDNS
-is unavailable. The canonical workstation control surface is
+is unavailable. After a successful start, the workstation records its validated
+peer address in an owner-only, session-scoped runtime file. `status` prefers
+live mDNS, then uses that file only while the HIL session remains running; `stop`
+clears it. The canonical workstation control surface is
 `tools/simulation/launch_hil_workstation.sh` (`start`, `status`, and `stop`);
 it must not be started until the matching Pi release is activated and the
 preflight has passed.

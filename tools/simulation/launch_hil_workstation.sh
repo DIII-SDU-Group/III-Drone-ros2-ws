@@ -22,6 +22,7 @@ PX4_BUILD_DIR="${III_HIL_PX4_BUILD_DIR:-${PX4_ROOT}/build/px4_sitl_default}"
 PX4_CANONICAL_RCS="${PX4_ROOT}/ROMFS/px4fmu_common/init.d-posix/rcS"
 HIL_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}/iii-hil-${UID}"
 PX4_STARTUP_SCRIPT="${HIL_RUNTIME_DIR}/px4-rcS-${PX4_INSTANCE}"
+HIL_PEER_ADDRESS_FILE="${III_HIL_PEER_ADDRESS_FILE:-${HIL_RUNTIME_DIR}/pi-address-${PX4_INSTANCE}}"
 PI_ENDPOINT="${III_HIL_PI_ENDPOINT:-iii.local}"
 PI_ADDRESS="${III_HIL_PI_ADDRESS:-}"
 WORKSTATION_ADDRESS="${III_HIL_WORKSTATION_ADDRESS:-10.42.0.1}"
@@ -124,11 +125,48 @@ resolve_pi_address() {
     fi
     local resolved
     resolved="$(getent ahostsv4 "${PI_ENDPOINT}" | awk 'NR == 1 { print $1; exit }')"
-    if [[ -z "${resolved}" ]]; then
-        echo "Unable to resolve HIL Pi endpoint ${PI_ENDPOINT}; set III_HIL_PI_ADDRESS to an explicit IPv4 address." >&2
-        return 1
+    if [[ -n "${resolved}" ]]; then
+        printf '%s\n' "${resolved}"
+        return 0
     fi
-    printf '%s\n' "${resolved}"
+    if session_pi_address; then
+        return 0
+    fi
+    echo "Unable to resolve HIL Pi endpoint ${PI_ENDPOINT}; set III_HIL_PI_ADDRESS to an explicit IPv4 address." >&2
+    return 1
+}
+
+valid_ipv4() {
+    local address="$1"
+    local octet
+    local -a octets
+    [[ "${address}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+    IFS=. read -r -a octets <<<"${address}"
+    for octet in "${octets[@]}"; do
+        ((10#${octet} <= 255)) || return 1
+    done
+}
+
+session_pi_address() {
+    local address
+    local mode
+    [[ -f "${HIL_PEER_ADDRESS_FILE}" && ! -L "${HIL_PEER_ADDRESS_FILE}" && -O "${HIL_PEER_ADDRESS_FILE}" ]] || return 1
+    mode="$(stat -c '%a' "${HIL_PEER_ADDRESS_FILE}")" || return 1
+    (( (8#${mode} & 077) == 0 )) || return 1
+    address="$(<"${HIL_PEER_ADDRESS_FILE}")"
+    valid_ipv4 "${address}" || return 1
+    printf '%s\n' "${address}"
+}
+
+record_pi_address() {
+    local temporary
+    valid_ipv4 "${PI_ADDRESS}" || return 1
+    mkdir -p "${HIL_RUNTIME_DIR}"
+    chmod 700 "${HIL_RUNTIME_DIR}"
+    temporary="$(mktemp "${HIL_PEER_ADDRESS_FILE}.tmp.XXXXXX")"
+    chmod 600 "${temporary}"
+    printf '%s\n' "${PI_ADDRESS}" >"${temporary}"
+    mv -f "${temporary}" "${HIL_PEER_ADDRESS_FILE}"
 }
 
 link_probe() {
@@ -279,6 +317,7 @@ start() {
     # IPv4 peer for every MAVLink stream.  Resolve once and retain that exact
     # address so an unset optional override cannot become an empty ``-t``.
     PI_ADDRESS="$(resolve_pi_address)"
+    record_pi_address
     [[ -x "${PX4_BUILD_DIR}/bin/px4" ]] || {
         echo "Cached PX4 SITL binary is missing: ${PX4_BUILD_DIR}/bin/px4" >&2
         return 1
@@ -352,6 +391,7 @@ stop() {
         III_SIM_TOOLS_PX4_INSTANCE="${PX4_INSTANCE}" \
         III_SIM_TOOLS_PX4_BUILD_DIR="${PX4_BUILD_DIR}" \
         "${SIM_LAUNCHER}" --stop >/dev/null
+    rm -f "${HIL_PEER_ADDRESS_FILE}"
     print_status || true
 }
 
