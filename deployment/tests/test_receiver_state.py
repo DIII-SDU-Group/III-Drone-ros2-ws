@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import os
 from pathlib import Path
 import struct
 import hashlib
@@ -240,6 +241,33 @@ def test_access_add_prove_revoke_and_final_key_denial(tmp_path: Path) -> None:
     with pytest.raises(ContractError, match="final usable"):
         manager.revoke(requester=new_id, machine_id=new_enrollment["machine_id"])
     assert all("public_key" not in item for item in manager.list_clients())
+
+
+def test_runtime_verifiers_are_projected_to_the_runtime_group(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ownership: list[tuple[Path, int, int]] = []
+    monkeypatch.setattr(
+        os,
+        "chown",
+        lambda path, uid, gid, **_kwargs: ownership.append((Path(path), uid, gid)),
+    )
+    runtime_verifiers = tmp_path / "runtime-verifiers.json"
+    field_signers = tmp_path / "field-signers.json"
+    manager = AccessManager(
+        state_path=tmp_path / "access.json",
+        authorized_keys_path=tmp_path / "authorized_keys",
+        registry=REGISTRY,
+        runtime_verifiers_path=runtime_verifiers,
+        field_signers_path=field_signers,
+        transport_gid=1101,
+        runtime_gid=1100,
+    )
+
+    manager.bootstrap([enrollment(key(1), 1)])
+
+    assert (runtime_verifiers, 0, 1100) in ownership
+    assert (field_signers, 0, 1101) in ownership
 
 
 def test_initial_receiver_reconcile_is_safe_before_access_bootstrap(

@@ -195,6 +195,7 @@ def build_engine(config: ReceiverConfig) -> ReceiverEngine:
         field_signers_path=FIELD_SIGNERS_PATH,
         transport_uid=config.transport_uid,
         transport_gid=config.transport_gid,
+        runtime_gid=store.runtime_gid,
     )
     control_plane = OnboardControlPlane()
     safety_provider = OnboardSafetyProvider()

@@ -9,6 +9,8 @@
       - "{{ iii_deployment_uid | string }}"
       - --transport-gid
       - "{{ iii_deployment_gid | string }}"
+      - --runtime-gid
+      - "{{ iii_runtime_gid | string }}"
   register: iii_finalize_access
   changed_when: false
   check_mode: false

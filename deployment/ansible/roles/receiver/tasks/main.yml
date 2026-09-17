@@ -239,6 +239,8 @@
       - "{{ iii_deployment_uid | string }}"
       - --transport-gid
       - "{{ iii_deployment_gid | string }}"
+      - --runtime-gid
+      - "{{ iii_runtime_gid | string }}"
   register: iii_access_bootstrap
   changed_when: (iii_access_bootstrap.stdout | from_json).changed
   when: not ansible_check_mode

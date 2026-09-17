@@ -41,6 +41,7 @@ class AccessManager:
         field_signers_path: Path | None = None,
         transport_uid: int | None = None,
         transport_gid: int | None = None,
+        runtime_gid: int | None = None,
         client_path: str = "/usr/bin/iii-deployment-ssh-gateway",
     ) -> None:
         if client_path != "/usr/bin/iii-deployment-ssh-gateway":
@@ -53,6 +54,10 @@ class AccessManager:
         self.field_signers_path = field_signers_path
         self.transport_uid = transport_uid
         self.transport_gid = transport_gid
+        # Older callers supplied only the transport group.  Retain that
+        # compatibility for offline tooling, while production supplies the
+        # application runtime group explicitly.
+        self.runtime_gid = runtime_gid if runtime_gid is not None else transport_gid
         self.registry = registry
         self.client_path = client_path
 
@@ -518,7 +523,7 @@ class AccessManager:
             )
             self.registry.validate("runtime-api-client-verifiers", runtime)
             atomic_document(self.runtime_verifiers_path, runtime, mode=0o640)
-            self._set_runtime_group(self.runtime_verifiers_path)
+            self._set_group(self.runtime_verifiers_path, self.runtime_gid)
         if self.field_signers_path is not None:
             signers = {
                 "schema_version": "1",
@@ -540,15 +545,16 @@ class AccessManager:
             }
             self.registry.validate("trusted-signers", signers)
             atomic_document(self.field_signers_path, signers, mode=0o640)
-            self._set_runtime_group(self.field_signers_path)
+            self._set_group(self.field_signers_path, self.transport_gid)
 
-    def _set_runtime_group(self, path: Path) -> None:
-        if self.transport_gid is not None:
-            os.chown(path, 0, self.transport_gid, follow_symlinks=False)
+    @staticmethod
+    def _set_group(path: Path, gid: int | None) -> None:
+        if gid is not None:
+            os.chown(path, 0, gid, follow_symlinks=False)
 
     def _reconcile_state_permissions(self) -> None:
         os.chmod(self.state_path, 0o640, follow_symlinks=False)
-        self._set_runtime_group(self.state_path)
+        self._set_group(self.state_path, self.runtime_gid)
 
 
 __all__ = ["AccessManager", "client_id_for_public_key"]
