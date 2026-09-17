@@ -83,6 +83,12 @@ fi
 # imports deployment commands. requirements.txt intentionally carries general
 # workspace tooling and does not duplicate deployment's pinned contract.
 pip3 install -r ./requirements.txt
+# iii-deployment pins iii-drone-configuration to the workspace release and
+# depends on the local iii CLI, which in turn pins iii-drone-contracts.  Make
+# both local distributions available before resolving deployment so a fresh
+# container does not try (and fail) to fetch them from PyPI.
+pip3 install -e ./src/III-Drone-Contracts
+pip3 install -e ./src/III-Drone-Configuration
 pip3 install -e ./deployment
 pip3 uninstall -y iii 2> /dev/null
 pip3 install -e ./tools/III-Drone-CLI
