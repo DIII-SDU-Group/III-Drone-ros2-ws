@@ -126,6 +126,7 @@ def test_hil_px4_audit_isolated_from_physical_fmu() -> None:
     assert '"udpin:0.0.0.0:14543"' in receiver
     assert '"udpin:0.0.0.0:14541"' in receiver
     assert 'III_HIL_MAVLINK_AUDIT_REMOTE_PORT:-14543' in launcher
+    assert 'PI_ADDRESS="$(resolve_pi_address)"' in launcher
 
 
 def test_network_apply_and_revert_have_fixed_privileged_units_and_90_second_timer() -> (

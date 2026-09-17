@@ -275,6 +275,10 @@ print_status() {
 
 start() {
     require_standard_link
+    # ``link_probe`` resolves the mDNS endpoint, but PX4 itself needs a literal
+    # IPv4 peer for every MAVLink stream.  Resolve once and retain that exact
+    # address so an unset optional override cannot become an empty ``-t``.
+    PI_ADDRESS="$(resolve_pi_address)"
     [[ -x "${PX4_BUILD_DIR}/bin/px4" ]] || {
         echo "Cached PX4 SITL binary is missing: ${PX4_BUILD_DIR}/bin/px4" >&2
         return 1
