@@ -165,6 +165,7 @@ def inspect_materialization(
     known_hosts: Path,
     target: str,
     profile: str,
+    ansible_user: str,
     operator_cidr: str,
     python_executable: Path,
     schema_root: Path,
@@ -232,6 +233,10 @@ def inspect_materialization(
         raise ProvisioningArtifactError("target must be inside the operator IPv4 CIDR")
     if profile not in {"real", "opti_track", "hil"}:
         raise ProvisioningArtifactError("host profile must be real, opti_track, or hil")
+    if ansible_user not in {"iii-bootstrap", "iii"}:
+        raise ProvisioningArtifactError(
+            "Ansible user must be iii-bootstrap or iii"
+        )
     return {
         "output_root": str(output),
         "workspace_root": str(workspace),
@@ -244,6 +249,7 @@ def inspect_materialization(
         "known_hosts": str(host_keys),
         "target": str(address),
         "profile": profile,
+        "ansible_user": ansible_user,
         "operator_cidr": str(network),
         "python_executable": str(python),
         "schema_root": str(schema_root.resolve()),
@@ -623,7 +629,7 @@ def materialize(
                     "aircraft": {
                         "hosts": {
                             inspection["target"]: {
-                                "ansible_user": "iii-bootstrap",
+                                "ansible_user": inspection["ansible_user"],
                                 "ansible_ssh_private_key_file": inspection[
                                     "ssh_private_key"
                                 ],

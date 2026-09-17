@@ -30,6 +30,12 @@ def main() -> int:
     parser.add_argument("--known-hosts", type=Path, required=True)
     parser.add_argument("--target", required=True)
     parser.add_argument("--profile", choices=("real", "opti_track", "hil"), required=True)
+    parser.add_argument(
+        "--ansible-user",
+        choices=("iii-bootstrap", "iii"),
+        default="iii-bootstrap",
+        help="first-boot bootstrap account or the established maintenance account",
+    )
     parser.add_argument("--operator-cidr", required=True)
     parser.add_argument("--python", type=Path, default=Path(sys.executable))
     parser.add_argument("--operation-id", required=True)
@@ -46,6 +52,7 @@ def main() -> int:
             known_hosts=args.known_hosts,
             target=args.target,
             profile=args.profile,
+            ansible_user=args.ansible_user,
             operator_cidr=args.operator_cidr,
             python_executable=args.python,
             schema_root=ROOT / "deployment/schemas/v1",

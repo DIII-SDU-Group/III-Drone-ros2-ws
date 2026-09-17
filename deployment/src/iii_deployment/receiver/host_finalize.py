@@ -235,6 +235,7 @@ def finalize_host(
         raise ContractError("host baseline ID must be lowercase SHA-256")
     existing_report_path = _under(root, REPORT_PATH)
     previous_report: dict[str, Any] | None = None
+    existing_report: dict[str, Any] | None = None
     if existing_report_path.exists() or existing_report_path.is_symlink():
         existing = _document(existing_report_path, label="host provisioning report")
         expected_report_id = content_identity(
@@ -263,9 +264,7 @@ def finalize_host(
             raise ContractError(
                 "secret-bearing bootstrap paths reappeared: " + ", ".join(residual)
             )
-        if existing.get("baseline_id") == baseline_id:
-            return existing
-        previous_report = existing
+        existing_report = existing
     health = _document(
         _under(root, Path("/var/lib/iii/deployment/host-baseline-report.json")),
         label="converged-host health report",
@@ -277,6 +276,13 @@ def finalize_host(
         raise ContractError("host health report is not converged")
     if health.get("baseline_id") != baseline_id:
         raise ContractError("host health report belongs to another baseline")
+    if existing_report is not None:
+        if (
+            existing_report.get("baseline_id") == baseline_id
+            and existing_report.get("profile") == health.get("profile")
+        ):
+            return existing_report
+        previous_report = existing_report
     maintenance_access = _validate_maintenance_access(
         root, health.get("maintenance_access", {})
     )

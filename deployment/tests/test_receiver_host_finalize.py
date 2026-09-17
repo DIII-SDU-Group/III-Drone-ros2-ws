@@ -217,10 +217,9 @@ def test_finalize_rebinds_an_established_ab_host_and_archives_provenance(
         run=lambda _argv: None,
         user_exists=lambda _name: False,
     )
-    next_baseline = "f" * 64
     health_path = root / "var/lib/iii/deployment/host-baseline-report.json"
     health = json.loads(health_path.read_text())
-    health.update({"baseline_id": next_baseline, "profile": "hil"})
+    health.update({"profile": "hil"})
     health["receiver"].update({"receiver_id": "c" * 64, "generation": 2})
     _write(health_path, health)
     _write(
@@ -246,13 +245,13 @@ def test_finalize_rebinds_an_established_ab_host_and_archives_provenance(
     current.symlink_to("../slots/b")
 
     rebound = finalize_host(
-        baseline_id=next_baseline,
+        baseline_id=BASELINE_ID,
         root=root,
         run=lambda _argv: None,
         user_exists=lambda _name: False,
     )
 
-    assert rebound["baseline_id"] == next_baseline
+    assert rebound["baseline_id"] == BASELINE_ID
     assert rebound["profile"] == "hil"
     assert rebound["receiver_generation"] == 2
     assert rebound["receiver_slot"] == "b"

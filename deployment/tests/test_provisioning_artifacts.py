@@ -159,6 +159,7 @@ def test_materializer_produces_complete_signed_owner_controlled_input(
         known_hosts=known_hosts,
         target="10.42.0.70",
         profile="hil",
+        ansible_user="iii",
         operator_cidr="10.42.0.0/24",
         python_executable=python_link,
         schema_root=SCHEMAS,
@@ -180,6 +181,9 @@ def test_materializer_produces_complete_signed_owner_controlled_input(
     assert values["operator_cidr"] == "10.42.0.0/24"
     assert values["profile"] == "hil"
     assert stored["profile"] == "hil"
+    inventory = json.loads((output / "inventory.json").read_text())
+    host = inventory["all"]["children"]["aircraft"]["hosts"]["10.42.0.70"]
+    assert host["ansible_user"] == "iii"
     assert values["maintenance_ssh_public_key"].startswith("ssh-ed25519 ")
     assert (
         stored["maintenance_ssh_client_id"]
@@ -211,9 +215,6 @@ def test_materializer_produces_complete_signed_owner_controlled_input(
             assert "PYTHONDONTWRITEBYTECODE=1" in launcher_text
             assert f"-B -S -m {module}" in launcher_text
             assert "/opt/iii/receiver/bootstrap/bin" not in launcher_text
-    inventory = json.loads((output / "inventory.json").read_text())
-    host = inventory["all"]["children"]["aircraft"]["hosts"]["10.42.0.70"]
-    assert host["ansible_user"] == "iii-bootstrap"
     assert "StrictHostKeyChecking=yes" in host["ansible_ssh_common_args"]
     assert not (output / "receiver-payload").exists()
     assert all(
