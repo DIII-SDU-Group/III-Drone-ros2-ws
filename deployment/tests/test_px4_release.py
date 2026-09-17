@@ -46,7 +46,11 @@ def test_generated_px4_release_contract_matches_source():
         parameters=parameters,
         registry=REGISTRY,
     )
-    assert len(dds["publications"]) == 30
+    assert len(dds["publications"]) == 31
+    assert {
+        "topic": "/fmu/out/vehicle_local_position_setpoint",
+        "type": "px4_msgs::msg::VehicleLocalPositionSetpoint",
+    } in dds["publications"]
     assert len(dds["subscriptions"]) == 28
     assert dds["subscriptions_multi"] == []
 
