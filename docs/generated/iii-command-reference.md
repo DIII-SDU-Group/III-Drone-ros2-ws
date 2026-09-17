@@ -338,8 +338,9 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii deploy activate [-h] --configuration-checkpoint-id
-                           CONFIGURATION_CHECKPOINT_ID [--qualified]
+usage: iii deploy activate [-h]
+                           [--configuration-checkpoint-id CONFIGURATION_CHECKPOINT_ID]
+                           [--bootstrap-configuration] [--qualified]
                            [--decision SET:PARAMETER=CHOICE]
                            [--target {sim,real,hil}]
                            release_id
@@ -352,6 +353,9 @@ options:
   --configuration-checkpoint-id CONFIGURATION_CHECKPOINT_ID
                         current/source checkpoint for activation; paired
                         rollback checkpoint for explicit rollback
+  --bootstrap-configuration
+                        create and bind the first immutable configuration
+                        checkpoint for HIL only
   --qualified           declare explicit qualified activation authority
   --decision SET:PARAMETER=CHOICE
                         resolve one reviewed reintroduction with use_old or
@@ -584,8 +588,8 @@ options:
 - Interactive terminal: `no`
 
 ```text
-usage: iii deploy rollback [-h] --configuration-checkpoint-id
-                           CONFIGURATION_CHECKPOINT_ID
+usage: iii deploy rollback [-h]
+                           [--configuration-checkpoint-id CONFIGURATION_CHECKPOINT_ID]
                            [--target {sim,real,hil}]
                            release_id
 

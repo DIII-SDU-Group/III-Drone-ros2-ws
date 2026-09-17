@@ -1697,7 +1697,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "b4eba5172017cb3c097b8efd88de127e56f207d6ba17240f76becd2e4f9e2064",
+      "sha256": "d501f3c9f67e9ce32d6141455f849e75cce15850dadadabd597f5aa93454d2b0",
       "source_of_truth": "deployment/scripts/update_documentation_references.py"
     },
     {
@@ -1713,7 +1713,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "fbbe982b4f0f46d91cf906b637ea6d80d0d525528447b09664e78951c714099b",
+      "sha256": "45697213b4b0c09e66a38802e031c172d5d05e0ba3c8f579772c085dbf64942d",
       "source_of_truth": "deployment/scripts/update_documentation_references.py"
     },
     {
@@ -2193,7 +2193,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "3054ff1df57123d91b7b39d3b688845ebd1764638a5724835a155ccc4001a972",
+      "sha256": "c9ee16b3d367ca1dafe22e1bb10f732938d067ea994a78fdc0aa71188c2a458f",
       "source_of_truth": "docs/simulation-and-px4-integration.md"
     },
     {
@@ -2309,7 +2309,7 @@
       "source_of_truth": "tools/III-Drone-MCP/README.md"
     }
   ],
-  "manifest_id": "94a31ef92251e2d592f8e4aacc55e40b0c23b4a915aa131e25dc66afc26d246a",
+  "manifest_id": "67f9771966e6c131067f545c38aa622598f50992debd6a8045d7cdabde157968",
   "policy_schema": "iii.documentation-policy/v1",
   "schema": "iii.documentation-manifest/v1"
 }
