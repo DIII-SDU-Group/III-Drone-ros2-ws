@@ -56,4 +56,4 @@ src/micro-ROS-Agent 52abdf5a9897637b2539cb1c239e1ec4fa92e01c
 src/micro_ros_msgs e65ab21bd0733ebff2af6317d573cc584efa5893
 src/px4-ros2-interface-lib 2df7a66d68faedc4975b4080bc8440d05d9125d4
 src/px4_msgs 5e0e33cc6f192c1ad10548ffb25473fb618b9858
-tools/III-Drone-CLI 522f203cb55d2c42fdd08b2434248c07526abc2b
+tools/III-Drone-CLI 4f3e97b748a951d94f5d17647a9430f604f5bc8c

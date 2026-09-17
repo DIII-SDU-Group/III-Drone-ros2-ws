@@ -1513,6 +1513,10 @@ def salvage_main() -> int:
     parser.add_argument("--policy", type=Path, required=True)
     parser.add_argument("--operation-id", required=True)
     parser.add_argument(
+        "--output-owner",
+        help="numeric uid:gid that receives the transient salvage result",
+    )
+    parser.add_argument(
         "--allow-loopback-test", action="store_true", help=argparse.SUPPRESS
     )
     arguments = parser.parse_args()
@@ -1546,6 +1550,12 @@ def salvage_main() -> int:
             )
             backup_root = controller.paths.backup_root / record["backup_id"]
             _atomic_json(backup_root / "salvage-record.json", record)
+            if arguments.output_owner:
+                _handoff_salvage_output(
+                    output_root=arguments.output_root,
+                    backup_root=backup_root,
+                    owner=_parse_output_owner(arguments.output_owner),
+                )
         sys_output = canonical_json(
             {
                 "schema": "iii.host-salvage-worker-result/v1",
@@ -1560,6 +1570,43 @@ def salvage_main() -> int:
     except (PortableStateError, OSError) as exc:
         parser.error(str(exc))
     return 64
+
+
+def _parse_output_owner(value: str) -> tuple[int, int]:
+    try:
+        uid_text, gid_text = value.split(":", 1)
+        uid, gid = int(uid_text), int(gid_text)
+    except (TypeError, ValueError) as exc:
+        raise PortableStateError("salvage output owner must be numeric uid:gid") from exc
+    if uid < 0 or gid < 0:
+        raise PortableStateError("salvage output owner must be numeric uid:gid")
+    return uid, gid
+
+
+def _handoff_salvage_output(
+    *, output_root: Path, backup_root: Path, owner: tuple[int, int]
+) -> None:
+    """Return a root-created transient archive to the invoking operator only."""
+
+    uid, gid = owner
+    backup_parent = backup_root.parent
+    for path in (
+        output_root / "var",
+        output_root / "var" / "lib",
+        output_root / "var" / "lib" / "iii",
+        backup_parent,
+        backup_parent / ".staging",
+        backup_root,
+    ):
+        if not path.exists() or path.is_symlink() or not path.is_dir():
+            raise PortableStateError(f"salvage output path is unsafe: {path}")
+        os.chown(path, uid, gid)
+        path.chmod(0o700)
+    for path in (backup_root / "portable-state.tar", backup_root / "salvage-record.json"):
+        if not path.is_file() or path.is_symlink():
+            raise PortableStateError(f"salvage output file is unsafe: {path}")
+        os.chown(path, uid, gid)
+        path.chmod(0o600)
 
 
 if __name__ == "__main__":

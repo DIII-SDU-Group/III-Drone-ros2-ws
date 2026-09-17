@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import tarfile
 
@@ -35,6 +36,43 @@ def _json(path: Path, value: dict) -> None:
         json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
+
+
+def test_salvage_output_handoff_returns_only_transient_result_to_operator(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "worker-output"
+    backup_root = output_root / "var/lib/iii/backups" / ("a" * 64)
+    staging = backup_root.parent / ".staging"
+    staging.mkdir(parents=True)
+    backup_root.mkdir()
+    archive = backup_root / "portable-state.tar"
+    record = backup_root / "salvage-record.json"
+    archive.write_bytes(b"archive")
+    record.write_text("{}\n", encoding="utf-8")
+
+    portable_state_module._handoff_salvage_output(
+        output_root=output_root,
+        backup_root=backup_root,
+        owner=(os.getuid(), os.getgid()),
+    )
+
+    for path in (
+        output_root / "var",
+        output_root / "var/lib",
+        output_root / "var/lib/iii",
+        backup_root.parent,
+        staging,
+        backup_root,
+    ):
+        assert path.stat().st_uid == os.getuid()
+        assert path.stat().st_mode & 0o777 == 0o700
+    for path in (archive, record):
+        assert path.stat().st_uid == os.getuid()
+        assert path.stat().st_mode & 0o777 == 0o600
+    assert portable_state_module._parse_output_owner("1000:1001") == (1000, 1001)
+    with pytest.raises(PortableStateError, match="numeric uid:gid"):
+        portable_state_module._parse_output_owner("not-an-owner")
 
 
 def _state(root: Path) -> None:
