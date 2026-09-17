@@ -602,7 +602,7 @@ class ActivationDiagnosticStore:
         self,
         *,
         operation_id: str,
-        previous: ActivationTuple,
+        previous: ActivationTuple | None,
         candidate: ActivationTuple,
         authorization: ActivationAuthorization,
         safety_observation_id: str,
@@ -621,7 +621,8 @@ class ActivationDiagnosticStore:
         existing = self.load_state(operation_id)
         if existing is not None:
             bindings = (
-                existing["previous"] == asdict(previous)
+                existing["previous"]
+                == (asdict(previous) if previous is not None else None)
                 and existing["candidate"] == asdict(candidate)
                 and existing["authorization"] == asdict(authorization)
                 and existing["safety_observation_id"] == safety_observation_id
@@ -644,7 +645,7 @@ class ActivationDiagnosticStore:
             "schema": STATE_SCHEMA,
             "state_id": "0" * 64,
             "operation_id": operation_id,
-            "previous": asdict(previous),
+            "previous": asdict(previous) if previous is not None else None,
             "candidate": asdict(candidate),
             "authorization": asdict(authorization),
             "safety_observation_id": safety_observation_id,
@@ -707,7 +708,14 @@ class ActivationDiagnosticStore:
         ):
             raise ContractError("activation health transaction identity mismatch")
         _require_operation(value["operation_id"])
-        ActivationTuple(**value["previous"]).validate()
+        previous = value["previous"]
+        if previous is None:
+            if ActivationTuple(**value["candidate"]).profile != "hil":
+                raise ContractError(
+                    "only an initial HIL activation may lack a rollback tuple"
+                )
+        else:
+            ActivationTuple(**previous).validate()
         ActivationTuple(**value["candidate"]).validate()
         authorization = ActivationAuthorization(**value["authorization"])
         authorization_value = asdict(authorization)
@@ -881,6 +889,63 @@ class ActivationCoordinator:
         result.validate()
         return result
 
+    def _require_hil_bootstrap(
+        self, *, previous: ActivationTuple | None, operator_rollback: bool
+    ) -> None:
+        """Guard the one-time configuration/selector genesis path.
+
+        HIL is the only profile which may begin without a selected application.
+        This is not a generic selector bypass: a real or OptiTrack receiver
+        must always retain a rollback tuple before it can activate.
+        """
+
+        if self.profile != "hil" or operator_rollback:
+            raise ContractError("configuration bootstrap is allowed only for initial HIL activation")
+        if previous is not None:
+            raise ContractError("configuration bootstrap requires no existing selector")
+        if self.configuration_reconciler is None:
+            raise ContractError("HIL bootstrap requires the configuration reconciler")
+
+    def _hil_bootstrap_safety_reasons(
+        self, safety: ActivationSafetySnapshot
+    ) -> list[str]:
+        """Keep physical safety gates while omitting unavailable pre-app APIs."""
+
+        deferred = {
+            "runtime API is unavailable",
+            "runtime target identity is untrusted",
+            "runtime safety state is stale",
+            "Mission Execution state is stale",
+            "Mission Execution is not confirmed inactive",
+            "Mission Execution control ownership is not confirmed clear",
+            "Custom Operation state is stale",
+            "Custom Operation is not confirmed inactive",
+            "Custom Operation control ownership is not confirmed clear",
+            "Direct Operation is not confirmed inactive",
+            "active Reference Owner is not confirmed clear",
+            "configuration migration checkpoint is not ready",
+        }
+        return [
+            reason
+            for reason in ActivationSafetyGate(
+                logical_target=self.logical_target, profile=self.profile
+            ).rejection_reasons(safety)
+            if reason not in deferred
+        ]
+
+    def bootstrap_configuration_preflight(self, *, release_id: str) -> dict[str, Any]:
+        """Predict the only valid first HIL checkpoint without mutating it."""
+
+        self._require_hil_bootstrap(
+            previous=self.transaction_store.current(), operator_rollback=False
+        )
+        result = self.configuration_reconciler.bootstrap_preflight(release_id=release_id)
+        checkpoint_id = result.get("result_checkpoint_id")
+        _require_hash(checkpoint_id, label="HIL bootstrap configuration checkpoint")
+        if result.get("writes_performed") != 0:
+            raise ContractError("HIL bootstrap preflight unexpectedly wrote configuration")
+        return result
+
     def activate(
         self,
         *,
@@ -893,25 +958,40 @@ class ActivationCoordinator:
         maintenance_override: MaintenanceOverride | None = None,
         operator_rollback: bool = False,
         configuration_reconciliation_decisions: Mapping[str, str] | None = None,
+        bootstrap_configuration: bool = False,
     ) -> dict[str, Any]:
         _require_operation(operation_id)
         requested_checkpoint_id = configuration_checkpoint_id
         previous = self.transaction_store.current()
-        if previous is None:
+        if previous is None and not bootstrap_configuration:
             raise ContractError(
                 "field activation requires a known previous composite selector"
             )
+        if bootstrap_configuration:
+            self._require_hil_bootstrap(previous=previous, operator_rollback=operator_rollback)
+            bootstrap = self.configuration_reconciler.bootstrap(
+                operation_id=operation_id, release_id=release_id
+            )
+            if bootstrap.get("result_checkpoint_id") != requested_checkpoint_id:
+                raise ContractError(
+                    "HIL bootstrap checkpoint differs from the retained activation plan"
+                )
         safety = self.safety_provider()
         if (
             not operator_rollback
             and self.configuration_reconciler is not None
+            and not bootstrap_configuration
             and safety.configuration_checkpoint_id != requested_checkpoint_id
         ):
             raise ContractError(
                 "runtime configuration checkpoint differs from the durable deployment selector"
             )
         configuration_reconciliation = None
-        if not operator_rollback and self.configuration_reconciler is not None:
+        if (
+            not operator_rollback
+            and self.configuration_reconciler is not None
+            and not bootstrap_configuration
+        ):
             if requested_checkpoint_id != previous.configuration_checkpoint_id:
                 raise ContractError(
                     "activation must reconcile from the currently selected configuration checkpoint"
@@ -937,14 +1017,21 @@ class ActivationCoordinator:
         px4_evidence = self.validate_px4_evidence(
             release_id=release_id, evidence=px4_activation_evidence
         )
-        ActivationSafetyGate(
-            logical_target=self.logical_target, profile=self.profile
-        ).authorize(
-            safety,
-            maintenance_override=maintenance_override,
-            operation_id=operation_id,
-            release_id=release_id,
-        )
+        if bootstrap_configuration:
+            if maintenance_override is not None:
+                raise ContractError("maintenance override is forbidden for HIL bootstrap")
+            reasons = self._hil_bootstrap_safety_reasons(safety)
+            if reasons:
+                raise ContractError("HIL bootstrap safety rejected: " + "; ".join(reasons))
+        else:
+            ActivationSafetyGate(
+                logical_target=self.logical_target, profile=self.profile
+            ).authorize(
+                safety,
+                maintenance_override=maintenance_override,
+                operation_id=operation_id,
+                release_id=release_id,
+            )
         authorization = (
             self.release_store.authorize_rollback(release_id, status_index=status_index)
             if operator_rollback
@@ -1075,7 +1162,7 @@ class ActivationCoordinator:
             return {
                 "kind": "rollback" if operator_rollback else "activation",
                 "release_id": release_id,
-                "previous_release_id": previous.release_id,
+                "previous_release_id": previous.release_id if previous else None,
                 "source_configuration_checkpoint_id": requested_checkpoint_id,
                 "configuration_checkpoint_id": candidate.configuration_checkpoint_id,
                 "configuration_reconciliation": configuration_reconciliation,
@@ -1119,7 +1206,7 @@ class ActivationCoordinator:
             if not transaction_path.exists() and not transaction_path.is_symlink():
                 rollback = {
                     "outcome": "not-required",
-                    "release_id": previous.release_id,
+                    "release_id": previous.release_id if previous else None,
                     "elapsed_s": 0.0,
                     "target_s": ROLLBACK_TARGET_S,
                     "target_met": True,
@@ -1150,7 +1237,7 @@ class ActivationCoordinator:
                 started=self.monotonic(),
             )
             raise ContractError(
-                f"activation failed and restored {previous.release_id}: {exc}; "
+                f"activation failed and {'cleared the initial HIL selector' if previous is None else 'restored ' + previous.release_id}: {exc}; "
                 f"rollback={rollback['outcome']}"
             ) from exc
 
@@ -1162,6 +1249,7 @@ class ActivationCoordinator:
         px4_activation_evidence: Mapping[str, Any],
         operator_rollback: bool = False,
         configuration_reconciliation_decisions: Mapping[str, str] | None = None,
+        bootstrap_configuration: bool = False,
     ) -> dict[str, Any]:
         """Read-only activation inspection used before durable request acceptance."""
 
@@ -1169,7 +1257,17 @@ class ActivationCoordinator:
         previous = self.transaction_store.current()
         configuration_reconciliation = None
         reconciliation_reasons: list[str] = []
-        if not operator_rollback and self.configuration_reconciler is not None:
+        if bootstrap_configuration:
+            self._require_hil_bootstrap(previous=previous, operator_rollback=operator_rollback)
+            bootstrap = self.configuration_reconciler.bootstrap_preflight(
+                release_id=release_id
+            )
+            if bootstrap.get("result_checkpoint_id") != requested_checkpoint_id:
+                reconciliation_reasons.append(
+                    "requested checkpoint does not match the deterministic HIL bootstrap checkpoint"
+                )
+            configuration_reconciliation = bootstrap
+        elif not operator_rollback and self.configuration_reconciler is not None:
             if previous is None:
                 reconciliation_reasons.append(
                     "no selected configuration checkpoint is available for reconciliation"
@@ -1206,7 +1304,7 @@ class ActivationCoordinator:
         )
         release_state = self.release_store.state()
         reasons: list[str] = list(reconciliation_reasons)
-        if previous is None:
+        if previous is None and not bootstrap_configuration:
             reasons.append("no previous composite selector is available for rollback")
         expected_role = (
             "rollback_release_id" if operator_rollback else "candidate_release_id"
@@ -1221,13 +1319,16 @@ class ActivationCoordinator:
         if (
             not operator_rollback
             and self.configuration_reconciler is not None
+            and not bootstrap_configuration
             and safety.configuration_checkpoint_id != requested_checkpoint_id
         ):
             reasons.append(
                 "runtime configuration checkpoint differs from the durable deployment selector"
             )
         reasons.extend(
-            ActivationSafetyGate(
+            self._hil_bootstrap_safety_reasons(safety)
+            if bootstrap_configuration
+            else ActivationSafetyGate(
                 logical_target=self.logical_target, profile=self.profile
             ).rejection_reasons(safety)
         )
@@ -1248,6 +1349,7 @@ class ActivationCoordinator:
             "rejection_reasons": reasons,
             "autonomy_started": False,
             "px4_activation_evidence_id": px4_evidence["evidence_id"],
+            "bootstrap_configuration": bootstrap_configuration,
         }
 
     def operator_rollback(
@@ -1277,7 +1379,7 @@ class ActivationCoordinator:
         self,
         *,
         operation_id: str,
-        previous: ActivationTuple,
+        previous: ActivationTuple | None,
         candidate: ActivationTuple,
         authorization: ActivationAuthorization,
         safety: ActivationSafetySnapshot,
@@ -1314,18 +1416,28 @@ class ActivationCoordinator:
                 raise ContractError(
                     "activation transaction vanished while the selector differs from previous"
                 )
-            proof = self.start_control_plane(previous)
-            proof.validate(expected=previous)
             elapsed = self.monotonic() - rollback_started
-            rollback = {
-                "outcome": "restored",
-                "release_id": previous.release_id,
-                "elapsed_s": elapsed,
-                "target_s": ROLLBACK_TARGET_S,
-                "target_met": elapsed <= ROLLBACK_TARGET_S,
-                "proof_id": proof.proof_id,
-                "autonomy_started": False,
-            }
+            if previous is None:
+                rollback = {
+                    "outcome": "cleared-initial-hil",
+                    "release_id": None,
+                    "elapsed_s": elapsed,
+                    "target_s": ROLLBACK_TARGET_S,
+                    "target_met": elapsed <= ROLLBACK_TARGET_S,
+                    "autonomy_started": False,
+                }
+            else:
+                proof = self.start_control_plane(previous)
+                proof.validate(expected=previous)
+                rollback = {
+                    "outcome": "restored",
+                    "release_id": previous.release_id,
+                    "elapsed_s": elapsed,
+                    "target_s": ROLLBACK_TARGET_S,
+                    "target_met": elapsed <= ROLLBACK_TARGET_S,
+                    "proof_id": proof.proof_id,
+                    "autonomy_started": False,
+                }
             self._state(
                 operation_id=operation_id,
                 previous=previous,
@@ -1341,7 +1453,7 @@ class ActivationCoordinator:
         except Exception as rollback_error:
             rollback = {
                 "outcome": "faulted",
-                "release_id": previous.release_id,
+                "release_id": previous.release_id if previous else None,
                 "elapsed_s": self.monotonic() - rollback_started,
                 "target_s": ROLLBACK_TARGET_S,
                 "target_met": False,
@@ -1374,7 +1486,12 @@ class ActivationCoordinator:
             if state["stage"] in TERMINAL_STAGES:
                 continue
             operation_id = state["operation_id"]
-            previous = ActivationTuple(**state["previous"])
+            previous_value = state["previous"]
+            previous = (
+                ActivationTuple(**previous_value)
+                if previous_value is not None
+                else None
+            )
             candidate = ActivationTuple(**state["candidate"])
             authorization = ActivationAuthorization(**state["authorization"])
             safety = ActivationSafetySnapshot(**state["safety_snapshot"])
@@ -1432,7 +1549,10 @@ class ActivationCoordinator:
                 "post-acceptance recovery requires an accepted activation"
             )
         candidate = ActivationTuple(**state["candidate"])
-        previous = ActivationTuple(**state["previous"])
+        previous_value = state["previous"]
+        previous = (
+            ActivationTuple(**previous_value) if previous_value is not None else None
+        )
         authorization = ActivationAuthorization(**state["authorization"])
         safety = ActivationSafetySnapshot(**state["safety_snapshot"])
         observed_selector = self.transaction_store.current()
@@ -1495,7 +1615,7 @@ class ActivationCoordinator:
         self,
         *,
         operation_id: str,
-        previous: ActivationTuple,
+        previous: ActivationTuple | None,
         candidate: ActivationTuple,
         authorization: ActivationAuthorization,
         safety: ActivationSafetySnapshot,

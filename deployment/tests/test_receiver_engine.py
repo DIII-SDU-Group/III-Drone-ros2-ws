@@ -995,6 +995,7 @@ class FakeActivationCoordinator:
         px4_activation_evidence,
         operator_rollback=False,
         configuration_reconciliation_decisions=None,
+        bootstrap_configuration=False,
     ):
         call = (
             "preflight",
@@ -1008,10 +1009,20 @@ class FakeActivationCoordinator:
             if configuration_reconciliation_decisions is None
             else (*call, dict(configuration_reconciliation_decisions))
         )
+        if bootstrap_configuration:
+            self.calls[-1] = (*self.calls[-1], "bootstrap")
         return {
             "schema": "iii.activation-preflight/v1",
             "ready": True,
             "rejection_reasons": [],
+        }
+
+    def bootstrap_configuration_preflight(self, *, release_id):
+        checkpoint_id = "c" * 64
+        self.calls.append(("bootstrap-preflight", release_id, checkpoint_id))
+        return {
+            "result_checkpoint_id": checkpoint_id,
+            "writes_performed": 0,
         }
 
     def activate(
@@ -1023,6 +1034,7 @@ class FakeActivationCoordinator:
         explicit_qualified_action,
         px4_activation_evidence,
         configuration_reconciliation_decisions=None,
+        bootstrap_configuration=False,
     ):
         call = (
             "activate",
@@ -1037,6 +1049,8 @@ class FakeActivationCoordinator:
             if configuration_reconciliation_decisions is None
             else (*call, dict(configuration_reconciliation_decisions))
         )
+        if bootstrap_configuration:
+            self.calls[-1] = (*self.calls[-1], "bootstrap")
         return {
             "kind": "activation",
             "release_id": release_id,
@@ -1138,6 +1152,51 @@ def test_activation_is_planned_rechecked_durably_detached_and_runs_without_clien
             False,
             evidence["evidence_id"],
         ),
+    ]
+
+
+def test_hil_bootstrap_plan_binds_receiver_predicted_checkpoint(receiver) -> None:
+    coordinator = FakeActivationCoordinator()
+    receiver.engine = receiver.build(receiver.executor, coordinator)
+    operation_id = "operation-activate-hil-bootstrap-0001"
+    release_id = "4" * 64
+    evidence = px4_evidence(release_id)
+    planned = receiver.engine.handle(
+        request(
+            "plan-activate",
+            operation_id,
+            receiver.operator_id,
+            {
+                "activation": {
+                    "release_id": release_id,
+                    "configuration_checkpoint_id": None,
+                    "explicit_qualified_action": False,
+                    "bootstrap_configuration": True,
+                    "px4_activation_evidence": evidence,
+                },
+                "target": {"logical_id": "drone", "profile": "real"},
+            },
+        )
+    )
+    assert planned["plan"]["parameters"]["configuration_checkpoint_id"] == "c" * 64
+    assert planned["plan"]["parameters"]["bootstrap_configuration"] is True
+    accepted = receiver.engine.handle(
+        request(
+            "activate",
+            operation_id,
+            receiver.operator_id,
+            {"plan": planned["plan"]},
+            planned["nonce"],
+        )
+    )
+    assert accepted["detached"] is True
+    receiver.executor.run_next()
+    assert receiver.journals.load(operation_id)["state"] == "completed"
+    assert coordinator.calls == [
+        ("bootstrap-preflight", release_id, "c" * 64),
+        ("preflight", release_id, "c" * 64, False, evidence["evidence_id"], "bootstrap"),
+        ("preflight", release_id, "c" * 64, False, evidence["evidence_id"], "bootstrap"),
+        ("activate", operation_id, release_id, "c" * 64, False, evidence["evidence_id"], "bootstrap"),
     ]
 
 

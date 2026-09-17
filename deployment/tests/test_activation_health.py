@@ -508,6 +508,34 @@ def test_activation_accepts_only_after_stable_health_evidence_is_durable(
     )
 
 
+def test_initial_transaction_rollback_clears_selectors_without_inventing_a_baseline(
+    tmp_path: Path,
+) -> None:
+    env = _environment(tmp_path)
+    transactions = env["transactions"]
+    transactions.selector_path.unlink()
+    transactions.release_selector.unlink()
+    transactions.configuration_selector.unlink()
+    transactions._journal(
+        operation_id=OPERATION,
+        previous=None,
+        candidate=env["new"],
+        checkpoint="selector-committed",
+    )
+    transactions.release_selector.symlink_to(Path(env["new"].release_path))
+    transactions.configuration_selector.symlink_to(
+        Path(env["new"].configuration_checkpoint_path)
+    )
+    transactions._write_selector(env["new"])
+
+    result = transactions.rollback(operation_id=OPERATION)
+
+    assert result["checkpoint"] == "rollback-initial-selector-cleared"
+    assert transactions.current() is None
+    assert not transactions.release_selector.exists()
+    assert not transactions.configuration_selector.exists()
+
+
 def test_activation_waits_for_bounded_runtime_health_startup(tmp_path: Path):
     env = _environment(tmp_path)
     calls = 0

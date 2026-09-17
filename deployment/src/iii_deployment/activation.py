@@ -681,6 +681,61 @@ class ActivationTransactionStore:
             owner=self.selector_owner,
         )
 
+    def _clear_initial_selector(self) -> None:
+        """Return a failed first HIL activation to the converged empty state.
+
+        There is intentionally no invented rollback tuple before the first
+        application release.  This helper is only reached from a transaction
+        that recorded ``previous: null``; normal activation rollback always
+        restores the authenticated preceding tuple below.
+        """
+
+        for path, label in (
+            (self.release_selector, "release selector"),
+            (self.configuration_selector, "configuration selector"),
+        ):
+            if path.exists() or path.is_symlink():
+                if not path.is_symlink():
+                    raise ContractError(f"initial activation {label} is not a link")
+                path.unlink()
+        if self.selector_path.exists() or self.selector_path.is_symlink():
+            if self.selector_path.is_symlink() or not self.selector_path.is_file():
+                raise ContractError("initial activation selector is unsafe")
+            self.selector_path.unlink()
+        if not self.live_state_path.exists() and not self.live_state_path.is_symlink():
+            if self.enforce_host_contract:
+                raise ContractError("receiver live state is missing during rollback")
+            return
+        live = _read_canonical(self.live_state_path, label="receiver live state")
+        if (
+            set(live)
+            != {
+                "schema",
+                "target_state_hash",
+                "active_release_id",
+                "configuration_hash",
+                "commissioning_hash",
+                "profile",
+            }
+            or live.get("schema") != LIVE_STATE_SCHEMA
+            or live.get("target_state_hash") != _identity(live, "target_state_hash")
+            or not isinstance(live.get("commissioning_hash"), str)
+            or not HASH.fullmatch(live["commissioning_hash"])
+        ):
+            raise ContractError("receiver live state is malformed or unauthenticated")
+        updated = {
+            **live,
+            "target_state_hash": "0" * 64,
+            "active_release_id": None,
+        }
+        updated["target_state_hash"] = _identity(updated, "target_state_hash")
+        atomic_document(
+            self.live_state_path,
+            updated,
+            mode=0o640,
+            owner=self.selector_owner,
+        )
+
     def switch(
         self,
         candidate: ActivationTuple,
@@ -740,7 +795,20 @@ class ActivationTransactionStore:
             raise ContractError("activation transaction operation binding mismatch")
         previous_value = transaction.get("previous")
         if previous_value is None:
-            raise ContractError("activation transaction has no rollback tuple")
+            candidate = ActivationTuple(**transaction["candidate"])
+            self._journal(
+                operation_id=operation_id,
+                previous=None,
+                candidate=candidate,
+                checkpoint="rollback-prepared",
+            )
+            self._clear_initial_selector()
+            return self._journal(
+                operation_id=operation_id,
+                previous=None,
+                candidate=candidate,
+                checkpoint="rollback-initial-selector-cleared",
+            )
         previous = ActivationTuple(**previous_value)
         candidate = ActivationTuple(**transaction["candidate"])
         release, checkpoint = self._verify_tuple(previous)

@@ -9,7 +9,7 @@
     "schema": {"const": "iii.activation-health-transaction/v1"},
     "state_id": {"$ref": "#/definitions/hash"},
     "operation_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
-    "previous": {"type": "object"},
+    "previous": {"anyOf": [{"type": "object"}, {"type": "null"}]},
     "candidate": {"type": "object"},
     "authorization": {"type": "object"},
     "safety_observation_id": {"$ref": "#/definitions/hash"},

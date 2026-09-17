@@ -766,6 +766,8 @@ def validate_mutation_plan(
             expected.add("explicit_qualified_action")
             if "configuration_reconciliation_decisions" in parameters:
                 expected.add("configuration_reconciliation_decisions")
+            if "bootstrap_configuration" in parameters:
+                expected.add("bootstrap_configuration")
         _exact(
             parameters,
             expected,
@@ -781,6 +783,9 @@ def validate_mutation_plan(
             parameters["explicit_qualified_action"], bool
         ):
             raise ContractError("activation qualified authority must be boolean")
+        if "bootstrap_configuration" in parameters:
+            if parameters["bootstrap_configuration"] is not True:
+                raise ContractError("activation bootstrap authority must be explicitly true")
         if "configuration_reconciliation_decisions" in parameters:
             _configuration_reconciliation_decisions(
                 parameters["configuration_reconciliation_decisions"]
@@ -977,6 +982,8 @@ def create_mutation_plan(
             action = Action.HOST_REBOOT.value
         elif request.action == Action.PLAN_RECEIVER_UPDATE:
             action = Action.RECEIVER_UPDATE.value
+        elif request.action == Action.PLAN_ACTIVATE:
+            action = Action.ACTIVATE.value
         elif request.action == Action.NETWORK_PLAN:
             action = Action.NETWORK_APPLY.value
         elif request.action == Action.PLAN_BACKUP_SEAL:
@@ -1193,6 +1200,8 @@ def validate_request_payload(request: Request) -> None:
             "explicit_qualified_action",
             "px4_activation_evidence",
         }
+        if "bootstrap_configuration" in activation:
+            expected.add("bootstrap_configuration")
         if "configuration_reconciliation_decisions" in activation:
             expected.add("configuration_reconciliation_decisions")
         _exact(
@@ -1201,10 +1210,16 @@ def validate_request_payload(request: Request) -> None:
             label="plan-activate parameters",
         )
         _identity(activation["release_id"], label="activation release")
-        _identity(
-            activation["configuration_checkpoint_id"],
-            label="activation configuration checkpoint",
-        )
+        if activation.get("bootstrap_configuration") is True:
+            if activation["configuration_checkpoint_id"] is not None:
+                raise ContractError("HIL bootstrap request cannot provide a checkpoint")
+        else:
+            _identity(
+                activation["configuration_checkpoint_id"],
+                label="activation configuration checkpoint",
+            )
+        if "bootstrap_configuration" in activation and activation["bootstrap_configuration"] is not True:
+            raise ContractError("activation bootstrap authority must be explicitly true")
         if not isinstance(activation["explicit_qualified_action"], bool):
             raise ContractError("activation qualified authority must be boolean")
         if "configuration_reconciliation_decisions" in activation:

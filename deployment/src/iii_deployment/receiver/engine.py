@@ -612,6 +612,19 @@ class ReceiverEngine:
                 "archive_sha256": request.payload["artifact"]["archive_sha256"],
                 "upload_id": request.payload["artifact"]["upload_id"],
             }
+        elif (
+            request.action == Action.PLAN_ACTIVATE
+            and request.payload["activation"].get("bootstrap_configuration") is True
+        ):
+            if self.activation_coordinator is None:
+                raise ContractError("receiver activation coordinator is unavailable")
+            bootstrap = self.activation_coordinator.bootstrap_configuration_preflight(
+                release_id=request.payload["activation"]["release_id"]
+            )
+            parameter_override = {
+                **request.payload["activation"],
+                "configuration_checkpoint_id": bootstrap["result_checkpoint_id"],
+            }
         plan = create_mutation_plan(
             request,
             receiver_generation=self.receiver_generation,
@@ -646,6 +659,11 @@ class ReceiverEngine:
                 configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
                 px4_activation_evidence=parameters["px4_activation_evidence"],
                 operator_rollback=request.action == Action.PLAN_ROLLBACK,
+                **(
+                    {"bootstrap_configuration": True}
+                    if parameters.get("bootstrap_configuration") is True
+                    else {}
+                ),
                 **reconciliation_arguments,
             )
         if request.action == Action.PLAN_CLOCK_SYNC:
@@ -721,6 +739,11 @@ class ReceiverEngine:
                 configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
                 px4_activation_evidence=parameters["px4_activation_evidence"],
                 operator_rollback=request.action == Action.ROLLBACK,
+                **(
+                    {"bootstrap_configuration": True}
+                    if parameters.get("bootstrap_configuration") is True
+                    else {}
+                ),
                 **reconciliation_arguments,
             )
             if not preflight["ready"]:
@@ -1401,6 +1424,11 @@ class ReceiverEngine:
                 configuration_checkpoint_id=parameters["configuration_checkpoint_id"],
                 explicit_qualified_action=parameters["explicit_qualified_action"],
                 px4_activation_evidence=parameters["px4_activation_evidence"],
+                **(
+                    {"bootstrap_configuration": True}
+                    if parameters.get("bootstrap_configuration") is True
+                    else {}
+                ),
                 **reconciliation_arguments,
             )
         if action == Action.ROLLBACK.value:
