@@ -26,10 +26,22 @@ Connecting or disconnecting QGC affects PX4/operator telemetry, not III lifecycl
 bringup.
 
 Simulation uses the host/devcontainer clock directly and therefore skips the
-aircraft-to-GC clock-alignment gate. HIL remains a reserved, non-bootable
-selector scope; no maintained procedure treats it as an implemented simulation
-profile. OptiTrack is a separately commissioned real-aircraft profile and is not
-part of simulation acceptance.
+aircraft-to-GC clock-alignment gate. HIL is a maintained, non-flight acceptance
+profile, not a field-operation profile. It requires an explicit deployment
+approval and must be exercised with the aircraft disarmed and without a
+propulsion battery. OptiTrack is a separately commissioned real-aircraft
+profile and is not part of simulation acceptance.
+
+HIL uses two independent Ethernet links: PX4 is connected to the Pi on
+`10.41.10.0/24`, while the workstation connects directly to the Pi. The
+workstation resolves the Pi as `iii.local` by default; the Pi selects its
+Cyclone DDS interface from the kernel route to workstation peer `10.42.0.1`.
+This avoids binding either side to the previous image-specific Pi address
+`10.42.0.15`. Set `III_HIL_PI_ADDRESS` only as an attended fallback when mDNS
+is unavailable. The canonical workstation control surface is
+`tools/simulation/launch_hil_workstation.sh` (`start`, `status`, and `stop`);
+it must not be started until the matching Pi release is activated and the
+preflight has passed.
 
 Start the two independent surfaces explicitly:
 

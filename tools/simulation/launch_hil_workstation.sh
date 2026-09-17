@@ -22,7 +22,8 @@ PX4_BUILD_DIR="${III_HIL_PX4_BUILD_DIR:-${PX4_ROOT}/build/px4_sitl_default}"
 PX4_CANONICAL_RCS="${PX4_ROOT}/ROMFS/px4fmu_common/init.d-posix/rcS"
 HIL_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}/iii-hil-${UID}"
 PX4_STARTUP_SCRIPT="${HIL_RUNTIME_DIR}/px4-rcS-${PX4_INSTANCE}"
-PI_ADDRESS="${III_HIL_PI_ADDRESS:-10.42.0.15}"
+PI_ENDPOINT="${III_HIL_PI_ENDPOINT:-iii.local}"
+PI_ADDRESS="${III_HIL_PI_ADDRESS:-}"
 WORKSTATION_ADDRESS="${III_HIL_WORKSTATION_ADDRESS:-10.42.0.1}"
 PX4_AGENT_ADDRESS_U32="${III_HIL_PX4_AGENT_ADDRESS_U32:-170524687}"
 XRCE_PORT="${III_HIL_XRCE_PORT:-8889}"
@@ -42,7 +43,7 @@ usage() {
 Usage: $(basename "$0") {start|status|stop}
 
 Runs only workstation-owned HIL processes. The aircraft runtime remains owned by
-the Raspberry Pi. Standard link: workstation ${WORKSTATION_ADDRESS}, Pi ${PI_ADDRESS}.
+the Raspberry Pi. Standard link: workstation ${WORKSTATION_ADDRESS}, Pi ${PI_ADDRESS:-${PI_ENDPOINT}}.
 EOF
 }
 
@@ -106,7 +107,9 @@ sim_session_healthy() {
 }
 
 cyclone_uri() {
-    printf '%s' "<CycloneDDS><Domain><General><Interfaces><NetworkInterface address=\"${WORKSTATION_ADDRESS}\" priority=\"default\" multicast=\"default\"/></Interfaces></General><Discovery><Peers><Peer address=\"${PI_ADDRESS}\"/></Peers></Discovery></Domain></CycloneDDS>"
+    local pi_address
+    pi_address="$(resolve_pi_address)" || return 1
+    printf '%s' "<CycloneDDS><Domain><General><Interfaces><NetworkInterface address=\"${WORKSTATION_ADDRESS}\" priority=\"default\" multicast=\"default\"/></Interfaces></General><Discovery><Peers><Peer address=\"${pi_address}\"/></Peers></Discovery></Domain></CycloneDDS>"
 }
 
 ros_environment() {
@@ -114,8 +117,24 @@ ros_environment() {
         "${ROS_DOMAIN_ID}" "${GZ_PARTITION}" "$(cyclone_uri)"
 }
 
+resolve_pi_address() {
+    if [[ -n "${PI_ADDRESS}" ]]; then
+        printf '%s\n' "${PI_ADDRESS}"
+        return 0
+    fi
+    local resolved
+    resolved="$(getent ahostsv4 "${PI_ENDPOINT}" | awk 'NR == 1 { print $1; exit }')"
+    if [[ -z "${resolved}" ]]; then
+        echo "Unable to resolve HIL Pi endpoint ${PI_ENDPOINT}; set III_HIL_PI_ADDRESS to an explicit IPv4 address." >&2
+        return 1
+    fi
+    printf '%s\n' "${resolved}"
+}
+
 link_probe() {
-    python3 - "${WORKSTATION_ADDRESS}" "${PI_ADDRESS}" <<'PY'
+    local pi_address
+    pi_address="$(resolve_pi_address)" || return 1
+    python3 - "${WORKSTATION_ADDRESS}" "${pi_address}" <<'PY'
 import socket
 import sys
 

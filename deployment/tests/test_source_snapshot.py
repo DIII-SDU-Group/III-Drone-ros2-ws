@@ -175,6 +175,15 @@ def test_paired_impact_explains_causes_and_unsafe_omission_fails() -> None:
         analyze_component_impact(["src/unknown.bin"], _policy())
 
 
+def test_canonical_policy_classifies_hil_workstation_tool_as_shared_deployment_work() -> None:
+    impact = analyze_component_impact(["tools/simulation/launch_hil_workstation.sh"], BASE_POLICY)
+    assert impact["components"] == ["drone", "gc"]
+    assert impact["causes"] == {
+        "drone": ["WORKSPACE_INTEGRATION: tools/simulation/launch_hil_workstation.sh"],
+        "gc": ["WORKSPACE_INTEGRATION: tools/simulation/launch_hil_workstation.sh"],
+    }
+
+
 def test_field_manifest_and_human_report_include_dirty_provenance(tmp_path: Path) -> None:
     repo = _repo(tmp_path / "repo")
     _write(repo / "src/new.py", "NEW = True\n")

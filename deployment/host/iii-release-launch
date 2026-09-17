@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
 import re
+import socket
 import sys
+import time
 from typing import Any, Mapping
 
 SERVICES = {
@@ -27,10 +30,54 @@ SERVICES = {
     ),
 }
 HASH = re.compile(r"^[a-f0-9]{64}$")
+HIL_SIMULATOR_PEER = "10.42.0.1"
+HIL_ROUTE_RETRY_SECONDS = 30
 
 
 class LaunchError(RuntimeError):
     pass
+
+
+def _hil_interface_address(peer: str = HIL_SIMULATOR_PEER) -> str:
+    """Return the Pi address selected by the kernel for the HIL workstation.
+
+    The direct operator link is deliberately independent of the PX4 Ethernet
+    network, and may be provisioned with a different host address on each
+    image. Resolve the interface by its route to the fixed workstation peer
+    instead of embedding a particular Pi address in the release launcher.
+    """
+
+    try:
+        parsed_peer = ipaddress.ip_address(peer)
+    except ValueError as exc:
+        raise LaunchError("HIL simulator peer is not a valid IP address") from exc
+    if parsed_peer.version != 4 or parsed_peer.is_loopback or parsed_peer.is_unspecified:
+        raise LaunchError("HIL simulator peer must be a routable IPv4 address")
+
+    last_error: OSError | None = None
+    for attempt in range(HIL_ROUTE_RETRY_SECONDS):
+        route = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            route.connect((peer, 9))
+            local = str(route.getsockname()[0])
+            parsed_local = ipaddress.ip_address(local)
+            if (
+                parsed_local.version != 4
+                or parsed_local.is_loopback
+                or parsed_local.is_unspecified
+            ):
+                raise LaunchError("HIL route resolved to a non-routable local address")
+            return local
+        except OSError as exc:
+            last_error = exc
+        finally:
+            route.close()
+        if attempt + 1 < HIL_ROUTE_RETRY_SECONDS:
+            time.sleep(1)
+    raise LaunchError(
+        f"HIL workstation route to {peer} did not become ready within "
+        f"{HIL_ROUTE_RETRY_SECONDS} seconds: {last_error}"
+    )
 
 
 def _canonical(value: Mapping[str, Any]) -> bytes:
@@ -206,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
         }
     )
     if selector["profile"] == "hil":
+        hil_interface = _hil_interface_address()
         environment.update(
             {
                 "SIMULATION": "true",
@@ -216,12 +264,13 @@ def main(argv: list[str] | None = None) -> int:
                 "ROS_DOMAIN_ID": "42",
                 "ROS_AUTOMATIC_DISCOVERY_RANGE": "SUBNET",
                 "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
-                "III_HIL_SIMULATOR_PEER": "10.42.0.1",
+                "III_HIL_SIMULATOR_PEER": HIL_SIMULATOR_PEER,
+                "III_RUNTIME_API_MDNS_HOST": hil_interface,
                 "CYCLONEDDS_URI": (
                     "<CycloneDDS><Domain><General><Interfaces>"
-                    "<NetworkInterface address=\"10.42.0.15\" priority=\"default\" "
+                    f"<NetworkInterface address=\"{hil_interface}\" priority=\"default\" "
                     "multicast=\"default\"/></Interfaces></General><Discovery><Peers>"
-                    "<Peer address=\"10.42.0.1\"/></Peers></Discovery></Domain></CycloneDDS>"
+                    f"<Peer address=\"{HIL_SIMULATOR_PEER}\"/></Peers></Discovery></Domain></CycloneDDS>"
                 ),
             }
         )

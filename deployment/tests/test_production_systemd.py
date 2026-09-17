@@ -230,10 +230,21 @@ def test_launcher_injects_isolated_split_host_hil_networking(tmp_path, monkeypat
     module = runpy.run_path(str(LAUNCHER), run_name="iii_release_launch_test")
     captured = {}
 
+    class _RouteProbe:
+        def connect(self, target):
+            assert target == ("10.42.0.1", 9)
+
+        def getsockname(self):
+            return ("10.42.0.14", 43123)
+
+        def close(self):
+            pass
+
     def fake_execve(path, command, environment):
         captured.update(path=path, command=command, environment=environment)
         raise RuntimeError("exec captured")
 
+    monkeypatch.setattr(module["socket"], "socket", lambda *_args: _RouteProbe())
     monkeypatch.setattr(os, "execve", fake_execve)
     with pytest.raises(RuntimeError, match="exec captured"):
         module["main"](["runtime-api", "--root", str(root)])
@@ -251,8 +262,28 @@ def test_launcher_injects_isolated_split_host_hil_networking(tmp_path, monkeypat
     assert environment["III_RUNTIME_API_PX4_SYSTEM_ID"] == "8"
     assert environment["III_HIL_SIMULATOR_PEER"] == "10.42.0.1"
     assert environment["RMW_IMPLEMENTATION"] == "rmw_cyclonedds_cpp"
-    assert 'address="10.42.0.15"' in environment["CYCLONEDDS_URI"]
+    assert environment["III_RUNTIME_API_MDNS_HOST"] == "10.42.0.14"
+    assert 'address="10.42.0.14"' in environment["CYCLONEDDS_URI"]
     assert '<Peer address="10.42.0.1"/>' in environment["CYCLONEDDS_URI"]
+
+
+def test_hil_interface_resolution_rejects_invalid_or_unavailable_routes(monkeypatch):
+    module = runpy.run_path(str(LAUNCHER), run_name="iii_release_launch_test")
+
+    with pytest.raises(module["LaunchError"], match="valid IP address"):
+        module["_hil_interface_address"]("not-an-address")
+
+    class _UnavailableRoute:
+        def connect(self, _target):
+            raise OSError("network is unreachable")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(module["socket"], "socket", lambda *_args: _UnavailableRoute())
+    monkeypatch.setitem(module, "HIL_ROUTE_RETRY_SECONDS", 1)
+    with pytest.raises(module["LaunchError"], match="did not become ready"):
+        module["_hil_interface_address"]()
 
 
 def test_launcher_accepts_exact_selector_and_refuses_host_contract_drift(tmp_path):

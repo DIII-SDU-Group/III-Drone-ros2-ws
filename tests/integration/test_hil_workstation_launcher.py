@@ -11,6 +11,10 @@ def test_hil_workstation_launcher_is_shell_valid_and_uses_isolated_links():
     source = SCRIPT.read_text(encoding="utf-8")
 
     assert "III_HIL_XRCE_PORT:-8889" in source
+    assert 'PI_ENDPOINT="${III_HIL_PI_ENDPOINT:-iii.local}"' in source
+    assert 'PI_ADDRESS="${III_HIL_PI_ADDRESS:-}"' in source
+    assert "getent ahostsv4" in source
+    assert "10.42.0.15" not in source
     assert 'SCRIPT_WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"' in source
     assert "elif [[ -x /home/iii/ws/tools/simulation/launch_simulation_tools.sh ]]" in source
     assert source.count('III_SIM_TOOLS_WORKSPACE_ROOT="${WORKSPACE_ROOT}"') == 3

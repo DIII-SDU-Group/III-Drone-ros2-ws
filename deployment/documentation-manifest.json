@@ -2193,7 +2193,7 @@
       "qualified_release_inclusion": true,
       "repository": "workspace",
       "repository_path": ".",
-      "sha256": "674713d4df36469168976f119a0a7fb21d09f84e2580ecebe07cdbad6d86a964",
+      "sha256": "3054ff1df57123d91b7b39d3b688845ebd1764638a5724835a155ccc4001a972",
       "source_of_truth": "docs/simulation-and-px4-integration.md"
     },
     {
@@ -2309,7 +2309,7 @@
       "source_of_truth": "tools/III-Drone-MCP/README.md"
     }
   ],
-  "manifest_id": "f63e2db1f7bba6a897537134483e841d79db3bdf791cdd54051858ce800804df",
+  "manifest_id": "94a31ef92251e2d592f8e4aacc55e40b0c23b4a915aa131e25dc66afc26d246a",
   "policy_schema": "iii.documentation-policy/v1",
   "schema": "iii.documentation-manifest/v1"
 }

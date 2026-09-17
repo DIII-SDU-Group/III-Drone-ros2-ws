@@ -1102,7 +1102,7 @@
       ],
       "path": "docs/simulation-and-px4-integration.md",
       "repository": "workspace",
-      "sha256": "674713d4df36469168976f119a0a7fb21d09f84e2580ecebe07cdbad6d86a964",
+      "sha256": "3054ff1df57123d91b7b39d3b688845ebd1764638a5724835a155ccc4001a972",
       "status": "passed"
     },
     {
@@ -1197,8 +1197,8 @@
       "status": "passed"
     }
   ],
-  "manifest_id": "f63e2db1f7bba6a897537134483e841d79db3bdf791cdd54051858ce800804df",
-  "review_id": "1276853c83e5c79eaa61a6f3b45ec1eba4936eb0da60b12dd2a0e84c6d5a93be",
-  "reviewer": "codex-deployment-redesign",
+  "manifest_id": "94a31ef92251e2d592f8e4aacc55e40b0c23b4a915aa131e25dc66afc26d246a",
+  "review_id": "d077f33e9643cfae2802c043f38c59f4fac8b7af0334181d1c7177f3ee1e829b",
+  "reviewer": "Frederik Nyboe",
   "schema": "iii.documentation-review/v1"
 }
