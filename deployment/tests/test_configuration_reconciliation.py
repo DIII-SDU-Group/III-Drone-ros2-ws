@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import shutil
 
+import pytest
 import yaml
 
 from iii_deployment.configuration_reconciliation import ReceiverConfigurationReconciler
@@ -228,7 +229,7 @@ def test_receiver_plans_read_only_then_reconciles_only_a_private_stage(tmp_path:
 
 
 def test_receiver_bootstrap_preflight_predicts_an_immutable_first_checkpoint(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     from iii_drone_configuration import verify_configuration_checkpoint
 
@@ -244,6 +245,13 @@ def test_receiver_bootstrap_preflight_predicts_an_immutable_first_checkpoint(
         operations_root=tmp_path / "operations",
         target_id="aircraft-01",
         runtime_profile="hil",
+    )
+    import iii_deployment.configuration_reconciliation as reconciliation_module
+
+    monkeypatch.setattr(
+        reconciliation_module.tempfile,
+        "gettempdir",
+        lambda: (_ for _ in ()).throw(AssertionError("host /tmp must not be used")),
     )
 
     preflight = reconciler.bootstrap_preflight(release_id=release_id)

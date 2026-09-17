@@ -216,7 +216,17 @@ class ReceiverConfigurationReconciler:
         api = self._api()
         contract_root = self._contract_root(release_id)
         contract = api.load_installed_contract(contract_root).contract
-        with tempfile.TemporaryDirectory(prefix="iii-config-bootstrap-") as raw:
+        # The receiver runs with ProtectSystem=strict, so the host's apparent
+        # /tmp is deliberately not writable from its service namespace.  Keep
+        # this ephemeral prediction under the explicitly receiver-writable
+        # configuration root instead; TemporaryDirectory removes it before the
+        # read-only preflight returns.
+        temporary_parent = self.checkpoints_root.parent
+        if temporary_parent.is_symlink() or not temporary_parent.is_dir():
+            raise ContractError("configuration bootstrap temporary root is unsafe")
+        with tempfile.TemporaryDirectory(
+            prefix=".iii-config-bootstrap-", dir=temporary_parent
+        ) as raw:
             state = Path(raw) / "state"
             state.mkdir()
             operation_id = f"bootstrap-{release_id[:16]}-config"
