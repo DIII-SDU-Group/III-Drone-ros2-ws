@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import shutil
+import tempfile
 from typing import Any
 
 from .contracts import ContractError
@@ -201,6 +202,148 @@ class ReceiverConfigurationReconciler:
             "decisions": normalized_decisions,
             "writes_performed": 0,
         }
+
+    def bootstrap_preflight(self, *, release_id: str) -> dict[str, Any]:
+        """Predict the first durable aircraft checkpoint from one staged release.
+
+        A newly commissioned receiver has neither a selected release nor a
+        configuration checkpoint to reconcile from.  Build the same empty-state
+        reconciliation in a private temporary directory so the returned
+        checkpoint identity is still exact while this inspection leaves the
+        receiver state unchanged.
+        """
+
+        api = self._api()
+        contract_root = self._contract_root(release_id)
+        contract = api.load_installed_contract(contract_root).contract
+        with tempfile.TemporaryDirectory(prefix="iii-config-bootstrap-") as raw:
+            state = Path(raw) / "state"
+            state.mkdir()
+            operation_id = f"bootstrap-{release_id[:16]}-config"
+            (state / ".iii-reconciliation-stage.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "iii.configuration-reconciliation-stage/v1",
+                        "operation_id": operation_id,
+                        "target_id": self.target_id,
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            plan = api.plan_reconciliation(
+                old_immutable_root=contract_root,
+                new_immutable_root=contract_root,
+                writable_state_root=state,
+                operations_root=Path(raw) / "operations",
+                operation_id=operation_id,
+                runtime_profile=self.runtime_profile,
+                target_id=self.target_id,
+                old_release_id=release_id,
+                new_release_id=release_id,
+                mode="receiver-staged",
+                purpose="activation",
+            )
+            result = api.execute_reconciliation(plan)
+            if result.status != "complete":
+                raise ContractError(
+                    f"initial configuration reconciliation ended {result.status}"
+                )
+            checkpoint = api.plan_configuration_checkpoint(
+                writable_state_root=state,
+                checkpoint_root=self.checkpoints_root,
+                target_id=self.target_id,
+                runtime_profile=self.runtime_profile,
+                schema_version=contract.schema_version,
+                release_id=release_id,
+                manifest_id=contract.manifest_id,
+            )
+        return {
+            "schema": "iii.receiver-configuration-bootstrap-preflight/v1",
+            "release_id": release_id,
+            "result_checkpoint_id": checkpoint["checkpoint_id"],
+            "checkpoint_plan": checkpoint,
+            "reconciliation_plan": plan.as_dict(),
+            "writes_performed": 0,
+        }
+
+    def bootstrap(self, *, operation_id: str, release_id: str) -> dict[str, Any]:
+        """Materialize the checkpoint predicted by :meth:`bootstrap_preflight`."""
+
+        api = self._api()
+        predicted = self.bootstrap_preflight(release_id=release_id)
+        contract_root = self._contract_root(release_id)
+        contract = api.load_installed_contract(contract_root).contract
+        stage = self.staging_root / operation_id
+        if stage.parent != self.staging_root:
+            raise ContractError("configuration bootstrap stage escapes its fixed root")
+        self._remove_private_stage(
+            stage, operation_id=operation_id, target_id=self.target_id
+        )
+        stage.mkdir(parents=True, mode=0o700)
+        state = stage / "state"
+        state.mkdir(mode=0o700)
+        marker = state / ".iii-reconciliation-stage.json"
+        marker.write_text(
+            json.dumps(
+                {
+                    "schema": "iii.configuration-reconciliation-stage/v1",
+                    "operation_id": operation_id,
+                    "target_id": self.target_id,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        try:
+            plan = api.plan_reconciliation(
+                old_immutable_root=contract_root,
+                new_immutable_root=contract_root,
+                writable_state_root=state,
+                operations_root=self.operations_root,
+                operation_id=operation_id,
+                runtime_profile=self.runtime_profile,
+                target_id=self.target_id,
+                old_release_id=release_id,
+                new_release_id=release_id,
+                mode="receiver-staged",
+                purpose="activation",
+            )
+            result = api.execute_reconciliation(plan)
+            if result.status != "complete":
+                raise ContractError(
+                    f"initial configuration reconciliation ended {result.status}"
+                )
+            sealed = api.seal_configuration_checkpoint(
+                writable_state_root=state,
+                checkpoint_root=self.checkpoints_root,
+                target_id=self.target_id,
+                runtime_profile=self.runtime_profile,
+                schema_version=contract.schema_version,
+                release_id=release_id,
+                manifest_id=contract.manifest_id,
+            )
+            if sealed["checkpoint_id"] != predicted["result_checkpoint_id"]:
+                raise ContractError(
+                    "initial configuration checkpoint differs from retained preflight"
+                )
+            return {
+                "schema": "iii.receiver-configuration-bootstrap-result/v1",
+                "release_id": release_id,
+                "result_checkpoint_id": sealed["checkpoint_id"],
+                "checkpoint": sealed,
+                "reconciliation_plan_id": plan.plan_id,
+                "only_staged_copy_mutated": True,
+            }
+        finally:
+            if stage.exists():
+                self._remove_private_stage(
+                    stage, operation_id=operation_id, target_id=self.target_id
+                )
 
     @staticmethod
     def _remove_private_stage(path: Path, *, operation_id: str, target_id: str) -> None:

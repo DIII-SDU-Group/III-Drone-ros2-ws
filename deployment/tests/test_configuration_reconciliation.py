@@ -227,6 +227,50 @@ def test_receiver_plans_read_only_then_reconciles_only_a_private_stage(tmp_path:
     }
 
 
+def test_receiver_bootstrap_preflight_predicts_an_immutable_first_checkpoint(
+    tmp_path: Path,
+):
+    from iii_drone_configuration import verify_configuration_checkpoint
+
+    contract = _materialize_contract(tmp_path / "contract-current")
+    releases = tmp_path / "releases"
+    checkpoints = tmp_path / "checkpoints"
+    release_id = "c" * 64
+    _release(releases, release_id, contract)
+    reconciler = ReceiverConfigurationReconciler(
+        releases_root=releases,
+        checkpoints_root=checkpoints,
+        staging_root=tmp_path / "staging",
+        operations_root=tmp_path / "operations",
+        target_id="aircraft-01",
+        runtime_profile="hil",
+    )
+
+    preflight = reconciler.bootstrap_preflight(release_id=release_id)
+
+    assert preflight["writes_performed"] == 0
+    assert preflight["release_id"] == release_id
+    assert not checkpoints.exists()
+    assert preflight["checkpoint_plan"]["profile"] == "hil"
+    assert preflight["checkpoint_plan"]["release_id"] == release_id
+    assert preflight["checkpoint_plan"]["configuration_manifest_id"]
+    assert preflight["result_checkpoint_id"] == preflight["checkpoint_plan"]["checkpoint_id"]
+    assert not (tmp_path / "staging").exists()
+
+    applied = reconciler.bootstrap(
+        operation_id="receiver-bootstrap-0001", release_id=release_id
+    )
+
+    assert applied["result_checkpoint_id"] == preflight["result_checkpoint_id"]
+    assert applied["only_staged_copy_mutated"] is True
+    assert not (tmp_path / "staging/receiver-bootstrap-0001").exists()
+    checkpoint = verify_configuration_checkpoint(
+        checkpoints / applied["result_checkpoint_id"]
+    )
+    assert checkpoint["profile"] == "hil"
+    assert checkpoint["release_id"] == release_id
+
+
 def test_receiver_preserves_wrapped_runtime_configuration_layout(tmp_path: Path):
     from iii_drone_configuration import verify_configuration_checkpoint
 
