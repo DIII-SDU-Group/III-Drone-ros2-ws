@@ -158,6 +158,7 @@ def test_materializer_produces_complete_signed_owner_controlled_input(
         maintenance_ssh_public_key=maintenance_key,
         known_hosts=known_hosts,
         target="10.42.0.70",
+        profile="hil",
         operator_cidr="10.42.0.0/24",
         python_executable=python_link,
         schema_root=SCHEMAS,
@@ -177,6 +178,8 @@ def test_materializer_produces_complete_signed_owner_controlled_input(
     values, source = load_input(output / "inputs.json", schema_root=SCHEMAS)
     assert source == output / "inputs.json"
     assert values["operator_cidr"] == "10.42.0.0/24"
+    assert values["profile"] == "hil"
+    assert stored["profile"] == "hil"
     assert values["maintenance_ssh_public_key"].startswith("ssh-ed25519 ")
     assert (
         stored["maintenance_ssh_client_id"]

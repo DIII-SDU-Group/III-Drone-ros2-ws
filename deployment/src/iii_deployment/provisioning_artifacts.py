@@ -164,6 +164,7 @@ def inspect_materialization(
     maintenance_ssh_public_key: Path,
     known_hosts: Path,
     target: str,
+    profile: str,
     operator_cidr: str,
     python_executable: Path,
     schema_root: Path,
@@ -229,6 +230,8 @@ def inspect_materialization(
         raise ProvisioningArtifactError(f"invalid direct-link address: {exc}") from exc
     if address.version != 4 or network.version != 4 or address not in network:
         raise ProvisioningArtifactError("target must be inside the operator IPv4 CIDR")
+    if profile not in {"real", "opti_track", "hil"}:
+        raise ProvisioningArtifactError("host profile must be real, opti_track, or hil")
     return {
         "output_root": str(output),
         "workspace_root": str(workspace),
@@ -240,6 +243,7 @@ def inspect_materialization(
         "maintenance_ssh_client_id": maintenance_client_id,
         "known_hosts": str(host_keys),
         "target": str(address),
+        "profile": profile,
         "operator_cidr": str(network),
         "python_executable": str(python),
         "schema_root": str(schema_root.resolve()),
@@ -598,7 +602,7 @@ def materialize(
             "schema": "iii.host-provisioning-input/v1",
             "target_class": "raspberry-pi-5-noble-arm64",
             "logical_target": "drone",
-            "profile": "real",
+            "profile": inspection["profile"],
             "operator_cidr": inspection["operator_cidr"],
             "receiver_bundle_source": "artifacts/receiver-bundle",
             "receiver_wheelhouse_source": "artifacts/receiver-wheelhouse",
@@ -660,6 +664,7 @@ def materialize(
             .isoformat()
             .replace("+00:00", "Z"),
             "target": inspection["target"],
+            "profile": inspection["profile"],
             "operator_cidr": inspection["operator_cidr"],
             "enrollment_id": inspection["enrollment_id"],
             "maintenance_ssh_client_id": inspection["maintenance_ssh_client_id"],
