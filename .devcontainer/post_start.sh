@@ -78,9 +78,12 @@ complete -o nospace -o default -F _iii_python_argcomplete iii
 EOF
 fi
 
-# Refresh Python dependencies for existing devcontainers, then reinstall the
-# editable III-Drone-CLI wrapper.
+# Refresh generic Python dependencies, then install the local deployment
+# package so its exact release/bundle dependencies are present before the CLI
+# imports deployment commands. requirements.txt intentionally carries general
+# workspace tooling and does not duplicate deployment's pinned contract.
 pip3 install -r ./requirements.txt
+pip3 install -e ./deployment
 pip3 uninstall -y iii 2> /dev/null
 pip3 install -e ./tools/III-Drone-CLI
 

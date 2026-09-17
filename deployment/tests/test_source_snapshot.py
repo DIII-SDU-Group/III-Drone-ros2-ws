@@ -184,6 +184,13 @@ def test_canonical_policy_classifies_hil_workstation_tool_as_shared_deployment_w
     }
 
 
+def test_canonical_policy_keeps_devcontainer_changes_in_provenance_without_deploying_them() -> None:
+    assert analyze_component_impact([".devcontainer/post_start.sh"], BASE_POLICY) == {
+        "components": [],
+        "causes": {},
+    }
+
+
 def test_field_manifest_and_human_report_include_dirty_provenance(tmp_path: Path) -> None:
     repo = _repo(tmp_path / "repo")
     _write(repo / "src/new.py", "NEW = True\n")
