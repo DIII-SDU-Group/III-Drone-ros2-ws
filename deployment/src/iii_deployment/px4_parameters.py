@@ -23,6 +23,7 @@ HASH = re.compile(r"^[a-f0-9]{64}$")
 PARAMETER = re.compile(r"^[A-Z][A-Z0-9_]{0,15}$")
 MAV_TYPES = {5: "UINT32", 6: "INT32", 9: "REAL32"}
 MAV_TYPE_IDS = {value: key for key, value in MAV_TYPES.items()}
+DYNAMIC_MODE_HASH = re.compile(r"^COM_MODE[0-7]_HASH$")
 
 
 class PX4ParameterError(RuntimeError):
@@ -380,10 +381,23 @@ class PX4ParameterStore:
             raise PX4ParameterError("PX4 snapshot profile mismatch")
         expected = {item["name"]: item for item in manifest["parameters"]}
         observed = {item["name"]: item for item in snapshot["parameters"]}
-        missing = sorted(set(expected) - set(observed))
+        # PX4 creates external-mode hash slots only after an external mode is
+        # registered.  A fresh SITL instance therefore legitimately has none
+        # of these identity-only parameters, while an instance that has run
+        # modes may expose any subset.  They never carry release-owned values
+        # and must not make the HIL inventory fail before startup validation.
+        optional_missing = {
+            name
+            for name in set(expected) - set(observed)
+            if profile == "sim"
+            and expected[name]["classification"] == "calibration-identity"
+            and expected[name]["enforcement"] == "preserve"
+            and DYNAMIC_MODE_HASH.fullmatch(name)
+        }
+        missing = sorted((set(expected) - set(observed)) - optional_missing)
         unexpected = sorted(set(observed) - set(expected))
         drift = {name: [] for name in ("release-required", "operator-tunable")}
-        preserved = []
+        preserved = sorted(optional_missing)
         for name in sorted(set(expected) & set(observed)):
             requirement = expected[name]
             current = observed[name]
@@ -415,8 +429,10 @@ class PX4ParameterStore:
         complete = (
             not missing
             and not unexpected
-            and len(observed) == manifest["inventory"]["parameter_count"]
+            and len(observed) + len(optional_missing)
+            == manifest["inventory"]["parameter_count"]
         )
+        preserved.sort()
         return {
             "schema": "iii.px4-parameter-comparison/v1",
             "profile": profile,

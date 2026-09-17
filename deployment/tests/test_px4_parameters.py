@@ -35,13 +35,16 @@ def parameter(
     }
 
 
-def manifest(profile: str) -> dict:
+def manifest(profile: str, *, include_dynamic_mode_slot: bool = False) -> dict:
     values = [
         parameter("CAL_ACC0_ID", None, "calibration-identity"),
         parameter("COM_RC_IN_MODE", 1, "release-required"),
         parameter("MPC_XY_VEL_MAX", 12.0, mav_type="REAL32"),
         parameter("NAV_RCL_ACT", 0, "release-required"),
     ]
+    if include_dynamic_mode_slot:
+        values.append(parameter("COM_MODE0_HASH", None, "calibration-identity"))
+    values.sort(key=lambda item: item["name"])
     result = {
         "schema": "iii.px4-parameter-manifest/v1",
         "manifest_id": "0" * 64,
@@ -126,12 +129,22 @@ class FakeAdapter:
         return False
 
 
-def make_store(tmp_path: Path, adapter: FakeAdapter | None = None):
+def make_store(
+    tmp_path: Path,
+    adapter: FakeAdapter | None = None,
+    *,
+    include_dynamic_mode_slot: bool = False,
+):
     paths = {}
     for profile in ("real", "sim"):
         path = tmp_path / f"manifests/{profile}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(canonical_json(manifest(profile)) + b"\n")
+        path.write_bytes(
+            canonical_json(
+                manifest(profile, include_dynamic_mode_slot=include_dynamic_mode_slot)
+            )
+            + b"\n"
+        )
         paths[profile] = path
     selected = adapter or FakeAdapter()
     return (
@@ -157,6 +170,18 @@ def test_full_pull_classifies_required_tunable_and_preserved_drift(tmp_path):
         "MPC_XY_VEL_MAX"
     ]
     assert comparison["preserved_calibration_identity"] == ["CAL_ACC0_ID"]
+    assert adapter.write_calls == []
+
+
+def test_sim_allows_unregistered_dynamic_external_mode_hash_slots(tmp_path):
+    subject, adapter = make_store(tmp_path, include_dynamic_mode_slot=True)
+
+    snapshot = subject.pull("sim")
+    comparison = subject.compare("sim", snapshot["snapshot_id"])
+
+    assert comparison["inventory_complete"] is True
+    assert comparison["required_match"] is True
+    assert "COM_MODE0_HASH" in comparison["preserved_calibration_identity"]
     assert adapter.write_calls == []
 
 
