@@ -133,3 +133,8 @@ Acceptance:
 - Full III Runtime suite: 300 passed.
 - Developer-host Ansible playbook syntax check: passed.
 - Developer systemd unit verification: passed (only unrelated host warnings).
+- Candidate profile validation in the sourced ROS development workspace:
+  `iii_drone_configuration` passed 113 tests and `iii_drone_mission` passed
+  65 tests, both with zero failures. The built local mission catalog declares
+  `opti_track` non-commissioned/non-onboard with no default; its qualified
+  catalog contains only `hil` and `real` profiles.
