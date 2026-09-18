@@ -40,6 +40,8 @@ jobs:
         with:
           persist-credentials: false
           submodules: false
+      - name: Install focused test runner
+        run: python -m pip install --disable-pip-version-check pytest==8.3.5
       - name: Verify lock and workflow regression tests
         run: python -m pytest -q tests/integration/test_submodule_lock_scripts.py tests/integration/test_developer_ci_workflow.py
 

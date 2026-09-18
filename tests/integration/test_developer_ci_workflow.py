@@ -20,6 +20,7 @@ def test_ci_retains_only_developer_integrity_gates() -> None:
 
     for active_gate in (
         "verify_submodule_lock.sh",
+        "python -m pip install --disable-pip-version-check pytest==8.3.5",
         "test_submodule_lock_scripts.py",
         "verify_iii_submodule_branch_policy_ci.sh",
     ):
