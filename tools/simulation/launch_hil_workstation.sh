@@ -22,7 +22,10 @@ PX4_BUILD_DIR="${III_HIL_PX4_BUILD_DIR:-${PX4_ROOT}/build/px4_sitl_default}"
 PX4_CANONICAL_RCS="${PX4_ROOT}/ROMFS/px4fmu_common/init.d-posix/rcS"
 HIL_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}/iii-hil-${UID}"
 PX4_STARTUP_SCRIPT="${HIL_RUNTIME_DIR}/px4-rcS-${PX4_INSTANCE}"
-PI_ADDRESS="${III_HIL_PI_ADDRESS:-10.42.0.15}"
+HIL_PEER_ADDRESS_FILE="${III_HIL_PEER_ADDRESS_FILE:-${HIL_RUNTIME_DIR}/pi-address-${PX4_INSTANCE}}"
+PI_ENDPOINT="${III_HIL_PI_ENDPOINT:-iii.local}"
+PI_ADDRESS="${III_HIL_PI_ADDRESS:-}"
+PI_USER="${III_HIL_PI_USER:-iii}"
 WORKSTATION_ADDRESS="${III_HIL_WORKSTATION_ADDRESS:-10.42.0.1}"
 PX4_AGENT_ADDRESS_U32="${III_HIL_PX4_AGENT_ADDRESS_U32:-170524687}"
 XRCE_PORT="${III_HIL_XRCE_PORT:-8889}"
@@ -42,7 +45,7 @@ usage() {
 Usage: $(basename "$0") {start|status|stop}
 
 Runs only workstation-owned HIL processes. The aircraft runtime remains owned by
-the Raspberry Pi. Standard link: workstation ${WORKSTATION_ADDRESS}, Pi ${PI_ADDRESS}.
+the Raspberry Pi. Standard link: workstation ${WORKSTATION_ADDRESS}, Pi ${PI_ADDRESS:-${PI_ENDPOINT}}.
 EOF
 }
 
@@ -106,7 +109,9 @@ sim_session_healthy() {
 }
 
 cyclone_uri() {
-    printf '%s' "<CycloneDDS><Domain><General><Interfaces><NetworkInterface address=\"${WORKSTATION_ADDRESS}\" priority=\"default\" multicast=\"default\"/></Interfaces></General><Discovery><Peers><Peer address=\"${PI_ADDRESS}\"/></Peers></Discovery></Domain></CycloneDDS>"
+    local pi_address
+    pi_address="$(resolve_pi_address)" || return 1
+    printf '%s' "<CycloneDDS><Domain><General><Interfaces><NetworkInterface address=\"${WORKSTATION_ADDRESS}\" priority=\"default\" multicast=\"default\"/></Interfaces></General><Discovery><Peers><Peer address=\"${pi_address}\"/></Peers></Discovery></Domain></CycloneDDS>"
 }
 
 ros_environment() {
@@ -114,8 +119,61 @@ ros_environment() {
         "${ROS_DOMAIN_ID}" "${GZ_PARTITION}" "$(cyclone_uri)"
 }
 
+resolve_pi_address() {
+    if [[ -n "${PI_ADDRESS}" ]]; then
+        printf '%s\n' "${PI_ADDRESS}"
+        return 0
+    fi
+    local resolved
+    resolved="$(getent ahostsv4 "${PI_ENDPOINT}" | awk 'NR == 1 { print $1; exit }')"
+    if [[ -n "${resolved}" ]]; then
+        printf '%s\n' "${resolved}"
+        return 0
+    fi
+    if session_pi_address; then
+        return 0
+    fi
+    echo "Unable to resolve HIL Pi endpoint ${PI_ENDPOINT}; set III_HIL_PI_ADDRESS to an explicit IPv4 address." >&2
+    return 1
+}
+
+valid_ipv4() {
+    local address="$1"
+    local octet
+    local -a octets
+    [[ "${address}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+    IFS=. read -r -a octets <<<"${address}"
+    for octet in "${octets[@]}"; do
+        ((10#${octet} <= 255)) || return 1
+    done
+}
+
+session_pi_address() {
+    local address
+    local mode
+    [[ -f "${HIL_PEER_ADDRESS_FILE}" && ! -L "${HIL_PEER_ADDRESS_FILE}" && -O "${HIL_PEER_ADDRESS_FILE}" ]] || return 1
+    mode="$(stat -c '%a' "${HIL_PEER_ADDRESS_FILE}")" || return 1
+    (( (8#${mode} & 077) == 0 )) || return 1
+    address="$(<"${HIL_PEER_ADDRESS_FILE}")"
+    valid_ipv4 "${address}" || return 1
+    printf '%s\n' "${address}"
+}
+
+record_pi_address() {
+    local temporary
+    valid_ipv4 "${PI_ADDRESS}" || return 1
+    mkdir -p "${HIL_RUNTIME_DIR}"
+    chmod 700 "${HIL_RUNTIME_DIR}"
+    temporary="$(mktemp "${HIL_PEER_ADDRESS_FILE}.tmp.XXXXXX")"
+    chmod 600 "${temporary}"
+    printf '%s\n' "${PI_ADDRESS}" >"${temporary}"
+    mv -f "${temporary}" "${HIL_PEER_ADDRESS_FILE}"
+}
+
 link_probe() {
-    python3 - "${WORKSTATION_ADDRESS}" "${PI_ADDRESS}" <<'PY'
+    local pi_address
+    pi_address="$(resolve_pi_address)" || return 1
+    python3 - "${WORKSTATION_ADDRESS}" "${pi_address}" <<'PY'
 import socket
 import sys
 
@@ -141,6 +199,31 @@ require_standard_link() {
         echo "Refusing to start a disconnected HIL session." >&2
         return 1
     }
+}
+
+physical_px4_link_is_live() {
+    local pi_address
+    pi_address="$(resolve_pi_address)" || return 1
+    # This is deliberately a short, active check rather than an ARP-cache
+    # lookup: a stale neighbour entry must not prevent a normal simulator run.
+    ssh -o BatchMode=yes -o ConnectTimeout=2 "${PI_USER}@${pi_address}" \
+        "timeout 2 ping -I eth0 -c 1 -W 1 10.41.10.2 >/dev/null 2>&1"
+}
+
+require_exclusive_px4_source() {
+    if [[ "${III_HIL_ALLOW_SITL_WITH_PHYSICAL_PX4:-0}" == "1" ]]; then
+        return 0
+    fi
+    if physical_px4_link_is_live; then
+        cat >&2 <<EOF
+Refusing to start workstation PX4 SITL: a physical PX4 is reachable at
+10.41.10.2 through the Pi. Both clients would otherwise claim the Pi XRCE
+agent and MAVLink endpoints. Stop the hardware HIL session or disconnect the
+physical PX4 first. For an intentional split-host experiment, set
+III_HIL_ALLOW_SITL_WITH_PHYSICAL_PX4=1 explicitly.
+EOF
+        return 1
+    fi
 }
 
 px4_command() {
@@ -256,6 +339,12 @@ print_status() {
 
 start() {
     require_standard_link
+    # ``link_probe`` resolves the mDNS endpoint, but PX4 itself needs a literal
+    # IPv4 peer for every MAVLink stream.  Resolve once and retain that exact
+    # address so an unset optional override cannot become an empty ``-t``.
+    PI_ADDRESS="$(resolve_pi_address)"
+    require_exclusive_px4_source
+    record_pi_address
     [[ -x "${PX4_BUILD_DIR}/bin/px4" ]] || {
         echo "Cached PX4 SITL binary is missing: ${PX4_BUILD_DIR}/bin/px4" >&2
         return 1
@@ -329,6 +418,7 @@ stop() {
         III_SIM_TOOLS_PX4_INSTANCE="${PX4_INSTANCE}" \
         III_SIM_TOOLS_PX4_BUILD_DIR="${PX4_BUILD_DIR}" \
         "${SIM_LAUNCHER}" --stop >/dev/null
+    rm -f "${HIL_PEER_ADDRESS_FILE}"
     print_status || true
 }
 

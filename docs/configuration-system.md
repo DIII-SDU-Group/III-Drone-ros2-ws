@@ -128,35 +128,13 @@ capture receipt. Force deletion is a separate planned operation with the exact
 validated no-op; complete WAL/checkpoints and retained sessions remain available
 while mirrors or captures may reference them.
 
-## 7. Capture Comparison And Source Promotion
+## 7. Editing Configuration During Development
 
-Capture/export is always non-destructive. Promotion is a separate, explicit
-feature-branch workflow. It requires the capture's exact release ID, real/sim
-profile, current source manifest, workspace commit ancestry, and field baseline;
-source drift returns a reconciliation requirement instead of overwriting it.
-Every promoted key is named individually and classified as
-`shared-tracked-default`. Other differences remain `retained-capture-evidence`;
-removed, missing, or unknown keys are classified `rejected` and cannot be selected.
-
-```bash
-iii config promotion plan --capture-id <capture-id> --profile sim \
-  --release-id <release-id> --classification shared-tracked-default \
-  --key /control/example_gain
-
-iii config promotion apply --capture-id <capture-id> --profile sim \
-  --release-id <release-id> --classification shared-tracked-default \
-  --key /control/example_gain --commit \
-  --operation-id promote-sim-example --confirm --non-interactive
-```
-
-Apply performs a minimal scalar-line edit only in the selected profile's
-`config/parameter_sets/<profile>/tracked/default.yaml`, then re-seals the two
-corresponding hashes and `manifest_id` in the configuration package manifest.
-It refuses `develop`, `main`, `release`, `promote/*`, and `codex/*` branches.
-Optional `--commit` creates exact Configuration and workspace gitlink/lock commits
-and emits `iii.configuration-promotion-pr-metadata/v1` for the canonical
-`create_stack_prs.sh` flow. A qualified release tag later binds those Git commits;
-promotion itself neither publishes nor qualifies a release.
+Configuration is ordinary editable source. Make a focused change in the selected
+profile, rebuild the affected III package if required, and use `iii deploy dev`
+to synchronize it to the Pi. Keep normal Git history when it is useful, but the
+onboard workflow does not require a release ID, source seal, promotion command,
+or a signed configuration artifact.
 
 ## 8. Validation Semantics
 

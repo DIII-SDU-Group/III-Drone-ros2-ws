@@ -1,44 +1,50 @@
 ---
-- name: Create governed host filesystem directories
+- name: Create writable developer runtime paths
   ansible.builtin.file:
-    path: "{{ item.path }}"
+    path: "{{ item }}"
     state: directory
-    owner: >-
-      {{ iii_runtime_owner_effective if item.owner == 'iii'
-         else iii_deployment_owner_effective if item.owner == 'iii-deploy'
-         else item.owner }}
-    group: >-
-      {{ iii_runtime_group_effective if item.group == 'iii'
-         else iii_deployment_group_effective if item.group == 'iii-deploy'
-         else item.group }}
-    mode: "{{ item.mode }}"
-  loop: "{{ iii_filesystem_directories }}"
+    owner: "{{ iii_runtime_owner_effective }}"
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0755"
+  loop:
+    - /home/iii/ws
+    - /home/iii/.config/iii_drone
+    - /home/iii/.ros/log
+    - /var/log/iii
+    - /run/iii
 
-- name: Recreate transient runtime directory at boot
+- name: Recreate the writable runtime directory at boot
   ansible.builtin.copy:
     dest: /etc/tmpfiles.d/iii.conf
     owner: root
     group: root
     mode: "0644"
     content: |
-      d /run/iii 0751 iii iii -
-      d /run/iii/clock-flush 0750 iii iii -
-      d /run/iii/deployment-upload 0700 iii-deploy iii-deploy -
+      d /run/iii 0755 iii iii -
 
-- name: Bound III file log retention
+- name: Remove immutable release and receiver directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /opt/iii
+    - /var/lib/iii/deployment
+    - /var/lib/iii/incoming
+    - /etc/iii/trust
+    - /etc/iii/secrets
+
+- name: Keep ordinary III logs bounded for development
   ansible.builtin.copy:
     dest: /etc/logrotate.d/iii
     owner: root
     group: root
     mode: "0644"
     content: |
-      /var/log/iii/*.log /var/log/iii/*/*.log /var/log/iii/deployment/*.jsonl {
-          daily
-          rotate 14
-          size 100M
+      /var/log/iii/*.log /home/iii/.ros/log/*.log {
+          weekly
+          rotate 4
           missingok
           notifempty
           compress
-          delaycompress
           copytruncate
       }

@@ -3,7 +3,7 @@ network:
   ethernets:
     px4-ethernet:
       match:
-        name: "{{ iii_px4_interface }}"
+        driver: "{{ iii_px4_interface_driver }}"
       addresses: ["{{ iii_px4_host_address }}"]
       dhcp4: false
       link-local: []

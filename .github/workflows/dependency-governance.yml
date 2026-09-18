@@ -1,4 +1,4 @@
-name: Dependency Governance
+name: Dependency Integrity
 
 on:
   pull_request:
@@ -9,143 +9,41 @@ on:
       - release
 
 concurrency:
-  group: dependency-governance-${{ github.event.pull_request.number || github.ref }}
+  group: dependency-integrity-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 permissions: {}
 
 jobs:
-  promotion-source:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Checkout exact PR head
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          submodules: recursive
-      - name: Validate source and mechanical diff
-        run: |
-          PYTHONPATH=deployment/src python scripts/ci/verify_promotion_source.py \
-            --phase source \
-            --base "${{ github.base_ref }}" \
-            --head "${{ github.head_ref }}" \
-            --base-sha "${{ github.event.pull_request.base.sha }}" \
-            --head-sha "${{ github.event.pull_request.head.sha }}" \
-            --json
-
-  promotion-source-target:
-    name: promotion-source-${{ github.base_ref }}
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Checkout exact PR head
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          submodules: recursive
-      - name: Validate target-specific source and mechanical diff
-        run: |
-          PYTHONPATH=deployment/src python scripts/ci/verify_promotion_source.py \
-            --phase source \
-            --base "${{ github.base_ref }}" \
-            --head "${{ github.head_ref }}" \
-            --base-sha "${{ github.event.pull_request.base.sha }}" \
-            --head-sha "${{ github.event.pull_request.head.sha }}" \
-            --json
-
-  promotion-evidence:
-    if: github.event_name == 'pull_request' && contains(fromJSON('["main","release"]'), github.base_ref)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Checkout exact PR head
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          submodules: recursive
-      - name: Fetch untrusted signed promotion evidence transport
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
-        with:
-          script: |
-            const fs = require('fs');
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: context.issue.number, per_page: 100
-            });
-            const marker = '<!-- iii-promotion-evidence-v1 -->';
-            const candidates = comments.filter(c => c.body && c.body.includes(marker));
-            if (candidates.length !== 1) core.setFailed(`Expected exactly one promotion evidence comment; found ${candidates.length}`);
-            const fenced = candidates[0].body.match(/```json\s*([\s\S]*?)```/);
-            if (!fenced) core.setFailed('Promotion evidence comment has no JSON block');
-            fs.mkdirSync('.ci', {recursive: true});
-            fs.writeFileSync('.ci/promotion-attestation.json', fenced[1]);
-            fs.writeFileSync('.ci/trusted-promotion-signers.json', process.env.TRUSTED_SIGNERS || '{"signers":{}}');
-        env:
-          TRUSTED_SIGNERS: ${{ vars.III_PROMOTION_SIGNERS_JSON }}
-      - name: Validate source, mechanical diff, impact, and signature
-        run: |
-          PYTHONPATH=deployment/src python scripts/ci/verify_promotion_source.py \
-            --phase evidence \
-            --base "${{ github.base_ref }}" \
-            --head "${{ github.head_ref }}" \
-            --base-sha "${{ github.event.pull_request.base.sha }}" \
-            --head-sha "${{ github.event.pull_request.head.sha }}" \
-            --attestation .ci/promotion-attestation.json \
-            --trusted-signers .ci/trusted-promotion-signers.json \
-            --json
-
-  deployment-contracts:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          persist-credentials: false
-          submodules: recursive
-      - name: Install pinned deployment contract dependencies
-        run: python -m pip install --disable-pip-version-check ./src/III-Drone-Contracts ./tools/III-Drone-CLI ./src/III-Drone-Configuration ./deployment[test]
-      - name: Validate deployment contracts and traceability
-        run: |
-          mkdir -p .ci
-          iii verify deployment --root . --audit-only \
-            --report .ci/deployment-verification.json \
-            --junit .ci/deployment-verification.xml
-          iii docs check --root . --output=json > .ci/documentation-check.json
-          python -m pytest deployment/tests
-
   verify-submodule-lock:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
-
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
           submodules: recursive
-
-      - name: Verify submodule lock
+      - name: Verify declared submodule revisions
         run: ./scripts/git/verify_submodule_lock.sh
+
+  verify-submodule-lock-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Install focused test runner
+        run: python -m pip install --disable-pip-version-check pytest==8.3.5
+      - name: Verify lock and workflow regression tests
+        run: python -m pytest -q tests/integration/test_submodule_lock_scripts.py tests/integration/test_developer_ci_workflow.py
 
   verify-iii-branch-policy:
     if: github.event_name == 'pull_request' && github.base_ref != 'release'
@@ -153,7 +51,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -161,79 +58,8 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
           submodules: recursive
-
-      - name: Verify III submodule branch policy (base->feature stack)
+      - name: Verify III submodule feature branches match the workspace branch
         run: |
           ./scripts/ci/verify_iii_submodule_branch_policy_ci.sh \
             --base "${{ github.base_ref }}" \
             --feature "${{ github.head_ref }}"
-
-  verify-iii-submodules-on-target-branch:
-    if: github.event_name == 'pull_request' && contains(fromJSON('["develop","main","release"]'), github.base_ref)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          submodules: recursive
-
-      - name: Verify III submodule pointers equal origin/${{ github.base_ref }} HEAD
-        run: |
-          target="${{ github.base_ref }}"
-          [[ "$target" == "release" ]] && target=main
-          ./scripts/ci/verify_iii_submodule_commits_on_branch_ci.sh --target-branch "$target"
-
-      - name: Summarize exact III submodule target state
-        if: always()
-        run: |
-          {
-            echo '<!-- iii-submodule-target-verification-v1 -->'
-            echo '### III Submodule Target Branch Gate'
-            echo
-            echo '| Submodule | SHA | Status | Detail |'
-            echo '|---|---|---|---|'
-            if [[ -f .ci/iii-submodule-status.tsv ]]; then
-              while IFS=$'\t' read -r path sha status detail; do
-                printf '| `%s` | `%s` | %s | %s |\n' "$path" "${sha:0:12}" "$status" "$detail"
-              done < .ci/iii-submodule-status.tsv
-            else
-              echo '| _No retained status file_ | — | FAIL | verifier did not emit evidence |'
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload III submodule status artifact
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        with:
-          name: iii-submodule-status
-          path: .ci/iii-submodule-status.tsv
-          if-no-files-found: ignore
-          overwrite: false
-          retention-days: 14
-
-
-  verify-linked-submodule-prs-merged:
-    if: github.event_name == 'pull_request' && contains(fromJSON('["develop","main","release"]'), github.base_ref)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Checkout trusted base policy only
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
-          fetch-depth: 1
-          submodules: false
-          persist-credentials: false
-      - name: Verify untrusted PR locators against trusted gitlinks and API state
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/ci/verify_linked_submodule_prs.py --json

@@ -1,37 +1,22 @@
 [Unit]
-Description=III real-profile runtime API
-Wants=iii-deployment-receiver.service
-After=local-fs.target network-online.target iii-deployment-receiver.service iii-system-daemon.service
+Description=III editable-workspace runtime API
+After=network-online.target iii-system-daemon.service
 Wants=network-online.target iii-system-daemon.service
 PartOf=iii.target
-ConditionPathExists=/var/lib/iii/deployment/active-selector.json
-ConditionPathIsSymbolicLink=/opt/iii/current
-StartLimitIntervalSec=60
-StartLimitBurst=5
+ConditionPathExists=/home/iii/ws/install/setup.bash
+ConditionPathExists=/home/iii/ws/.venv/bin/python
 
 [Service]
 Type=simple
 User=iii
 Group=iii
-UMask=0027
-WorkingDirectory=/var/lib/iii
+WorkingDirectory=/home/iii/ws
 EnvironmentFile=/etc/iii/runtime.env
-EnvironmentFile=/etc/iii/secrets/runtime-api.env
-Environment=III_CLOCK_FLUSH_COMMIT_PATH=/run/iii/clock-flush/runtime-api.json
-ExecStartPre=/usr/libexec/iii/iii-release-launch runtime-api --verify
-ExecStart=/usr/libexec/iii/iii-release-launch runtime-api
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source /home/iii/ws/install/setup.bash && exec /home/iii/ws/.venv/bin/python -m iii_drone_runtime.api.main'
 Restart=on-failure
 RestartSec=2s
 TimeoutStopSec=20s
 KillMode=control-group
-StandardOutput=null
-StandardError=null
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=yes
-ReadWritePaths=/run/iii /var/lib/iii/configuration /var/log/iii
-RestrictSUIDSGID=yes
 
 [Install]
 WantedBy=multi-user.target

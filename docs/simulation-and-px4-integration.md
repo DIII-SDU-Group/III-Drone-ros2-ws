@@ -18,65 +18,41 @@ In simulation mode (`SIMULATION=true`):
 6. `depth_cam_to_mmwave` converts incoming depth cloud to mmWave-like output topic (`/sensor/mmwave/points`).
 7. `tf_sim.launch.py` publishes sim-specific static transforms and dynamic drone frame updates.
 
-QGroundControl runs only as the pinned host-native application owned by `iii qgc`.
-The devcontainer uses host networking, so PX4 SITL emits MAVLink to the host UDP
-14550 endpoint used by the same QGroundControl binary as real operation. The
-simulation launcher owns only PX4/Gazebo and never starts, stops, or embeds QGC.
-Connecting or disconnecting QGC affects PX4/operator telemetry, not III lifecycle
-bringup.
+QGroundControl is an ordinary host-native PX4 client. The simulation launcher
+owns PX4/Gazebo only; connecting or disconnecting QGroundControl affects
+operator telemetry, not III lifecycle bringup.
 
-Simulation uses the host/devcontainer clock directly and therefore skips the
-aircraft-to-GC clock-alignment gate. HIL remains a reserved, non-bootable
-selector scope; no maintained procedure treats it as an implemented simulation
-profile. OptiTrack is a separately commissioned real-aircraft profile and is not
-part of simulation acceptance.
+HIL is a maintained, non-flight acceptance profile. Keep the aircraft
+disarmed and remove the propulsion battery. OptiTrack is a real-aircraft
+profile and is prepared separately from HIL.
+
+HIL uses two independent Ethernet links: PX4 is connected to the Pi on
+`10.41.10.0/24`, while the workstation connects directly to the Pi. The
+workstation resolves the Pi as `iii.local` by default; use
+`III_HIL_PI_ADDRESS` as a direct fallback when mDNS is unavailable. The
+canonical workstation control surface is
+`tools/simulation/launch_hil_workstation.sh` (`start`, `status`, and `stop`).
+Provision and deploy the Pi first, then start the workstation HIL processes.
 
 Start the two independent surfaces explicitly:
 
 ```bash
-iii qgc start --dry-run
-iii qgc start --operation-id <retained-operation-id> --confirm
-tools/simulation/launch_simulation_tools.sh --headless --no-attach
-tools/simulation/launch_simulation_tools.sh --status
+iii host provision --host iii.local --profile hil
+iii deploy dev --host iii.local --build --restart
+tools/simulation/launch_hil_workstation.sh start
+tools/simulation/launch_hil_workstation.sh status
 ```
 
-The status output reports whether host UDP 14550 has a listener, but it never
-starts or stops that listener. `iii qgc stop` and the simulation helper's
-`--stop` remain independent. Host-network transport is part of the devcontainer
-contract; Docker bridge/NAT port inference is not supported for this flow.
+Use `iii px4 inspect --host iii.local` to inspect the Pi-side Ethernet link and
+listeners. PX4 firmware and parameter changes remain explicit manual developer
+work; this deployment path never writes PX4 firmware or arms the vehicle.
 
-QGC forwards a second loopback-only MAVLink stream to UDP 14551. The login-scoped
-`iii-gc-px4-parameters.service` uses that stream to mirror complete, disarmed PX4
-inventories. It debounces observed parameter events for two seconds, reconciles
-the full set every 60 seconds while connected and disarmed, and reconciles once
-more at a clean session end. It never requests a bulk transfer or writes while
-armed. Captures from direct QGC edits are therefore attributed only to a MAVLink
-observation; the companion does not invent an operator or transaction identity.
-
-Both real and simulation use the versioned `iii.px4-parameter-manifest/v1`
-contract. The release owns complete profile-specific manifests and binds their
-content identities to the exact PX4 firmware commit. Inspect and manage them with
-the read/plan/confirm sequence below:
-
-```bash
-iii px4 params pull --profile sim --json
-iii px4 params plan --profile sim --snapshot <snapshot-id> --key <parameter> --json
-iii px4 params apply --plan-id <plan-id> --key <parameter> --dry-run --json
-iii px4 params apply --plan-id <plan-id> --key <parameter> \
-  --operation-id <retained-operation-id> --confirm --json
-iii px4 params verify --plan-id <plan-id> --json
-```
-
-Every write begins from a fresh complete backup, requires exact per-key
-confirmation, verifies readback, and attempts byte-equivalent parameter recovery
-on failure. Pull, activation validation, and ordinary field deployment are
-read-only. Real activation sends the complete disarmed inventory as authenticated,
-release-bound receiver evidence; required drift rejects activation without a
-`PARAM_SET`.
-
-Named snapshots use `capture`, `list`, `show`, `diff`, `export`, and `import`.
-`promote` accepts only reviewed non-calibration keys and writes the corresponding
-manifest on a normal feature branch; it does not commit or push.
+When the physical PX4 is connected on the Pi Ethernet link, do not start the
+workstation SITL launcher. It would otherwise compete for the same Pi XRCE and
+MAVLink endpoints. The launcher detects a live `10.41.10.2` peer and refuses
+to start by default. Set `III_HIL_ALLOW_SITL_WITH_PHYSICAL_PX4=1` only for a
+deliberate split-host experiment where that coexistence has been designed and
+verified.
 
 ## 3. PX4 SITL Asset Injection
 

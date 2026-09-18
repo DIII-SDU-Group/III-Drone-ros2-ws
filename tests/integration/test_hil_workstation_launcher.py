@@ -11,6 +11,14 @@ def test_hil_workstation_launcher_is_shell_valid_and_uses_isolated_links():
     source = SCRIPT.read_text(encoding="utf-8")
 
     assert "III_HIL_XRCE_PORT:-8889" in source
+    assert 'PI_ENDPOINT="${III_HIL_PI_ENDPOINT:-iii.local}"' in source
+    assert 'PI_ADDRESS="${III_HIL_PI_ADDRESS:-}"' in source
+    assert 'HIL_PEER_ADDRESS_FILE="${III_HIL_PEER_ADDRESS_FILE:-${HIL_RUNTIME_DIR}/pi-address-${PX4_INSTANCE}}"' in source
+    assert "getent ahostsv4" in source
+    assert "session_pi_address" in source
+    assert "record_pi_address" in source
+    assert "rm -f \"${HIL_PEER_ADDRESS_FILE}\"" in source
+    assert "10.42.0.15" not in source
     assert 'SCRIPT_WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"' in source
     assert "elif [[ -x /home/iii/ws/tools/simulation/launch_simulation_tools.sh ]]" in source
     assert source.count('III_SIM_TOOLS_WORKSPACE_ROOT="${WORKSPACE_ROOT}"') == 3
@@ -49,6 +57,11 @@ def test_hil_workstation_launcher_is_shell_valid_and_uses_isolated_links():
     assert "-p px4_battery_charge_topic:=/hil/sim_battery_charge" in source
     assert "ros2 lifecycle set /payload/charger_gripper/charger_gripper activate" in source
     assert "socket.create_connection((pi, 22)" in source
+    assert 'PI_USER="${III_HIL_PI_USER:-iii}"' in source
+    assert "physical_px4_link_is_live" in source
+    assert "require_exclusive_px4_source" in source
+    assert "III_HIL_ALLOW_SITL_WITH_PHYSICAL_PX4" in source
+    assert "timeout 2 ping -I eth0 -c 1 -W 1 10.41.10.2" in source
     assert "sim_session_healthy" in source
     assert "adapter_panes_healthy" in source
     assert 'session_exists "${ADAPTER_SESSION}" && ! adapter_panes_healthy' in source
