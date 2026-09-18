@@ -43,9 +43,9 @@ Development uses the VS Code devcontainer as the reference OS-equivalent environ
 - Cross-compilation container: `Dockerfile.cc`
 - Entrypoints: `entrypoint_dev.sh`, `entrypoint_real.sh`, `entrypoint_cc.sh`
 
-The workspace-owned [`deployment/`](deployment/) package and Ansible assets own
-native host installation. This workspace also owns the internal daemon, launch
-graph, service model, and devcontainer behavior.
+The workspace-owned [`deployment/`](deployment/) Ansible assets configure the
+native Pi as an editable developer host. This workspace also owns the internal
+daemon, launch graph, service model, and devcontainer behavior.
 
 ## Canonical Bringup Model
 
@@ -90,20 +90,17 @@ iii system boot
 iii system attach
 ```
 
-## Branching And Stability
+## Field Iteration
 
-Governed working model:
+The Pi is an editable research host. Use ordinary Git workflow for collaboration
+and deploy a local change directly when testing:
 
-- normal feature/work-sweep branches -> `develop` through coordinated PRs;
-- `develop` -> `promote/develop-to-main/<operation-id>` -> `main` through an
-  evidence-gated mechanical promotion stack;
-- workspace `main` -> workspace-only `release` through a direct protected PR;
-- workspace `release` -> immutable qualified `vX.Y.Z` tags; and
-- editable submodules stop at `main` and never have `release` branches.
+```bash
+iii deploy dev --host <pi-host-or-ip> --build --restart
+```
 
-Run the exact dry-run/apply/resume commands in
-[dependency governance](docs/dependency-governance.md). Direct pushes to
-protected branches are unsupported.
+This path intentionally has no signed release, receiver, immutable slot, or
+qualification gate. See [developer host provisioning](docs/host-provisioning.md).
 
 ## Dependency Governance
 
@@ -134,6 +131,6 @@ Start here for detailed technical documentation:
 This codebase was built in active research and is being hardened for multi-developer team use while continuing feature development.
 
 That means ongoing priorities are:
-- robustness and reproducibility
-- clearer ownership and release discipline
-- preserving operator transparency during testing
+- rapid test iteration
+- transparent runtime operation
+- preserving physical flight safety during testing

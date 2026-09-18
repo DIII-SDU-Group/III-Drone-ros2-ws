@@ -1,36 +1,22 @@
 [Unit]
-Description=III real-profile system daemon
-Wants=iii-deployment-receiver.service
-After=local-fs.target network-online.target iii-deployment-receiver.service
+Description=III editable-workspace system daemon
+After=network-online.target
 Wants=network-online.target
 PartOf=iii.target
-ConditionPathExists=/var/lib/iii/deployment/active-selector.json
-ConditionPathIsSymbolicLink=/opt/iii/current
-StartLimitIntervalSec=60
-StartLimitBurst=5
+ConditionPathExists=/home/iii/ws/install/setup.bash
+ConditionPathExists=/home/iii/ws/.venv/bin/python
 
 [Service]
 Type=simple
 User=iii
 Group=iii
-UMask=0027
-WorkingDirectory=/var/lib/iii
+WorkingDirectory=/home/iii/ws
 EnvironmentFile=/etc/iii/runtime.env
-Environment=III_CLOCK_FLUSH_COMMIT_PATH=/run/iii/clock-flush/system-daemon.json
-ExecStartPre=/usr/libexec/iii/iii-release-launch system-daemon --verify
-ExecStart=/usr/libexec/iii/iii-release-launch system-daemon
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source /home/iii/ws/install/setup.bash && exec /home/iii/ws/.venv/bin/python -m iii_drone_supervision.system_daemon --socket /run/iii/system_manager.sock'
 Restart=on-failure
 RestartSec=2s
 TimeoutStopSec=20s
 KillMode=control-group
-StandardOutput=null
-StandardError=null
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=yes
-ReadWritePaths=/run/iii /var/lib/iii/configuration /var/lib/iii/tuning /var/log/iii
-RestrictSUIDSGID=yes
 
 [Install]
 WantedBy=multi-user.target

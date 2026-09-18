@@ -1,19 +1,19 @@
 ---
-- name: Create the fixed III runtime group
+- name: Create the III developer group
   ansible.builtin.group:
     name: "{{ iii_runtime_group }}"
     gid: "{{ iii_runtime_gid }}"
     system: false
     state: present
 
-- name: Create the hardware-access supplementary groups
+- name: Create hardware-access groups
   ansible.builtin.group:
     name: "{{ item }}"
     system: true
     state: present
   loop: "{{ iii_runtime_supplementary_groups }}"
 
-- name: Create the III runtime and human field-access user
+- name: Create the interactive III developer account
   ansible.builtin.user:
     name: "{{ iii_runtime_user }}"
     uid: "{{ iii_runtime_uid }}"
@@ -23,11 +23,25 @@
     create_home: true
     home: /home/iii
     shell: /bin/bash
-    password_lock: true
+    password_lock: false
     system: false
     state: present
+  # `usermod` cannot alter the account owning the active SSH session.  The
+  # first-boot image already creates this exact developer account, so retain
+  # it in place when provisioning connects as `iii`.
+  when: ansible_user != iii_runtime_user
 
-- name: Create the human field-access SSH directory
+- name: Verify the active III developer bootstrap account
+  ansible.builtin.assert:
+    that:
+      - ansible_user == iii_runtime_user
+    fail_msg: >-
+      The active III developer account does not match the first-boot account
+      expected by this profile. Provision through a separate administrator
+      account or repair the bootstrap account first.
+  when: ansible_user == iii_runtime_user
+
+- name: Create an ordinary writable SSH directory
   ansible.builtin.file:
     path: /home/iii/.ssh
     state: directory
@@ -35,25 +49,7 @@
     group: "{{ iii_runtime_group_effective }}"
     mode: "0700"
 
-- name: Install final deployment-automation no-sudo policy marker
-  ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../host/iii-deployment-final.sudoers"
-    dest: /etc/sudoers.d/99-iii-deployment-final
-    owner: root
-    group: root
-    mode: "0440"
-    validate: /usr/sbin/visudo -cf %s
-
-- name: Install the independent human field-access SSH public key
-  ansible.builtin.copy:
-    content: "{{ iii_provisioning_inputs.maintenance_ssh_public_key }}\n"
-    dest: /home/iii/.ssh/authorized_keys
-    owner: "{{ iii_runtime_owner_effective }}"
-    group: "{{ iii_runtime_group_effective }}"
-    mode: "0600"
-  no_log: true
-
-- name: Grant the III human account explicit full sudo
+- name: Grant the III developer account full passwordless sudo
   ansible.builtin.template:
     src: 90-iii-maintenance.sudoers.j2
     dest: /etc/sudoers.d/90-iii-maintenance
@@ -62,29 +58,30 @@
     mode: "0440"
     validate: /usr/sbin/visudo -cf %s
 
-- name: Create the dedicated deployment transport group
-  ansible.builtin.group:
-    name: "{{ iii_deployment_group }}"
-    gid: "{{ iii_deployment_gid }}"
-    system: false
-    state: present
-
-- name: Create the restricted deployment transport account
+- name: Remove the restricted deployment transport account
   ansible.builtin.user:
-    name: "{{ iii_deployment_user }}"
-    uid: "{{ iii_deployment_uid }}"
-    group: "{{ iii_deployment_group }}"
-    create_home: true
-    home: /home/iii-deploy
-    shell: /bin/bash
-    password_lock: true
-    system: false
-    state: present
+    name: iii-deploy
+    state: absent
+    remove: true
 
-- name: Create the deployment transport SSH directory
+- name: Remove forced-command SSH policy
   ansible.builtin.file:
-    path: /home/iii-deploy/.ssh
-    state: directory
-    owner: "{{ iii_deployment_owner_effective }}"
-    group: "{{ iii_deployment_group_effective }}"
-    mode: "0700"
+    path: /etc/ssh/sshd_config.d/50-iii-forced-command.conf
+    state: absent
+  notify: Restart SSH
+
+- name: Install permissive developer SSH policy
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/50-iii-developer.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      PasswordAuthentication yes
+      PermitRootLogin yes
+      PubkeyAuthentication yes
+      AllowAgentForwarding yes
+      AllowTcpForwarding yes
+      PermitTunnel yes
+      X11Forwarding yes
+  notify: Restart SSH
