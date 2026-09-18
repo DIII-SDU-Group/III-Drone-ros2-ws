@@ -25,6 +25,7 @@ PX4_STARTUP_SCRIPT="${HIL_RUNTIME_DIR}/px4-rcS-${PX4_INSTANCE}"
 HIL_PEER_ADDRESS_FILE="${III_HIL_PEER_ADDRESS_FILE:-${HIL_RUNTIME_DIR}/pi-address-${PX4_INSTANCE}}"
 PI_ENDPOINT="${III_HIL_PI_ENDPOINT:-iii.local}"
 PI_ADDRESS="${III_HIL_PI_ADDRESS:-}"
+PI_USER="${III_HIL_PI_USER:-iii}"
 WORKSTATION_ADDRESS="${III_HIL_WORKSTATION_ADDRESS:-10.42.0.1}"
 PX4_AGENT_ADDRESS_U32="${III_HIL_PX4_AGENT_ADDRESS_U32:-170524687}"
 XRCE_PORT="${III_HIL_XRCE_PORT:-8889}"
@@ -200,6 +201,31 @@ require_standard_link() {
     }
 }
 
+physical_px4_link_is_live() {
+    local pi_address
+    pi_address="$(resolve_pi_address)" || return 1
+    # This is deliberately a short, active check rather than an ARP-cache
+    # lookup: a stale neighbour entry must not prevent a normal simulator run.
+    ssh -o BatchMode=yes -o ConnectTimeout=2 "${PI_USER}@${pi_address}" \
+        "timeout 2 ping -I eth0 -c 1 -W 1 10.41.10.2 >/dev/null 2>&1"
+}
+
+require_exclusive_px4_source() {
+    if [[ "${III_HIL_ALLOW_SITL_WITH_PHYSICAL_PX4:-0}" == "1" ]]; then
+        return 0
+    fi
+    if physical_px4_link_is_live; then
+        cat >&2 <<EOF
+Refusing to start workstation PX4 SITL: a physical PX4 is reachable at
+10.41.10.2 through the Pi. Both clients would otherwise claim the Pi XRCE
+agent and MAVLink endpoints. Stop the hardware HIL session or disconnect the
+physical PX4 first. For an intentional split-host experiment, set
+III_HIL_ALLOW_SITL_WITH_PHYSICAL_PX4=1 explicitly.
+EOF
+        return 1
+    fi
+}
+
 px4_command() {
     # PX4's POSIX rcS rewrites UXRCE_DDS_DOM_ID from ROS_DOMAIN_ID
     # immediately before it starts the client. A PX4_PARAM_ override alone is
@@ -317,6 +343,7 @@ start() {
     # IPv4 peer for every MAVLink stream.  Resolve once and retain that exact
     # address so an unset optional override cannot become an empty ``-t``.
     PI_ADDRESS="$(resolve_pi_address)"
+    require_exclusive_px4_source
     record_pi_address
     [[ -x "${PX4_BUILD_DIR}/bin/px4" ]] || {
         echo "Cached PX4 SITL binary is missing: ${PX4_BUILD_DIR}/bin/px4" >&2

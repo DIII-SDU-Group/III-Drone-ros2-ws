@@ -57,6 +57,11 @@ def test_hil_workstation_launcher_is_shell_valid_and_uses_isolated_links():
     assert "-p px4_battery_charge_topic:=/hil/sim_battery_charge" in source
     assert "ros2 lifecycle set /payload/charger_gripper/charger_gripper activate" in source
     assert "socket.create_connection((pi, 22)" in source
+    assert 'PI_USER="${III_HIL_PI_USER:-iii}"' in source
+    assert "physical_px4_link_is_live" in source
+    assert "require_exclusive_px4_source" in source
+    assert "III_HIL_ALLOW_SITL_WITH_PHYSICAL_PX4" in source
+    assert "timeout 2 ping -I eth0 -c 1 -W 1 10.41.10.2" in source
     assert "sim_session_healthy" in source
     assert "adapter_panes_healthy" in source
     assert 'session_exists "${ADAPTER_SESSION}" && ! adapter_panes_healthy' in source

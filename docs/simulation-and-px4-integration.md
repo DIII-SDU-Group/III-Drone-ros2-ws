@@ -47,6 +47,13 @@ Use `iii px4 inspect --host iii.local` to inspect the Pi-side Ethernet link and
 listeners. PX4 firmware and parameter changes remain explicit manual developer
 work; this deployment path never writes PX4 firmware or arms the vehicle.
 
+When the physical PX4 is connected on the Pi Ethernet link, do not start the
+workstation SITL launcher. It would otherwise compete for the same Pi XRCE and
+MAVLink endpoints. The launcher detects a live `10.41.10.2` peer and refuses
+to start by default. Set `III_HIL_ALLOW_SITL_WITH_PHYSICAL_PX4=1` only for a
+deliberate split-host experiment where that coexistence has been designed and
+verified.
+
 ## 3. PX4 SITL Asset Injection
 
 Script:
