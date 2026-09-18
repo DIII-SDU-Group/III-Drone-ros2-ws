@@ -19,7 +19,10 @@ iii px4 inspect --host <pi> --profile hil
 ```
 
 The expected result includes the Pi address `10.41.10.1/24`, peer
-`10.41.10.2`, DDS UDP `8889`, and MAVLink UDP `14542`.
+`10.41.10.2`, DDS UDP `8889`, MAVLink UDP `14542`, observed PX4 UDP traffic,
+and one DDS `vehicle_local_position_setpoint` message. The HIL profile's
+inspection waits up to five seconds for that final message; it is deliberately
+not a listener-only check.
 
 ## Apply once through PX4 NSH
 
