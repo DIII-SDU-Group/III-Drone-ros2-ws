@@ -24,6 +24,10 @@ Acceptance:
   profile.
 - [x] The HIL link inspector requires the profile's actual DDS/MAVLink ports
   (`8889` and `14542`) rather than the real-flight defaults.
+- [x] The separately governed PX4 source candidate `9eabb01b` builds as
+  `px4_fmu-v6x_multicopter`, and its generated uXRCE-DDS table contains
+  `/fmu/out/vehicle_local_position_setpoint` with the matching installed
+  `px4_msgs` interface on the Pi.
 - [x] Pi provision and direct synchronization have been observed on the
   physical device: 29 runtime packages built and both runtime services are
   active.
