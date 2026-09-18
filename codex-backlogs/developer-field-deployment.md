@@ -73,6 +73,11 @@ No server stream, rigid-body identity, frame convention, or target network
 route is available yet, so this item cannot be implemented or hardware-closed
 without inventing the required integration contract.
 
+Pre-lab readiness is captured in
+[`docs/opti-track-lab-readiness.md`](../docs/opti-track-lab-readiness.md). It
+contains no placeholder network, rigid-body, frame, or PX4 values and does not
+authorize booting the reserved profile.
+
 Acceptance:
 
 - [x] The absent bridge cannot be mistaken for a commissioned field profile:
