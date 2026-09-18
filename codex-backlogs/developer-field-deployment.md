@@ -60,11 +60,12 @@ development iterations use online deployment only; never power off the Pi.
 
 ### P3.T0: OptiTrack pose ingress and PX4 external-vision bridge
 
-The current `opti_track` profile selects the real-aircraft graph and real
-parameter family, but it contains no OptiTrack/NatNet receiver, rigid-body
+The `opti_track` name remains reserved for the intended real-aircraft graph and
+real parameter family, but it contains no OptiTrack/NatNet receiver, rigid-body
 mapping, coordinate-frame transform, or publisher to PX4
-`vehicle_visual_odometry`. It is therefore not a functional OptiTrack
-integration yet and must not be represented as field-ready.
+`vehicle_visual_odometry`. It is therefore deliberately non-bootable and absent
+from onboard mission catalogs until the bridge is implemented and validated; it
+must not be represented as field-ready.
 
 Required external inputs before implementation:
 
@@ -76,6 +77,8 @@ Required external inputs before implementation:
 
 Acceptance:
 
+- [x] The absent bridge cannot be mistaken for a commissioned field profile:
+  `opti_track` is non-bootable and excluded from onboard catalog defaults.
 - [ ] A maintained bridge receives the selected rigid body and publishes a
   stamped ROS pose/odometry contract at the agreed frame and rate.
 - [ ] The bridge converts that contract to PX4 external vision on the existing
