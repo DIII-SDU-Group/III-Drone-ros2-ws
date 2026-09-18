@@ -1,6 +1,6 @@
 # Developer Field Deployment Backlog
 
-## In-Progress
+## Completed
 
 ### P2.T0: One-time Pi validation
 
@@ -19,9 +19,9 @@ Acceptance:
 - [x] The 116.2 GB Pi SD card was flashed and its first-boot seed verified.
 - [x] The on-target build path excludes test binaries; III tests run on the
   workstation rather than delaying field-runtime synchronization.
-- [x] The on-target HIL build skips desktop-only `iii_drone_simulation`; HIL
-  sensor and transform peers stay workstation-owned as specified by the runtime
-  profile.
+- [x] The on-target HIL build skips desktop-only `iii_drone_simulation`; the
+  Pi runs only the core TF publisher needed to combine PX4 odometry with the
+  deployed static sensor extrinsics.
 - [x] The HIL link inspector requires the profile's actual DDS/MAVLink ports
   (`8889` and `14542`) rather than the real-flight defaults.
 - [x] The separately governed PX4 source candidate `9eabb01b` builds as
@@ -34,31 +34,24 @@ Acceptance:
 - [x] The Pi--PX4 physical Ethernet layer has been observed: `eth0` is
   `10.41.10.1/24`, resolves the PX4 peer `10.41.10.2`, and ICMP reaches it
   without loss. The HIL graph and MicroXRCEAgent UDP `8889` are running.
-- [ ] The physical HIL link has been observed ready: Pi `eth0` has
-  `10.41.10.1/24`, reaches `10.41.10.2`, and exposes DDS `8889` plus MAVLink
-  `14542`.
-
-Hardware-only next step:
-
-1. Connect a data-capable cable from PX4 USB to a Pi USB port while keeping the
-   PX4 Ethernet lead on the Pi native Ethernet port (`eth0`) and the
-   workstation link attached. The current network-only path has no PX4 console
-   or MAVLink endpoint through which its persisted transport settings can be
-   inspected.
-2. Inspect the existing disarmed PX4 parameters, then apply the checked-in
-   [`hil-ethernet.nsh`](../deployment/px4/hil-ethernet.nsh) baseline and reboot
-   the PX4 only. This selects the Pi MicroXRCEAgent at UDP `8889` and MAVLink
-   broadcast at UDP `14542`; it neither arms the vehicle nor changes firmware.
-3. Capture one `/fmu/out/vehicle_local_position_setpoint` DDS message and
-   observed PX4 Ethernet UDP traffic after reboot. A Pi listener, ARP entry, or
-   ping alone does not close this gate.
+- [x] The physical HIL link is ready: Pi `eth0` is `10.41.10.1/24`, reaches
+  `10.41.10.2`, and owns DDS UDP `8889` plus MAVLink UDP `14542`.
+- [x] The PX4 transport was configured and inspected through its workstation
+  USB MAVLink connection; PX4-to-Pi transport remains Ethernet-only.
+- [x] `iii px4 inspect --host 192.168.1.251 --profile hil --json` completed
+  successfully, observed PX4 UDP traffic from `10.41.10.2`, and received a
+  `/fmu/out/vehicle_local_position_setpoint` sample through DDS.
+- [x] `iii system start` completed with the MicroXRCE agent ready and every
+  HIL managed node active, including the Pi-local core TF bridge.
+- [x] A final MAVLink heartbeat check confirmed `armed=False`; no propulsion
+  battery was connected and no motor command was issued.
 
 The flash seeds the normal developer account and network path. Repeated
 development iterations use online deployment only; never power off the Pi.
 
-## Incomplete
+## In-Progress
 
-### P3.T0: OptiTrack pose ingress and PX4 external-vision bridge
+### P3.T0: OptiTrack pose ingress and PX4 external-vision bridge (lab-blocked)
 
 The `opti_track` name remains reserved for the intended real-aircraft graph and
 real parameter family, but it contains no OptiTrack/NatNet receiver, rigid-body
@@ -75,6 +68,11 @@ Required external inputs before implementation:
 3. The intended host for the bridge (OptiTrack workstation or Pi) and the ROS
    domain/network route to the aircraft.
 
+Current blocker: OptiTrack is intentionally deferred until the lab session.
+No server stream, rigid-body identity, frame convention, or target network
+route is available yet, so this item cannot be implemented or hardware-closed
+without inventing the required integration contract.
+
 Acceptance:
 
 - [x] The absent bridge cannot be mistaken for a commissioned field profile:
@@ -88,7 +86,7 @@ Acceptance:
 - [ ] Disarmed hardware validation captures both the OptiTrack pose and the
   PX4 accepted external-vision/vehicle-odometry response.
 
-## Completed
+## Previously Completed
 
 ### P0.T0: Direct developer deployment command
 
