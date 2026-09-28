@@ -26,7 +26,9 @@ test "$III_RUNTIME_API_URL" = http://iii.local:8765
 test -z "${III_RUNTIME_API_TOKEN_FILE:-}"  # Runtime API is intentionally unauthenticated
 test -z "${GZ_IP:-}"
 test "$(command -v iii)" = "$PWD/tools/III-Drone-CLI/bin/iii"
-python3 -c 'import iii_drone_contracts.configuration_capture'
+# The shell owns import paths; interpreter packages (pydantic v2) belong to
+# the CLI's own environment, which `iii --help` below exercises.
+case ":$PYTHONPATH:" in *":$PWD/src/III-Drone-Contracts:"*) ;; *) exit 1 ;; esac
 iii --help >/dev/null
 """
     result = subprocess.run(
