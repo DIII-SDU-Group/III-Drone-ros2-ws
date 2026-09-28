@@ -299,8 +299,15 @@ def summarize_log_lines(lines: list[str], since_epoch: float, until_epoch: float
     groups: dict[tuple[str, str, str], dict[str, Any]] = {}
     counts = {"ERROR": 0, "WARN": 0, "FATAL": 0}
     markers = {marker: 0 for marker in CONTINUITY_FAULT_MARKERS}
+    seen: set[str] = set()
     for line in lines:
-        match = LOG_LINE.match(line.strip())
+        line = line.strip()
+        # Nodes write each line to several files (process, per-pid, current);
+        # the nanosecond stamp makes identical lines one event.
+        if line in seen:
+            continue
+        seen.add(line)
+        match = LOG_LINE.match(line)
         if not match:
             continue
         level, stamp, node, message = match.groups()

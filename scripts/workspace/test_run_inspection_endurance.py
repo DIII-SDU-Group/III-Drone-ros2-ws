@@ -118,3 +118,9 @@ def test_fresh_start_recreates_the_simulation_epoch_per_target() -> None:
     hil = endurance.fresh_start_commands("hil", "192.0.2.10")
     assert [(command[1:], required) for command, required in hil] == [
         (["hil", "restart", "--headless", "--host", "192.0.2.10"], True)]
+
+
+def test_identical_lines_from_duplicate_log_files_count_once() -> None:
+    line = "[ERROR] [150.123456789] [ctl]: stream failed"
+    summary = endurance.summarize_log_lines([line, line, line + "  "], 0, 200)
+    assert summary["counts"]["ERROR"] == 1
