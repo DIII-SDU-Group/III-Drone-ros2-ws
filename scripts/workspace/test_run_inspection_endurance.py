@@ -124,3 +124,31 @@ def test_identical_lines_from_duplicate_log_files_count_once() -> None:
     line = "[ERROR] [150.123456789] [ctl]: stream failed"
     summary = endurance.summarize_log_lines([line, line, line + "  "], 0, 200)
     assert summary["counts"]["ERROR"] == 1
+
+
+def test_recorder_transport_loss_is_a_metric_not_a_quirk() -> None:
+    lines = ["[WARN] [150.1] [rosbag2_recorder]: Number of messages lost on the transport layer: 20",
+             "[WARN] [150.2] [other_node]: Number of messages lost on the transport layer: 3"]
+    summary = endurance.summarize_log_lines(lines, 0, 200)
+    assert summary["recording_lost_messages"] == 20
+    # Only the recorder's statistic is exempt; the same text elsewhere counts.
+    assert summary["counts"]["WARN"] == 1
+
+
+def test_final_vehicle_status_is_captured_once_and_reused(tmp_path: Path) -> None:
+    run_dir = write_run(tmp_path, cycles=[cycle("2026-09-28T06:10:00+00:00"),
+                                          cycle("2026-09-28T06:20:00+00:00")])
+    plan = json.loads((run_dir / "run_plan.json").read_text())
+    plan["started_at"] = START
+    (run_dir / "run_plan.json").write_text(json.dumps(plan))
+    target = endurance.Target("sim", "container", None)
+    safe = {"freshness": "fresh", "latest": {"command_transport": {"armed": False, "in_air": False},
+                                             "ros_uxrce": {"armed": False, "in_air": False}}}
+    calls = []
+    fetch = lambda host: calls.append(host) or safe  # noqa: E731
+    assert endurance.evaluate(run_dir, target=target, fetch_status=fetch, log_lines=lambda t, d: [])["accepted"]
+    def unavailable(host):
+        raise OSError("stack stopped")
+    report = endurance.evaluate(run_dir, target=target, fetch_status=unavailable, log_lines=lambda t, d: [])
+    assert report["accepted"] and report["final_vehicle_safe"] is True
+    assert calls == ["127.0.0.1"]

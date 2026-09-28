@@ -289,6 +289,10 @@ def execute(args: argparse.Namespace) -> Path:
 # Acceptance
 
 
+# Best-effort sensor streams can lose samples in the recorder (more over the
+# Pi/workstation link in HIL). That is a recording-completeness metric, not a
+# flight-system quirk (user decision), so it is reported separately.
+RECORDING_LOSS = re.compile(r"Number of messages lost on the transport layer: (\d+)")
 LOG_LINE = re.compile(r"^\[(ERROR|WARN|FATAL)\] \[(\d+)\.\d+\] \[([^\]]+)\]: (.*)$")
 
 
@@ -303,6 +307,7 @@ def summarize_log_lines(lines: list[str], since_epoch: float, until_epoch: float
     """Group ERROR/WARN/FATAL ROS log lines emitted inside [since, until]."""
     groups: dict[tuple[str, str, str], dict[str, Any]] = {}
     counts = {"ERROR": 0, "WARN": 0, "FATAL": 0}
+    recording_lost_messages = 0
     markers = {marker: 0 for marker in CONTINUITY_FAULT_MARKERS}
     seen: set[str] = set()
     for line in lines:
@@ -318,6 +323,10 @@ def summarize_log_lines(lines: list[str], since_epoch: float, until_epoch: float
         level, stamp, node, message = match.groups()
         if not since_epoch <= int(stamp) <= until_epoch:
             continue
+        loss = RECORDING_LOSS.search(message)
+        if loss and node.startswith("rosbag2_recorder"):
+            recording_lost_messages += int(loss.group(1))
+            continue
         counts[level] += 1
         for marker in markers:
             if marker in message:
@@ -327,7 +336,8 @@ def summarize_log_lines(lines: list[str], since_epoch: float, until_epoch: float
                                         "count": 0, "example": message[:400]})
         group["count"] += 1
     ordered = sorted(groups.values(), key=lambda g: (g["level"] != "FATAL", g["level"] != "ERROR", -g["count"]))
-    return {"counts": counts, "continuity_markers": markers, "patterns": ordered}
+    return {"counts": counts, "continuity_markers": markers, "patterns": ordered,
+            "recording_lost_messages": recording_lost_messages}
 
 
 def collect_log_lines(target: Target, run_dir: Path) -> list[str]:
@@ -432,6 +442,7 @@ def evaluate(run_dir: Path, *, target: Target | None = None, strict_warnings: bo
         (run_dir / "log_findings.json").write_text(json.dumps(findings, indent=2) + "\n")
         report["log_counts"] = findings["counts"]
         report["continuity_faults"] = findings["continuity_markers"]
+        report["recording_lost_messages"] = findings["recording_lost_messages"]
         report["log_patterns"] = [{k: g[k] for k in ("level", "node", "count", "pattern")}
                                   for g in findings["patterns"][:40]]
         check(all(count == 0 for count in findings["continuity_markers"].values()),
@@ -441,7 +452,14 @@ def evaluate(run_dir: Path, *, target: Target | None = None, strict_warnings: bo
         if strict_warnings:
             check(findings["counts"]["WARN"] == 0, f"node logs contain {findings['counts']['WARN']} WARN lines")
         try:
-            vehicle = fetch_status(target.api_host)
+            # Capture the final state once, right after the run; re-evaluation
+            # reuses it instead of querying a stack that may be gone by then.
+            status_path = run_dir / "final_vehicle_status.json"
+            if status_path.exists():
+                vehicle = json.loads(status_path.read_text())
+            else:
+                vehicle = fetch_status(target.api_host)
+                status_path.write_text(json.dumps(vehicle, indent=2) + "\n")
             latest = vehicle.get("latest", {})
             safe = vehicle.get("freshness") == "fresh" and all(
                 latest.get(key, {}).get("armed") is False and latest.get(key, {}).get("in_air") is False
