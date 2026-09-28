@@ -1985,17 +1985,22 @@ def run_operator_hold_scenario(driver: "Driver", args, record) -> None:
     """Take PX4 Hold like an operator in one phase and prove a clean handover."""
     phase = args.operator_hold_phase
     if phase != "inspection_demo":
+        # Fast-forward with the operator intent services instead of waiting for
+        # battery drain / full charge; the handover under test is the Hold.
         transition = driver.advance_inspection_to_reach(
-            driver.mode_status.get("inspection_demo", {}),
-            args.automatic_recharge_timeout_sec, stop_at=None, automatic_only=True,
+            driver.mode_status.get("inspection_demo", {}), 0.0,
+            stop_at=None, automatic_only=False,
         )
         if transition is None:
             raise RuntimeError("Inspection did not hand over to Reach Cable")
-        record({"event": "reach_cable_active", "cycle": 1})
+        record({"event": "reach_cable_active", "cycle": 1, "transition": transition.transition})
     if phase == "leave_cable":
         driver.wait_mode("cable_charging", lambda value: bool(value.get("active")),
                          failed_predecessor="reach_cable")
-        driver.wait_until_fully_charged(args.charge_until_full_timeout_sec, allow_leave_cable=True)
+        record({"event": "charging_power_verified", "cycle": 1,
+                "evidence": driver.wait_charging_evidence()})
+        leave = driver.advance_after_charging(automatic_only=False)
+        record({"event": "leave_cable_" + leave["transition"], "cycle": 1})
         driver.wait_mode("leave_cable", lambda value: bool(value.get("active")))
     driver.wait_mode(phase, lambda value: bool(value.get("active")) and bool(value.get("tree_running")))
     dwell_until = time.monotonic() + args.operator_hold_after_sec

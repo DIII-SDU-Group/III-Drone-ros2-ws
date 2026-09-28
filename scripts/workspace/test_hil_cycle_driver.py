@@ -1513,3 +1513,25 @@ def test_operator_hold_scenario_fails_when_px4_leaves_hold(monkeypatch):
                             module.VehicleStatus.NAVIGATION_STATE_AUTO_LAND])
     with pytest.raises(RuntimeError, match="left Hold"):
         module.run_operator_hold_scenario(driver, args, lambda event: None)
+
+
+
+def test_operator_hold_scenario_fast_forwards_with_intent_services(monkeypatch):
+    idle = {key: {"active": False, "tree_running": False} for key in module.MISSION_MODE_KEYS}
+    driver, args, commands = _hold_scenario_driver(monkeypatch, idle, [])
+    args.operator_hold_phase = "leave_cable"
+    driver.mode_status = {key: {"active": True, "tree_running": True} for key in module.MISSION_MODE_KEYS}
+    calls = []
+    def reach(status, dwell, stop_at=None, automatic_only=False):
+        calls.append(("reach", dwell, automatic_only))
+        return SimpleNamespace(transition="commanded")
+    driver.advance_inspection_to_reach = reach
+    driver.wait_charging_evidence = lambda: {"charging_power_w": 150.0}
+    driver.advance_after_charging = lambda automatic_only=False: (
+        calls.append(("leave", automatic_only)) or {"transition": "commanded"})
+    events = []
+    module.run_operator_hold_scenario(driver, args, events.append)
+    assert calls == [("reach", 0.0, False), ("leave", False)]
+    names = [e["event"] for e in events]
+    assert names[:3] == ["reach_cable_active", "charging_power_verified", "leave_cable_commanded"]
+    assert names[-1] == "operator_hold_handover_verified" and commands == ["px4.hold"]
