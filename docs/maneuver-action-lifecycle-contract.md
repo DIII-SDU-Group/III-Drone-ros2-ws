@@ -273,6 +273,76 @@ must not be misrepresented as one. These checks bound emitted command points
 and the committed stop curve. They do not establish physical clearance under
 localization uncertainty or certify unconsumed portions of every planned curve.
 
+## Mission Exit
+
+An operator ends a mission by switching PX4 out of the mission-owned mode
+(Hold, Position, any other mode); there is no separate stop command. That is a
+**Mission Exit** (see `CONTEXT.md`): one authoritative transition in the Mission
+layer, run once per mission run, instead of each component discovering the loss
+of control on its own.
+
+Trigger: the Mission mode executor loses PX4 command authority for anything the
+mission did not initiate, i.e. `vehicle_status.executor_in_charge` stops naming
+the executor while a run is active (operator mode change, PX4 failsafe), or
+stick input makes the executor hand over to Position mode. Mission-driven
+transitions (next-mode handoffs, the executor's own land/takeoff/arm/disarm and
+the mission-done mode) keep the executor in charge and never count. Two
+observers race to latch it and the first wins: a dedicated vehicle-status
+monitor in an independent callback group (not delayed by px4_ros2's
+synchronous commands; it needs an in-charge sample received after the run
+began, then a newer not-in-charge sample) and px4_ros2's
+`onDeactivate(reason)`. A `Deactivated` completion of the scheduled mode is
+deferred until px4_ros2 has finished that callback, so a Mission Exit is never
+mistaken for a mode failure and the executor never schedules the mission-done
+mode over the operator's choice.
+
+Ordered cleanup:
+
+1. Latch the exit (reason, PX4 nav state) and close the Mission dispatch gate.
+   Maneuver, mode-executor, gripper and PL mapper nodes hold a shared dispatch
+   permit for their whole dispatching tick; closing takes it exclusively, so a
+   tick that is already sending completes first and nothing is sent afterwards.
+   Under that permit, immediately before sending, each tick also consults the
+   freshest `vehicle_status` of the Mission process (the monitor runs on its own
+   executor thread): if it already shows the executor out of charge, the tick
+   withholds the goal and runs the Mission Exit itself.
+2. Stop setpoint consumption of every mission mode and suppress stale
+   tree-completion reports.
+3. Stop every running tree (non-blocking); tree teardown halts running goals.
+4. Complete a pending `ModeExecutorAction` goal (its server rejects cancel).
+5. Release reference control in the Mission `ManeuverReferenceClient` and send
+   Core `release_consumer_control` for this process' request identities
+   (`producer_epoch`, counter `<= last_request_counter`). Core then clears that
+   scope's queued goals, ends an executing goal with `CONSUMER_RELEASED`
+   (canceled if a cancel was requested, else aborted) without controlled-stop
+   ACK waits, ends a late goal of the scope before it executes, and retires a
+   completed retained owner (terminal hold, object session, retained callback)
+   of the scope. Goal admission is unchanged: a goal that cannot register is
+   rejected in every PX4 state. The scope is sticky, so an owner left behind
+   by an in-scope goal that ends later is retired on the next scheduler tick.
+   Later runs mint larger counters and are unaffected.
+6. Stop mission-started side effects: the PL mapper gets the Leave Cable stop
+   (`STOP`, reset) if the mission left it started, paused or frozen. The gripper
+   is never actuated by an exit.
+7. Executor bookkeeping (inactive, global blackboard cleared) and
+   `/mission/status`: `mission_active=false` with `exit_reason`,
+   `exit_px4_nav_state`, `exit_stamp`.
+
+An operator exit logs INFO only; a failsafe exit logs ERROR. Everything stays
+fail-closed: no goal of an exited run can execute. A stale activation of a
+mission mode processed after the exit is refused; the next run (executor
+activation) or a standalone mode start reopens dispatch.
+
+The handover is the client's job: Core keeps its admission semantics and log
+levels. Core only reclassifies maneuvers that are already running when it sees
+PX4's native state before Mission reacts: a fresh PX4-native navigation state
+without `vehicle_status.failsafe` is operator native control, so "not in
+offboard mode" from a running maneuver and the resulting "Maneuver failed" are
+INFO. Failsafe, stale or missing navigation evidence keeps WARN. A goal whose
+send raced the exit and is rejected by Core while the exit is latched is ended
+quietly (INFO) by the Mission node; the forked `RosActionNode` still logs its
+own "Goal was rejected by server" line for that residual race.
+
 ## Failure Semantics
 
 - A failed current maneuver terminates current execution and clears queued
