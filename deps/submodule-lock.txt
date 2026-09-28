@@ -41,12 +41,12 @@ src/BehaviorTree.CPP 3ff6a32ba0497a08519c77a1436e3b81eff1bcd6
 src/BehaviorTree.ROS2 c72596242684ed6f03796665908d337269afb4b3
 src/III-Drone-Configuration d1603616a73e7bc3e2e677032efdaa6ce386a044
 src/III-Drone-Contracts bd963779e25a02a63a931e0cb4deeaa50467f703
-src/III-Drone-Core 0df9789b6cbb41eb5870a0848e2cff6c26c1a8e5
+src/III-Drone-Core 838f3f35cb5e13eaa77a4a58d07c27233f2402de
 src/III-Drone-GC d67e016e238dfc6317e467c7f0a699145cdc0be3
 src/III-Drone-Interfaces 5abd57b08e88dd6e1e37219973d55f7624ab6baf
-src/III-Drone-Mission e5448dd44bfcf6ec59a56b462378bee378266221
+src/III-Drone-Mission 4e542ee6fa468195b892e981b8cfc90aa23cbb40
 src/III-Drone-Runtime d26be4a8763dae1cce2d0568eac7ec3a24998e16
-src/III-Drone-Simulation e819b3a1ff92b393a60a5a446adaf7418668ab79
+src/III-Drone-Simulation 96748914d24b1e36f41e16196024a94dbfb90bad
 src/III-Drone-Simulation/Gazebo-simulation-assets 4bea5842291207ff30a5a384b817146b9930190f
 src/III-Drone-Supervision 881ae73dcc436b96b8b89b96effd6dca695295d8
 src/Micro-XRCE-DDS-Agent 73622810d984349b80bbac0ef55fc0b694d62222
