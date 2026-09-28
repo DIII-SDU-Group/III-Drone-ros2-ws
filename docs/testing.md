@@ -123,14 +123,17 @@ Prerequisites: a ready stack for the target profile.
 ./iii-dev hil status
 ```
 
-Run (default 1800 s window, at least 4 in-window cycles):
+Run (default 1800 s window, at least 4 in-window cycles). `--fresh-start`
+first recreates the simulation epoch (`stack start --recreate-sim` or
+`hil restart`) so the vehicle starts from its spawn pose; always use it after
+an interrupted or failed run:
 
 ```bash
-python3 scripts/workspace/run_inspection_endurance.py --target sim
+python3 scripts/workspace/run_inspection_endurance.py --target sim --fresh-start
 ```
 
 ```bash
-python3 scripts/workspace/run_inspection_endurance.py --target hil
+python3 scripts/workspace/run_inspection_endurance.py --target hil --fresh-start
 ```
 
 Evidence lands in `runtime/endurance/<target>-<UTC>/`: `run_plan.json`

@@ -163,7 +163,23 @@ def wait_for(predicate: Callable[[], bool], timeout_sec: float, poll_sec: float 
     return predicate()
 
 
+def fresh_start_command(target_name: str, host: str | None) -> list[str]:
+    """Command that begins a fresh simulation epoch (vehicle at its spawn pose)."""
+    if target_name == "sim":
+        return [str(ROOT / "iii-dev"), "stack", "start", "--headless", "--recreate-sim"]
+    command = [str(ROOT / "iii-dev"), "hil", "restart", "--headless"]
+    return command + (["--host", host] if host else [])
+
+
 def execute(args: argparse.Namespace) -> Path:
+    if args.fresh_start:
+        # A previous run may have left the vehicle away from its spawn pose;
+        # takeoff-relative ground estimates then start from the wrong place.
+        command = fresh_start_command(args.target, args.host)
+        print(f"[endurance] fresh start: {' '.join(command[1:])}", flush=True)
+        result = run(command, check=False, timeout=1200)
+        if result.returncode != 0:
+            raise RunnerError(f"fresh start failed ({result.returncode}):\n{result.stdout[-2000:]}{result.stderr[-2000:]}")
     peer = require_stack_ready(args.target, args.host)
     target = Target(args.target, discover_container(), peer)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -429,6 +445,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-dir", type=Path)
     parser.add_argument("--host", help="HIL Pi target override (as for ./iii-dev hil --host)")
     parser.add_argument("--no-probe", action="store_true", help="skip the passive perception probe")
+    parser.add_argument("--fresh-start", action="store_true",
+                        help="recreate the simulation epoch first (SIM: stack start --recreate-sim, HIL: hil restart)")
     parser.add_argument("--evaluate-only", type=Path, metavar="RUN_DIR")
     parser.add_argument("--strict-warnings", action="store_true",
                         help="also fail on any WARN line in node logs during the run")

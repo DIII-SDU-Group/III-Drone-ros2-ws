@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 import subprocess
 
@@ -8,9 +7,11 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_field_shell_starts_cleanly_without_a_ros_install_overlay() -> None:
+def test_field_shell_starts_cleanly_without_a_ros_install_overlay(tmp_path: Path) -> None:
+    # Hermetic HOME: a native GC install on the developer host would
+    # otherwise (correctly) take precedence over the checkout CLI.
     environment = {
-        "HOME": os.environ["HOME"],
+        "HOME": str(tmp_path),
         "PATH": "/usr/local/bin:/usr/bin:/bin",
     }
     command = """
@@ -22,7 +23,7 @@ test "$III_SYSTEM_PROFILE" = real
 test "$III_ENVIRONMENT_PROFILE" = field
 test "$III_DEFAULT_TARGET" = real
 test "$III_RUNTIME_API_URL" = http://iii.local:8765
-test "$III_RUNTIME_API_TOKEN_FILE" = "$HOME/.config/iii/credentials/runtime-api.token"
+test -z "${III_RUNTIME_API_TOKEN_FILE:-}"  # Runtime API is intentionally unauthenticated
 test -z "${GZ_IP:-}"
 test "$(command -v iii)" = "$PWD/tools/III-Drone-CLI/bin/iii"
 python3 -c 'import iii_drone_contracts.configuration_capture'
@@ -77,7 +78,7 @@ test -z "${GZ_IP:-}"
     assert result.stderr == ""
 
 
-def test_remote_runtime_binding_preserves_explicit_operator_overrides(
+def test_remote_runtime_binding_preserves_explicit_url_and_drops_stale_token(
     tmp_path: Path,
 ) -> None:
     environment = {
@@ -90,7 +91,8 @@ def test_remote_runtime_binding_preserves_explicit_operator_overrides(
 set -eu
 source setup/setup_field.bash
 test "$III_RUNTIME_API_URL" = https://runtime.example.test
-test "$III_RUNTIME_API_TOKEN_FILE" = "$HOME/explicit.token"
+# A stale token-file setting must not turn commands into credential lookups.
+test -z "${III_RUNTIME_API_TOKEN_FILE:-}"
 """
     result = subprocess.run(
         ["bash", "--noprofile", "--norc", "-c", command],
@@ -106,22 +108,15 @@ test "$III_RUNTIME_API_TOKEN_FILE" = "$HOME/explicit.token"
     assert result.stderr == ""
 
 
-def test_field_shell_uses_canonical_workstation_trust_without_overriding_explicit_values(
-    tmp_path: Path,
-) -> None:
-    trust = tmp_path / ".config/iii/keys/signing/trusted-signers.json"
-    trust.parent.mkdir(parents=True)
-    trust.write_text("{}\n")
-    environment = {
-        "HOME": str(tmp_path),
-        "PATH": "/usr/local/bin:/usr/bin:/bin",
-        "III_GC_TRUSTED_SIGNERS": "/operator/gc-trust.json",
-    }
+def test_field_shell_exports_no_release_signing_trust(tmp_path: Path) -> None:
+    # Developer field deployment has no release signing or trust stores
+    # (ADR 0010); the field shell must not reintroduce those settings.
+    environment = {"HOME": str(tmp_path), "PATH": "/usr/local/bin:/usr/bin:/bin"}
     command = """
 set -eu
 source setup/setup_field.bash
-test "$III_RELEASE_TRUSTED_SIGNERS" = "$HOME/.config/iii/keys/signing/trusted-signers.json"
-test "$III_GC_TRUSTED_SIGNERS" = /operator/gc-trust.json
+test -z "${III_RELEASE_TRUSTED_SIGNERS:-}"
+test -z "${III_GC_TRUSTED_SIGNERS:-}"
 """
     result = subprocess.run(
         ["bash", "--noprofile", "--norc", "-c", command],
@@ -164,4 +159,29 @@ iii --help >/dev/null
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
+    assert result.stderr == ""
+
+
+def test_managed_gc_installer_wrapper_precedes_the_checkout_cli(tmp_path: Path) -> None:
+    managed_bin = tmp_path / ".local" / "bin"
+    managed_bin.mkdir(parents=True)
+    managed_iii = managed_bin / "iii"
+    managed_iii.write_text("#!/bin/sh\n# managed by III GC installer\nexit 0\n")
+    managed_iii.chmod(0o755)
+    environment = {"HOME": str(tmp_path), "PATH": "/usr/local/bin:/usr/bin:/bin"}
+    command = """
+set -eu
+source setup/setup_field.bash
+test "$(command -v iii)" = "$HOME/.local/bin/iii"
+"""
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-c", command],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
     assert result.stderr == ""

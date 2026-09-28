@@ -109,3 +109,10 @@ def test_log_patterns_group_repeated_diagnostics() -> None:
     summary = endurance.summarize_log_lines(lines, 0, 200)
     assert summary["counts"]["ERROR"] == 5
     assert len(summary["patterns"]) == 1 and summary["patterns"][0]["count"] == 5
+
+
+def test_fresh_start_recreates_the_simulation_epoch_per_target() -> None:
+    sim = endurance.fresh_start_command("sim", None)
+    assert sim[1:] == ["stack", "start", "--headless", "--recreate-sim"]
+    hil = endurance.fresh_start_command("hil", "192.0.2.10")
+    assert hil[1:] == ["hil", "restart", "--headless", "--host", "192.0.2.10"]
