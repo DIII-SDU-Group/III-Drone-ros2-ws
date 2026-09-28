@@ -41,6 +41,10 @@ SSH_OPTIONS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
 CONTINUITY_FAULT_MARKERS = ("continuity envelope", "committed rebased")
 PROCESS_READY_TIMEOUT_SEC = 20.0
 MAX_CHARGING_TO_LEAVE_SEC = 90.0
+# The passive observer must outlast the driver's own bounded prelude (possible
+# runtime re-registration, preflight, and up to 90 s CustomOperation ingress);
+# the driver still fails on its own timeouts, so this hides nothing.
+OBSERVER_PRELUDE_TIMEOUT_SEC = 420
 
 
 class RunnerError(RuntimeError):
@@ -221,7 +225,8 @@ def execute(args: argparse.Namespace) -> Path:
         f"touch {marker} && printf '%s\\n' $$ > {remote_dir}/observer.pid && exec "
         f"{target.observer_python()} {observer_src} --artifact-dir {remote_dir}"
         f" --duration-sec {args.duration_sec} --required-cycles {args.required_cycles}"
-        f" --prelude-timeout-sec 180 --final-safe-grace-sec 600 > {remote_dir}/observer.log 2>&1")
+        f" --prelude-timeout-sec {OBSERVER_PRELUDE_TIMEOUT_SEC} --final-safe-grace-sec 600"
+        f" > {remote_dir}/observer.log 2>&1")
     probe_cmd = (
         f"printf '%s\\n' $$ > {remote_dir}/probe.pid && exec /usr/bin/python3 {probe_src}"
         f" --artifact-dir {remote_dir} --duration-sec {args.duration_sec + 600}"
