@@ -112,7 +112,9 @@ def test_log_patterns_group_repeated_diagnostics() -> None:
 
 
 def test_fresh_start_recreates_the_simulation_epoch_per_target() -> None:
-    sim = endurance.fresh_start_command("sim", None)
-    assert sim[1:] == ["stack", "start", "--headless", "--recreate-sim"]
-    hil = endurance.fresh_start_command("hil", "192.0.2.10")
-    assert hil[1:] == ["hil", "restart", "--headless", "--host", "192.0.2.10"]
+    sim = [(command[1:], required) for command, required in endurance.fresh_start_commands("sim", None)]
+    assert sim == [(["stack", "stop"], False),
+                   (["stack", "start", "--headless", "--recreate-sim"], True)]
+    hil = endurance.fresh_start_commands("hil", "192.0.2.10")
+    assert [(command[1:], required) for command, required in hil] == [
+        (["hil", "restart", "--headless", "--host", "192.0.2.10"], True)]

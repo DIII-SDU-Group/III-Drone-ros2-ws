@@ -163,23 +163,31 @@ def wait_for(predicate: Callable[[], bool], timeout_sec: float, poll_sec: float 
     return predicate()
 
 
-def fresh_start_command(target_name: str, host: str | None) -> list[str]:
-    """Command that begins a fresh simulation epoch (vehicle at its spawn pose)."""
+def fresh_start_commands(target_name: str, host: str | None) -> list[tuple[list[str], bool]]:
+    """Commands (and whether each must succeed) that begin a fresh epoch.
+
+    SIM stops the whole stack first: `stack start --recreate-sim` alone
+    recreates PX4/Gazebo but keeps an already booted III graph, which would
+    carry ground estimates and retained owners across simulation epochs.
+    """
+    iii_dev = str(ROOT / "iii-dev")
     if target_name == "sim":
-        return [str(ROOT / "iii-dev"), "stack", "start", "--headless", "--recreate-sim"]
-    command = [str(ROOT / "iii-dev"), "hil", "restart", "--headless"]
-    return command + (["--host", host] if host else [])
+        return [([iii_dev, "stack", "stop"], False),
+                ([iii_dev, "stack", "start", "--headless", "--recreate-sim"], True)]
+    command = [iii_dev, "hil", "restart", "--headless"]
+    return [(command + (["--host", host] if host else []), True)]
 
 
 def execute(args: argparse.Namespace) -> Path:
     if args.fresh_start:
         # A previous run may have left the vehicle away from its spawn pose;
         # takeoff-relative ground estimates then start from the wrong place.
-        command = fresh_start_command(args.target, args.host)
-        print(f"[endurance] fresh start: {' '.join(command[1:])}", flush=True)
-        result = run(command, check=False, timeout=1200)
-        if result.returncode != 0:
-            raise RunnerError(f"fresh start failed ({result.returncode}):\n{result.stdout[-2000:]}{result.stderr[-2000:]}")
+        for command, required in fresh_start_commands(args.target, args.host):
+            print(f"[endurance] fresh start: {' '.join(command[1:])}", flush=True)
+            result = run(command, check=False, timeout=1200)
+            if result.returncode != 0 and required:
+                raise RunnerError(f"fresh start failed ({result.returncode}):\n"
+                                  f"{result.stdout[-2000:]}{result.stderr[-2000:]}")
     peer = require_stack_ready(args.target, args.host)
     target = Target(args.target, discover_container(), peer)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

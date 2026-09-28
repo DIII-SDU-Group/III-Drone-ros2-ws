@@ -124,7 +124,7 @@ Prerequisites: a ready stack for the target profile.
 ```
 
 Run (default 1800 s window, at least 4 in-window cycles). `--fresh-start`
-first recreates the simulation epoch (`stack start --recreate-sim` or
+first recreates the simulation epoch (`stack stop` + `stack start --recreate-sim`, or
 `hil restart`) so the vehicle starts from its spawn pose; always use it after
 an interrupted or failed run:
 
