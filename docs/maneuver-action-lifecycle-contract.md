@@ -132,6 +132,14 @@ as continuously applied through native control.
 Retirement and callback ownership changes share one serialization boundary.
 Repeated consumer claims preserve the latest external-mode transition fence;
 a delayed native-Hold observation cannot clear a newer owner.
+Any fresh PX4-native navigation state (Hold, Land, RTL, manual; never OFFBOARD
+or an external mode) qualifies, and the same rule retires a completed
+non-sustained Hover/HoverByObject/HoverOnCable callback that the idle count
+would otherwise keep publishing (for example across a native Land handoff).
+A claimant's own external transition observed fresh at CLAIM time, and newer
+than every earlier owner's transition, arms its epoch like an execution begin.
+An executing maneuver is never retired this way; its acknowledgement loss still
+pauses or fails as before. Retirement logs one INFO line.
 
 FWP completion additionally requires the original position/yaw gate and an
 acknowledged finite rest command. The planner fixes the acceleration of its
