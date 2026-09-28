@@ -152,6 +152,20 @@ Re-judge existing evidence without flying:
 python3 scripts/workspace/run_inspection_endurance.py --evaluate-only runtime/endurance/<run-dir>
 ```
 
+Isolated operator-Hold handover check (verify mode-exit behavior before a full
+campaign): the driver flies the mission to the chosen phase, takes PX4 Hold as
+an operator would after `--hold-after-sec`, proves Runtime API Hold ownership,
+every mission mode inactive with no tree running and PX4 staying in Hold for
+the observation window, then lands. Acceptance additionally requires zero
+ERROR and zero WARN node log lines for the whole run (recorder transport loss
+on best-effort streams is reported separately as `recording_lost_messages`):
+
+```bash
+python3 scripts/workspace/run_inspection_endurance.py --target sim --fresh-start --scenario hold --hold-phase reach_cable
+```
+
+Phases: `inspection_demo`, `reach_cable`, `leave_cable`.
+
 On failure, keep the run directory, inspect `failures` and `log_findings.json`,
 and bring the stack to a known state with `./iii-dev stack status` or
 `./iii-dev hil status` before the next attempt. The evaluator tests run

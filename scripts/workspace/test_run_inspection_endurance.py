@@ -152,3 +152,44 @@ def test_final_vehicle_status_is_captured_once_and_reused(tmp_path: Path) -> Non
     report = endurance.evaluate(run_dir, target=target, fetch_status=unavailable, log_lines=lambda t, d: [])
     assert report["accepted"] and report["final_vehicle_safe"] is True
     assert calls == ["127.0.0.1"]
+
+
+def _hold_run(tmp_path: Path, events: list[dict]) -> Path:
+    files = {"run_plan.json": {"target": "sim", "scenario": "hold", "hold_phase": "reach_cable",
+                               "duration_sec": 1800, "required_cycles": 4, "started_at": START},
+             "execution_result.json": {"driver_exit": 0, "observer_exit": 0, "probe_exit": 0,
+                                       "finished_at": DEADLINE},
+             "driver_events.json": events}
+    for name, content in files.items():
+        (tmp_path / name).write_text(json.dumps(content))
+    return tmp_path
+
+
+SAFE_STATUS = {"freshness": "fresh", "latest": {"command_transport": {"armed": False, "in_air": False},
+                                                "ros_uxrce": {"armed": False, "in_air": False}}}
+HANDOVER_EVENTS = [{"event": "operator_hold_handover_verified", "phase": "reach_cable", "settled_sec": 0.4},
+                   {"event": "final_safe_landed_disarmed",
+                    "cleanup_safety_evidence": {"safe_landed_disarmed": True}}]
+
+
+def test_hold_scenario_accepts_a_silent_verified_handover(tmp_path: Path) -> None:
+    run_dir = _hold_run(tmp_path, HANDOVER_EVENTS)
+    report = endurance.evaluate(run_dir, target=endurance.Target("sim", "c", None),
+                                fetch_status=lambda host: SAFE_STATUS,
+                                log_lines=lambda t, d: [
+                                    "[WARN] [1790575300.0] [rosbag2_recorder]: "
+                                    "Number of messages lost on the transport layer: 4"])
+    assert report["accepted"], report["failures"]
+    assert report["handover"]["settled_sec"] == 0.4
+    assert report["recording_lost_messages"] == 4
+
+
+def test_hold_scenario_rejects_any_warning_and_missing_handover(tmp_path: Path) -> None:
+    run_dir = _hold_run(tmp_path, HANDOVER_EVENTS[1:])
+    report = endurance.evaluate(run_dir, target=endurance.Target("sim", "c", None),
+                                fetch_status=lambda host: SAFE_STATUS,
+                                log_lines=lambda t, d: [
+                                    "[WARN] [1790575300.0] [control.mc]: fly_to_position: Maneuver failed"])
+    assert not report["accepted"]
+    assert "operator Hold handover was not verified" in report["failures"]
+    assert any("node logs not silent" in failure for failure in report["failures"])

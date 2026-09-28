@@ -1968,6 +1968,69 @@ class Driver(Node):
         )
 
 
+OPERATOR_HOLD_PHASES = ("inspection_demo", "reach_cable", "leave_cable")
+MISSION_MODE_KEYS = ("inspection_demo", "reach_cable", "cable_charging", "leave_cable")
+
+
+def mission_trees_stopped(mode_status: dict[str, dict]) -> bool:
+    """Every mission mode inactive with no behavior tree running."""
+    return all(
+        not (mode_status.get(key) or {}).get("active")
+        and not (mode_status.get(key) or {}).get("tree_running")
+        for key in MISSION_MODE_KEYS
+    )
+
+
+def run_operator_hold_scenario(driver: "Driver", args, record) -> None:
+    """Take PX4 Hold like an operator in one phase and prove a clean handover."""
+    phase = args.operator_hold_phase
+    if phase != "inspection_demo":
+        transition = driver.advance_inspection_to_reach(
+            driver.mode_status.get("inspection_demo", {}),
+            args.automatic_recharge_timeout_sec, stop_at=None, automatic_only=True,
+        )
+        if transition is None:
+            raise RuntimeError("Inspection did not hand over to Reach Cable")
+        record({"event": "reach_cable_active", "cycle": 1})
+    if phase == "leave_cable":
+        driver.wait_mode("cable_charging", lambda value: bool(value.get("active")),
+                         failed_predecessor="reach_cable")
+        driver.wait_until_fully_charged(args.charge_until_full_timeout_sec, allow_leave_cable=True)
+        driver.wait_mode("leave_cable", lambda value: bool(value.get("active")))
+    driver.wait_mode(phase, lambda value: bool(value.get("active")) and bool(value.get("tree_running")))
+    dwell_until = time.monotonic() + args.operator_hold_after_sec
+    while time.monotonic() < dwell_until:
+        status = driver.mode_status.get(phase) or {}
+        if not status.get("active"):
+            raise RuntimeError(f"{phase} ended before the operator Hold: {status}")
+        spin_ready(driver, timeout_sec=0.2)
+    record({"event": "operator_hold_commanded", "phase": phase,
+            "at": datetime.now(timezone.utc).isoformat()})
+    hold_started = time.monotonic()
+    driver.native_flight_command("px4.hold")
+    runtime_proof = driver.wait_native_mission_owner_cleared(timeout_sec=10.0)
+    trees_deadline = time.monotonic() + 5.0
+    while not mission_trees_stopped(driver.mode_status):
+        if time.monotonic() >= trees_deadline:
+            raise RuntimeError(f"mission trees still running after Hold: {driver.mode_status}")
+        spin_ready(driver, timeout_sec=0.1)
+    settled_sec = time.monotonic() - hold_started
+    observe_until = time.monotonic() + args.handover_observe_sec
+    while time.monotonic() < observe_until:
+        spin_ready(driver, timeout_sec=0.2)
+        vehicle = driver.vehicle
+        if vehicle is None or vehicle.nav_state != VehicleStatus.NAVIGATION_STATE_AUTO_LOITER:
+            raise RuntimeError(f"PX4 left Hold during the handover window: nav_state="
+                               f"{getattr(vehicle, 'nav_state', None)}")
+        if getattr(vehicle, "failsafe", False):
+            raise RuntimeError("PX4 failsafe during the operator Hold handover")
+        if not mission_trees_stopped(driver.mode_status):
+            raise RuntimeError(f"a mission mode reactivated after Hold: {driver.mode_status}")
+    record({"event": "operator_hold_handover_verified", "phase": phase,
+            "settled_sec": round(settled_sec, 3), "observed_sec": args.handover_observe_sec,
+            "runtime_proof": runtime_proof})
+
+
 def initialize_driver_ros() -> None:
     # The default rclpy SIGINT handler shuts down its context before finally
     # can command landing or receive fresh telemetry. Keep Python's normal
@@ -1991,6 +2054,15 @@ def main() -> int:
         ),
     )
     parser.add_argument("--cycles", type=int, default=1)
+    parser.add_argument(
+        "--operator-hold-phase", choices=OPERATOR_HOLD_PHASES,
+        help="isolated scenario: take PX4 Hold as an operator once this mission phase is active, "
+             "verify a clean handover, then land (no endurance cycles)",
+    )
+    parser.add_argument("--operator-hold-after-sec", type=float, default=10.0,
+                        help="dwell in the chosen phase before taking Hold")
+    parser.add_argument("--handover-observe-sec", type=float, default=20.0,
+                        help="how long the post-Hold state must stay clean")
     parser.add_argument(
         "--automatic-cycles", action="store_true",
         help="Require battery-triggered recharge and automatic Leave after full charge; never command either transition.",
@@ -2205,6 +2277,16 @@ def main() -> int:
         )
         time.sleep(1.0)
         record({"event": "inspection_active"})
+        if args.operator_hold_phase:
+            run_operator_hold_scenario(driver, args, record)
+            cleanup_started_monotonic = time.monotonic()
+            driver.land_and_wait(tools)
+            record({
+                "event": "final_safe_landed_disarmed",
+                "cleanup_safety_evidence": driver.wait_for_fresh_cleanup_safe_landed_disarmed(
+                    cleanup_started_monotonic, freshness_sec=args.cleanup_freshness_sec),
+            })
+            return 0
         deadline = time.monotonic() + args.duration_sec if args.duration_sec else None
 
         # Explicit developer intents exercise every canonical transition.  The

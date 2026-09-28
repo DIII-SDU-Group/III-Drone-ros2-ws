@@ -1453,3 +1453,63 @@ def test_mission_phase_read_still_fails_when_it_never_settles(monkeypatch):
     driver = _phase_driver(iter(lambda: stale, None))
     with pytest.raises(RuntimeError, match="Cannot verify active mission phase"):
         driver.read_fresh_native_mission_phase(settle_timeout_sec=0.05)
+
+
+def test_mission_trees_stopped_requires_every_mode_inactive_and_idle():
+    idle = {key: {"active": False, "tree_running": False} for key in module.MISSION_MODE_KEYS}
+    assert module.mission_trees_stopped(idle)
+    assert module.mission_trees_stopped({})
+    running = dict(idle, reach_cable={"active": False, "tree_running": True})
+    assert not module.mission_trees_stopped(running)
+
+
+def _hold_scenario_driver(monkeypatch, mode_status_after_hold, nav_states):
+    import itertools
+    ticks = itertools.count(0.0, 0.5)
+    monkeypatch.setattr(module.time, "monotonic", lambda: next(ticks))
+    nav = iter(nav_states)
+    commands = []
+    driver = SimpleNamespace(
+        mode_status={"inspection_demo": {"active": True, "tree_running": True}},
+        vehicle=None,
+    )
+    def command(command_id):
+        commands.append(command_id)
+        driver.mode_status = dict(mode_status_after_hold)
+    driver.native_flight_command = command
+    driver.wait_mode = lambda key, predicate, **kwargs: driver.mode_status[key]
+    driver.wait_native_mission_owner_cleared = lambda timeout_sec: {"proof": True}
+    def spin(*args, **kwargs):
+        if commands:
+            driver.vehicle = SimpleNamespace(nav_state=next(nav, module.VehicleStatus.NAVIGATION_STATE_AUTO_LOITER),
+                                             failsafe=False)
+    monkeypatch.setattr(module, "spin_ready", spin)
+    args = SimpleNamespace(operator_hold_phase="inspection_demo", operator_hold_after_sec=1.0,
+                           handover_observe_sec=2.0, automatic_recharge_timeout_sec=600.0,
+                           charge_until_full_timeout_sec=90.0)
+    return driver, args, commands
+
+
+def test_operator_hold_scenario_records_a_clean_handover(monkeypatch):
+    idle = {key: {"active": False, "tree_running": False} for key in module.MISSION_MODE_KEYS}
+    driver, args, commands = _hold_scenario_driver(monkeypatch, idle, [])
+    events = []
+    module.run_operator_hold_scenario(driver, args, events.append)
+    assert commands == ["px4.hold"]
+    assert [e["event"] for e in events] == ["operator_hold_commanded", "operator_hold_handover_verified"]
+
+
+def test_operator_hold_scenario_fails_when_a_mode_reactivates(monkeypatch):
+    still_running = {"inspection_demo": {"active": False, "tree_running": True}}
+    driver, args, _ = _hold_scenario_driver(monkeypatch, still_running, [])
+    with pytest.raises(RuntimeError, match="still running after Hold"):
+        module.run_operator_hold_scenario(driver, args, lambda event: None)
+
+
+def test_operator_hold_scenario_fails_when_px4_leaves_hold(monkeypatch):
+    idle = {key: {"active": False, "tree_running": False} for key in module.MISSION_MODE_KEYS}
+    driver, args, _ = _hold_scenario_driver(
+        monkeypatch, idle, [module.VehicleStatus.NAVIGATION_STATE_AUTO_LOITER,
+                            module.VehicleStatus.NAVIGATION_STATE_AUTO_LAND])
+    with pytest.raises(RuntimeError, match="left Hold"):
+        module.run_operator_hold_scenario(driver, args, lambda event: None)

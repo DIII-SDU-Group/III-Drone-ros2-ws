@@ -203,6 +203,7 @@ def execute(args: argparse.Namespace) -> Path:
     plan = {
         "started_at": utc_now(), "target": target.name, "pi_peer": peer,
         "duration_sec": args.duration_sec, "required_cycles": args.required_cycles,
+        "scenario": args.scenario, "hold_phase": args.hold_phase,
         "source_identity": source_identity(),
     }
     (run_dir / "run_plan.json").write_text(json.dumps(plan, indent=2) + "\n")
@@ -232,8 +233,15 @@ def execute(args: argparse.Namespace) -> Path:
         f" --artifact-dir {remote_dir} --duration-sec {args.duration_sec + 600}"
         f" > {remote_dir}/probe.log 2>&1")
     local_log = lambda name: open(run_dir / name, "w")  # noqa: E731
-    observer = subprocess.Popen(target.observer_shell(observer_cmd), stdout=local_log("observer_runner.log"),
-                                stderr=subprocess.STDOUT)
+    hold_scenario = args.scenario == "hold"
+    if hold_scenario:
+        # The endurance observer judges a full mission; the hold scenario ends
+        # the mission on purpose, so only the log-window marker is needed.
+        run(target.observer_shell(f"touch {marker}"), timeout=30)
+        observer = None
+    else:
+        observer = subprocess.Popen(target.observer_shell(observer_cmd), stdout=local_log("observer_runner.log"),
+                                    stderr=subprocess.STDOUT)
     probe = None if args.no_probe else subprocess.Popen(
         target.observer_shell(probe_cmd), stdout=local_log("probe_runner.log"), stderr=subprocess.STDOUT)
 
@@ -245,7 +253,8 @@ def execute(args: argparse.Namespace) -> Path:
             f"pid=$(cat {remote_dir}/{name} 2>/dev/null); test -z \"$pid\" || kill -INT \"$pid\" 2>/dev/null || true"),
             check=False, timeout=30)
 
-    ready = wait_for(lambda: observer.poll() is None and pid_published("observer.pid"), PROCESS_READY_TIMEOUT_SEC)
+    ready = observer is None or wait_for(
+        lambda: observer.poll() is None and pid_published("observer.pid"), PROCESS_READY_TIMEOUT_SEC)
     if ready and probe is not None:
         ready = wait_for(lambda: probe.poll() is None and pid_published("probe.pid"), PROCESS_READY_TIMEOUT_SEC)
     if not ready:
@@ -262,17 +271,22 @@ def execute(args: argparse.Namespace) -> Path:
     driver_env = {"III_HIL_PI_ENDPOINT": peer} if target.name == "hil" else {}
     driver_cmd = (
         f"python3 scripts/workspace/hil_inspection_cycle_driver.py --artifact-dir {CONTAINER_WS}/{rel}"
-        f" --duration-sec {args.duration_sec} --deadline-drain-guard-sec 180 --automatic-cycles"
-        f" --automatic-recharge-timeout-sec 600 --charging-dwell-sec 0 --charge-until-full-timeout-sec 90")
+        f" --automatic-cycles --automatic-recharge-timeout-sec 600 --charging-dwell-sec 0"
+        f" --charge-until-full-timeout-sec 90")
+    if hold_scenario:
+        driver_cmd += (f" --operator-hold-phase {args.hold_phase}"
+                       f" --operator-hold-after-sec {args.hold_after_sec}")
+    else:
+        driver_cmd += f" --duration-sec {args.duration_sec} --deadline-drain-guard-sec 180"
     print("[endurance] driver running", flush=True)
     with open(run_dir / "driver.log", "w") as driver_log:
         driver_rc = subprocess.run(target.container_shell(driver_cmd, driver_env),
                                    stdout=driver_log, stderr=subprocess.STDOUT, check=False).returncode
     print(f"[endurance] driver exit {driver_rc}", flush=True)
-    if driver_rc != 0:
+    if driver_rc != 0 and observer is not None:
         interrupt("observer.pid")
     interrupt("probe.pid")
-    observer_rc = observer.wait(timeout=args.duration_sec + 1200)
+    observer_rc = observer.wait(timeout=args.duration_sec + 1200) if observer is not None else 0
     probe_rc = probe.wait(timeout=300) if probe is not None else 0
 
     execution: dict[str, Any] = {"driver_exit": driver_rc, "observer_exit": observer_rc,
@@ -361,6 +375,8 @@ def evaluate(run_dir: Path, *, target: Target | None = None, strict_warnings: bo
              ) -> dict[str, Any]:
     """Judge a run. Every failed check is listed; nothing short-circuits."""
     plan = json.loads((run_dir / "run_plan.json").read_text())
+    if plan.get("scenario") == "hold":
+        return evaluate_hold(run_dir, plan, target=target, fetch_status=fetch_status, log_lines=log_lines)
     duration = plan["duration_sec"]
     required = plan["required_cycles"]
     failures: list[str] = []
@@ -475,6 +491,63 @@ def evaluate(run_dir: Path, *, target: Target | None = None, strict_warnings: bo
     return report
 
 
+def evaluate_hold(run_dir: Path, plan: dict[str, Any], *, target: Target | None,
+                  fetch_status: Callable[[str], dict[str, Any]],
+                  log_lines: Callable[[Target, Path], list[str]]) -> dict[str, Any]:
+    """Judge an isolated operator-Hold handover: clean handover, safe end, silent logs."""
+    failures: list[str] = []
+    execution = json.loads((run_dir / "execution_result.json").read_text()) \
+        if (run_dir / "execution_result.json").exists() else {}
+    if not execution:
+        failures.append("missing execution_result.json")
+    for key in ("driver_exit", "probe_exit", "evidence_sync_exit"):
+        if key in execution and execution[key] != 0:
+            failures.append(f"{key}={execution[key]}")
+    events = json.loads((run_dir / "driver_events.json").read_text()) \
+        if (run_dir / "driver_events.json").exists() else []
+    handover = [e for e in events if e.get("event") == "operator_hold_handover_verified"]
+    if not handover:
+        failures.append("operator Hold handover was not verified")
+    if not any(e.get("event") == "final_safe_landed_disarmed" and
+               e.get("cleanup_safety_evidence", {}).get("safe_landed_disarmed") for e in events):
+        failures.append("driver did not prove final landed/disarmed")
+    report: dict[str, Any] = {"evaluated_at": utc_now(), "target": plan["target"], "scenario": "hold",
+                              "hold_phase": plan.get("hold_phase"),
+                              "handover": handover[-1] if handover else None}
+    if target is not None:
+        since = datetime.fromisoformat(plan["started_at"]).timestamp()
+        until = datetime.fromisoformat(execution.get("finished_at", utc_now())).timestamp()
+        findings = summarize_log_lines(log_lines(target, run_dir), since, until)
+        (run_dir / "log_findings.json").write_text(json.dumps(findings, indent=2) + "\n")
+        report["log_counts"] = findings["counts"]
+        report["recording_lost_messages"] = findings["recording_lost_messages"]
+        report["log_patterns"] = [{k: g[k] for k in ("level", "node", "count", "pattern")}
+                                  for g in findings["patterns"][:40]]
+        # A clean handover means no warnings at all, not just no errors.
+        if any(findings["counts"].values()):
+            failures.append(f"node logs not silent: {findings['counts']}")
+        try:
+            status_path = run_dir / "final_vehicle_status.json"
+            if status_path.exists():
+                vehicle = json.loads(status_path.read_text())
+            else:
+                vehicle = fetch_status(target.api_host)
+                status_path.write_text(json.dumps(vehicle, indent=2) + "\n")
+            latest = vehicle.get("latest", {})
+            safe = vehicle.get("freshness") == "fresh" and all(
+                latest.get(key, {}).get("armed") is False and latest.get(key, {}).get("in_air") is False
+                for key in ("command_transport", "ros_uxrce"))
+            report["final_vehicle_safe"] = safe
+            if not safe:
+                failures.append("final Runtime API status is not fresh landed/disarmed")
+        except OSError as exc:
+            failures.append(f"final Runtime API status unavailable: {exc}")
+    report["failures"] = failures
+    report["accepted"] = not failures
+    (run_dir / "acceptance_report.json").write_text(json.dumps(report, indent=2) + "\n")
+    return report
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--target", choices=["sim", "hil"])
@@ -483,6 +556,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-dir", type=Path)
     parser.add_argument("--host", help="HIL Pi target override (as for ./iii-dev hil --host)")
     parser.add_argument("--no-probe", action="store_true", help="skip the passive perception probe")
+    parser.add_argument("--scenario", choices=["endurance", "hold"], default="endurance",
+                        help="endurance cycles, or an isolated operator-Hold handover check")
+    parser.add_argument("--hold-phase", choices=["inspection_demo", "reach_cable", "leave_cable"],
+                        default="inspection_demo", help="mission phase in which to take Hold (hold scenario)")
+    parser.add_argument("--hold-after-sec", type=float, default=10.0,
+                        help="dwell in the hold phase before taking Hold (hold scenario)")
     parser.add_argument("--fresh-start", action="store_true",
                         help="recreate the simulation epoch first (SIM: stack start --recreate-sim, HIL: hil restart)")
     parser.add_argument("--evaluate-only", type=Path, metavar="RUN_DIR")
@@ -504,8 +583,9 @@ def main(argv: list[str] | None = None) -> int:
     except (RunnerError, subprocess.SubprocessError, OSError) as exc:
         print(f"[endurance] error: {exc}", file=sys.stderr)
         return 2
-    summary = {key: report[key] for key in ("accepted", "target", "active_duration_sec",
-                                            "completed_cycles_in_window", "full_charge_proofs")}
+    summary = {key: report.get(key) for key in ("accepted", "target", "scenario", "hold_phase",
+                                                "active_duration_sec", "completed_cycles_in_window",
+                                                "full_charge_proofs", "log_counts")}
     print(json.dumps(summary))
     for failure in report["failures"]:
         print(f"[endurance] FAIL: {failure}", file=sys.stderr)
