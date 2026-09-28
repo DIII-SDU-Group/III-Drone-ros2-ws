@@ -17,6 +17,8 @@ iii_px4_system_id: 1
 iii_px4_uxrce_dds_udp_port: 8888
 iii_hil_uxrce_dds_udp_port: 8889
 iii_hil_mavlink_udp_port: 14542
+# The physical PX4 HIL baseline above remains separate from workstation SITL.
+iii_hil_sitl_mavlink_udp_port: 14544
 iii_hil_px4_system_id: 8
 iii_hardware_packages:
   - udev

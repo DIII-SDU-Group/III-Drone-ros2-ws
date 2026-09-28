@@ -74,14 +74,18 @@ From the host workspace root, the complete operator stack can be started and
 managed without entering the devcontainer terminal:
 
 ```bash
+python3 scripts/install_gc.py --profile dev
 ./iii-dev stack start
 ./iii-dev stack status
-./iii-dev system attach
+iii --runtime-target sim system attach
 ./iii-dev stack stop
 ```
 
 See [`docs/host-development-commands.md`](docs/host-development-commands.md)
 for individual simulation, III CLI, tmux, shell, and ground-control commands.
+The [ground-computer install guide](docs/ground-computer-installation.md)
+describes native workstation and field-laptop profiles and the pinned GUI/QGC
+paths.
 
 The underlying canonical commands remain available inside the devcontainer:
 

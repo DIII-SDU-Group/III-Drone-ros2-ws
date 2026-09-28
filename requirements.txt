@@ -101,6 +101,7 @@ pyserial==3.5
 # PyYAML==5.4.1
 pyros-genmsg==0.5.8
 uvicorn>=0.29,<1
+websockets>=12,<16
 zeroconf>=0.132,<1
 # referencing==0.35.1
 # requests==2.32.2

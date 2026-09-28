@@ -14,8 +14,15 @@ import base64
 import json
 import os
 from pathlib import Path
+import re
+import shlex
+import socket
 import subprocess
 import sys
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from hil_gazebo_owner import workspace_partition
 
 
 MARKER = "III_FIXTURE_RESULT="
@@ -27,6 +34,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workspace", default=str(Path(__file__).resolve().parents[2]))
     parser.add_argument("--container-workspace", default="/home/iii/ws")
     parser.add_argument("--profile", choices=("sim", "hil"), default="sim")
+    parser.add_argument(
+        "--host",
+        "--pi-host",
+        dest="pi_host",
+        default=None,
+        help="Pi hostname or IPv4 for HIL (defaults to III_HIL_PI_ENDPOINT / iii.local).",
+    )
     parser.add_argument("--apply", action="store_true", help="Set the Gazebo aircraft pose to the fixture pose.")
     parser.add_argument(
         "--hold-duration-s",
@@ -36,6 +50,47 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--hold-rate-hz", type=float, default=10.0)
     return parser.parse_args()
+
+
+def resolve_hil_network(host: str) -> tuple[str, str]:
+    """Return the selected IPv4 peer and workstation source address for its route."""
+    try:
+        peers = list(
+            dict.fromkeys(item[4][0] for item in socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM))
+        )
+    except socket.gaierror as exc:
+        raise RuntimeError(f"cannot resolve HIL Pi host {host!r}: {exc}") from exc
+    if not peers:
+        raise RuntimeError(f"HIL Pi host {host!r} has no IPv4 address")
+    override = os.environ.get("III_HIL_WORKSTATION_ADDRESS")
+    mismatched_sources: list[tuple[str, str]] = []
+    matching_source = False
+    for peer in peers:
+        route = subprocess.run(
+            ["ip", "-4", "route", "get", peer], text=True, capture_output=True, check=False
+        )
+        match = re.search(r"(?:^|\s)src\s+(\S+)", route.stdout)
+        if route.returncode == 0 and match:
+            route_source = match.group(1)
+            if override and override != route_source:
+                mismatched_sources.append((peer, route_source))
+                continue
+            matching_source = True
+            try:
+                with socket.create_connection((peer, 22), timeout=0.75):
+                    return peer, route_source
+            except OSError:
+                continue
+    if mismatched_sources and override and not matching_source:
+        peer, route_source = mismatched_sources[0]
+        raise RuntimeError(
+            f"III_HIL_WORKSTATION_ADDRESS {override!r} does not match route to HIL Pi "
+            f"{host!r} via {route_source!r}"
+        )
+    raise RuntimeError(
+        f"no IPv4 workstation route with a reachable HIL Pi SSH TCP/22 peer for host {host!r} "
+        f"({', '.join(peers)})"
+    )
 
 
 def discover_container(workspace: Path) -> str:
@@ -95,22 +150,18 @@ finally:
     encoded_snippet = base64.b64encode(snippet.encode("utf-8")).decode("ascii")
     runtime_environment = ""
     if args.profile == "hil":
-        workstation_address = os.environ.get("III_HIL_WORKSTATION_ADDRESS", "10.42.0.1")
-        pi_address = os.environ.get("III_HIL_PI_ADDRESS", "10.42.0.15")
+        pi_host = args.pi_host or os.environ.get("III_HIL_PI_ENDPOINT") or os.environ.get("III_HIL_PI_ADDRESS") or "iii.local"
+        pi_address, _workstation_address = resolve_hil_network(pi_host)
         ros_domain_id = os.environ.get("III_HIL_ROS_DOMAIN_ID", "42")
-        gz_partition = os.environ.get("III_HIL_GZ_PARTITION", "iii_hil_0")
-        cyclone_uri = (
-            "<CycloneDDS><Domain><General><Interfaces>"
-            f'<NetworkInterface address="{workstation_address}" priority="default" multicast="default"/>'
-            "</Interfaces></General><Discovery><Peers>"
-            f'<Peer address="{pi_address}"/>'
-            "</Peers></Discovery></Domain></CycloneDDS>"
-        )
+        gz_partition = os.environ.get("III_HIL_GZ_PARTITION") or workspace_partition(workspace, int(os.environ.get("III_HIL_PX4_INSTANCE", "0")))
         runtime_environment = (
             f"export ROS_DOMAIN_ID={ros_domain_id} ROS_LOCALHOST_ONLY=0 "
             "ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET ROS2CLI_DISABLE_DAEMON=1 "
-            "RMW_IMPLEMENTATION=rmw_cyclonedds_cpp III_DRONE_MCP_KEEP_RMW=1 "
-            f"GZ_PARTITION={gz_partition!r} CYCLONEDDS_URI={cyclone_uri!r} && "
+            "RMW_IMPLEMENTATION=rmw_fastrtps_cpp FASTDDS_BUILTIN_TRANSPORTS=UDPv4 "
+            "III_DRONE_MCP_KEEP_RMW=1 "
+            f"III_RUNTIME_API_URL={shlex.quote(f'http://{pi_host}:8765')} "
+            f"III_HIL_PI_ENDPOINT={shlex.quote(pi_host)} III_HIL_PI_ADDRESS={shlex.quote(pi_address)} "
+            f"GZ_PARTITION={gz_partition!r} && "
         )
     shell = (
         "source /opt/ros/jazzy/setup.bash && "

@@ -25,9 +25,10 @@ and is not the primary field flight-control path.
 1. On the aircraft, provision the real-profile runtime environment and start
    the independently supervised `iii-runtime-api.service`. It must reject dev
    credentials, generic identity, or a non-real profile.
-2. On the operator laptop, provision `~/.config/iii-ground-control.env` and run
-   `scripts/workspace/iii_ground_control.sh start`. Confirm the pinned aircraft,
-   runtime, and profile before login.
+2. On the operator laptop, [install the `deploy` ground-computer profile](ground-computer-installation.md),
+   provision `~/.config/iii-ground-control.env`, and run
+   `~/.local/share/iii/gc/workspace/scripts/workspace/iii_ground_control.sh start`.
+   Confirm the pinned aircraft, runtime, and profile before login.
 3. From Mission, use **Start aircraft system** for the canonical supervised
    boot/start path and confirm every readiness stage.
 4. Arm and take off with RC/QGroundControl.
@@ -102,6 +103,7 @@ and runtime logs; they include recent command, mode, ownership, and event contex
 After manual landing and disarm, verify fresh landed state, stop the managed
 aircraft nodes from Runtime, and retain the runtime API until logs and rosbag are
 exported. Stop the operator stack with
-`scripts/workspace/iii_ground_control.sh stop`; it captures timestamped Compose
+`~/.local/share/iii/gc/workspace/scripts/workspace/iii_ground_control.sh stop`;
+it captures timestamped Compose
 logs. Simulation fixture staging is documented separately in
 `src/III-Drone-GC/docs/gui-v2-sim-e2e-smoke.md` and is never a field procedure.

@@ -9,10 +9,12 @@ Core runtime documentation remains in the package and subsystem guides:
   boundary before enabling the OptiTrack profile.
 - `field-inspection-operations.md` for physical flight operation.
 - `host-provisioning.md` for the editable Pi workflow.
+- `ground-computer-installation.md` for the native operator workstation and
+  field ground-computer install, pins, paths, and runtime routing.
 - `host-development-commands.md` for everyday workstation commands.
 - `adr/0010-developer-field-deployment.md` for the deployment decision.
 
 Deployment is intentionally developer-first: ordinary SSH, rsync, an editable
-Pi workspace, on-target builds, and normal systemd services.  It does not use
-release signing, a receiver, trust stores, qualification gates, or immutable
-release slots.
+Pi workspace, a cached workstation-side ARM64 cross-build, and normal systemd
+services.  It does not use release signing, a receiver, trust stores,
+qualification gates, or immutable release slots.

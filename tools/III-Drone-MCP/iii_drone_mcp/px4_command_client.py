@@ -26,6 +26,12 @@ class Px4CommandClient:
         self._server_port = int(os.environ.get("III_MAVSDK_SERVER_PORT", "50051"))
         if not 1 <= self._server_port <= 65535:
             raise ValueError(f"III_MAVSDK_SERVER_PORT must be in [1, 65535], got {self._server_port}")
+        self._server_system_id = int(os.environ.get("III_MAVSDK_SYSTEM_ID", "255"))
+        self._server_component_id = int(os.environ.get("III_MAVSDK_COMPONENT_ID", "190"))
+        if not 1 <= self._server_system_id <= 255:
+            raise ValueError("III_MAVSDK_SYSTEM_ID must be in [1, 255]")
+        if not 1 <= self._server_component_id <= 255:
+            raise ValueError("III_MAVSDK_COMPONENT_ID must be in [1, 255]")
         self._drone = None
         self._plugin_manager = None
         self._server_process = None
@@ -47,7 +53,11 @@ class Px4CommandClient:
                     return
 
         self.cleanup_stale_servers(self._system_address)
-        self._drone = System(port=self._server_port)
+        self._drone = System(
+            port=self._server_port,
+            sysid=self._server_system_id,
+            compid=self._server_component_id,
+        )
         self._server_process = self._drone._start_mavsdk_server(
             self._system_address,
             self._drone._port,
@@ -145,6 +155,121 @@ class Px4CommandClient:
 
     async def takeoff(self):
         await self._require_drone().action.takeoff()
+
+    async def takeoff_target(
+        self,
+        *,
+        target_system: int,
+        target_component: int,
+        takeoff_altitude_m: float,
+        latitude_deg: float,
+        longitude_deg: float,
+        takeoff_altitude_amsl_m: float,
+        source_system: int = 255,
+        source_component: int = 0,
+    ) -> dict[str, Any]:
+        """Request takeoff through MAVLink-direct with an explicit PX4 target.
+
+        MAVSDK's Action plugin emits commands to its default 1/1 vehicle.  HIL
+        deliberately uses a non-default vehicle identity, so it must use the
+        same addressed MAVLink-direct transport as external-mode selection.
+        """
+        await self._send_targeted_command_long(
+            command=22,  # MAV_CMD_NAV_TAKEOFF
+            target_system=target_system,
+            target_component=target_component,
+            params=(0, 0, 0, 0, float(latitude_deg), float(longitude_deg), float(takeoff_altitude_amsl_m)),
+            source_system=source_system,
+            source_component=source_component,
+        )
+        return {
+            "command": "MAV_CMD_NAV_TAKEOFF",
+            "target_system": int(target_system),
+            "target_component": int(target_component),
+            "takeoff_altitude_m": float(takeoff_altitude_m),
+            "takeoff_altitude_amsl_m": float(takeoff_altitude_amsl_m),
+            "latitude_deg": float(latitude_deg),
+            "longitude_deg": float(longitude_deg),
+        }
+
+    async def land_target(
+        self,
+        *,
+        target_system: int,
+        target_component: int,
+        source_system: int = 255,
+        source_component: int = 0,
+    ) -> dict[str, Any]:
+        """Request landing through MAVLink-direct with an explicit PX4 target."""
+        await self._send_targeted_command_long(
+            command=21,  # MAV_CMD_NAV_LAND
+            target_system=target_system,
+            target_component=target_component,
+            params=(0, 0, 0, 0, 0, 0, 0),
+            source_system=source_system,
+            source_component=source_component,
+        )
+        return {
+            "command": "MAV_CMD_NAV_LAND",
+            "target_system": int(target_system),
+            "target_component": int(target_component),
+        }
+
+    async def hold_target(
+        self,
+        *,
+        target_system: int,
+        target_component: int,
+        source_system: int = 255,
+        source_component: int = 0,
+    ) -> dict[str, Any]:
+        """Select PX4 AUTO/LOITER (Hold) for the addressed vehicle."""
+        await self._send_targeted_command_long(
+            command=176,  # MAV_CMD_DO_SET_MODE
+            target_system=target_system,
+            target_component=target_component,
+            params=(1, 4, 3, 0, 0, 0, 0),
+            source_system=source_system,
+            source_component=source_component,
+        )
+        return {
+            "command": "MAV_CMD_DO_SET_MODE",
+            "mode": "AUTO_LOITER",
+            "target_system": int(target_system),
+            "target_component": int(target_component),
+        }
+
+    async def _send_targeted_command_long(
+        self,
+        *,
+        command: int,
+        target_system: int,
+        target_component: int,
+        params: tuple[float, float, float, float, float, float, float],
+        source_system: int,
+        source_component: int,
+    ) -> None:
+        try:
+            from mavsdk.mavlink_direct import MavlinkMessage
+        except ImportError as exc:
+            raise RuntimeError("mavsdk.mavlink_direct is required for targeted MAVLink commands") from exc
+        message = MavlinkMessage(
+            message_name="COMMAND_LONG",
+            system_id=int(source_system),
+            component_id=int(source_component),
+            target_system_id=int(target_system),
+            target_component_id=int(target_component),
+            fields_json=json.dumps(
+                {
+                    "target_system": int(target_system),
+                    "target_component": int(target_component),
+                    "command": int(command),
+                    "confirmation": 0,
+                    **{f"param{index}": value for index, value in enumerate(params, start=1)},
+                }
+            ),
+        )
+        await self._require_drone().mavlink_direct.send_message(message)
 
     async def disarm(self):
         await self._require_drone().action.disarm()

@@ -40,7 +40,7 @@ fi
   # operation, so inventory each checked-out HEAD instead.
   git -C "$WORKSPACE_DIR" submodule foreach --recursive --quiet \
     'printf "%s %s\n" "$displaypath" "$(git rev-parse HEAD)"' \
-    | sort
+    | LC_ALL=C sort
 } > "$LOCK_FILE"
 
 echo "Updated $LOCK_FILE"

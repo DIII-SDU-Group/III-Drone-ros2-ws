@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import socket
@@ -27,6 +28,10 @@ from uuid import uuid4
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from urllib.parse import urlsplit, urlunsplit
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from hil_gazebo_owner import workspace_partition
 
 
 DEFAULT_READ_ENDPOINTS = [
@@ -165,10 +170,61 @@ def fixture_flight_altitude(recorded_z: float, *, cable_aware: bool) -> float:
     return recorded_z if cable_aware else recorded_z + 0.06
 
 
+def resolve_hil_network(host: str) -> tuple[str, str]:
+    """Resolve the selected Pi and the workstation source address for its route."""
+    try:
+        peers = list(
+            dict.fromkeys(item[4][0] for item in socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM))
+        )
+    except socket.gaierror as exc:
+        raise SmokeFailure(f"cannot resolve HIL Pi host {host!r}: {exc}") from exc
+    if not peers:
+        raise SmokeFailure(f"HIL Pi host {host!r} has no IPv4 address")
+    override = os.environ.get("III_HIL_WORKSTATION_ADDRESS")
+    mismatched_sources: list[tuple[str, str]] = []
+    matching_source = False
+    for peer in peers:
+        route = subprocess.run(["ip", "-4", "route", "get", peer], text=True, capture_output=True, check=False)
+        match = re.search(r"(?:^|\s)src\s+(\S+)", route.stdout)
+        if route.returncode == 0 and match:
+            route_source = match.group(1)
+            if override and override != route_source:
+                mismatched_sources.append((peer, route_source))
+                continue
+            matching_source = True
+            try:
+                with socket.create_connection((peer, 22), timeout=0.75):
+                    return peer, route_source
+            except OSError:
+                continue
+    if mismatched_sources and override and not matching_source:
+        _, route_source = mismatched_sources[0]
+        raise SmokeFailure(
+            f"III_HIL_WORKSTATION_ADDRESS {override!r} does not match route to HIL Pi "
+            f"{host!r} via {route_source!r}"
+        )
+    raise SmokeFailure(
+        f"no IPv4 workstation route with a reachable HIL Pi SSH TCP/22 peer for host {host!r} "
+        f"({', '.join(peers)})"
+    )
+
+
 class SmokeRunner:
     def __init__(self, args: argparse.Namespace):
         self.args = args
         self.workspace = Path(args.workspace).resolve()
+        self.pi_host: str | None = None
+        self.pi_address: str | None = None
+        self.workstation_address: str | None = None
+        if args.expected_profile == "hil":
+            self.pi_host = (
+                getattr(args, "pi_host", None)
+                or os.environ.get("III_HIL_PI_ENDPOINT")
+                or os.environ.get("III_HIL_PI_ADDRESS")
+                or "iii.local"
+            )
+            self.pi_address, route_source = resolve_hil_network(self.pi_host)
+            self.workstation_address = route_source
         self.artifacts = Path(args.artifacts_dir).resolve() / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         self.artifacts.mkdir(parents=True, exist_ok=True)
         self.step_index = 0
@@ -523,7 +579,33 @@ class SmokeRunner:
             lambda state: nav_is(state, "hold"),
             timeout_s=60.0,
         )
-        self.position_fixture(self.args.overview_fixture, headers, cable_aware=True)
+        # The cable-aware maneuver requires a stored overview, while this
+        # setup-only viewpoint exists specifically to capture the first live
+        # overview.  In workstation simulation, apply the authoritative Gazebo
+        # fixture directly so staging cannot deadlock on that circular
+        # prerequisite or collide with an as-yet-unknown conductor.  All motion
+        # after the overview is stored remains controller-driven.
+        if self.args.expected_profile == "sim":
+            applied_fixture = self.resolve_fixture(
+                self.args.overview_fixture,
+                apply=True,
+                hold_duration_s=2.0,
+            )
+            self.record_structured_artifact(
+                f"fixture-{self.args.overview_fixture}-applied",
+                applied_fixture,
+            )
+            self.wait_for_stable_state(
+                f"fixture-{self.args.overview_fixture}-settled",
+                "/proxy/vehicle/status",
+                headers,
+                lambda state: nav_is(state, "hold") and state.get("in_air") is True,
+                timeout_s=30.0,
+                consecutive_samples=3,
+            )
+            time.sleep(self.args.fixture_settle_s)
+        else:
+            self.position_fixture(self.args.overview_fixture, headers, cable_aware=True)
         self.dispatch_command("inspection-mapper-start", "perception.pl_mapper.start", {}, headers)
         self.wait_for_state(
             "inspection-mapper-live",
@@ -751,26 +833,21 @@ class SmokeRunner:
         px4_system_address = "udpin://0.0.0.0:14540"
         runtime_environment = ""
         if self.args.expected_profile == "hil":
-            workstation_address = os.environ.get("III_HIL_WORKSTATION_ADDRESS", "10.42.0.1")
-            pi_address = os.environ.get("III_HIL_PI_ADDRESS", "10.42.0.15")
+            assert self.pi_host and self.pi_address and self.workstation_address
             ros_domain_id = os.environ.get("III_HIL_ROS_DOMAIN_ID", "42")
-            gz_partition = os.environ.get("III_HIL_GZ_PARTITION", "iii_hil_0")
+            gz_partition = os.environ.get("III_HIL_GZ_PARTITION") or workspace_partition(self.workspace, int(os.environ.get("III_HIL_PX4_INSTANCE", "0")))
             parameter_port = os.environ.get("III_HIL_MAVLINK_PARAMETER_REMOTE_PORT", "14551")
             px4_system_address = f"udpin://0.0.0.0:{parameter_port}"
-            cyclone_uri = (
-                "<CycloneDDS><Domain><General><Interfaces>"
-                f'<NetworkInterface address="{workstation_address}" priority="default" multicast="default"/>'
-                "</Interfaces></General><Discovery><Peers>"
-                f'<Peer address="{pi_address}"/>'
-                "</Peers></Discovery></Domain></CycloneDDS>"
-            )
             runtime_environment = (
                 f"export ROS_DOMAIN_ID={shlex.quote(ros_domain_id)} "
                 "ROS_LOCALHOST_ONLY=0 ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET "
-                "ROS2CLI_DISABLE_DAEMON=1 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp "
+                "ROS2CLI_DISABLE_DAEMON=1 RMW_IMPLEMENTATION=rmw_fastrtps_cpp "
+                "FASTDDS_BUILTIN_TRANSPORTS=UDPv4 "
                 "III_DRONE_MCP_KEEP_RMW=1 III_MAVSDK_SERVER_PORT=50052 "
-                f"GZ_PARTITION={shlex.quote(gz_partition)} "
-                f"CYCLONEDDS_URI={shlex.quote(cyclone_uri)} && "
+                f"III_RUNTIME_API_URL={shlex.quote(f'http://{self.pi_host}:8765')} "
+                f"III_HIL_PI_ENDPOINT={shlex.quote(self.pi_host)} "
+                f"III_HIL_PI_ADDRESS={shlex.quote(self.pi_address)} "
+                f"GZ_PARTITION={shlex.quote(gz_partition)} && "
             )
         try:
             artifact_relative = self.artifacts.relative_to(self.workspace)
@@ -932,6 +1009,9 @@ class SmokeRunner:
             "--profile",
             self.args.expected_profile,
         ]
+        if self.args.expected_profile == "hil":
+            assert self.pi_host
+            command.extend(("--host", self.pi_host))
         if apply:
             command.append("--apply")
         if hold_duration_s:
@@ -1500,7 +1580,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     workspace = Path(__file__).resolve().parents[2]
     parser.add_argument("--workspace", default=str(workspace), help="Workspace root.")
-    parser.add_argument("--runtime-url", default=os.environ.get("III_RUNTIME_API_URL", "http://127.0.0.1:8765"))
+    parser.add_argument("--runtime-url", default=None)
     parser.add_argument(
         "--proxy-url",
         default=os.environ.get(
@@ -1521,6 +1601,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=("sim", "hil"),
         default=os.environ.get("III_GUI_V2_E2E_EXPECTED_PROFILE", "sim"),
         help="Runtime profile expected and requested by the smoke workflow.",
+    )
+    parser.add_argument(
+        "--host",
+        "--pi-host",
+        dest="pi_host",
+        default=None,
+        help="Pi hostname or IPv4 for HIL (defaults to III_HIL_PI_ENDPOINT / iii.local).",
     )
     parser.add_argument("--artifacts-dir", default=os.environ.get("III_GUI_V2_E2E_ARTIFACTS", "log/gui-v2-sim-e2e-smoke"))
     parser.add_argument("--timeout-s", type=float, default=float(os.environ.get("III_GUI_V2_E2E_TIMEOUT_SEC", "60")))
@@ -1557,7 +1644,25 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--overview-guard-s", type=float, default=60.0)
     parser.add_argument("--fixture-resolver", default="scripts/workspace/resolve_sim_fixture.py")
     parser.add_argument("--browser-binary", default=os.environ.get("BROWSER_BINARY", "chromium"))
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    explicit_host = any(
+        value in ("--host", "--pi-host")
+        or value.startswith(("--host=", "--pi-host="))
+        for value in argv
+    )
+    if args.runtime_url is None:
+        inherited_runtime_url = os.environ.get("III_RUNTIME_API_URL")
+        if args.expected_profile == "hil" and (explicit_host or not inherited_runtime_url):
+            pi_host = (
+                args.pi_host
+                or os.environ.get("III_HIL_PI_ENDPOINT")
+                or os.environ.get("III_HIL_PI_ADDRESS")
+                or "iii.local"
+            )
+            args.runtime_url = f"http://{pi_host}:8765"
+        else:
+            args.runtime_url = inherited_runtime_url or "http://127.0.0.1:8765"
+    return args
 
 
 def active_mission_mode(state: dict[str, Any]) -> str | None:

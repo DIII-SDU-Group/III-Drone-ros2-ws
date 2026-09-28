@@ -9,6 +9,7 @@ from rclpy.qos import DurabilityPolicy, ReliabilityPolicy
 
 from iii_drone_mcp.agent_tools import DroneAgentTools, ToolResult
 from iii_drone_mcp.mcp_server import DroneMcpServer
+from iii_drone_mcp.mission_deploy_workflow import MissionDeployWorkflow
 from iii_drone_mcp.mission_scenario_suite import mission_attempt_completed
 
 
@@ -27,6 +28,68 @@ def test_custom_operation_status_uses_retained_best_effort_qos():
     assert result.success is True
     assert observed["qos_profile"].durability == DurabilityPolicy.TRANSIENT_LOCAL
     assert observed["qos_profile"].reliability == ReliabilityPolicy.BEST_EFFORT
+
+
+def test_custom_operation_mode_id_accepts_ros_native_status_message():
+    result = ToolResult(
+        True,
+        {"status": SimpleNamespace(data='{"mode_id": 27}')},
+    )
+
+    assert MissionDeployWorkflow._custom_operation_mode_id_from_status(result) == 27
+
+
+def test_external_mode_fallback_reuses_mavsdk_endpoint(monkeypatch):
+    tools = DroneAgentTools.__new__(DroneAgentTools)
+    tools._px4_system_address = "udpin://0.0.0.0:14542"
+
+    class _Client:
+        instances = []
+
+        def __init__(self, address):
+            self.address = address
+            self.connected = False
+            self.closed = False
+            self.calls = []
+            self.instances.append(self)
+
+        async def connect(self):
+            self.connected = True
+
+        async def set_external_nav_state(self, nav_state, **kwargs):
+            self.calls.append((nav_state, kwargs))
+            return {"nav_state": nav_state, "transport": "mavsdk"}
+
+        async def close_async(self):
+            self.closed = True
+
+    monkeypatch.setattr("iii_drone_mcp.agent_tools.Px4CommandClient", _Client)
+    tools._publish_px4_nav_state_command = lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError("ros unavailable"))
+    tools._wait_px4_nav_state = lambda *args, **kwargs: {"nav_state": 27, "stable_sec_observed": 1.0}
+
+    result = tools._send_px4_external_nav_state(
+        27,
+        target_system=1,
+        target_component=1,
+        repeat_count=1,
+        postcondition_timeout_sec=2.0,
+        stable_sec=1.0,
+    )
+
+    client = _Client.instances[0]
+    assert result.success is True
+    assert result.data["external_mode_command_method"] == "mavsdk_mavlink_direct_do_set_mode"
+    assert client.address == "udpin://0.0.0.0:14542"
+    assert client.connected and client.closed
+    assert client.calls == [(27, {"target_system": 1, "target_component": 1})]
+
+
+def test_external_mode_target_resolves_live_px4_identity():
+    tools = DroneAgentTools.__new__(DroneAgentTools)
+    tools.node = object()
+    tools._take_message = lambda *args, **kwargs: SimpleNamespace(system_id=8, component_id=1)
+
+    assert tools._resolve_px4_command_target(1, 1) == (8, 1)
 
 
 def test_simulation_status_flags_keep_transport_separate_from_backend_processes():
@@ -104,6 +167,19 @@ def test_system_status_booted_accepts_active_profile():
     )
 
     assert DroneAgentTools._system_status_booted(result) is True
+
+
+def test_mutating_iii_commands_are_explicitly_confirmed_for_noninteractive_workflows():
+    tools = DroneAgentTools.__new__(DroneAgentTools)
+    tools._iii_cli_path = "iii"
+
+    assert tools._iii_mutation_command("system", "start") == [
+        "iii",
+        "system",
+        "start",
+        "--confirm",
+        "--non-interactive",
+    ]
 
 
 def test_terminal_reach_charge_leave_requires_inactive_mission():

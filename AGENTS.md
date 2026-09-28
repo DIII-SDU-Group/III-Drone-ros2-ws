@@ -5,6 +5,9 @@ This file defines how coding agents should work in this repository.
 Supporting agent-document ownership is indexed in
 [`docs/agents/README.md`](docs/agents/README.md); this file remains the concise
 workspace authority and does not duplicate the operating manuals.
+[`CLAUDE.md`](CLAUDE.md) is the Claude Code counterpart: it carries the same
+workspace policy without Codex-specific orchestration. Keep shared policy in
+sync between the two files.
 The safe standalone/editable-submodule workflow is
 [`docs/agents/editable-repositories.md`](docs/agents/editable-repositories.md).
 
@@ -135,10 +138,12 @@ For submodules, use this strict policy.
 These are core project code and can be edited when the task needs it:
 - `src/III-Drone-Core`: main control/perception runtime code.
 - `src/III-Drone-Configuration`: configuration server/client and parameter model.
+- `src/III-Drone-Contracts`: ROS-free Pydantic API contracts for the operator/runtime boundary.
 - `src/III-Drone-Interfaces`: ROS message/service/action contracts.
 - `src/III-Drone-Mission`: mission and behavior execution layer.
 - `src/III-Drone-Simulation`: simulation integration and assets glue.
 - `src/III-Drone-Supervision`: supervision and lifecycle orchestration.
+- `src/III-Drone-Runtime`: runtime-host control plane (`iii-runtime-api`, daemon client, host adapters).
 - `src/III-Drone-GC`: ground control/operator tooling package.
 - `tools/III-Drone-CLI`: main CLI used for canonical bringup.
 
@@ -150,7 +155,7 @@ These are open-source libraries maintained as forks. Editing may be needed, but 
 - `src/px4-ros2-interface-lib`
 - `src/iwr6843aop-ROS2-pkg`
 
-Rule: before changing any of these three, pause and ask for explicit verification.
+Rule: before changing any of these, pause and ask for explicit verification.
 
 ### 5.3 Third-party dependencies (do not edit by default)
 
@@ -179,6 +184,12 @@ fall back to source paths or mission-asset environment variables.
 Bringup often depends on installed config content under `.config/iii_drone`.
 If config-dependent behavior fails, verify setup/install scripts were run.
 
+HIL always runs without the drone propulsion battery. Do not request physical
+verification for HIL startup, restart, or virtual mission runs. Verify in
+software that the Pi uses the `hil` runtime profile and that PX4 is the
+workstation-owned SITL instance. This HIL rule does not apply to real or
+opti-track operations.
+
 ## 7) Agent Work Protocol
 
 When implementing changes:
@@ -194,10 +205,29 @@ When implementing changes:
 5. Run focused tests after each backlog task and the full applicable regression
    once at the end of each phase.
 
-### 7.1 Deployment and repository automation
+### 7.1 Long-running background work and heartbeat monitors
+
+- Launch one coherent full job for long-running work; do not replace it with a
+  chain of short ad-hoc jobs unless a documented safety gate or recovery action
+  requires a new attempt.
+- When background work is submitted under repository policy, or when a new work
+  order monitor is created, attach a heartbeat monitor before returning. Use a
+  30-minute heartbeat interval (`FREQ=MINUTELY;INTERVAL=30`). Keep unchanged and
+  healthy state quiet; notify on meaningful progress, completion, failure,
+  material state change, or required operator action.
+- Reuse or update the existing monitor for the same work rather than creating
+  duplicate monitors. Preserve the exact job/artifact paths and continue the
+  same job after a monitor wake-up.
+- For Pi work, never issue an operating-system shutdown. Reboot is permitted;
+  runtime stop/restart is permitted when required for a controlled deployment
+  or test transition.
+
+### 7.2 Deployment and repository automation
 
 - Deployment is a direct developer workflow: use `iii deploy dev` for ordinary
-  SSH/rsync synchronization, optional on-Pi build, and runtime restart.
+  SSH/rsync synchronization, a workstation-side ARM64 cross-build (including
+  the Pi's Micro XRCE-DDS agent), and runtime restart.  `--build` must never
+  invoke colcon or a compiler on the Pi.
 - Do not introduce release signing, receiver protocols, trust stores,
   immutable slots, field qualification gates, forced-command SSH, or deployment
   operation nonces.
@@ -235,10 +265,61 @@ Active risks documented in the workspace:
 Agents should preserve stability and avoid broad refactors unless explicitly requested.
 
 
+## 10) Delegated workflow
+
+By default, the parent owns the task, decisions, integration, and final signoff. Handle a
+short dependent change, routine document edit, deterministic inventory, or focused check
+directly when one agent can complete it without a handoff. Delegate a coherent, independent
+packet only when its expected time or context saving or independent judgment exceeds its
+briefing, waiting, and reintegration cost. Broad searches, bulky logs, long test batches,
+and separable implementation slices are suitable examples. Judge the workflow by elapsed
+time and total model work per accepted task, not token throughput. There is no mandatory
+agent chain or routine review agent for ordinary tasks; backlog execution has a
+required final instruction review.
+
+For a request to **execute a substantial batch of instructions** with multiple coherent
+outcomes or consequential dependencies (such as a multi-part work order),
+automatically use [backlog-planning](.agents/skills/backlog-planning/SKILL.md)
+and then [backlog-execution](.agents/skills/backlog-execution/SKILL.md) in the
+same chat. Planning happens in a Terra backlog writer; document-grounded plans
+receive one independent Terra backlog-verifier pass before user questions. A
+plan-only request stops after planning; a request to execute an existing ready
+backlog starts with execution. A long prompt or several checklist items do not
+by themselves require a backlog. Backlog task IDs do not each require a fresh agent; the parent may complete
+small, coupled steps directly.
+
+Keep [subagent-orchestration](.agents/skills/subagent-orchestration/SKILL.md)
+opt-in: use it only when the user explicitly invokes `$subagent-orchestration`
+for an open-ended objective such as desired behavior changes. Without that
+invocation, use the ordinary light-delegation policy for such requests.
+Subagents follow their bounded role and packet without loading parent-only skills.
+Nested delegation is forbidden: only the parent may dispatch agents, coordinate
+their work, verify the integrated execution result, and sign off. The parent may
+request an occasional independent, read-only `terra_verifier` review for a
+specifically difficult material boundary; backlog execution also requires one
+final Terra review against the original instructions after all tasks are executed.
+The hook in `.codex/hooks/enforce_subagent_policy.py` enforces the no-nesting rule. When
+opening a new implementation agent, start with `luna_worker` and escalate only
+from documented insufficiency. The opt-in orchestration skill may start a genuinely
+difficult slice with Terra when specific prior evidence shows Luna is predictably
+unsuitable. Do not silently change the parent model or reload roles by
+restarting a daemon.
+
+Reuse an existing subagent by default whenever the next packet has any useful
+overlap with its context, even if the relation is slight or crosses task IDs.
+Do not open a new agent merely because a packet is new or an existing agent is a
+higher tier than the packet would otherwise need. Open a new agent when the work
+is completely unrelated to available contexts, the existing agent's context is
+full or nearly full, an independent reviewer is required, or a hard role
+capability such as read-only access prevents the assignment. The parent may
+also replace an agent to free capacity. Give each reused agent a revised packet;
+give a replacement a concise evidence handoff.
+
+Subagent selection must always use an explicit repository-defined `agent_type`.
+Never use generic/default/built-in agents or model inheritance as a fallback.
+`task_name` does not select an agent profile. If explicit custom-agent routing
+is unavailable, do not spawn a generic replacement.
 
 
-
-
-
-Additional workspace instruction:
+# Additional workspace instruction:
 - Only run tests for III packages. Do not run test commands for non-III third-party packages.

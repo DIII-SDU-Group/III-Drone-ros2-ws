@@ -1415,7 +1415,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="III-Drone MCP stdio server")
     parser.add_argument("--artifact-dir", default="/tmp/iii_drone/iii_drone_agent")
-    parser.add_argument("--px4-system-address", default="udp://:14540")
+    parser.add_argument("--px4-system-address", default=os.environ.get("III_PX4_SYSTEM_ADDRESS", "udp://:14540"))
     args = parser.parse_args()
 
     tools = DroneAgentTools(

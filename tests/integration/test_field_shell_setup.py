@@ -55,8 +55,12 @@ source setup/setup_hil.bash
 test "$CLI_CONFIGURATION" = remote
 test "$III_SYSTEM_PROFILE" = hil
 test "$III_DEFAULT_TARGET" = hil
+test "$III_HIL_PI_ENDPOINT" = iii.local
+test -z "$III_HIL_PI_ADDRESS"
+test "$III_RUNTIME_API_HOST" = iii.local
+test "$III_SSH_HOST" = iii.local
 test "$III_RUNTIME_API_URL" = http://iii.local:8765
-test "$III_RUNTIME_API_TOKEN_FILE" = "$HOME/.config/iii/credentials/runtime-api.token"
+test -z "${III_RUNTIME_API_TOKEN_FILE:-}"
 test -z "${GZ_IP:-}"
 """
     result = subprocess.run(

@@ -4,6 +4,13 @@
 
 Canonical operational entrypoint is the III CLI (`iii`), backed by the supervision daemon and a launch-driven runtime graph.
 
+Inside the SIM devcontainer or onboard Pi, `iii` operates on the local
+runtime after sourcing its `setup/` profile. The [native ground-computer
+install](ground-computer-installation.md) routes the same runtime command over
+Docker to the matching SIM devcontainer or over SSH to a selected Pi. Native
+GC routing checks CLI source identity before execution; `iii-dev` owns only
+SIM/HIL stack composition and container helpers.
+
 Operational sequence:
 1. Environment profile is loaded from `setup/*.bash` (for example dev/sim profile).
 2. `iii system boot` ensures the system daemon is running.
@@ -75,6 +82,12 @@ Examples from the specification:
 ### 2.3 Common profile services
 
 - `micro_ros_agent`
+
+In split-host HIL, `micro_ros_agent` owns the workstation PX4 SITL endpoint on
+Pi UDP port 8890 and is the readiness gate for the mission graph. The physical
+PX4 transport is deliberately not started in this profile: it is not part of
+the virtual-flight proof and would consume Pi capacity. Real and OptiTrack
+profiles own their physical PX4 transport separately.
 
 ### 2.4 Real / OptiTrack profile entities
 

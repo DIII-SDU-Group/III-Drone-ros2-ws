@@ -2,6 +2,7 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import SimpleNamespace
 import json
+from contextlib import nullcontext
 import threading
 
 import pytest
@@ -162,6 +163,167 @@ def test_hil_profile_is_an_explicit_smoke_target():
     args = smoke.parse_args(["--expected-profile", "hil"])
 
     assert args.expected_profile == "hil"
+    assert args.pi_host is None
+    assert args.runtime_url == "http://iii.local:8765"
+
+
+def test_hil_runtime_url_defaults_to_inherited_pi_hostname_without_api_url(monkeypatch):
+    monkeypatch.setenv("III_HIL_PI_ENDPOINT", "pi.example")
+    monkeypatch.delenv("III_RUNTIME_API_URL", raising=False)
+
+    args = smoke.parse_args(["--expected-profile", "hil"])
+
+    assert args.runtime_url == "http://pi.example:8765"
+
+
+def test_explicit_hil_host_overrides_inherited_target(monkeypatch):
+    monkeypatch.setenv("III_HIL_PI_ENDPOINT", "inherited.local")
+    monkeypatch.setenv("III_HIL_PI_ADDRESS", "10.42.0.15")
+    monkeypatch.setenv("III_RUNTIME_API_URL", "http://inherited.local:8765")
+
+    args = smoke.parse_args(["--expected-profile", "hil", "--host", "192.0.2.40"])
+
+    assert args.pi_host == "192.0.2.40"
+    assert args.runtime_url == "http://192.0.2.40:8765"
+
+
+def test_hil_route_resolution_uses_host_route_source(monkeypatch):
+    monkeypatch.setattr(smoke.socket, "getaddrinfo", lambda *args: [(None, None, None, None, ("192.0.2.40", 0))])
+    monkeypatch.setattr(
+        smoke.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="192.0.2.40 dev wlan0 src 192.0.2.10\n", stderr=""),
+    )
+    monkeypatch.delenv("III_HIL_WORKSTATION_ADDRESS", raising=False)
+    monkeypatch.setattr(smoke.socket, "create_connection", lambda *args, **kwargs: nullcontext())
+
+    assert smoke.resolve_hil_network("pi.example") == ("192.0.2.40", "192.0.2.10")
+
+
+def test_hil_route_resolution_skips_unreachable_first_dns_address(monkeypatch):
+    monkeypatch.setattr(
+        smoke.socket,
+        "getaddrinfo",
+        lambda *args: [
+            (None, None, None, None, ("10.42.0.15", 0)),
+            (None, None, None, None, ("192.168.1.251", 0)),
+        ],
+    )
+    monkeypatch.setattr(
+        smoke.subprocess,
+        "run",
+        lambda command, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=f"{command[-1]} dev eth0 src 192.168.1.10\n",
+            stderr="",
+        ),
+    )
+    attempts = []
+
+    def connect(address, timeout):
+        attempts.append((address, timeout))
+        if address[0] == "10.42.0.15":
+            raise OSError("unreachable stale address")
+        return nullcontext()
+
+    monkeypatch.setattr(smoke.socket, "create_connection", connect)
+    monkeypatch.delenv("III_HIL_WORKSTATION_ADDRESS", raising=False)
+
+    assert smoke.resolve_hil_network("pi.example") == ("192.168.1.251", "192.168.1.10")
+    assert attempts == [(('10.42.0.15', 22), 0.75), (('192.168.1.251', 22), 0.75)]
+
+
+def test_hil_route_resolution_rejects_workstation_override_for_another_link(monkeypatch):
+    monkeypatch.setattr(smoke.socket, "getaddrinfo", lambda *args: [(None, None, None, None, ("192.0.2.40", 0))])
+    monkeypatch.setattr(
+        smoke.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="192.0.2.40 dev wlan0 src 192.0.2.10\n", stderr=""),
+    )
+    monkeypatch.setenv("III_HIL_WORKSTATION_ADDRESS", "10.42.0.1")
+
+    with pytest.raises(smoke.SmokeFailure, match="does not match route"):
+        smoke.resolve_hil_network("pi.example")
+
+
+def test_smoke_hil_target_is_selected_from_explicit_argument(monkeypatch, tmp_path):
+    monkeypatch.setattr(smoke, "resolve_hil_network", lambda host: ("192.0.2.40", "192.0.2.10"))
+    args = smoke.parse_args(["--expected-profile", "hil", "--host", "pi.example", "--workspace", str(tmp_path)])
+
+    runner = smoke.SmokeRunner(args)
+
+    assert (runner.pi_host, runner.pi_address, runner.workstation_address) == (
+        "pi.example",
+        "192.0.2.40",
+        "192.0.2.10",
+    )
+
+
+def test_hil_mcp_child_receives_selected_peer_and_route_source(monkeypatch, tmp_path):
+    monkeypatch.setenv("III_HIL_ROS_DOMAIN_ID", "42")
+    monkeypatch.setenv("III_HIL_GZ_PARTITION", "test-partition")
+    runner = object.__new__(smoke.SmokeRunner)
+    runner.workspace = tmp_path
+    runner.artifacts = tmp_path / "artifacts"
+    runner.args = SimpleNamespace(expected_profile="hil")
+    runner.pi_host = "pi.example"
+    runner.pi_address = "192.0.2.40"
+    runner.workstation_address = "192.0.2.10"
+    runner.record_structured_artifact = lambda *_args, **_kwargs: None
+    results = iter(
+        [
+            SimpleNamespace(returncode=0, stdout="container-id\n", stderr=""),
+            SimpleNamespace(returncode=0, stdout='{"success":true}', stderr=""),
+        ]
+    )
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        return next(results)
+
+    monkeypatch.setattr(smoke.subprocess, "run", run)
+
+    runner.call_sim_mcp("runtime.status", {}, artifact_name="status")
+
+    child = calls[1][-1]
+    assert "III_HIL_PI_ENDPOINT=pi.example" in child
+    assert "III_HIL_PI_ADDRESS=192.0.2.40" in child
+    assert "III_RUNTIME_API_URL=http://pi.example:8765" in child
+    assert "RMW_IMPLEMENTATION=rmw_fastrtps_cpp" in child
+    assert "FASTDDS_BUILTIN_TRANSPORTS=UDPv4" in child
+
+
+def test_hil_smoke_passes_host_to_fixture_resolver(monkeypatch, tmp_path):
+    runner = object.__new__(smoke.SmokeRunner)
+    runner.workspace = tmp_path
+    runner.artifacts = tmp_path
+    runner.args = SimpleNamespace(fixture_resolver="resolver", expected_profile="hil")
+    runner.pi_host = "pi.example"
+    calls = []
+
+    def run(command, **_kwargs):
+        calls.append(command)
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({"success": True, "data": {"target_source": "gazebo_ground_truth_mapped_to_live_ros_world"}}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(smoke.subprocess, "run", run)
+
+    runner.resolve_fixture("fixture")
+
+    assert calls[0][calls[0].index("--host") + 1] == "pi.example"
+
+
+def test_sim_smoke_keeps_pi_target_unset(monkeypatch):
+    monkeypatch.setenv("III_HIL_PI_ENDPOINT", "pi.example")
+
+    args = smoke.parse_args([])
+
+    assert args.expected_profile == "sim"
+    assert args.pi_host is None
 
 
 def test_cable_aware_fixture_preserves_recorded_clearance_altitude():
@@ -782,6 +944,9 @@ def test_inspection_battery_reset_uses_workspace_container_and_records_evidence(
     runner.workspace = tmp_path
     runner.artifacts = tmp_path
     runner.args = SimpleNamespace(expected_profile="hil")
+    runner.pi_host = "iii.local"
+    runner.pi_address = "192.0.2.40"
+    runner.workstation_address = "192.0.2.10"
     runner.step_index = 0
     runner.summary = {"steps": []}
     calls = []

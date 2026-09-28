@@ -139,5 +139,5 @@ else
 fi
 
 python3 -m pytest tests
-PYTHONPATH="${workspace_root}/deployment/src:${workspace_root}/tools/III-Drone-CLI${PYTHONPATH:+:${PYTHONPATH}}" \
+PYTHONPATH="${workspace_root}/tools/III-Drone-CLI${PYTHONPATH:+:${PYTHONPATH}}" \
   python3 -m pytest tools/III-Drone-CLI/test

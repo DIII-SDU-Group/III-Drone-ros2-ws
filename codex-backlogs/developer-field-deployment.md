@@ -51,6 +51,26 @@ development iterations use online deployment only; never power off the Pi.
 
 ## In-Progress
 
+### P2.T1: Canonical split-host HIL inspection-mission acceptance
+
+Bring up the maintained split-host HIL surface: PX4 SITL and Gazebo on the
+workstation, the supervised ROS graph on the Pi, and the physical PX4 retained
+disarmed with no propulsion battery. Run the installed `inspection_demo`
+mission long enough to exercise the recurring mission loop and retain mission,
+setpoint, PX4-SITL, Gazebo, and Pi-runtime evidence. This is distinct from the
+already-completed uXRCE transport and managed-node bringup gate.
+
+Acceptance:
+
+- [ ] The coordinated launcher proves healthy Gazebo/PX4-SITL adapters and a
+  fresh, fully active Pi HIL graph without powering off the Pi or arming the
+  physical PX4.
+- [ ] The installed canonical inspection mission obtains/validates its scene
+  overviews, becomes the active mission owner, and remains active through a
+  sustained observation window.
+- [ ] Retained artifacts prove Gazebo motion, PX4-SITL state/setpoint flow,
+  Pi mission lifecycle, and that the physical PX4 remained disarmed.
+
 ### P3.T0: OptiTrack pose ingress and PX4 external-vision bridge (lab-blocked)
 
 The `opti_track` name remains reserved for the intended real-aircraft graph and

@@ -1,25 +1,133 @@
 #!/usr/bin/env python3
-"""Coordinate a split-host HIL restart without rewinding a live Pi ROS clock."""
+"""Coordinate the native split-host HIL lifecycle without rewinding live ROS time."""
 
 from __future__ import annotations
 
+import argparse
+import json
 import os
 from pathlib import Path
+import re
+import socket
 import subprocess
 import sys
 import time
 from typing import Any, Callable
 from uuid import uuid4
+from urllib.error import URLError
+from urllib.request import urlopen
 
 
 WORKSPACE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKSPACE / "tools" / "III-Drone-CLI"))
+sys.path.insert(0, str(WORKSPACE / "tools" / "III-Drone-MCP"))
 
-from iii.runtime_api_client import RuntimeApiClient  # noqa: E402
+from iii.runtime_api_client import RuntimeApiClient, RuntimeApiError  # noqa: E402
 
 
 class HilRestartError(RuntimeError):
     """Raised when coordinated HIL restart cannot remain fail-closed."""
+
+
+def _emit_progress(stage: str, state: str, detail: str) -> None:
+    """Emit concise opt-in progress without changing normal or JSON output."""
+    if os.environ.get("III_HIL_PROGRESS") == "1":
+        print(f"III_HIL_PROGRESS|{stage}|{state}|{detail}", flush=True)
+
+
+def _progress_operation(stage: str, detail: str, operation: Callable[[], Any]) -> Any:
+    _emit_progress(stage, "start", detail)
+    try:
+        result = operation()
+    except Exception:
+        _emit_progress(stage, "failed", detail)
+        raise
+    _emit_progress(stage, "done", detail)
+    return result
+
+
+def _failure_reason(output: str) -> str:
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    for line in reversed(lines):
+        try:
+            result = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        # The native CLI wraps a remote command result. Surface the innermost
+        # transcript before a generic route/handler error or a long JSON line.
+        for _ in range(8):
+            if not isinstance(result, dict):
+                break
+            payload = result.get("payload")
+            if not isinstance(payload, dict):
+                break
+            nested = payload.get("runtime_result")
+            if isinstance(nested, dict):
+                result = nested
+                continue
+            display = payload.get("display")
+            if isinstance(display, str) and display.strip():
+                return _failure_reason_text(display)
+            break
+    return _failure_reason_text(output)
+
+
+def _failure_reason_text(output: str) -> str:
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if "Next:" in lines:
+        lines = lines[:lines.index("Next:")]
+    while lines and lines[-1].startswith(("Findings:", "usage:", "options:")):
+        lines.pop()
+    return next(
+        (line for line in reversed(lines) if re.search(
+            r"failed|error|unable|cannot|missing|not running|refus|timed out|denied|invalid|unavailable",
+            line, re.IGNORECASE,
+        )),
+        lines[-1] if lines else "child produced no diagnostic output",
+    )
+
+
+def _run_lifecycle_child(
+    command: list[str], *, label: str, environment: dict[str, str]
+) -> None:
+    """Keep full child output in the coordinator log and surface its failure."""
+    result = subprocess.run(
+        command, cwd=WORKSPACE, env=environment,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        check=False,
+    )
+    output = result.stdout or ""
+    if output:
+        print(output, end="" if output.endswith("\n") else "\n", flush=True)
+    if result.returncode == 0:
+        return
+    # CLI failures may end with a suggested next command. Prefer the actual
+    # diagnostic immediately above it; never replace it with a Python repr.
+    reason = _failure_reason(output)
+    raise HilRestartError(f"{label} failed (exit {result.returncode}): {reason}")
+
+
+def wait_runtime_identity(
+    client: RuntimeApiClient, *, timeout_seconds: float = 30.0,
+    poll_seconds: float = 2.0, monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    """Allow a just-restarted API to open its port before lifecycle preflight."""
+    deadline = None
+    while True:
+        try:
+            return client.identity()
+        except RuntimeApiError as exc:
+            cause = exc.__cause__
+            reason = cause.reason if isinstance(cause, URLError) else cause
+            if not isinstance(reason, ConnectionRefusedError):
+                raise
+            if deadline is None:
+                deadline = monotonic() + min(30.0, timeout_seconds)
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise HilRestartError(f"Runtime API remained unavailable: {exc}") from exc
+            sleep(min(poll_seconds, remaining))
 
 
 def _accepted_result(response: dict[str, Any], command_id: str) -> dict[str, Any]:
@@ -28,6 +136,32 @@ def _accepted_result(response: dict[str, Any], command_id: str) -> dict[str, Any
         reason = rejection.get("message") or response.get("message") or "rejected"
         raise HilRestartError(f"{command_id} failed: {reason}")
     return response["result"]
+
+
+def wait_runtime_status(
+    client: RuntimeApiClient, *, timeout_seconds: float = 30.0,
+    poll_seconds: float = 2.0, monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    """Wait only for a restarted daemon's absent/refused control socket."""
+    deadline = None
+    while True:
+        response = client.command("runtime.status", {})
+        reason = str(response.get("message") or "")
+        socket_unavailable = (
+            response.get("accepted") is False
+            and response.get("rejection") is None
+            and (response.get("result") or {}).get("permission") == "read_only"
+            and reason.startswith(("[Errno 2] ", "[Errno 111] "))
+        )
+        if not socket_unavailable:
+            return _accepted_result(response, "runtime.status")
+        if deadline is None:
+            deadline = monotonic() + min(30.0, timeout_seconds)
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            raise HilRestartError(f"Runtime daemon socket remained unavailable: {reason}")
+        sleep(min(poll_seconds, remaining))
 
 
 def _field_is_fresh(state: dict[str, Any], name: str, expected: Any) -> bool:
@@ -41,17 +175,10 @@ def _field_is_fresh(state: dict[str, Any], name: str, expected: Any) -> bool:
     )
 
 
-def vehicle_is_safely_landed(state: dict[str, Any]) -> bool:
-    return (
-        state.get("source_availability") == "available"
-        and state.get("freshness") == "fresh"
-        and _field_is_fresh(state, "armed", False)
-        and _field_is_fresh(state, "in_air", False)
-    )
-
-
 class ProcessRunner:
-    def __init__(self) -> None:
+    def __init__(self, *, rendered: bool = True, host: str | None = None) -> None:
+        self.rendered = rendered
+        self.host = host
         self.cli = Path(
             os.environ.get(
                 "III_HIL_CLI", str(WORKSPACE / "tools" / "III-Drone-CLI" / "bin" / "iii")
@@ -64,26 +191,84 @@ class ProcessRunner:
             )
         )
 
+    def launcher_command(self, action: str) -> list[str]:
+        command = [str(self.launcher), action]
+        if self.host is not None:
+            command.extend(("--host", self.host))
+        return command
+
     def workstation(self, action: str) -> None:
-        subprocess.run([str(self.launcher), action], check=True, cwd=WORKSPACE)
+        environment = dict(os.environ)
+        environment["III_HIL_RENDERED"] = "1" if self.rendered else "0"
+        _run_lifecycle_child(
+            self.launcher_command(action), label=f"workstation {action}",
+            environment=environment,
+        )
+
+    def battery_check(self) -> None:
+        _run_lifecycle_child(
+            self.launcher_command("battery-check"), label="PX4 battery link",
+            environment=dict(os.environ),
+        )
 
     def workstation_healthy(self) -> bool:
-        return subprocess.run(
-            [str(self.launcher), "status"],
+        snapshot = self.workstation_snapshot()
+        return bool(
+            snapshot["returncode"] == 0
+            and snapshot["fields"].get("hil_readiness") == "ready"
+        )
+
+    def workstation_snapshot(self) -> dict[str, Any]:
+        result = subprocess.run(
+            self.launcher_command("status"),
             cwd=WORKSPACE,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        ).returncode == 0
+            capture_output=True,
+            text=True,
+        )
+        fields = dict(
+            line.split(": ", 1)
+            for line in result.stdout.splitlines()
+            if ": " in line
+        )
+        diagnostic_output = result.stderr or (result.stdout if not fields else "")
+        diagnostic = _failure_reason(diagnostic_output) if result.returncode and diagnostic_output else None
+        return {"returncode": result.returncode, "fields": fields, "diagnostic": diagnostic}
+
+    def workstation_stopped(self) -> bool:
+        # Failed readiness alone is not proof that PX4 is stopped: one missing
+        # sensor bridge can degrade an otherwise running simulator.
+        result = subprocess.run(
+            self.launcher_command("status"), cwd=WORKSPACE,
+            capture_output=True, text=True,
+        )
+        fields = dict(
+            line.split(": ", 1) for line in result.stdout.splitlines() if ": " in line
+        )
+        if not all(fields.get(key) == value for key, value in {
+            "canonical_px4_process_alive": "no",
+            "canonical_tmux_session": "stopped",
+            "hil_owner_state": "stopped",
+            "canonical_endpoint_snapshot": "ready",
+            "hil_pi_reachability": "ready",
+            "canonical_xrce_endpoint_ownership": "no",
+        }.items()):
+            return False
+        return fields.get("conflicting_px4_owners", "").startswith("count=0 ")
 
     def system_mutation(self, action: str, *arguments: str) -> None:
         operation_id = f"hil-restart-{action}-{uuid4()}"
         common = ["system", action, *arguments]
-        subprocess.run(
+        environment = dict(os.environ)
+        # The coordinator is executed on the workstation but the runtime it
+        # restarts belongs to the Pi. Keep both plan and apply on that one
+        # remote authority; a local CLI default silently targets a different
+        # (usually absent) simulation daemon.
+        environment["CLI_CONFIGURATION"] = "remote"
+        _run_lifecycle_child(
             [str(self.cli), *common, "--dry-run", "--operation-id", operation_id, "--output=json"],
-            check=True,
-            cwd=WORKSPACE,
+            label=f"Pi system {action} plan", environment=environment,
         )
-        subprocess.run(
+        _run_lifecycle_child(
             [
                 str(self.cli),
                 *common,
@@ -93,8 +278,7 @@ class ProcessRunner:
                 "--non-interactive",
                 "--output=json",
             ],
-            check=True,
-            cwd=WORKSPACE,
+            label=f"Pi system {action}", environment=environment,
         )
 
 
@@ -107,79 +291,482 @@ def coordinate_restart(
     monotonic: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> None:
-    identity = client.identity()
+    identity = _progress_operation(
+        "pi_api_identity", "checking Pi runtime identity", lambda: wait_runtime_identity(
+            client, timeout_seconds=timeout_seconds,
+            poll_seconds=poll_seconds, monotonic=monotonic, sleep=sleep,
+        ),
+    )
     if identity.get("profile") != "hil":
         raise HilRestartError(
             f"remote runtime profile is {identity.get('profile')!r}, expected 'hil'"
         )
 
-    runtime = _accepted_result(client.command("runtime.status", {}), "runtime.status")
+    runtime = _progress_operation(
+        "pi_runtime_status", "checking Pi runtime status", lambda: wait_runtime_status(
+            client, timeout_seconds=timeout_seconds,
+            poll_seconds=poll_seconds, monotonic=monotonic, sleep=sleep,
+        ),
+    )
     daemon = runtime.get("daemon") or {}
     if daemon.get("booted"):
-        vehicle = client.vehicle_status()
-        # A dead HIL simulator cannot produce a fresh landed sample. The remote
-        # identity check above proves this is the simulation-only profile, so
-        # shutting down the Pi runtime is the safe recovery action before the
-        # workstation clock is recreated. Keep failing closed whenever the
-        # simulator is still healthy: stale telemetry must never reset a live
-        # simulation clock.
-        if not vehicle_is_safely_landed(vehicle) and runner.workstation_healthy():
-            raise HilRestartError(
-                "refusing HIL clock reset: vehicle is not freshly confirmed disarmed and landed"
-            )
-        runner.system_mutation("shutdown")
+        _progress_operation(
+            "pi_shutdown", "shutting down Pi runtime", lambda: runner.system_mutation("shutdown")
+        )
 
     # Once all Pi-managed ROS processes are gone, simulator time can safely
     # return to zero. Boot the Pi only after the replacement clock is live.
-    runner.workstation("stop")
-    runner.workstation("start")
-    runner.system_mutation("boot", "--profile", "hil")
-    runner.system_mutation("start")
+    _progress_operation(
+        "workstation_stop", "stopping workstation simulation", lambda: runner.workstation("stop")
+    )
+    _progress_operation(
+        "workstation_start", "starting workstation simulation", lambda: runner.workstation("start")
+    )
+    _progress_operation(
+        "pi_boot", "booting Pi HIL runtime",
+        lambda: runner.system_mutation("boot", "--profile", "hil"),
+    )
+    _progress_operation(
+        "pi_start", "starting Pi HIL runtime", lambda: runner.system_mutation("start")
+    )
 
     deadline = monotonic() + timeout_seconds
     stable = 0
     last_reason = "runtime did not report readiness"
-    while monotonic() < deadline:
+    last_progress: tuple[str, str, str] | None = None
+    last_progress_time = 0.0
+    _emit_progress("readiness", "waiting", "waiting for runtime, arming checks, and workstation readiness")
+    while True:
+        now = monotonic()
+        if now >= deadline:
+            break
         try:
             runtime = _accepted_result(
                 client.command("runtime.status", {}), "runtime.status"
             )
             daemon = runtime.get("daemon") or {}
             vehicle = client.vehicle_status()
-            ready = (
+            prerequisites_ready = (
                 daemon.get("booted") is True
+                and daemon.get("active") is True
                 and daemon.get("profile") == "hil"
-                and vehicle_is_safely_landed(vehicle)
                 and _field_is_fresh(vehicle, "arming_checks_passed", True)
             )
+            # Preserve the original short-circuit: the workstation status
+            # probe is potentially expensive and is only needed after the Pi
+            # and vehicle prerequisites have converged.
+            workstation_ready = runner.workstation_healthy() if prerequisites_ready else None
+            ready = prerequisites_ready and workstation_ready is True
+            runtime_progress = (
+                "ready" if daemon.get("booted") is True and daemon.get("active") is True
+                and daemon.get("profile") == "hil" else
+                "running" if daemon.get("booted") else "stopped"
+            )
+            checks_progress = (
+                "ready" if _field_is_fresh(vehicle, "arming_checks_passed", True) else
+                "failed" if _field_is_fresh(vehicle, "arming_checks_passed", False) else "unknown"
+            )
+            workstation_progress = (
+                "ready" if workstation_ready is True else
+                "waiting" if workstation_ready is False else "pending"
+            )
+            progress_state = (
+                runtime_progress, checks_progress, workstation_progress
+            )
+            if progress_state != last_progress or now - last_progress_time >= 20.0:
+                _emit_progress(
+                    "readiness", "update",
+                    "runtime=" + runtime_progress + " checks=" + checks_progress
+                    + " workstation=" + workstation_progress,
+                )
+                last_progress = progress_state
+                last_progress_time = now
             if ready:
                 stable += 1
                 if stable >= 3:
+                    _progress_operation(
+                        "battery_link", "checking PX4 battery at workstation charger",
+                        runner.battery_check,
+                    )
+                    _emit_progress("readiness", "done", "runtime and workstation readiness confirmed")
                     return
+                # Consecutive successful samples are already available for the
+                # next stability check; do not add a poll delay between them.
+                continue
             else:
                 stable = 0
                 last_reason = (
-                    "waiting for booted HIL runtime, landed/disarmed state, and arming checks"
+                    "waiting for active HIL runtime, arming checks, "
+                    "and workstation adapter/cross-host readiness"
                 )
         except Exception as exc:  # service/node convergence is transient here
             stable = 0
             last_reason = str(exc)
+            progress_state = ("unknown", "unknown", "unknown")
+            if progress_state != last_progress or now - last_progress_time >= 20.0:
+                _emit_progress(
+                    "readiness", "update",
+                    "runtime=unknown checks=unknown workstation=unknown",
+                )
+                last_progress = progress_state
+                last_progress_time = now
         sleep(poll_seconds)
+    _emit_progress("readiness", "failed", "readiness timed out")
     raise HilRestartError(f"coordinated HIL restart timed out: {last_reason}")
 
 
-def main() -> int:
+def profile_status(
+    client: RuntimeApiClient | None,
+    runner: ProcessRunner,
+    *,
+    identity: dict[str, Any] | None = None,
+    runtime: dict[str, Any] | None = None,
+    tolerate_unavailable: bool = False,
+    client_error: str | None = None,
+) -> dict[str, Any]:
+    diagnostics: dict[str, list[str]] = {}
+    pi_diagnostics = diagnostics.setdefault("pi_runtime", [])
+    identity_valid = False
+    identity_unavailable = False
+    runtime_valid = runtime is not None
+
+    if client_error:
+        pi_diagnostics.append(f"client unavailable: {client_error}")
+    if identity is None and client is not None:
+        try:
+            identity = client.identity()
+        except (RuntimeApiError, OSError, ValueError) as exc:
+            if not tolerate_unavailable:
+                raise
+            identity_unavailable = True
+            pi_diagnostics.append(f"identity unavailable: {exc}")
+            identity = {}
+    identity = identity or {}
+    if identity.get("profile") == "hil":
+        identity_valid = True
+    else:
+        message = f"remote profile is {identity.get('profile')!r}, expected 'hil'"
+        if not tolerate_unavailable:
+            raise HilRestartError(message)
+        if identity:
+            pi_diagnostics.append(message)
+
+    # An unavailable identity already proves that this API endpoint cannot
+    # provide a trustworthy Pi status snapshot. Avoid a second potentially
+    # long network timeout; workstation and ground-control checks remain
+    # useful and are still performed below.
+    if runtime is None and client is not None and not identity_unavailable:
+        try:
+            runtime = _accepted_result(
+                client.command("runtime.status", {}), "runtime.status"
+            )
+            runtime_valid = True
+        except (HilRestartError, RuntimeApiError, OSError, ValueError) as exc:
+            if not tolerate_unavailable:
+                raise
+            pi_diagnostics.append(f"status unavailable: {exc}")
+            runtime = {}
+    runtime = runtime or {}
+    daemon = runtime.get("daemon") or {}
+
     try:
-        coordinate_restart(
-            RuntimeApiClient.from_env(),
-            ProcessRunner(),
-            timeout_seconds=float(os.environ.get("III_HIL_RESTART_TIMEOUT_SEC", "240")),
-            poll_seconds=float(os.environ.get("III_HIL_RESTART_POLL_SEC", "2")),
+        snapshot = runner.workstation_snapshot()
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        if not tolerate_unavailable:
+            raise
+        diagnostics.setdefault("workstation", []).append(
+            f"status unavailable: {exc}"
         )
-    except (HilRestartError, OSError, subprocess.CalledProcessError, ValueError) as exc:
-        print(f"Coordinated HIL restart failed: {exc}", file=sys.stderr)
+        snapshot = {"returncode": 1, "fields": {}}
+    fields = snapshot["fields"]
+    if snapshot.get("diagnostic"):
+        diagnostics.setdefault("workstation", []).append(snapshot["diagnostic"])
+    workstation_ready = bool(
+        snapshot["returncode"] == 0 and fields.get("hil_readiness") == "ready"
+    )
+    if identity_valid and runtime_valid:
+        runtime_state = _runtime_component_state(daemon)
+    elif identity and not identity_valid:
+        runtime_state = "degraded"
+    else:
+        runtime_state = "unknown"
+    workstation_state = _workstation_component_state(fields, workstation_ready)
+    rendered_mode = fields.get("hil_render_mode", "unknown")
+    viewer_state = fields.get("hil_gazebo_viewer", "unknown")
+    try:
+        ground_control = ground_control_health()
+    except (OSError, ValueError) as exc:
+        if not tolerate_unavailable:
+            raise
+        diagnostics.setdefault("ground_control", []).append(
+            f"status unavailable: {exc}"
+        )
+        ground_control = {
+            "state": "degraded",
+            "url": os.environ.get("III_HIL_GC_URL", "http://127.0.0.1:5174"),
+            "frontend_ready": False,
+            "proxy_ready": False,
+        }
+    state = _aggregate_profile_state(
+        runtime_state=runtime_state,
+        workstation_state=workstation_state,
+        rendered_mode=rendered_mode,
+        viewer_state=viewer_state,
+        ground_control_state=ground_control["state"],
+    )
+    return {
+        "profile": "hil",
+        "pi_target": {
+            "host": os.environ.get("III_HIL_PI_ENDPOINT") or os.environ.get("III_HIL_PI_ADDRESS") or "iii.local",
+            "peer_ipv4": fields.get("hil_pi_peer") or None,
+            "workstation_source_ipv4": fields.get("hil_workstation_source") or None,
+        },
+        "native_install": {
+            "root": os.environ.get(
+                "III_GC_INSTALL_ROOT",
+                str(Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "iii" / "gc"),
+            ),
+            "install_profile": os.environ.get("III_GC_INSTALL_PROFILE", "unknown"),
+            "runtime_profile": os.environ.get("III_GC_EXPECTED_PROFILE", "hil"),
+            "host": socket.gethostname(),
+        },
+        "runtime": daemon,
+        "workstation_ready": workstation_ready,
+        "core_ready": runtime_state == "ready" and workstation_state == "ready",
+        "ready": state == "ready",
+        "state": state,
+        "components": {
+            "pi_runtime": runtime_state,
+            "workstation": workstation_state,
+            "gazebo_viewer": viewer_state,
+            "ground_control": ground_control["state"],
+        },
+        "rendered": {"rendered": True, "headless": False}.get(rendered_mode),
+        "render_mode": rendered_mode,
+        "viewer_state": viewer_state,
+        "ground_control": ground_control,
+        "diagnostics": {key: value for key, value in diagnostics.items() if value},
+        "gc_url": ground_control["url"],
+        "log_path": os.environ.get(
+            "III_HIL_LOG_PATH", str(WORKSPACE / "runtime_logs" / "hil" / "latest.log")
+        ),
+    }
+
+
+def coordinate_start(client: RuntimeApiClient, runner: ProcessRunner, **kwargs: Any) -> None:
+    # An idempotent start must not reset simulator time or interrupt a mission.
+    identity = _progress_operation(
+        "pi_api_identity", "checking Pi runtime identity",
+        lambda: wait_runtime_identity(client, **kwargs),
+    )
+    if identity.get("profile") != "hil":
+        raise HilRestartError(f"remote runtime profile is {identity.get('profile')!r}, expected 'hil'")
+    runtime = _progress_operation(
+        "pi_runtime_status", "checking Pi runtime status",
+        lambda: wait_runtime_status(client, **kwargs),
+    )
+    daemon = runtime.get("daemon") or {}
+    # Start's idempotence gate is deliberately independent of ground-control
+    # health. A healthy core must not be restarted because the UI is down.
+    core_ready = (
+        daemon.get("booted") is True
+        and daemon.get("active") is True
+        and daemon.get("profile") == "hil"
+        and runner.workstation_healthy()
+    )
+    if core_ready:
+        _emit_progress("idempotent_start", "done", "core already running; repairing viewer if needed")
+        # This is intentionally a non-destructive repair path.  The workstation
+        # launcher only opens a missing owned GUI pane when requested; it does
+        # not recreate PX4, Gazebo, adapters, or an active mission.
+        _progress_operation(
+            "viewer_repair", "repairing missing workstation viewer if needed",
+            lambda: runner.workstation("start"),
+        )
+        _progress_operation(
+            "battery_link", "checking PX4 battery at workstation charger",
+            runner.battery_check,
+        )
+        return
+    coordinate_restart(client, runner, **kwargs)
+
+
+def coordinate_stop(client: RuntimeApiClient, runner: ProcessRunner) -> None:
+    identity = wait_runtime_identity(client)
+    if identity.get("profile") != "hil":
+        raise HilRestartError(
+            f"remote runtime profile is {identity.get('profile')!r}, expected 'hil'"
+        )
+    runtime = wait_runtime_status(client)
+    daemon = runtime.get("daemon") or {}
+    # Identity establishes this as virtual HIL; refuse if the daemon disagrees.
+    # An airborne virtual vehicle may be stopped as an operator emergency action.
+    # The workstation launcher validates ownership before acting, then we require
+    # explicit canonical stopped/endpoint proof after it returns.
+    if daemon.get("booted") and daemon.get("profile") != "hil":
+        raise HilRestartError(
+            f"Pi daemon profile is {daemon.get('profile')!r}, expected 'hil'"
+        )
+    # The workstation stop holds its lifecycle lock through ownership checking
+    # and process/session termination. Complete it before shutting down the Pi,
+    # so a changed or ambiguous owner cannot leave PX4 alive without the Pi graph.
+    runner.workstation("stop")
+    if not runner.workstation_stopped():
+        raise HilRestartError(
+            "workstation stop returned, but canonical ownership/stopped proof "
+            "remains unavailable; Pi runtime shutdown was not attempted"
+        )
+    if daemon.get("booted"):
+        try:
+            runner.system_mutation("shutdown")
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise HilRestartError(
+                "workstation HIL components are stopped, but Pi runtime shutdown "
+                "failed; workstation PX4/Gazebo are already stopped"
+            ) from exc
+    if not runner.workstation_stopped():
+        raise HilRestartError(
+            "HIL owned components were stopped, but canonical endpoint/stopped "
+            "proof remains unavailable"
+        )
+
+
+def _runtime_component_state(daemon: dict[str, Any]) -> str:
+    if daemon.get("booted") and daemon.get("active") and daemon.get("profile") == "hil":
+        return "ready"
+    if daemon.get("booted"):
+        return "running"
+    return "stopped"
+
+
+def _workstation_component_state(fields: dict[str, str], ready: bool) -> str:
+    if ready:
+        return "ready"
+    if (
+        fields.get("hil_owner_state") == "stopped"
+        and fields.get("hil_simulation") == "stopped"
+    ):
+        return "stopped"
+    if fields.get("hil_simulation") == "running":
+        return "running"
+    return "degraded"
+
+
+def _aggregate_profile_state(
+    *, runtime_state: str, workstation_state: str, rendered_mode: str,
+    viewer_state: str, ground_control_state: str,
+) -> str:
+    if runtime_state == "stopped" and workstation_state == "stopped":
+        return "stopped"
+    if runtime_state == "ready" and workstation_state == "ready":
+        if ground_control_state != "ready":
+            return "degraded"
+        if rendered_mode == "rendered":
+            return "ready" if viewer_state == "running" else "degraded"
+        if rendered_mode == "headless":
+            return "ready"
+        return "running"
+    if runtime_state in {"degraded", "unknown"} or workstation_state == "degraded":
+        return "degraded"
+    return "running"
+
+
+def _http_available(url: str) -> bool:
+    try:
+        with urlopen(url, timeout=float(os.environ.get("III_HIL_GC_HEALTH_TIMEOUT_SEC", "1"))):
+            return True
+    except (OSError, ValueError):
+        return False
+
+
+def ground_control_health() -> dict[str, Any]:
+    url = os.environ.get("III_HIL_GC_URL", "http://127.0.0.1:5174")
+    proxy_url = os.environ.get("III_HIL_GC_PROXY_HEALTH_URL", "http://127.0.0.1:8781/health")
+    frontend_ready = _http_available(url)
+    proxy_ready = _http_available(proxy_url)
+    return {
+        "state": "ready" if frontend_ready and proxy_ready else "degraded",
+        "url": url,
+        "frontend_ready": frontend_ready,
+        "proxy_ready": proxy_ready,
+    }
+
+
+def print_operator_status(state: dict[str, Any]) -> None:
+    components = state["components"]
+    print(f"HIL · {state['state']}")
+    target = state.get("pi_target", {})
+    print(f"Pi target:       {target.get('host', 'iii.local')}" + (
+        f" ({target['peer_ipv4']})" if target.get("peer_ipv4") else ""
+    ))
+    print(f"Pi runtime:      {components['pi_runtime']}")
+    print(f"Workstation:     {components['workstation']}")
+    print(f"Gazebo viewer:   {state['viewer_state']} ({state['render_mode']})")
+    print(f"Ground control:  {components['ground_control']} · {state['gc_url']}")
+    for detail in state.get("diagnostics", {}).get("pi_runtime", []):
+        print(f"Pi detail:       {detail}")
+    for detail in state.get("diagnostics", {}).get("workstation", []):
+        print(f"Workstation detail: {detail}")
+    for detail in state.get("diagnostics", {}).get("ground_control", []):
+        print(f"Ground control detail: {detail}")
+    print(f"Log:             {state['log_path']}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("start", "restart", "status", "stop"), nargs="?", default="restart")
+    parser.add_argument("--headless", action="store_true", help="do not create a Gazebo viewer")
+    parser.add_argument("--json", action="store_true", help="emit machine-readable status")
+    parser.add_argument("--host", help="Pi hostname or IPv4 address (default: iii.local)")
+    args = parser.parse_args()
+    if args.json and args.action != "status":
+        parser.error("--json is only valid with status")
+    if args.host:
+        if not args.host[0].isalnum() or not all(
+            character.isascii() and (character.isalnum() or character in ".-")
+            for character in args.host
+        ):
+            parser.error("--host must be a hostname or IPv4 address")
+        os.environ["III_HIL_PI_ENDPOINT"] = args.host
+        os.environ.pop("III_HIL_PI_ADDRESS", None)
+        os.environ.pop("CYCLONEDDS_URI", None)
+        os.environ["III_SSH_HOST"] = args.host
+        os.environ["III_RUNTIME_HOST"] = args.host
+        os.environ["III_RUNTIME_API_HOST"] = args.host
+        os.environ["III_RUNTIME_API_URL"] = f"http://{args.host}:8765"
+    try:
+        runner = ProcessRunner(rendered=not args.headless, host=args.host)
+        if args.action == "status":
+            client_error = None
+            try:
+                client = RuntimeApiClient.from_env()
+            except (RuntimeApiError, OSError, ValueError) as exc:
+                client = None
+                client_error = str(exc)
+            state = profile_status(
+                client,
+                runner,
+                tolerate_unavailable=True,
+                client_error=client_error,
+            )
+            if args.json:
+                print(json.dumps(state, indent=2, sort_keys=True))
+            else:
+                print_operator_status(state)
+            return 0 if state["state"] in {"ready", "running", "stopped"} else 1
+        client = RuntimeApiClient.from_env()
+        if args.action == "stop":
+            coordinate_stop(client, runner)
+        else:
+            (coordinate_start if args.action == "start" else coordinate_restart)(
+                client, runner,
+                timeout_seconds=float(os.environ.get("III_HIL_RESTART_TIMEOUT_SEC", "240")),
+                poll_seconds=float(os.environ.get("III_HIL_RESTART_POLL_SEC", "2")),
+            )
+    except (HilRestartError, RuntimeApiError, OSError, subprocess.CalledProcessError, ValueError) as exc:
+        print(f"Coordinated HIL {args.action} failed: {exc}", file=sys.stderr)
         return 1
-    print("Coordinated HIL restart ready: Pi runtime and workstation SITL are healthy.")
+    print(f"Coordinated HIL {args.action} completed.")
     return 0
 
 

@@ -27,7 +27,7 @@ EOF
 }
 
 die() {
-    printf 'iii-dev rosbag: %s\n' "$*" >&2
+    printf 'iii rosbag: %s\n' "$*" >&2
     exit 1
 }
 
@@ -169,7 +169,7 @@ run_list() {
 }
 
 run_delete() {
-    (($# == 1)) || die "Usage: ./iii-dev rosbag delete <recording-id>"
+    (($# == 1)) || die "Usage: iii rosbag delete <recording-id>"
     validate_recording_id "$1"
     ensure_not_recording
     local target="${ARTIFACT_ROOT}/$1"

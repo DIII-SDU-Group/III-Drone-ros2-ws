@@ -16,7 +16,11 @@ export CLI_CONFIGURATION="remote"
 export SIMULATION="false"
 export III_SYSTEM_PROFILE="real"
 export III_ENVIRONMENT_PROFILE="field"
+export III_RUNTIME_HOST_PROFILE="field"
 export III_DEFAULT_TARGET="real"
+export III_RUNTIME_TARGET="real"
+export III_SSH_HOST="${III_HIL_PI_ENDPOINT:-${III_HIL_PI_ADDRESS:-${III_SSH_HOST:-${III_RUNTIME_HOST:-${III_RUNTIME_API_HOST:-}}}}}"
+export III_SSH_USER="${III_SSH_USER:-iii}"
 
 # Field middleware binds to a detected stable LAN interface at runtime. Do not
 # leak the local-simulation Gazebo loopback binding into a field shell.

@@ -8,8 +8,10 @@ editable developer machine, not a release appliance.
 - The Pi workspace is `/home/iii/ws` and is owned by `iii`.
 - `iii` is an ordinary interactive SSH account with passwordless sudo.
 - `iii deploy dev` uses normal SSH and `rsync` to copy changed source,
-  setup, or tooling paths.  `--build` builds on the Pi and `--restart`
-  restarts the normal supervised runtime services.
+  setup, or tooling paths.  `--build` cross-builds the ARM64 runtime and the
+  Micro XRCE-DDS agent on the workstation, synchronizes their install tree,
+  and `--restart` restarts the normal supervised runtime services.  The Pi is
+  never used as a compiler.
 - `iii host provision` applies the ordinary Ansible developer-host playbook.
 - `iii host image write` writes an explicitly selected image to an explicitly
   selected removable device.

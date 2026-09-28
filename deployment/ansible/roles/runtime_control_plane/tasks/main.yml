@@ -28,6 +28,55 @@
     - iii.target
   notify: Reload systemd for III control plane
 
+- name: Remove obsolete split-host Cyclone DDS overrides
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item.0 }}.service.d/{{ item.1 }}"
+    state: absent
+  loop: "{{ ['iii-system-daemon', 'iii-runtime-api'] | product(['20-hil-split-domain.conf', '21-hil-cyclone-peer.conf']) | list }}"
+  notify: Reload systemd for III control plane
+
+- name: Create HIL middleware override directories
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}.service.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - iii-system-daemon
+    - iii-runtime-api
+  when: iii_profile == 'hil'
+
+- name: Install HIL Fast DDS middleware overrides
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item }}.service.d/30-hil-fastdds.conf"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Service]
+      Environment=ROS_DOMAIN_ID=42
+      Environment=ROS_LOCALHOST_ONLY=0
+      Environment=ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+      Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      Environment=FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      UnsetEnvironment=CYCLONEDDS_URI
+  loop:
+    - iii-system-daemon
+    - iii-runtime-api
+  when: iii_profile == 'hil'
+  notify: Reload systemd for III control plane
+
+- name: Remove HIL middleware overrides for non-HIL profiles
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}.service.d/30-hil-fastdds.conf"
+    state: absent
+  loop:
+    - iii-system-daemon
+    - iii-runtime-api
+  when: iii_profile != 'hil'
+  notify: Reload systemd for III control plane
+
 - name: Remove receiver and security-gate units
   ansible.builtin.file:
     path: "/etc/systemd/system/{{ item }}"

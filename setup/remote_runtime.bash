@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Canonical operator-to-aircraft Runtime API binding. Keep credentials in an
-# owner-only file and never rely on whatever service happens to listen locally.
-
-III_RUNTIME_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
-export III_RUNTIME_API_URL="${III_RUNTIME_API_URL:-http://iii.local:8765}"
-export III_RUNTIME_API_TOKEN_FILE="${III_RUNTIME_API_TOKEN_FILE:-$III_RUNTIME_CONFIG_HOME/iii/credentials/runtime-api.token}"
-unset III_RUNTIME_CONFIG_HOME
+# Canonical operator-to-aircraft Runtime API binding for the development
+# platform. The runtime API is intentionally unauthenticated, so a stale
+# token-file setting must never turn a local or split-host command into a
+# credential lookup failure.
+export III_RUNTIME_API_HOST="${III_HIL_PI_ENDPOINT:-${III_HIL_PI_ADDRESS:-${III_RUNTIME_API_HOST:-${III_RUNTIME_HOST:-${III_SSH_HOST:-iii.local}}}}}"
+export III_RUNTIME_API_URL="${III_RUNTIME_API_URL:-http://${III_RUNTIME_API_HOST}:8765}"
+unset III_RUNTIME_API_TOKEN_FILE

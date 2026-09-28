@@ -58,8 +58,14 @@ class MissionDeployWorkflow:
     def run(self) -> int:
         signal.signal(signal.SIGTERM, self._request_cancel)
         signal.signal(signal.SIGINT, self._request_cancel)
+        if self.args.runtime_api_url:
+            os.environ["III_RUNTIME_API_URL"] = self.args.runtime_api_url
+            os.environ["CLI_CONFIGURATION"] = "remote"
         self._write_status("running", "workflow starting")
-        tools = DroneAgentTools(artifact_dir=self.artifact_dir / "tools")
+        tools = DroneAgentTools(
+            artifact_dir=self.artifact_dir / "tools",
+            px4_system_address=self.args.px4_system_address,
+        )
         try:
             target = self._target(tools)
             self._write_status("running", "target resolved", target=target)
@@ -114,6 +120,11 @@ class MissionDeployWorkflow:
                         {"reason": "stored pylon overview already available", "data": pylon_overview.data if pylon_overview else None},
                     )
                 self._prepare_custom_operation_slot(tools)
+                # PX4 holds external-mode registration in its own runtime
+                # session. Verify the registration before arming so a newly
+                # recreated SITL/PX4 instance fails safely on the ground
+                # instead of discovering stale registration after takeoff.
+                self._ensure_custom_operation_mode_settable(tools, "prearm")
                 self._takeoff_if_needed(tools, telemetry)
                 self._move_to_mission_start_if_requested(tools)
                 self._prepare_mission_executor_slot(tools)
@@ -128,6 +139,9 @@ class MissionDeployWorkflow:
                 )
 
             self._prepare_custom_operation_slot(tools)
+            # See the equivalent reused-overview path above. This is also the
+            # recovery boundary after any PX4/uXRCE session recreation.
+            self._ensure_custom_operation_mode_settable(tools, "prearm")
             self._takeoff_if_needed(tools, telemetry)
             self._activate_custom_operation_for_staging(tools)
             target = self._adjust_target_altitude_for_ground_estimate(tools, target, label="staging")
@@ -161,7 +175,7 @@ class MissionDeployWorkflow:
             )
 
             if requires_pylon_overview:
-                self._store_demo_pylon_overviews(tools)
+                self._store_demo_pylon_overviews(tools, target)
 
             self._move_to_mission_start_if_requested(tools)
             self._validate_pylon_overview_if_required(tools)
@@ -203,7 +217,7 @@ class MissionDeployWorkflow:
                     "arm_if_needed",
                     lambda: self._px4_command_with_retries(
                         tools,
-                        "arm",
+                        "arm_direct",
                         timeout_sec=self.args.px4_timeout_sec,
                         postcondition_timeout_sec=self.args.px4_timeout_sec,
                         health_stable_sec=self.args.arm_health_stable_sec,
@@ -213,10 +227,10 @@ class MissionDeployWorkflow:
                 "takeoff_if_needed",
                 lambda: self._px4_command_with_retries(
                     tools,
-                    "takeoff",
+                    "takeoff_direct",
                     timeout_sec=self.args.px4_timeout_sec,
                     postcondition_timeout_sec=self.args.px4_timeout_sec,
-                    min_altitude_m=0.0,
+                    takeoff_altitude_m=self.args.takeoff_altitude,
                 ),
             )
             self._step("wait_takeoff_mode_exit", lambda: self._wait_takeoff_mode_exit(tools))
@@ -231,6 +245,8 @@ class MissionDeployWorkflow:
             self._append_step("takeoff_if_needed", "skipped", {"reason": "PX4 already reports in_air"})
 
     def _px4_command_with_retries(self, tools: DroneAgentTools, command: str, **kwargs: Any) -> ToolResult:
+        kwargs.setdefault("target_system", self.args.px4_target_system)
+        kwargs.setdefault("target_component", self.args.px4_target_component)
         attempts: list[dict[str, Any]] = []
         last_error: str | None = None
         for attempt in range(1, self.args.px4_command_attempts + 1):
@@ -281,51 +297,48 @@ class MissionDeployWorkflow:
         return ToolResult(False, {"attempts": attempts, "last_error": last_error}, f"{command} command failed after retries")
 
     def _px4_status_resilient(self, tools: DroneAgentTools) -> ToolResult:
-        try:
-            status = tools.px4("status", timeout_sec=self.args.px4_timeout_sec)
-            if status.success:
-                return status
-            direct_failure: dict[str, Any] = {
-                "success": False,
-                "message": status.message,
-                "data": status.data,
-            }
-        except Exception as exc:
-            direct_failure = {"success": False, "exception": repr(exc)}
-
+        # px4_safety combines MAVSDK with ROS/uXRCE telemetry and gives ROS
+        # arming/land detection precedence.  A plain MAVSDK status response can
+        # be internally successful yet stale after cancelling an external-mode
+        # action; that exact case previously caused an airborne vehicle to be
+        # armed/taken off again during fallback.
         safety = tools.px4_safety(timeout_sec=self.args.px4_timeout_sec)
         if not safety.success:
             return ToolResult(
                 False,
-                {"direct_status": direct_failure, "safety": safety.data},
-                f"PX4 status unavailable and safety fallback failed: {safety.message}",
+                {"safety": safety.data},
+                f"PX4 reconciled safety status failed: {safety.message}",
             )
 
         data = safety.data if isinstance(safety.data, dict) else {}
         derived = data.get("derived") if isinstance(data.get("derived"), dict) else {}
+        ros = data.get("ros") if isinstance(data.get("ros"), dict) else {}
+        vehicle_status = ros.get("vehicle_status") if isinstance(ros.get("vehicle_status"), dict) else {}
+        land_detected = ros.get("land_detected") if isinstance(ros.get("land_detected"), dict) else {}
         telemetry = {
             "armed": bool(derived.get("armed", False)),
             "in_air": bool(derived.get("in_air", False)),
             "flight_mode": derived.get("flight_mode"),
             "nav_state": derived.get("nav_state"),
+            "arming_state": vehicle_status.get("arming_state"),
+            "landed": land_detected.get("landed"),
             "failsafe": bool(derived.get("failsafe", False)),
             "unexpected_recovery": bool(derived.get("unexpected_recovery", False)),
-            "source": "px4_safety_fallback",
-            "direct_status": direct_failure,
+            "source": "px4_safety_reconciled",
             "safety": safety.data,
         }
         if telemetry["failsafe"] or telemetry["unexpected_recovery"]:
             return ToolResult(False, telemetry, "PX4 status fallback reports unsafe state")
-        return ToolResult(True, telemetry, "PX4 status derived from safety fallback")
+        return ToolResult(True, telemetry, "PX4 status reconciled from ROS and MAVSDK safety sources")
 
     def _px4_command_postcondition_met(self, command: str, safety: ToolResult) -> bool:
         if not safety.success:
             return False
         data = safety.data if isinstance(safety.data, dict) else {}
         derived = data.get("derived") if isinstance(data.get("derived"), dict) else {}
-        if command == "arm":
+        if command in {"arm", "arm_direct"}:
             return bool(derived.get("armed", False))
-        if command == "takeoff":
+        if command in {"takeoff", "takeoff_direct"}:
             return bool(derived.get("in_air", False))
         return False
 
@@ -338,7 +351,13 @@ class MissionDeployWorkflow:
 
     def _restore_hold_before_arm(self, tools: DroneAgentTools) -> ToolResult:
         try:
-            return tools.px4("hold", timeout_sec=self.args.px4_timeout_sec)
+            return tools.px4(
+                "hold_direct",
+                timeout_sec=self.args.px4_timeout_sec,
+                postcondition_timeout_sec=self.args.px4_timeout_sec,
+                target_system=self.args.px4_target_system,
+                target_component=self.args.px4_target_component,
+            )
         except Exception as exc:
             safety = tools.px4_safety(timeout_sec=self.args.px4_timeout_sec)
             if not safety.success:
@@ -580,17 +599,36 @@ class MissionDeployWorkflow:
             self._mission_catalog_selected = False
         self._step(
             "ensure_custom_operation_started_for_external_mode_replies",
-            lambda: tools.system("start", entity_id="custom_operation", include_dependencies=False, timeout_sec=180.0),
+            lambda: self._ensure_system_entity_active(tools, "custom_operation"),
         )
 
     def _ensure_custom_operation_mode_settable(self, tools: DroneAgentTools, label: str) -> None:
         step_name = f"ensure_custom_operation_mode_settable_{label}"
 
         def check_and_recover() -> ToolResult:
-            deadline = time.monotonic() + max(10.0, float(self.args.custom_mode_timeout_sec))
+            # The CustomOperation process deliberately waits for DDS discovery
+            # before registering with PX4.  A restarted process therefore has
+            # a normal, bounded ~10 s discovery phase before it can publish its
+            # status or contribute its external-mode bit.  Do not race that
+            # protocol with the short command timeout used for individual
+            # PX4 requests.
+            # PX4 external-mode registration is asynchronous across the
+            # split-host uXRCE link.  A freshly restarted virtual PX4 can
+            # require several registration retries before it advertises the
+            # CustomOperation bit in VehicleStatus.  Keep polling the actual
+            # readiness predicate rather than racing that legitimate recovery.
+            readiness_timeout_sec = max(90.0, float(self.args.custom_mode_timeout_sec))
+            deadline = time.monotonic() + readiness_timeout_sec
             attempts: list[dict[str, Any]] = []
+            registration_refresh_attempted = False
             while time.monotonic() < deadline:
-                status = tools.operation_status(timeout_sec=3.0)
+                # The retained status publisher is BEST_EFFORT.  Use the
+                # ROS-native readiness helper rather than the CLI probe, whose
+                # default RELIABLE QoS cannot match it.
+                status = tools._wait_custom_operation_status(
+                    timeout_sec=3.0,
+                    auto_recover=False,
+                )
                 mode_id = self._custom_operation_mode_id_from_status(status)
                 safety = tools.px4_safety(timeout_sec=min(5.0, float(self.args.px4_timeout_sec)))
                 mask = self._can_set_nav_states_mask(safety)
@@ -620,6 +658,41 @@ class MissionDeployWorkflow:
                         "CustomOperation mode is settable",
                     )
 
+                # PX4 owns external-mode registration.  Recreating PX4 (as is
+                # normal for a HIL simulator restart) leaves an otherwise
+                # healthy CustomOperation process registered against the old
+                # PX4 session.  Refresh just that node once so it performs the
+                # library registration handshake and resumes the required
+                # arming-check replies; do not restart the Pi or its complete
+                # runtime graph.
+                if not registration_refresh_attempted:
+                    registration_refresh_attempted = True
+                    refresh = tools.system(
+                        "restart",
+                        entity_id="custom_operation",
+                        include_dependencies=False,
+                        cold=False,
+                        timeout_sec=180.0,
+                    )
+                    attempts.append(
+                        {
+                            "registration_refresh": True,
+                            "refresh_success": bool(refresh.success),
+                            "refresh_message": refresh.message,
+                        }
+                    )
+                    if not refresh.success:
+                        return ToolResult(
+                            False,
+                            {"attempts": attempts},
+                            f"CustomOperation registration refresh failed: {refresh.message}",
+                        )
+                    # A restarted CustomOperation node deliberately waits for
+                    # DDS discovery before registering.  Give that new
+                    # handshake its full bounded readiness window.
+                    deadline = time.monotonic() + readiness_timeout_sec
+                    continue
+
                 time.sleep(1.0)
 
             return ToolResult(
@@ -634,13 +707,19 @@ class MissionDeployWorkflow:
     def _custom_operation_mode_id_from_status(status: ToolResult) -> int | None:
         if not status.success or not isinstance(status.data, dict):
             return None
-        status_data = status.data.get("status") if isinstance(status.data.get("status"), dict) else {}
-        stdout = str(status_data.get("stdout") or "")
-        match = re.search(r"data:\s*'([^']+)'", stdout)
-        if not match:
+        status_data = status.data.get("status")
+        if hasattr(status_data, "data"):
+            payload_text = str(status_data.data)
+        elif isinstance(status_data, dict):
+            stdout = str(status_data.get("stdout") or "")
+            match = re.search(r"data:\s*'([^']+)'", stdout)
+            if not match:
+                return None
+            payload_text = match.group(1)
+        else:
             return None
         try:
-            payload = json.loads(match.group(1))
+            payload = json.loads(payload_text)
             return int(payload["mode_id"])
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
             return None
@@ -690,7 +769,7 @@ class MissionDeployWorkflow:
 
         self._step(
             "ensure_mission_executor_started_for_mission_catalog_selection",
-            lambda: tools.system("start", entity_id="mission_executor", include_dependencies=False, timeout_sec=180.0),
+            lambda: self._ensure_mission_executor_active(tools),
         )
         if not use_default:
             status = self._step(
@@ -738,13 +817,47 @@ class MissionDeployWorkflow:
     def _prepare_mission_executor_slot(self, tools: DroneAgentTools) -> None:
         self._step(
             "ensure_mission_executor_started_for_mission_activation",
-            lambda: tools.system("start", entity_id="mission_executor", include_dependencies=False, timeout_sec=180.0),
+            lambda: self._ensure_mission_executor_active(tools),
+        )
+
+    @staticmethod
+    def _ensure_mission_executor_active(tools: DroneAgentTools) -> ToolResult:
+        return MissionDeployWorkflow._ensure_system_entity_active(tools, "mission_executor")
+
+    @staticmethod
+    def _ensure_system_entity_active(tools: DroneAgentTools, entity_id: str) -> ToolResult:
+        """Avoid a redundant selected-node start after a healthy remote boot.
+
+        The split-host runtime can already have an active managed entity when
+        a mission workflow begins. Asking the daemon to start that one selected
+        entity is not idempotent in every runtime version and can wait for the
+        full selected-node timeout despite authoritative status being active.
+        Read the same status surface first; only request a selective start when
+        the entity is genuinely inactive or unavailable.
+        """
+        status = tools.system("status", timeout_sec=10.0)
+        data = status.data if isinstance(status.data, dict) else {}
+        output = "\n".join(
+            str(data.get(key, "")) for key in ("stdout", "display", "message")
+        )
+        if status.success and f"{entity_id}: active" in output:
+            return ToolResult(
+                True,
+                {"already_active": True, "entity_id": entity_id, "system_status": data},
+                f"{entity_id} already active",
+            )
+        return tools.system(
+            "start",
+            entity_id=entity_id,
+            include_dependencies=False,
+            timeout_sec=180.0,
         )
 
     def _activate_mission(self, tools: DroneAgentTools) -> None:
         if self.args.skip_mission_activation:
             self._append_step("activate_mission_mode", "skipped", {"reason": "skip_mission_activation requested"})
             return
+        self._ensure_mission_mode_settable(tools)
         self._step(
             "activate_mission_mode",
             lambda: tools.activate_mission_mode(
@@ -753,6 +866,83 @@ class MissionDeployWorkflow:
                 postcondition_timeout_sec=10.0,
             ),
         )
+
+    def _ensure_mission_mode_settable(self, tools: DroneAgentTools) -> None:
+        """Refresh mission-mode registration when PX4 has been recreated.
+
+        PX4 owns the external-mode registry.  The mission executor can remain
+        healthy across a workstation PX4 restart while its previously assigned
+        mode IDs disappear from the new PX4 session.  Read the advertised bit
+        before activation and selectively restart only the mission executor
+        once when re-registration is required.
+        """
+        readiness_timeout_sec = max(90.0, float(self.args.custom_mode_timeout_sec))
+
+        def check_and_recover() -> ToolResult:
+            attempts: list[dict[str, Any]] = []
+            refreshed = False
+            deadline = time.monotonic() + readiness_timeout_sec
+            while time.monotonic() < deadline:
+                readiness = tools.mission_mode_readiness(
+                    mode_key=self.args.mission_mode,
+                    timeout_sec=min(5.0, max(1.0, deadline - time.monotonic())),
+                )
+                attempts.append(
+                    {
+                        "readiness_success": bool(readiness.success),
+                        "readiness_message": readiness.message,
+                        "readiness_data": readiness.data,
+                    }
+                )
+                if readiness.success:
+                    return ToolResult(
+                        True,
+                        {
+                            "attempts": attempts,
+                            "registration_refresh_attempted": refreshed,
+                            "readiness": readiness.data,
+                        },
+                        "mission mode is settable",
+                    )
+
+                if not refreshed:
+                    refreshed = True
+                    refresh = tools.system(
+                        "restart",
+                        entity_id="mission_executor",
+                        include_dependencies=False,
+                        cold=False,
+                        timeout_sec=180.0,
+                    )
+                    attempts.append(
+                        {
+                            "registration_refresh": True,
+                            "refresh_success": bool(refresh.success),
+                            "refresh_message": refresh.message,
+                            "refresh_data": refresh.data,
+                        }
+                    )
+                    if not refresh.success:
+                        return ToolResult(
+                            False,
+                            {"attempts": attempts},
+                            f"mission executor registration refresh failed: {refresh.message}",
+                        )
+                    deadline = time.monotonic() + readiness_timeout_sec
+                    continue
+                time.sleep(1.0)
+
+            return ToolResult(
+                False,
+                {"attempts": attempts},
+                "mission mode did not become settable after registration refresh",
+            )
+
+        result = self._step("ensure_mission_mode_settable", check_and_recover)
+        if bool(result.data.get("registration_refresh_attempted")):
+            # A mission-executor restart reloads its catalog state. Reassert the
+            # explicitly requested catalog before handing it vehicle control.
+            self._select_mission_catalog_if_requested(tools)
 
     def _requires_pylon_overview(self) -> bool:
         return bool(self.args.require_pylon_overview) or self._normalize_mission_mode_key(self.args.mission_mode) == "inspection_demo"
@@ -796,7 +986,11 @@ class MissionDeployWorkflow:
     def _validate_pylon_overview_if_required(self, tools: DroneAgentTools) -> None:
         self._check_stored_pylon_overview(tools, required=True)
 
-    def _store_demo_pylon_overviews(self, tools: DroneAgentTools) -> None:
+    def _store_demo_pylon_overviews(
+        self,
+        tools: DroneAgentTools,
+        powerline_staging: dict[str, Any],
+    ) -> None:
         self._append_step(
             "prepare_pylon_overview",
             "running",
@@ -853,11 +1047,110 @@ class MissionDeployWorkflow:
             pose_step_name="wait_pose_at_demo_over_corridor_after_pylons",
             ignore_altitude=True,
         )
+        self._stabilize_after_pylon_survey(tools, over_corridor)
         self._step("replace_demo_pylon_overview", lambda: self._replace_demo_pylon_overview(tools, pylon_1, pylon_2))
+        self._return_to_powerline_staging_after_pylon_survey(tools, powerline_staging)
+        self._refresh_powerline_overview_after_pylon_survey(tools)
         self._append_step(
             "prepare_pylon_overview",
             "succeeded",
             {"message": "stored demo pylon overview from fixture positions"},
+        )
+
+    def _stabilize_after_pylon_survey(
+        self,
+        tools: DroneAgentTools,
+        over_corridor: dict[str, Any],
+    ) -> None:
+        """Hand idle-flight control back to PX4 before perception waits.
+
+        A completed CustomOperation goal no longer publishes trajectory
+        setpoints. Leaving PX4 in the external mode while the mapper gathers a
+        fresh overview therefore lets the simulated aircraft lose altitude.
+        AUTO_LOITER owns the hover during that gap; independently rechecking
+        both the PX4 and Gazebo poses prevents storing geometry from a falling
+        or already-landed vehicle.
+        """
+        self._step(
+            "select_hold_after_pylon_survey",
+            lambda: tools.px4(
+                "hold_direct",
+                timeout_sec=self.args.px4_timeout_sec,
+                postcondition_timeout_sec=self.args.px4_timeout_sec,
+                target_system=self.args.px4_target_system,
+                target_component=self.args.px4_target_component,
+            ),
+        )
+        self._step(
+            "verify_over_corridor_pose_in_hold",
+            lambda: self._wait_pose_at_target(tools, over_corridor),
+        )
+
+    def _return_to_powerline_staging_after_pylon_survey(
+        self,
+        tools: DroneAgentTools,
+        powerline_staging: dict[str, Any],
+    ) -> None:
+        """Return below the conductors before capturing their overview.
+
+        The simulated mmWave sensor's forward axis points upward. The high
+        over-corridor pylon-survey pose therefore cannot observe the
+        conductors; the canonical low staging pose can. Keep the high pose in
+        PX4 Hold while external-mode readiness is restored, fly back to the
+        observation pose, then hand control to Hold again for the mapper wait.
+        """
+        self._ensure_custom_operation_mode_settable(tools, "powerline_refresh")
+        self._step(
+            "activate_custom_operation_for_powerline_refresh",
+            lambda: tools.activate_custom_operation(
+                timeout_sec=self.args.custom_mode_timeout_sec,
+                postcondition_timeout_sec=self.args.custom_mode_timeout_sec,
+            ),
+        )
+        self._fly_to_target(
+            tools,
+            powerline_staging,
+            operation_name="fly_to_position",
+            start_step_name="start_return_to_powerline_staging_after_pylons",
+            wait_step_name="wait_return_to_powerline_staging_after_pylons",
+            pose_step_name="wait_pose_at_powerline_staging_after_pylons",
+            ignore_altitude=True,
+        )
+        self._step(
+            "select_hold_at_powerline_staging_after_pylons",
+            lambda: tools.px4(
+                "hold_direct",
+                timeout_sec=self.args.px4_timeout_sec,
+                postcondition_timeout_sec=self.args.px4_timeout_sec,
+                target_system=self.args.px4_target_system,
+                target_component=self.args.px4_target_component,
+            ),
+        )
+        self._step(
+            "verify_powerline_staging_pose_in_hold",
+            lambda: self._wait_pose_at_target(tools, powerline_staging),
+        )
+
+    def _refresh_powerline_overview_after_pylon_survey(self, tools: DroneAgentTools) -> None:
+        """Replace the pre-survey snapshot after returning to the corridor.
+
+        The two-pylon capture is intentionally a long flight. Reusing the
+        powerline snapshot taken before that flight makes the cable-aware
+        mission-start validation sensitive to estimator drift accumulated
+        during the survey. The aircraft is back at the canonical overview pose
+        here, so collect the authoritative snapshot that the mission will use.
+        """
+        self._step(
+            "restart_pl_mapper_after_pylon_survey",
+            lambda: tools.pl_mapper("start", reset=True, timeout_sec=3.0),
+        )
+        self._step(
+            "wait_powerline_lines_after_pylon_survey",
+            lambda: self._wait_powerline_lines_with_retries(tools),
+        )
+        self._step(
+            "refresh_powerline_overview_after_pylon_survey",
+            lambda: self._store_powerline_overview_with_retries(tools),
         )
 
     def _replace_demo_pylon_overview(
@@ -929,7 +1222,12 @@ class MissionDeployWorkflow:
         self._append_step(name, "running", {})
         self._write_status("running", f"{name} running")
         started = time.monotonic()
-        result = callback()
+        try:
+            result = callback()
+        except Exception as exc:
+            if required:
+                raise
+            result = ToolResult(False, {"exception": repr(exc)}, str(exc))
         payload = {
             "success": bool(result.success),
             "message": result.message,
@@ -1051,7 +1349,7 @@ class MissionDeployWorkflow:
         fallback_operation_name: str | None = None,
         verify_pose: bool = True,
     ) -> None:
-        if operation_name == "cable_aware_fly_to_position" and fallback_operation_name is not None:
+        if operation_name == "cable_aware_fly_to_position":
             if self._try_cable_aware_fly_to_target_with_retries(
                 tools,
                 target,
@@ -1061,6 +1359,11 @@ class MissionDeployWorkflow:
             ):
                 self._verify_or_skip_pose(tools, target, pose_step_name, verify_pose)
                 return
+            if fallback_operation_name is None:
+                failure = self._last_cable_aware_fallback_reason or {
+                    "reason": "cable-aware fly-to-position failed before goal acceptance/completion"
+                }
+                raise RuntimeError(f"{start_step_name} failed: {failure['reason']}")
             self._run_fly_to_target_fallback(
                 tools,
                 target,
@@ -1220,7 +1523,7 @@ class MissionDeployWorkflow:
                 f"{start_step_name}_validate_powerline_overview_attempt_{attempt_index}",
                 lambda: self._tool_call_with_deadline(
                     lambda: tools.validate_stored_powerline_overview_against_sim_geometry(
-                        max_line_error_m=1.5,
+                        max_line_error_m=self.args.max_sim_powerline_overview_line_error_m,
                         timeout_sec=self.args.overview_query_timeout_sec,
                     ),
                     timeout_sec=max(2.0, self.args.overview_query_timeout_sec + 3.0),
@@ -1942,17 +2245,36 @@ class MissionDeployWorkflow:
         }
 
     def _current_gazebo_drone_pose(self, tools: DroneAgentTools) -> dict[str, float]:
-        result = tools.gazebo(
-            "topic_once",
-            topic=f"/world/{DEFAULT_GAZEBO_WORLD}/dynamic_pose/info",
-            timeout_sec=5.0,
-            filename="gz_dynamic_pose_for_target_mapping.txt",
-        )
-        stdout = ((result.data or {}).get("stdout") if isinstance(result.data, dict) else "") or ""
-        pose = self._parse_gazebo_named_pose(stdout, DEFAULT_GAZEBO_DRONE_MODEL)
-        if pose is None:
-            raise RuntimeError(f"Gazebo pose for model {DEFAULT_GAZEBO_DRONE_MODEL!r} not found")
-        return pose
+        local_gazebo_error = ""
+        try:
+            result = tools.gazebo(
+                "topic_once",
+                topic=f"/world/{DEFAULT_GAZEBO_WORLD}/dynamic_pose/info",
+                timeout_sec=5.0,
+                filename="gz_dynamic_pose_for_target_mapping.txt",
+            )
+            stdout = ((result.data or {}).get("stdout") if isinstance(result.data, dict) else "") or ""
+            pose = self._parse_gazebo_named_pose(stdout, DEFAULT_GAZEBO_DRONE_MODEL)
+            if pose is not None:
+                return pose
+            local_gazebo_error = result.message or f"Gazebo pose for model {DEFAULT_GAZEBO_DRONE_MODEL!r} not found"
+        except Exception as exc:
+            local_gazebo_error = str(exc)
+
+        # The Pi is the canonical ROS and mission host in split-host HIL, but
+        # intentionally has no Gazebo installation. Its workstation bridge
+        # supplies the untransformed Gazebo pose as ROS ground-truth odometry.
+        # Use that contract when the local ``gz`` query is unavailable.
+        fallback = getattr(tools, "_lookup_simulation_ground_truth_drone_pose", None)
+        if callable(fallback):
+            try:
+                return fallback(timeout_sec=5.0)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Gazebo pose for model {DEFAULT_GAZEBO_DRONE_MODEL!r} unavailable; "
+                    f"local query failed: {local_gazebo_error}; bridged ground-truth fallback failed: {exc}"
+                ) from exc
+        raise RuntimeError(local_gazebo_error or f"Gazebo pose for model {DEFAULT_GAZEBO_DRONE_MODEL!r} not found")
 
     def _parse_gazebo_named_pose(self, stdout: str, model_name: str) -> dict[str, float] | None:
         for block in re.findall(r"pose\s*\{(.*?)(?=\npose\s*\{|\Z)", stdout, flags=re.S):
@@ -2145,6 +2467,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--workflow-id", default="mission_deploy_manual")
     parser.add_argument("--artifact-dir", default="/tmp/iii_drone/mission_deploy/manual")
     parser.add_argument("--status-path", default="")
+    parser.add_argument(
+        "--px4-system-address",
+        default=os.environ.get("III_PX4_SYSTEM_ADDRESS", "udpin://0.0.0.0:14540"),
+        help="MAVLink endpoint used for PX4 command operations.",
+    )
+    parser.add_argument(
+        "--runtime-api-url",
+        default="",
+        help="Optional remote Pi runtime API endpoint for split-host HIL lifecycle commands.",
+    )
     parser.add_argument("--position-id", default=DEFAULT_POSITION_ID)
     parser.add_argument("--frame-id", default="world")
     parser.add_argument("--x", type=float)
@@ -2175,6 +2507,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--overview-timeout-s", type=int, default=8)
     parser.add_argument("--overview-service-timeout-sec", type=float, default=15.0)
     parser.add_argument("--overview-query-timeout-sec", type=float, default=2.0)
+    parser.add_argument(
+        "--max-sim-powerline-overview-line-error-m",
+        type=float,
+        default=0.75,
+        help=(
+            "Maximum stored-line distance from simulator truth. This gate "
+            "rejects direction-initialization and frame errors before any "
+            "cable-aware motion begins."
+        ),
+    )
     parser.add_argument("--overview-store-attempts", type=int, default=3)
     parser.add_argument("--overview-retry-delay-sec", type=float, default=1.0)
     parser.add_argument("--min-pylons", type=int, default=2)
@@ -2192,6 +2534,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reuse-stored-overview", dest="force_update_overview", action="store_false")
     parser.add_argument("--mission-mode", default="reach_cable")
     parser.add_argument("--px4-timeout-sec", type=float, default=30.0)
+    parser.add_argument(
+        "--px4-target-system",
+        type=int,
+        default=int(os.environ.get("III_PX4_TARGET_SYSTEM", "1")),
+    )
+    parser.add_argument(
+        "--px4-target-component",
+        type=int,
+        default=int(os.environ.get("III_PX4_TARGET_COMPONENT", "1")),
+    )
     parser.add_argument("--custom-mode-timeout-sec", type=float, default=10.0)
     parser.add_argument("--fly-send-timeout-sec", type=float, default=10.0)
     parser.add_argument("--fly-wait-timeout-sec", type=float, default=0.0)
