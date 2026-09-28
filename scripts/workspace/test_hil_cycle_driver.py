@@ -1418,3 +1418,38 @@ def test_spin_ready_services_later_subscriptions_under_backlog():
     finally:
         node.destroy_node()
         module.rclpy.shutdown(context=context)
+
+
+
+def _phase_driver(responses):
+    replies = iter(responses)
+    driver = SimpleNamespace(
+        runtime_client=SimpleNamespace(_request=lambda *args: next(replies)),
+        native_state_receipts=[],
+    )
+    driver.read_fresh_native_mission_phase = module.Driver.read_fresh_native_mission_phase.__get__(driver)
+    return driver
+
+
+def test_mission_phase_read_settles_through_an_automatic_handoff(monkeypatch):
+    monkeypatch.setattr(module.rclpy, "ok", lambda: True)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
+    handoff = {"freshness": "fresh", "source_availability": "available", "modes": [
+        {"active": False, "mode_key": "cable_charging", "freshness": "fresh"},
+        {"active": False, "mode_key": "leave_cable", "freshness": "fresh"},
+    ]}
+    settled = {"freshness": "fresh", "source_availability": "available", "modes": [
+        {"active": True, "mode_key": "leave_cable", "freshness": "fresh"},
+    ]}
+    driver = _phase_driver([handoff, handoff, settled])
+    phase, state = driver.read_fresh_native_mission_phase()
+    assert phase == "leave_cable" and state is settled
+
+
+def test_mission_phase_read_still_fails_when_it_never_settles(monkeypatch):
+    monkeypatch.setattr(module.rclpy, "ok", lambda: True)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
+    stale = {"freshness": "stale", "source_availability": "available", "modes": []}
+    driver = _phase_driver(iter(lambda: stale, None))
+    with pytest.raises(RuntimeError, match="Cannot verify active mission phase"):
+        driver.read_fresh_native_mission_phase(settle_timeout_sec=0.05)

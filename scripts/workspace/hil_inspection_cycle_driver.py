@@ -541,19 +541,30 @@ class Driver(Node):
             spin_ready(self, timeout_sec=0.2)
         raise TimeoutError(f"Native mission phase did not converge to {mode_key}: {state}")
 
-    def read_fresh_native_mission_phase(self) -> tuple[str, dict]:
-        """Read exactly one fresh active mission phase from the Runtime API."""
-        state = _call_runtime_api(self,
-            lambda: self.runtime_client._request("GET", "/mission/status")
-        )
-        active = [mode for mode in state.get("modes", []) if mode.get("active")]
-        if (
-            state.get("freshness") != "fresh"
-            or state.get("source_availability") != "available"
-            or len(active) != 1
-            or active[0].get("freshness") != "fresh"
-        ):
-            raise RuntimeError(f"Cannot verify active mission phase from fresh Runtime API state: {state}")
+    def read_fresh_native_mission_phase(self, settle_timeout_sec: float = 3.0) -> tuple[str, dict]:
+        """Read exactly one fresh active mission phase from the Runtime API.
+
+        The mission's own automatic handoffs (e.g. Cable Charging -> Leave
+        Cable) briefly show zero active modes; a single read inside that
+        window must not fail the run. Re-read until one fresh active phase
+        or settle_timeout_sec elapses, then fail exactly as before.
+        """
+        deadline = time.monotonic() + settle_timeout_sec
+        while True:
+            state = _call_runtime_api(self,
+                lambda: self.runtime_client._request("GET", "/mission/status")
+            )
+            active = [mode for mode in state.get("modes", []) if mode.get("active")]
+            if (
+                state.get("freshness") == "fresh"
+                and state.get("source_availability") == "available"
+                and len(active) == 1
+                and active[0].get("freshness") == "fresh"
+            ):
+                break
+            if time.monotonic() >= deadline or not rclpy.ok():
+                raise RuntimeError(f"Cannot verify active mission phase from fresh Runtime API state: {state}")
+            spin_ready(self, timeout_sec=0.1)
         mode_key = str(active[0].get("mode_key", ""))
         if not mode_key:
             raise RuntimeError(f"Fresh Runtime API mission phase has no mode key: {state}")
