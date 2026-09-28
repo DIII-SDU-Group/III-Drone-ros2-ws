@@ -1527,11 +1527,12 @@ def test_operator_hold_scenario_fast_forwards_with_intent_services(monkeypatch):
         return SimpleNamespace(transition="commanded")
     driver.advance_inspection_to_reach = reach
     driver.wait_charging_evidence = lambda: {"charging_power_w": 150.0}
+    driver.wait_native_mission_phase = lambda key: calls.append(("phase", key))
     driver.advance_after_charging = lambda automatic_only=False: (
         calls.append(("leave", automatic_only)) or {"transition": "commanded"})
     events = []
     module.run_operator_hold_scenario(driver, args, events.append)
-    assert calls == [("reach", 0.0, False), ("leave", False)]
+    assert calls == [("reach", 0.0, False), ("phase", "cable_charging"), ("leave", False)]
     names = [e["event"] for e in events]
     assert names[:3] == ["reach_cable_active", "charging_power_verified", "leave_cable_commanded"]
     assert names[-1] == "operator_hold_handover_verified" and commands == ["px4.hold"]

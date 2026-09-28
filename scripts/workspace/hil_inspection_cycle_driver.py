@@ -1999,6 +1999,9 @@ def run_operator_hold_scenario(driver: "Driver", args, record) -> None:
                          failed_predecessor="reach_cable")
         record({"event": "charging_power_verified", "cycle": 1,
                 "evidence": driver.wait_charging_evidence()})
+        # The ROS mode status can lead the Runtime API phase; the Leave intent
+        # is gated on the Runtime API seeing Cable Charging.
+        driver.wait_native_mission_phase("cable_charging")
         leave = driver.advance_after_charging(automatic_only=False)
         record({"event": "leave_cable_" + leave["transition"], "cycle": 1})
         driver.wait_mode("leave_cable", lambda value: bool(value.get("active")))
