@@ -656,19 +656,40 @@ hil_signal_handler() {
     exit "${signal_code}"
 }
 
+# Store the current time in nanoseconds in the named variable without
+# spawning a process (bash 5 EPOCHREALTIME; date fallback for older shells).
+hil_now_ns() {
+    local seconds fraction
+    if [[ -n "${EPOCHREALTIME:-}" ]]; then
+        seconds="${EPOCHREALTIME%[.,]*}"
+        fraction="${EPOCHREALTIME#*[.,]}000000"
+        printf -v "$1" '%d' "$((seconds * 1000000000 + 10#${fraction:0:6} * 1000))"
+    else
+        printf -v "$1" '%s' "$(date +%s%N)"
+    fi
+}
+
 hil_capture_status_json() {
     local verbose="$1" output_var="$2"
-    local output result state="" parse_result now_ns deadline_ns remaining_ms sleep_ms sleep_seconds
+    local output result state="" parse_result now_ns deadline_ns probe_deadline_ns remaining_ms sleep_ms sleep_seconds
     local recorded_pid recorded_pgid recorded_start_ticks current_pgid current_start_ticks probe_timed_out
-    local timeout_ms="${III_DEV_HIL_FINAL_STATUS_TIMEOUT_MS:-30000}"
-    if [[ ! "${timeout_ms}" =~ ^[0-9]+$ ]] || ((timeout_ms < 1 || timeout_ms > 30000)); then
+    # The overall gate retries a valid non-ready state until its deadline.
+    # Each individual status command is bounded separately so one hung probe
+    # is terminated and retried instead of consuming the whole gate.
+    local timeout_ms="${III_DEV_HIL_FINAL_STATUS_TIMEOUT_MS:-90000}"
+    local call_timeout_ms="${III_DEV_HIL_FINAL_STATUS_CALL_TIMEOUT_MS:-60000}"
+    if [[ ! "${timeout_ms}" =~ ^[0-9]+$ ]] || ((timeout_ms < 1 || timeout_ms > 600000)); then
         echo "Final HIL health check failed: invalid final status deadline ${timeout_ms}." >&2
         return 1
     fi
-    now_ns="$(python3 -c 'import time; print(time.monotonic_ns())')" || return 1
+    if [[ ! "${call_timeout_ms}" =~ ^[0-9]+$ ]] || ((call_timeout_ms < 1 || call_timeout_ms > 600000)); then
+        echo "Final HIL health check failed: invalid final status call timeout ${call_timeout_ms}." >&2
+        return 1
+    fi
+    hil_now_ns now_ns
     deadline_ns=$((now_ns + timeout_ms * 1000000))
     while :; do
-        now_ns="$(python3 -c 'import time; print(time.monotonic_ns())')" || return 1
+        hil_now_ns now_ns
         if ((now_ns >= deadline_ns)); then
             echo "Final HIL health check failed: expected state=ready, got state=${state:-<missing>} after ${timeout_ms} ms." >&2
             return 1
@@ -686,6 +707,8 @@ hil_capture_status_json() {
         pending_child_pid=""
         pending_child_role=""
         status_probe_output_pending=1
+        probe_deadline_ns=$((now_ns + call_timeout_ms * 1000000))
+        ((probe_deadline_ns <= deadline_ns)) || probe_deadline_ns=${deadline_ns}
         while :; do
             if [[ -s "${status_probe_identity_file}" ]] &&
                 read -r recorded_pid recorded_pgid recorded_start_ticks <"${status_probe_identity_file}" &&
@@ -700,7 +723,7 @@ hil_capture_status_json() {
                 status_probe_gate=0
                 break
             fi
-            now_ns="$(python3 -c 'import time; print(time.monotonic_ns())')" || return 1
+            hil_now_ns now_ns
             if ((now_ns >= deadline_ns)) || ! kill -0 "${status_probe_pid}" 2>/dev/null; then
                 hil_terminate_status_probe
                 if [[ -n "${state}" ]]; then
@@ -714,8 +737,8 @@ hil_capture_status_json() {
         done
         probe_timed_out=0
         while kill -0 "${status_probe_pid}" 2>/dev/null; do
-            now_ns="$(python3 -c 'import time; print(time.monotonic_ns())')" || return 1
-            if ((now_ns >= deadline_ns)); then
+            hil_now_ns now_ns
+            if ((now_ns >= probe_deadline_ns)); then
                 probe_timed_out=1
                 hil_terminate_status_probe
                 break
@@ -739,6 +762,13 @@ hil_capture_status_json() {
         if ((verbose)); then
             printf '%s\n' "${output}" >&2
         fi
+        if ((probe_timed_out)) && ((probe_deadline_ns < deadline_ns)); then
+            # Only this status command exceeded its own bound; the overall
+            # gate still has time, so retry with a fresh probe.
+            printf 'Final HIL health check: status command exceeded %s ms call timeout; retrying within %s ms deadline.\n' \
+                "${call_timeout_ms}" "${timeout_ms}" >>"${HIL_LOG_FILE}"
+            continue
+        fi
         if ((probe_timed_out)); then
             if [[ -n "${state}" ]]; then
                 echo "Final HIL health check failed: expected state=ready, got state=${state} after ${timeout_ms} ms; latest status command timed out." >&2
@@ -759,7 +789,7 @@ hil_capture_status_json() {
             echo "Final HIL health check failed: status output was not valid JSON." >&2
             return 1
         fi
-        now_ns="$(python3 -c 'import time; print(time.monotonic_ns())')" || return 1
+        hil_now_ns now_ns
         if [[ "${state}" == "ready" ]] && ((now_ns <= deadline_ns)); then
             printf -v "${output_var}" '%s' "${output}"
             return 0
@@ -837,7 +867,7 @@ else:
 diagnostic = re.compile(r"failed|error|unable|cannot|missing|not running|refus|timed out|denied|invalid|unavailable|occupied|conflict|mismatch|not ready", re.I)
 for line in reversed(candidates):
     line = line.strip()
-    if not line or line.startswith("III_HIL_PROGRESS|"):
+    if not line or line.startswith(("III_HIL_PROGRESS|", "III_HIL_STOP|")):
         continue
     if line.startswith("Coordinated HIL ") and " failed: " in line:
         line = line.split(" failed: ", 1)[1]
@@ -853,6 +883,25 @@ PY
     printf 'Log: %s\n' "${HIL_LOG_FILE}" >&2
     printf 'Some HIL components may still be running; inspect before retrying:\n' >&2
     printf '  ./iii-dev hil status\n' >&2
+}
+
+hil_print_stop_components() {
+    # Render the coordinator's per-owner stop records from this run's log.
+    local marker component outcome detail label symbol
+    [[ -f "${HIL_LOG_FILE:-}" ]] || return 0
+    while IFS='|' read -r marker component outcome detail; do
+        [[ "${marker}" == "III_HIL_STOP" ]] || continue
+        case "${component}" in
+            pi_runtime) label="Pi runtime" ;;
+            workstation) label="Workstation simulation" ;;
+            *) continue ;;
+        esac
+        case "${outcome}" in
+            stopped|already_stopped) symbol='✓' ;;
+            *) symbol='✗' ;;
+        esac
+        printf '%s %s: %s%s\n' "${symbol}" "${label}" "${outcome//_/ }" "${detail:+ (${detail})}"
+    done < <(grep '^III_HIL_STOP|' "${HIL_LOG_FILE}" 2>/dev/null || true)
 }
 
 hil_export_ground_control_endpoints() {
@@ -1212,17 +1261,32 @@ run_hil() {
                 hil_prepare_log stop
                 printf 'HIL · stopping\n\n'
                 local -a stop_args=(stop)
+                local stop_failed=0
                 [[ -z "${host_override}" ]] || stop_args+=(--host "${host_override}")
-                if ! hil_run_logged "${verbose}" python3 "${HIL_RESTART_SCRIPT}" "${stop_args[@]}"; then
+                # Stop is best effort across the three owners. A failed or
+                # unreachable Pi must not leave workstation PX4/Gazebo (handled
+                # by the coordinator) or ground control running. Each owner
+                # still applies its own ownership checks before acting.
+                if hil_run_logged "${verbose}" python3 "${HIL_RESTART_SCRIPT}" "${stop_args[@]}"; then
+                    printf '✓ Pi runtime and workstation simulation stopped\n'
+                else
+                    stop_failed=1
+                    hil_print_stop_components
                     hil_failure stop "Pi/workstation lifecycle"
-                    exit 1
+                    printf '\n'
                 fi
-                printf '✓ Pi runtime and workstation simulation stopped\n'
-                if ! hil_run_logged "${verbose}" "${GC_SCRIPT}" stop; then
+                if hil_run_logged "${verbose}" "${GC_SCRIPT}" stop; then
+                    printf '✓ Ground control stopped\n\n'
+                else
+                    stop_failed=1
+                    printf '✗ Ground control: stop failed\n'
                     hil_failure stop "ground control"
+                    printf '\n'
+                fi
+                if ((stop_failed)); then
+                    printf 'HIL stop incomplete; see the component results above.\nLog: %s\n' "${HIL_LOG_FILE}" >&2
                     exit 1
                 fi
-                printf '✓ Ground control stopped\n\n'
                 printf 'HIL stopped\nLog: %s\n' "${HIL_LOG_FILE}"
             )
             ;;

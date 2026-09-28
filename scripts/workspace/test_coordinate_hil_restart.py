@@ -100,7 +100,8 @@ class Runner:
         if action == "stop" and self._stop_error:
             raise module.HilRestartError(self._stop_error)
 
-    def workstation_healthy(self):
+    def workstation_healthy(self, timeout_seconds=None):
+        self.status_timeouts = getattr(self, "status_timeouts", []) + [timeout_seconds]
         return self.workstation_snapshot()["returncode"] == 0
 
     def battery_check(self):
@@ -108,7 +109,7 @@ class Runner:
         if self._battery_error:
             raise module.HilRestartError("PX4 battery link unavailable")
 
-    def workstation_snapshot(self):
+    def workstation_snapshot(self, timeout_seconds=None):
         self.calls.append(("workstation", "status"))
         return {
             "returncode": 0 if self._workstation_healthy else 1,
@@ -129,6 +130,21 @@ class Runner:
         self.calls.append(("system", action, *arguments))
         if action == "shutdown" and self._shutdown_error:
             raise subprocess.CalledProcessError(1, ["iii", "system", "shutdown"])
+
+
+class FakeClock:
+    """Monotonic time that advances only when the code under test sleeps."""
+
+    def __init__(self, now=0.0):
+        self.now = now
+        self.sleeps = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
 
 
 def test_coordinated_restart_orders_pi_shutdown_before_clock_reset():
@@ -494,20 +510,85 @@ def test_stopped_detection_requires_explicit_ownership_evidence(monkeypatch, out
 
 def test_restart_requires_full_workstation_readiness_after_pi_boot():
     runner = Runner(workstation_healthy=False)
-    times = iter([0.0, 0.0, 1.0, 2.0, 3.0])
+    clock = FakeClock()
     with pytest.raises(module.HilRestartError, match="adapter/cross-host readiness"):
         module.coordinate_restart(
-            Client(), runner, timeout_seconds=3.0,
-            monotonic=lambda: next(times), sleep=lambda _: None,
+            Client(), runner, timeout_seconds=3.0, poll_seconds=1.0,
+            monotonic=clock.monotonic, sleep=clock.sleep,
         )
     assert runner.calls.index(("system", "start")) < runner.calls.index(("workstation", "status"))
     assert runner.calls.count(("workstation", "status")) == 3
 
 
-def test_restart_does_not_sleep_between_successful_stability_samples():
+def test_restart_confirmation_interval_zero_takes_back_to_back_samples():
     sleeps = []
-    module.coordinate_restart(Client(), Runner(), sleep=sleeps.append)
+    module.coordinate_restart(
+        Client(), Runner(), confirm_interval_seconds=0, sleep=sleeps.append
+    )
     assert sleeps == []
+
+
+def test_restart_spaces_stability_confirmation_samples_by_default():
+    clock = FakeClock()
+    runner = Runner()
+    module.coordinate_restart(
+        Client(), runner, monotonic=clock.monotonic, sleep=clock.sleep
+    )
+    # Three ready samples, separated by two confirmation intervals.
+    assert clock.sleeps == [module.DEFAULT_CONFIRM_INTERVAL_SEC] * 2
+    assert runner.calls.count(("workstation", "status")) == 3
+
+
+def test_restart_confirmation_interval_never_overruns_the_deadline():
+    clock = FakeClock()
+    with pytest.raises(module.HilRestartError, match="timed out"):
+        module.coordinate_restart(
+            Client(), Runner(), timeout_seconds=10.0, confirm_interval_seconds=60.0,
+            monotonic=clock.monotonic, sleep=clock.sleep,
+        )
+    assert clock.sleeps == [10.0]
+    assert clock.now == 10.0
+
+
+def test_readiness_calls_are_bounded_by_the_remaining_deadline():
+    class TimedClient(Client):
+        def __init__(self, clock):
+            super().__init__()
+            self.clock = clock
+            self.timeout_seconds = 210.0
+            self.observed = []
+
+        def command(self, command_id, parameters):
+            self.observed.append(("runtime.status", self.timeout_seconds))
+            # Every call consumes wall time, as a slow API would.
+            self.clock.now += 5.0
+            return super().command(command_id, parameters)
+
+        def vehicle_status(self):
+            self.observed.append(("vehicle", self.timeout_seconds))
+            self.clock.now += 5.0
+            return super().vehicle_status()
+
+    clock = FakeClock()
+    client = TimedClient(clock)
+    runner = Runner(workstation_healthy=False)
+    with pytest.raises(module.HilRestartError, match="timed out"):
+        module.coordinate_restart(
+            client, runner, timeout_seconds=30.0, poll_seconds=1.0,
+            monotonic=clock.monotonic, sleep=clock.sleep,
+        )
+    readiness = client.observed[1:]  # skip the preflight status read
+    assert readiness, "readiness loop made no Runtime API calls"
+    assert all(timeout <= 30.0 for _name, timeout in readiness)
+    # Each request is capped by the time left, so later calls get less.
+    assert readiness[-1][1] < readiness[0][1]
+    # The client's configured timeout is restored after every bounded call.
+    assert client.timeout_seconds == 210.0
+    assert runner.status_timeouts and all(
+        value is not None and value <= 30.0 for value in runner.status_timeouts
+    )
+    # The loop never ran past its deadline by more than one bounded call.
+    assert clock.now <= 30.0 + 5.0 + 5.0
 
 
 def _progress_lines(output):
@@ -562,12 +643,12 @@ def test_progress_wait_updates_only_at_state_change_or_twenty_second_interval(
     monkeypatch, capsys,
 ):
     monkeypatch.setenv("III_HIL_PROGRESS", "1")
-    ticks = iter(range(0, 100, 2))
+    clock = FakeClock()
     runner = Runner(workstation_healthy=False)
     with pytest.raises(module.HilRestartError, match="timed out"):
         module.coordinate_restart(
             Client(), runner, timeout_seconds=24.0, poll_seconds=2.0,
-            monotonic=lambda: next(ticks), sleep=lambda _seconds: None,
+            monotonic=clock.monotonic, sleep=clock.sleep,
         )
     updates = [
         line for line in _progress_lines(capsys.readouterr().out)
@@ -808,3 +889,274 @@ def test_status_json_is_emitted_when_pi_runtime_status_is_unavailable(
         "status unavailable: runtime API timed out"
     ]
     assert runner.calls == [("workstation", "status")]
+
+
+def _unavailable(cause):
+    error = RuntimeApiError(f"Runtime API unavailable: {cause}")
+    error.__cause__ = cause
+    return error
+
+
+def _transient_causes():
+    import errno
+    import socket
+    from urllib.error import URLError
+    return [
+        URLError(ConnectionRefusedError(errno.ECONNREFUSED, "refused")),
+        URLError(OSError(errno.EHOSTUNREACH, "No route to host")),
+        URLError(OSError(errno.ENETUNREACH, "Network is unreachable")),
+        URLError(OSError(errno.ETIMEDOUT, "Connection timed out")),
+        URLError(socket.timeout("timed out")),
+        URLError(socket.gaierror(socket.EAI_NONAME, "Name or service not known")),
+        TimeoutError("read timed out"),
+        ConnectionResetError(errno.ECONNRESET, "reset"),
+    ]
+
+
+@pytest.mark.parametrize("cause", _transient_causes(), ids=lambda cause: repr(cause)[:40])
+def test_identity_wait_retries_transient_unreachability(cause):
+    client = Client()
+    reads = 0
+
+    def identity():
+        nonlocal reads
+        reads += 1
+        if reads < 3:
+            raise _unavailable(cause)
+        return {"profile": "hil"}
+
+    client.identity = identity
+    clock = FakeClock()
+    assert module.wait_runtime_identity(
+        client, monotonic=clock.monotonic, sleep=clock.sleep
+    ) == {"profile": "hil"}
+    assert reads == 3
+    assert clock.sleeps == [2.0, 2.0]
+
+
+@pytest.mark.parametrize("cause_factory", [
+    lambda: __import__("urllib.error").error.HTTPError("http://pi", 404, "missing", {}, None),
+    lambda: __import__("urllib.error").error.HTTPError("http://pi", 503, "busy", {}, None),
+    lambda: __import__("urllib.error").error.URLError("unknown url type: htp"),
+    lambda: PermissionError(13, "Permission denied"),
+    lambda: None,
+])
+def test_identity_wait_fails_fast_on_non_transient_errors(cause_factory):
+    client = Client()
+    cause = cause_factory()
+
+    def identity():
+        if cause is None:
+            raise RuntimeApiError("Runtime API returned invalid JSON")
+        raise _unavailable(cause)
+
+    client.identity = identity
+    with pytest.raises(RuntimeApiError):
+        module.wait_runtime_identity(
+            client, sleep=lambda _seconds: pytest.fail("must not retry")
+        )
+
+
+def test_identity_wait_for_unreachable_host_is_bounded_and_per_call_capped():
+    import errno
+    from urllib.error import URLError
+    clock = FakeClock()
+    client = Client()
+    client.timeout_seconds = 210.0
+    observed = []
+
+    def identity():
+        observed.append(client.timeout_seconds)
+        clock.now += 1.0
+        raise _unavailable(URLError(OSError(errno.EHOSTUNREACH, "No route to host")))
+
+    client.identity = identity
+    with pytest.raises(module.HilRestartError, match="Runtime API remained unavailable"):
+        module.wait_runtime_identity(
+            client, timeout_seconds=10.0, monotonic=clock.monotonic, sleep=clock.sleep
+        )
+    assert observed[0] == 10.0
+    assert all(value <= 10.0 for value in observed)
+    assert client.timeout_seconds == 210.0
+    # First failed call, then the retry window, then one final bounded call.
+    assert clock.now <= 1.0 + 10.0 + 1.0
+
+
+def test_runtime_status_wait_retries_transient_api_unreachability():
+    import errno
+    from urllib.error import URLError
+    client = Client()
+    original = client.command
+    reads = 0
+
+    def command(command_id, parameters):
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            raise _unavailable(URLError(OSError(errno.EHOSTUNREACH, "No route to host")))
+        return original(command_id, parameters)
+
+    client.command = command
+    clock = FakeClock()
+    result = module.wait_runtime_status(client, monotonic=clock.monotonic, sleep=clock.sleep)
+    assert result["daemon"]["profile"] == "hil"
+    assert reads == 2
+
+
+def _stop_lines(output):
+    return [line.split("|", 3)[1:] for line in output.splitlines() if line.startswith("III_HIL_STOP|")]
+
+
+def test_stop_with_unreachable_pi_still_stops_workstation_and_fails(capsys):
+    import errno
+    from urllib.error import URLError
+    client = Client()
+
+    def identity():
+        raise _unavailable(URLError(OSError(errno.EHOSTUNREACH, "No route to host")))
+
+    client.identity = identity
+    runner = Runner(workstation_stopped=True)
+    clock = FakeClock()
+    with pytest.raises(module.HilRestartError, match=r"Pi runtime unreachable \(identity unavailable: .*No route to host.*\); owned workstation HIL components were stopped, but the Pi runtime was not shut down"):
+        module.coordinate_stop(
+            client, runner, timeout_seconds=4.0,
+            monotonic=clock.monotonic, sleep=clock.sleep,
+        )
+    assert runner.calls == [("workstation", "stop")]
+    assert all(call[0] != "system" for call in runner.calls)
+    assert clock.now <= 4.0
+    lines = _stop_lines(capsys.readouterr().out)
+    assert [line[:2] for line in lines] == [
+        ["pi_runtime", "unreachable"], ["workstation", "stopped"],
+    ]
+
+
+def test_stop_without_a_usable_client_still_stops_workstation(capsys):
+    runner = Runner(workstation_stopped=True)
+    with pytest.raises(module.HilRestartError, match="client unavailable: token missing"):
+        module.coordinate_stop(None, runner, client_error="token missing")
+    assert runner.calls == [("workstation", "stop")]
+    assert [line[:2] for line in _stop_lines(capsys.readouterr().out)] == [
+        ["pi_runtime", "unreachable"], ["workstation", "stopped"],
+    ]
+
+
+def test_stop_with_unreachable_pi_reports_workstation_failure_too(capsys):
+    client = Client()
+    client.identity = lambda: (_ for _ in ()).throw(RuntimeApiError("unauthorized"))
+    runner = Runner(stop_error="unowned PX4")
+    with pytest.raises(module.HilRestartError, match="workstation stop also failed: unowned PX4"):
+        module.coordinate_stop(client, runner, sleep=lambda _seconds: None)
+    assert runner.calls == [("workstation", "stop")]
+    assert [line[:2] for line in _stop_lines(capsys.readouterr().out)] == [
+        ["pi_runtime", "unreachable"], ["workstation", "failed"],
+    ]
+
+
+def test_stop_with_unavailable_pi_status_still_stops_workstation():
+    client = Client()
+    client.command = lambda *_args: {
+        "accepted": False, "message": "rejected", "rejection": {"message": "busy"},
+    }
+    runner = Runner(workstation_stopped=True)
+    with pytest.raises(module.HilRestartError, match="status unavailable: runtime.status failed: busy"):
+        module.coordinate_stop(client, runner)
+    assert runner.calls == [("workstation", "stop")]
+
+
+def test_successful_stop_reports_each_component(capsys):
+    runner = Runner(workstation_stopped=True)
+    module.coordinate_stop(Client(), runner)
+    assert [line[:2] for line in _stop_lines(capsys.readouterr().out)] == [
+        ["workstation", "stopped"], ["pi_runtime", "stopped"],
+    ]
+    capsys.readouterr()
+    module.coordinate_stop(Client(booted=False), Runner(workstation_stopped=True))
+    assert [line[:2] for line in _stop_lines(capsys.readouterr().out)] == [
+        ["workstation", "stopped"], ["pi_runtime", "already_stopped"],
+    ]
+
+
+def test_main_stop_honours_restart_timeouts_and_survives_client_errors(monkeypatch, capsys):
+    observed = {}
+
+    def fake_stop(client, runner, **kwargs):
+        observed.update(kwargs, client=client)
+
+    monkeypatch.setattr(module, "coordinate_stop", fake_stop)
+    monkeypatch.setattr(module, "ProcessRunner", lambda **_kwargs: Runner())
+    monkeypatch.setattr(
+        module.RuntimeApiClient, "from_env",
+        lambda: (_ for _ in ()).throw(RuntimeApiError("token file missing")),
+    )
+    monkeypatch.setenv("III_HIL_RESTART_TIMEOUT_SEC", "12")
+    monkeypatch.setenv("III_HIL_RESTART_POLL_SEC", "0.5")
+    monkeypatch.setattr(sys, "argv", [str(PATH), "stop"])
+    assert module.main() == 0
+    assert observed == {
+        "client": None, "timeout_seconds": 12.0, "poll_seconds": 0.5,
+        "client_error": "token file missing",
+    }
+
+
+def test_main_restart_forwards_confirmation_interval(monkeypatch):
+    observed = {}
+    monkeypatch.setattr(module, "coordinate_restart", lambda client, runner, **kwargs: observed.update(kwargs))
+    monkeypatch.setattr(module, "ProcessRunner", lambda **_kwargs: Runner())
+    monkeypatch.setattr(module.RuntimeApiClient, "from_env", lambda: Client())
+    monkeypatch.setenv("III_HIL_RESTART_CONFIRM_INTERVAL_SEC", "0")
+    monkeypatch.setattr(sys, "argv", [str(PATH), "restart"])
+    assert module.main() == 0
+    assert observed["confirm_interval_seconds"] == 0.0
+
+
+def test_main_rejects_invalid_restart_timeout(monkeypatch, capsys):
+    monkeypatch.setattr(module, "ProcessRunner", lambda **_kwargs: Runner())
+    monkeypatch.setenv("III_HIL_RESTART_TIMEOUT_SEC", "forever")
+    monkeypatch.setattr(sys, "argv", [str(PATH), "restart"])
+    assert module.main() == 1
+    assert "III_HIL_RESTART_TIMEOUT_SEC" in capsys.readouterr().err
+
+
+def test_status_caps_runtime_api_timeout(monkeypatch, capsys):
+    client = Client()
+    client.timeout_seconds = 210.0
+    seen = []
+    client.identity = lambda: seen.append(client.timeout_seconds) or {"profile": "hil"}
+    monkeypatch.setattr(module.RuntimeApiClient, "from_env", lambda: client)
+    monkeypatch.setattr(module, "ProcessRunner", lambda **_kwargs: Runner())
+    monkeypatch.setenv("III_HIL_STATUS_API_TIMEOUT_SEC", "4")
+    monkeypatch.setattr(sys, "argv", [str(PATH), "status", "--json"])
+    assert module.main() == 0
+    assert seen == [4.0]
+
+
+def test_workstation_status_probe_is_bounded(monkeypatch):
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(kwargs.get("timeout"))
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(module.subprocess, "run", run)
+    runner = module.ProcessRunner()
+    snapshot = runner.workstation_snapshot()
+    assert snapshot["returncode"] == 124
+    assert "timed out after 45 s" in snapshot["diagnostic"]
+    assert runner.workstation_healthy(timeout_seconds=3.0) is False
+    with pytest.raises(module.HilRestartError, match="timed out.*stopped proof unavailable"):
+        runner.workstation_stopped()
+    monkeypatch.setenv("III_HIL_WORKSTATION_STATUS_TIMEOUT_SEC", "7")
+    runner.workstation_snapshot()
+    assert calls == [45.0, 3.0, 45.0, 7.0]
+
+
+def test_status_reports_workstation_status_timeout(monkeypatch):
+    monkeypatch.setattr(
+        module.subprocess, "run",
+        lambda command, **kwargs: (_ for _ in ()).throw(subprocess.TimeoutExpired(command, kwargs["timeout"])),
+    )
+    state = module.profile_status(Client(), module.ProcessRunner(), tolerate_unavailable=True)
+    assert state["components"]["workstation"] == "degraded"
+    assert state["diagnostics"]["workstation"] == ["workstation launcher status timed out after 45 s"]

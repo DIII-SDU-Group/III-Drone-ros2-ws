@@ -74,13 +74,18 @@ unset CYCLONEDDS_URI
 # Keep operator and GC endpoints pinned to the same reachable Pi address even
 # though Fast DDS no longer needs a Cyclone peer URI. The selected source route
 # is also used by the workstation PX4/Gazebo launcher.
+# Resolution diagnostics go to stderr (stdout carries only "peer source").
+# A failed resolution is reported but not fatal here: the launcher and the
+# coordinator re-check reachability and refuse to proceed on their own.
 if [[ "${CLI_CONFIGURATION}" == "remote" && -z "${III_HIL_PI_ADDRESS}" ]]; then
-    hil_selected_route="$(python3 "${SCRIPT_DIR}/../scripts/workspace/resolve_hil_peer.py" \
+    if hil_selected_route="$(python3 "${SCRIPT_DIR}/../scripts/workspace/resolve_hil_peer.py" \
         "${III_HIL_PI_ENDPOINT}" "${III_HIL_PEER_STATE_DIR:-${WORKSPACE_DIR}/runtime}" \
-        "${III_HIL_PX4_INSTANCE:-0}" 2>/dev/null || true)"
-    if [[ -n "${hil_selected_route}" ]]; then
+        "${III_HIL_PX4_INSTANCE:-0}")" && [[ -n "${hil_selected_route}" ]]; then
         read -r hil_peer_address hil_source_address <<<"${hil_selected_route}"
         export III_HIL_RESOLVED_PI_ADDRESS="${hil_peer_address}"
         export III_HIL_WORKSTATION_ADDRESS="${III_HIL_WORKSTATION_ADDRESS:-${hil_source_address}}"
+    else
+        echo "HIL setup: no reachable Pi IPv4 was resolved for ${III_HIL_PI_ENDPOINT}; continuing with the hostname." >&2
     fi
+    unset hil_selected_route hil_peer_address hil_source_address
 fi

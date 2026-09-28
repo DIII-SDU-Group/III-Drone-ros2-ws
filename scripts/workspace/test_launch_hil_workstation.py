@@ -160,13 +160,15 @@ def test_coordinated_restart_can_start_local_adapters_before_pi_graph() -> None:
     """Local adapters precede the Pi-owned SITL agent's FMU heartbeat."""
     source = LAUNCHER.read_text(encoding="utf-8")
     local_ready = launcher_function(source, "adapters_locally_ready", "adapters_ready")
+    probes = launcher_function(source, "adapter_probe_script", "run_adapter_probes")
 
     assert "adapters_locally_ready" in source
+    assert "run_adapter_probes" in local_ready
     assert "III_HIL_DEFER_PI_GRAPH_READINESS" not in source
     assert "/fmu/out/vehicle_status_v1" not in source
-    assert "/drone_frame_broadcaster/is_alive" not in local_ready
-    assert "tf2_echo drone cable_gripper" in local_ready
-    assert "tf2_echo drone mmwave" in local_ready
+    assert "/drone_frame_broadcaster/is_alive" not in probes
+    assert "tf2_echo drone cable_gripper" in probes
+    assert "tf2_echo drone mmwave" in probes
 
 
 def test_hil_adapter_readiness_requires_forwarded_camera_frames() -> None:
@@ -177,46 +179,101 @@ def test_hil_adapter_readiness_requires_forwarded_camera_frames() -> None:
     assert "--qos-reliability best_effort" in source
     assert 'session_exists "${ADAPTER_SESSION}" && ! adapters_locally_ready' in source
     readiness = launcher_function(source, "adapters_ready", "gazebo_owner")
-    assert "/drone_frame_broadcaster/is_alive" not in readiness
-    assert "tf2_echo drone cable_gripper" in readiness
+    assert "run_adapter_probes" in readiness
+    probes = launcher_function(source, "adapter_probe_script", "run_adapter_probes")
+    assert "/drone_frame_broadcaster/is_alive" not in probes
+    assert "tf2_echo drone cable_gripper" in probes
+
+
+ADAPTER_FAKE_ROS2 = r"""#!/bin/bash
+case "$*" in
+    *"lifecycle get"*) marker=lifecycle ;;
+    *"/clock"*) marker=clock ;;
+    *"tf2_echo drone cable_gripper"*) marker=tf_gripper ;;
+    *"tf2_echo drone mmwave"*) marker=tf_mmwave ;;
+    *cable_camera*) marker=camera ;;
+    *) marker=unknown ;;
+esac
+printf 'start:%s\n' "${marker}" >>"${MOCK_LOG}"
+sleep "${MOCK_DELAY:-0}"
+printf 'done:%s\n' "${marker}" >>"${MOCK_LOG}"
+[[ "${MOCK_FAIL_MARKER:-}" != "${marker}" ]] || exit 1
+case "${marker}" in
+    lifecycle) echo "active [3]" ;;
+    tf_*) echo "At time 0.0"; echo "- Translation: [0.000, 0.000, 0.100]" ;;
+    *) echo "header: {}" ;;
+esac
+"""
+
+
+def _run_adapter_probe(
+    tmp_path: Path, function: str, *, fail_marker: str = "", delay: str = "0",
+    source_delay: str = "0", probe_timeout: str = "10",
+) -> tuple[subprocess.CompletedProcess, float, list[str]]:
+    source = LAUNCHER.read_text(encoding="utf-8")
+    functions = launcher_function(source, "adapter_probe_script", "ensure_adapters_ready")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir(exist_ok=True)
+    ros2 = fake_bin / "ros2"
+    ros2.write_text(ADAPTER_FAKE_ROS2, encoding="utf-8")
+    ros2.chmod(0o755)
+    workspace = tmp_path / "ws"
+    (workspace / "setup").mkdir(parents=True, exist_ok=True)
+    (workspace / "setup" / "setup_dev.bash").write_text(
+        'printf "sourced\\n" >>"${MOCK_LOG}"\n'
+        'sleep "${MOCK_SOURCE_DELAY:-0}"\n'
+        'export PATH="${MOCK_BIN}:${PATH}"\n',
+        encoding="utf-8",
+    )
+    log = tmp_path / "probes.log"
+    log.unlink(missing_ok=True)
+    script = f"""
+set -euo pipefail
+WORKSPACE_ROOT={workspace}
+ADAPTER_SESSION=mock
+ADAPTER_READINESS_CONFIRMED=0
+ADAPTER_PROBE_TIMEOUT_SEC={probe_timeout}
+adapter_panes_healthy() {{ return 0; }}
+ros_environment() {{ printf '%s' 'export MOCK_ROS_ENV=1'; }}
+session_user_command() {{ "$@"; }}
+{functions}
+{function}
+"""
+    started = time.monotonic()
+    result = subprocess.run(
+        ["bash", "-c", script],
+        env=dict(
+            os.environ, MOCK_LOG=str(log), MOCK_BIN=str(fake_bin),
+            MOCK_FAIL_MARKER=fail_marker, MOCK_DELAY=delay,
+            MOCK_SOURCE_DELAY=source_delay,
+        ),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    elapsed = time.monotonic() - started
+    lines = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+    return result, elapsed, lines
+
+
+def _done_markers(lines: list[str]) -> list[str]:
+    return sorted(line.removeprefix("done:") for line in lines if line.startswith("done:"))
+
+
+ALL_PROBES = ["camera", "clock", "lifecycle", "tf_gripper", "tf_mmwave"]
 
 
 @pytest.mark.parametrize(("fail_marker", "expected"), [("", 0), ("tf_gripper", 1)])
 def test_local_adapter_readiness_requires_workstation_static_tf(
     tmp_path: Path, fail_marker: str, expected: int
 ) -> None:
-    source = LAUNCHER.read_text(encoding="utf-8")
-    function = launcher_function(source, "adapters_locally_ready", "adapters_ready")
-    script = r'''
-set -u
-WORKSPACE_ROOT=/tmp
-ADAPTER_SESSION=mock
-adapter_panes_healthy() { return 0; }
-ros_environment() { printf '%s' 'mock-ros-environment'; }
-session_user_command() {
-    local command="$*" marker=unknown
-    case "${command}" in
-        *lifecycle*) marker=lifecycle ;;
-        *"/clock"*) marker=clock ;;
-        *"tf2_echo drone cable_gripper"*) marker=tf_gripper ;;
-        *"tf2_echo drone mmwave"*) marker=tf_mmwave ;;
-        *cable_camera*) marker=camera ;;
-    esac
-    printf '%s\n' "${marker}" >>"${MOCK_LOG}"
-    [[ "${MOCK_FAIL_MARKER:-}" != "${marker}" ]]
-}
-'''
-    log = tmp_path / "local-readiness.log"
-    result = subprocess.run(
-        ["bash", "-c", script + function + "\nadapters_locally_ready\n"],
-        env=dict(os.environ, MOCK_LOG=str(log), MOCK_FAIL_MARKER=fail_marker),
-        capture_output=True,
-        text=True,
+    result, _elapsed, lines = _run_adapter_probe(
+        tmp_path, "adapters_locally_ready", fail_marker=fail_marker
     )
-
     assert result.returncode == expected, result.stderr
-    markers = log.read_text(encoding="utf-8").splitlines()
-    assert sorted(markers) == ["camera", "clock", "lifecycle", "tf_gripper", "tf_mmwave"]
+    assert _done_markers(lines) == ALL_PROBES
+    # The workspace environment is sourced once per readiness probe.
+    assert lines.count("sourced") == 1
 
 
 def test_owned_px4_reuse_recovers_missing_adapters_before_success(tmp_path: Path) -> None:
@@ -318,62 +375,35 @@ sleep() { :; }
 def test_hil_adapter_readiness_fanout_reaps_all_local_probes(
     tmp_path: Path,
 ) -> None:
-    source = LAUNCHER.read_text(encoding="utf-8")
-    function = launcher_function(source, "adapters_ready", "gazebo_owner")
-    script = r'''
-set -u
-WORKSPACE_ROOT=/tmp
-ADAPTER_SESSION=mock
-ADAPTER_READINESS_CONFIRMED=0
-adapter_panes_healthy() { return 0; }
-ros_environment() { printf '%s' 'mock-ros-environment'; }
-    session_user_command() {
-        local command="$*" marker=unknown
-        case "${command}" in
-            *lifecycle*) marker=lifecycle ;;
-            *"/clock"*) marker=clock ;;
-            *"tf2_echo drone cable_gripper"*) marker=tf_gripper ;;
-            *"tf2_echo drone mmwave"*) marker=tf_mmwave ;;
-            *cable_camera*) marker=camera ;;
-        esac
-    printf 'start:%s\n' "${marker}" >>"${MOCK_LOG}"
-    sleep 0.15
-    printf 'done:%s\n' "${marker}" >>"${MOCK_LOG}"
-    [[ "${MOCK_FAIL_MARKER:-}" != "${marker}" ]]
-}
-'''
-
-    def run_probe(*, fail_marker: str = ""):
-        log = tmp_path / "readiness-probes.log"
-        env = dict(
-            os.environ,
-            MOCK_LOG=str(log),
-            MOCK_FAIL_MARKER=fail_marker,
-        )
-        started = time.monotonic()
-        result = subprocess.run(
-            ["bash", "-c", script + function + "\nadapters_ready\n"],
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        elapsed = time.monotonic() - started
-        lines = log.read_text(encoding="utf-8").splitlines()
-        log.unlink(missing_ok=True)
-        return result, elapsed, lines
-
-    success, elapsed, lines = run_probe()
+    success, elapsed, lines = _run_adapter_probe(
+        tmp_path, 'adapters_ready; echo "confirmed=${ADAPTER_READINESS_CONFIRMED}"',
+        delay="0.5",
+    )
     assert success.returncode == 0, success.stderr
-    assert elapsed < 0.5
-    assert sorted(line.removeprefix("done:") for line in lines if line.startswith("done:")) == [
-        "camera", "clock", "lifecycle", "tf_gripper", "tf_mmwave"
-    ]
+    assert "confirmed=1" in success.stdout
+    # All five checks run concurrently inside one sourced shell.
+    assert elapsed < 2.0
+    assert _done_markers(lines) == ALL_PROBES
+    assert lines.count("sourced") == 1
 
-    failed, _, failed_lines = run_probe(fail_marker="tf_gripper")
-    assert failed.returncode == 1
-    assert sorted(line.removeprefix("done:") for line in failed_lines if line.startswith("done:")) == [
-        "camera", "clock", "lifecycle", "tf_gripper", "tf_mmwave"
-    ]
+    failed, _, failed_lines = _run_adapter_probe(
+        tmp_path, 'adapters_ready || echo "confirmed=${ADAPTER_READINESS_CONFIRMED}"',
+        fail_marker="tf_gripper",
+    )
+    assert failed.returncode == 0, failed.stderr
+    assert "confirmed=0" in failed.stdout
+    assert _done_markers(failed_lines) == ALL_PROBES
+
+
+def test_hil_adapter_readiness_probe_is_bounded_as_a_whole(tmp_path: Path) -> None:
+    # A hung workspace setup must not stall readiness or status polling.
+    result, elapsed, lines = _run_adapter_probe(
+        tmp_path, "adapters_ready", source_delay="20", probe_timeout="1",
+    )
+    assert result.returncode != 0
+    assert elapsed < 6
+    assert "done:camera" not in lines
+
 
 def test_hil_workstation_disables_competing_world_to_drone_transform() -> None:
     """The Pi publishes dynamic PX4 TF; workstation HIL publishes only statics."""
@@ -1264,3 +1294,168 @@ host_resolve_pi_address
     result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
     assert result.stdout == "192.168.1.251\n"
+
+
+PX4_PANE_HARNESS = r'''
+set -euo pipefail
+SIM_SESSION=sim
+PI_ADDRESS=10.42.0.15
+MAVLINK_REMOTE_PORT=14544
+MAVLINK_LOCAL_PORT=14582
+MAVLINK_AUDIT_REMOTE_PORT=14543
+MAVLINK_AUDIT_LOCAL_PORT=14581
+MAVLINK_PARAMETER_REMOTE_PORT=14551
+MAVLINK_PARAMETER_LOCAL_PORT=14583
+MAVLINK_QGC_REMOTE_PORT=14550
+MAVLINK_QGC_LOCAL_PORT=14584
+PX4_SHELL_TIMEOUT_SEC="${MOCK_SHELL_TIMEOUT:-5}"
+PX4_COMMAND_TIMEOUT_SEC="${MOCK_COMMAND_TIMEOUT:-3}"
+MAVLINK_START_TIMEOUT_SEC="${MOCK_START_TIMEOUT:-1}"
+sim_session_healthy() { [[ "${MOCK_PX4_DEAD:-0}" != 1 ]]; }
+tmux_command() {
+    local text word local_port remote_port
+    case "$1" in
+        capture-pane)
+            [[ " $* " == *" -S - "* ]] || { echo "capture must include full history" >&2; return 2; }
+            cat "${MOCK_PANE}"
+            ;;
+        send-keys)
+            text="$4"
+            printf 'send:%s\n' "${text}" >>"${MOCK_LOG}"
+            printf 'pxh> %s\n' "${text}" >>"${MOCK_PANE}"
+            [[ "${MOCK_PX4_RESPONSIVE:-1}" == 1 ]] || return 0
+            case "${text}" in
+                iii_hil_sync_*)
+                    printf "Invalid command: %s\ntype 'help' for a list of commands\n" "${text}" >>"${MOCK_PANE}"
+                    ;;
+                "mavlink stop-all")
+                    : >"${MOCK_INSTANCES}"
+                    printf 'INFO  [mavlink] waiting for instances to stop\n' >>"${MOCK_PANE}"
+                    [[ "${MOCK_NO_STOP_CONFIRM:-0}" == 1 ]] ||
+                        printf 'INFO  [mavlink] all instances stopped\n' >>"${MOCK_PANE}"
+                    ;;
+                "mavlink start "*)
+                    read -r -a words <<<"${text}"
+                    for ((index = 0; index < ${#words[@]}; index++)); do
+                        [[ "${words[index]}" == -u ]] && local_port="${words[index + 1]}"
+                        [[ "${words[index]}" == -o ]] && remote_port="${words[index + 1]}"
+                    done
+                    [[ "${local_port}" == "${MOCK_FAIL_PORT:-}" ]] ||
+                        printf '%s %s\n' "${local_port}" "${remote_port}" >>"${MOCK_INSTANCES}"
+                    ;;
+                "mavlink status")
+                    while read -r local_port remote_port; do
+                        printf '\ninstance #0:\n\ttransport protocol: UDP (%s, remote port: %s)\n' \
+                            "${local_port}" "${remote_port}" >>"${MOCK_PANE}"
+                    done <"${MOCK_INSTANCES}"
+                    ;;
+            esac
+            ;;
+    esac
+}
+'''
+
+
+def _run_px4_pane(tmp_path: Path, call: str, *, pane: str = "pxh> \n", **env: str):
+    source = LAUNCHER.read_text(encoding="utf-8")
+    functions = launcher_function(source, "px4_pane_history", "start")
+    pane_file = tmp_path / "pane.txt"
+    pane_file.write_text(pane, encoding="utf-8")
+    instances = tmp_path / "instances.txt"
+    instances.write_text("", encoding="utf-8")
+    log = tmp_path / "keys.log"
+    started = time.monotonic()
+    result = subprocess.run(
+        ["bash", "-c", PX4_PANE_HARNESS + functions + "\n" + call + "\n"],
+        env=dict(
+            os.environ, MOCK_PANE=str(pane_file), MOCK_INSTANCES=str(instances),
+            MOCK_LOG=str(log), **env,
+        ),
+        capture_output=True, text=True, timeout=60,
+    )
+    return result, time.monotonic() - started, instances.read_text(encoding="utf-8")
+
+
+def test_px4_mavlink_setup_waits_for_live_shell_and_verifies_every_endpoint(tmp_path: Path) -> None:
+    result, _elapsed, instances = _run_px4_pane(
+        tmp_path, "wait_for_px4_shell && configure_px4_mavlink && echo configured"
+    )
+    assert result.returncode == 0, result.stderr
+    assert "configured" in result.stdout
+    assert sorted(instances.split("\n")) == sorted([
+        "14582 14544", "14581 14543", "14583 14551", "14584 14550", "",
+    ])
+    keys = (tmp_path / "keys.log").read_text(encoding="utf-8")
+    # No MAVLink command is sent before the shell answered a live marker.
+    assert keys.index("send:iii_hil_sync_") < keys.index("send:mavlink stop-all")
+    assert "-t 10.42.0.15" in keys and "-t 127.0.0.1" in keys
+
+
+def test_px4_stale_prompt_and_marker_do_not_count_as_ready(tmp_path: Path) -> None:
+    stale = "pxh> \nInvalid command: iii_hil_sync_old_end\npxh> \n"
+    result, elapsed, _ = _run_px4_pane(
+        tmp_path, "wait_for_px4_shell", pane=stale,
+        MOCK_PX4_RESPONSIVE="0", MOCK_SHELL_TIMEOUT="2",
+    )
+    assert result.returncode == 1
+    assert "PX4 shell did not become ready within 2 s" in result.stderr
+    assert elapsed < 8
+
+
+def test_px4_shell_wait_fails_fast_when_px4_exits(tmp_path: Path) -> None:
+    result, elapsed, _ = _run_px4_pane(
+        tmp_path, "wait_for_px4_shell", MOCK_PX4_DEAD="1", MOCK_SHELL_TIMEOUT="30",
+    )
+    assert result.returncode == 1
+    assert "PX4 exited before its shell became ready" in result.stderr
+    assert elapsed < 5
+
+
+def test_px4_mavlink_verification_names_the_missing_endpoint(tmp_path: Path) -> None:
+    result, elapsed, _ = _run_px4_pane(
+        tmp_path, "configure_px4_mavlink", MOCK_FAIL_PORT="14583",
+    )
+    assert result.returncode == 1
+    assert "PX4 MAVLink endpoints did not start within 1 s; missing UDP local->remote: 14583->14551." in result.stderr
+    assert elapsed < 15
+
+
+def test_px4_mavlink_verification_ignores_stale_status_output(tmp_path: Path) -> None:
+    # Endpoint lines from an earlier PX4 epoch remain in the pane history,
+    # but only output produced after this call's own marker is evaluated.
+    stale = "".join(
+        f"\tinstance #0:\n\ttransport protocol: UDP ({local}, remote port: {remote})\n"
+        for local, remote in (("14582", "14544"), ("14581", "14543"), ("14583", "14551"), ("14584", "14550"))
+    )
+    result, _elapsed, _ = _run_px4_pane(
+        tmp_path, "verify_px4_mavlink_endpoints", pane="pxh> \n" + stale,
+    )
+    assert result.returncode == 1
+    assert "missing UDP local->remote: 14582->14544 14581->14543 14583->14551 14584->14550" in result.stderr
+
+
+def test_px4_mavlink_setup_requires_confirmed_stop_all(tmp_path: Path) -> None:
+    result, _elapsed, instances = _run_px4_pane(
+        tmp_path, "configure_px4_mavlink", MOCK_NO_STOP_CONFIRM="1",
+    )
+    assert result.returncode == 1
+    assert "PX4 did not confirm 'mavlink stop-all'" in result.stderr
+    assert instances == ""
+
+
+def test_px4_shell_command_wait_is_bounded(tmp_path: Path) -> None:
+    result, elapsed, _ = _run_px4_pane(
+        tmp_path, "configure_px4_mavlink", MOCK_PX4_RESPONSIVE="0", MOCK_COMMAND_TIMEOUT="1",
+    )
+    assert result.returncode == 1
+    assert "PX4 did not complete 'mavlink stop-all' within 1 s." in result.stderr
+    assert elapsed < 5
+
+
+def test_start_uses_marker_synchronised_px4_shell_instead_of_fixed_sleeps() -> None:
+    source = LAUNCHER.read_text(encoding="utf-8")
+    start = launcher_function(source, "start", "read_stop_owner")
+    assert "wait_for_px4_shell || return 1" in start
+    assert "configure_px4_mavlink || return 1" in start
+    assert "sleep 2" not in start
+    assert "-S -80" not in source

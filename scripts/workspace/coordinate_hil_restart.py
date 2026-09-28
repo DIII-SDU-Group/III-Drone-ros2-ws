@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
+import errno
 import json
 import os
 from pathlib import Path
@@ -12,9 +14,9 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Iterator, NoReturn
 from uuid import uuid4
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 
@@ -27,6 +29,69 @@ from iii.runtime_api_client import RuntimeApiClient, RuntimeApiError  # noqa: E4
 
 class HilRestartError(RuntimeError):
     """Raised when coordinated HIL restart cannot remain fail-closed."""
+
+
+# A Runtime API request can block for the client's full (cold-boot sized)
+# timeout. Lifecycle waits cap each call to the time left in their own window.
+MIN_CALL_TIMEOUT_SEC = 0.5
+DEFAULT_STATUS_API_TIMEOUT_SEC = 10.0
+DEFAULT_WORKSTATION_STATUS_TIMEOUT_SEC = 45.0
+DEFAULT_CONFIRM_INTERVAL_SEC = 1.0
+
+_TRANSIENT_ERRNOS = frozenset({
+    errno.ECONNREFUSED,
+    errno.ECONNRESET,
+    errno.ECONNABORTED,
+    errno.EHOSTUNREACH,
+    errno.EHOSTDOWN,
+    errno.ENETUNREACH,
+    errno.ENETDOWN,
+    errno.ETIMEDOUT,
+})
+
+
+def _env_seconds(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number of seconds, got {raw!r}") from exc
+    if value != value or value < 0:
+        raise ValueError(f"{name} must be a non-negative number of seconds, got {raw!r}")
+    return value
+
+
+@contextmanager
+def _bounded_call(client: Any, seconds: float | None) -> Iterator[None]:
+    """Temporarily cap one Runtime API request to ``seconds``."""
+    previous = getattr(client, "timeout_seconds", None)
+    if seconds is None or not isinstance(previous, (int, float)):
+        yield
+        return
+    client.timeout_seconds = max(MIN_CALL_TIMEOUT_SEC, min(float(previous), seconds))
+    try:
+        yield
+    finally:
+        client.timeout_seconds = previous
+
+
+def is_transient_unavailability(exc: BaseException) -> bool:
+    """Whether a Runtime API failure means "not reachable yet", not "refused".
+
+    HTTP responses (including 4xx/5xx) prove the API answered and are never
+    retried here; only connection-level and name-resolution failures are.
+    """
+    cause = exc.__cause__ if isinstance(exc, RuntimeApiError) else exc
+    if cause is None or isinstance(cause, HTTPError):
+        return False
+    reason = cause.reason if isinstance(cause, URLError) else cause
+    if isinstance(reason, (socket.timeout, TimeoutError, socket.gaierror)):
+        return True
+    if isinstance(reason, (ConnectionRefusedError, ConnectionResetError, ConnectionAbortedError)):
+        return True
+    return isinstance(reason, OSError) and reason.errno in _TRANSIENT_ERRNOS
 
 
 def _emit_progress(stage: str, state: str, detail: str) -> None:
@@ -112,22 +177,30 @@ def wait_runtime_identity(
     poll_seconds: float = 2.0, monotonic: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
-    """Allow a just-restarted API to open its port before lifecycle preflight."""
+    """Allow a just-restarted or briefly unreachable API to answer.
+
+    Connection refusal, host/network unreachability, timeouts and name
+    resolution failures are retried within one bounded window; an HTTP error
+    or any other failure is reported immediately.
+    """
+    window = min(30.0, timeout_seconds)
     deadline = None
+    budget = window
     while True:
         try:
-            return client.identity()
+            with _bounded_call(client, budget):
+                return client.identity()
         except RuntimeApiError as exc:
-            cause = exc.__cause__
-            reason = cause.reason if isinstance(cause, URLError) else cause
-            if not isinstance(reason, ConnectionRefusedError):
+            if not is_transient_unavailability(exc):
                 raise
             if deadline is None:
-                deadline = monotonic() + min(30.0, timeout_seconds)
+                deadline = monotonic() + window
             remaining = deadline - monotonic()
             if remaining <= 0:
                 raise HilRestartError(f"Runtime API remained unavailable: {exc}") from exc
-            sleep(min(poll_seconds, remaining))
+            pause = min(poll_seconds, remaining)
+            sleep(pause)
+            budget = max(MIN_CALL_TIMEOUT_SEC, remaining - pause)
 
 
 def _accepted_result(response: dict[str, Any], command_id: str) -> dict[str, Any]:
@@ -144,24 +217,40 @@ def wait_runtime_status(
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
     """Wait only for a restarted daemon's absent/refused control socket."""
+    window = min(30.0, timeout_seconds)
     deadline = None
+    budget = window
     while True:
-        response = client.command("runtime.status", {})
-        reason = str(response.get("message") or "")
-        socket_unavailable = (
-            response.get("accepted") is False
-            and response.get("rejection") is None
-            and (response.get("result") or {}).get("permission") == "read_only"
-            and reason.startswith(("[Errno 2] ", "[Errno 111] "))
-        )
+        try:
+            with _bounded_call(client, budget):
+                response = client.command("runtime.status", {})
+        except RuntimeApiError as exc:
+            if not is_transient_unavailability(exc):
+                raise
+            response = None
+            reason = str(exc)
+        if response is None:
+            socket_unavailable = True
+        else:
+            reason = str(response.get("message") or "")
+            socket_unavailable = (
+                response.get("accepted") is False
+                and response.get("rejection") is None
+                and (response.get("result") or {}).get("permission") == "read_only"
+                and reason.startswith(("[Errno 2] ", "[Errno 111] "))
+            )
         if not socket_unavailable:
             return _accepted_result(response, "runtime.status")
         if deadline is None:
-            deadline = monotonic() + min(30.0, timeout_seconds)
+            deadline = monotonic() + window
         remaining = deadline - monotonic()
         if remaining <= 0:
+            if response is None:
+                raise HilRestartError(f"Runtime API remained unavailable: {reason}")
             raise HilRestartError(f"Runtime daemon socket remained unavailable: {reason}")
-        sleep(min(poll_seconds, remaining))
+        pause = min(poll_seconds, remaining)
+        sleep(pause)
+        budget = max(MIN_CALL_TIMEOUT_SEC, remaining - pause)
 
 
 def _field_is_fresh(state: dict[str, Any], name: str, expected: Any) -> bool:
@@ -211,20 +300,38 @@ class ProcessRunner:
             environment=dict(os.environ),
         )
 
-    def workstation_healthy(self) -> bool:
-        snapshot = self.workstation_snapshot()
+    def status_timeout(self, timeout_seconds: float | None = None) -> float:
+        configured = _env_seconds(
+            "III_HIL_WORKSTATION_STATUS_TIMEOUT_SEC",
+            DEFAULT_WORKSTATION_STATUS_TIMEOUT_SEC,
+        ) or DEFAULT_WORKSTATION_STATUS_TIMEOUT_SEC
+        if timeout_seconds is None:
+            return configured
+        return max(MIN_CALL_TIMEOUT_SEC, min(configured, timeout_seconds))
+
+    def workstation_healthy(self, timeout_seconds: float | None = None) -> bool:
+        snapshot = self.workstation_snapshot(timeout_seconds=timeout_seconds)
         return bool(
             snapshot["returncode"] == 0
             and snapshot["fields"].get("hil_readiness") == "ready"
         )
 
-    def workstation_snapshot(self) -> dict[str, Any]:
-        result = subprocess.run(
-            self.launcher_command("status"),
-            cwd=WORKSPACE,
-            capture_output=True,
-            text=True,
-        )
+    def workstation_snapshot(self, timeout_seconds: float | None = None) -> dict[str, Any]:
+        timeout = self.status_timeout(timeout_seconds)
+        try:
+            result = subprocess.run(
+                self.launcher_command("status"),
+                cwd=WORKSPACE,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "returncode": 124,
+                "fields": {},
+                "diagnostic": f"workstation launcher status timed out after {timeout:g} s",
+            }
         fields = dict(
             line.split(": ", 1)
             for line in result.stdout.splitlines()
@@ -237,10 +344,17 @@ class ProcessRunner:
     def workstation_stopped(self) -> bool:
         # Failed readiness alone is not proof that PX4 is stopped: one missing
         # sensor bridge can degrade an otherwise running simulator.
-        result = subprocess.run(
-            self.launcher_command("status"), cwd=WORKSPACE,
-            capture_output=True, text=True,
-        )
+        timeout = self.status_timeout()
+        try:
+            result = subprocess.run(
+                self.launcher_command("status"), cwd=WORKSPACE,
+                capture_output=True, text=True, timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise HilRestartError(
+                f"workstation launcher status timed out after {timeout:g} s; "
+                "stopped proof unavailable"
+            ) from exc
         fields = dict(
             line.split(": ", 1) for line in result.stdout.splitlines() if ": " in line
         )
@@ -288,6 +402,7 @@ def coordinate_restart(
     *,
     timeout_seconds: float = 240.0,
     poll_seconds: float = 2.0,
+    confirm_interval_seconds: float = DEFAULT_CONFIRM_INTERVAL_SEC,
     monotonic: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> None:
@@ -332,20 +447,38 @@ def coordinate_restart(
 
     deadline = monotonic() + timeout_seconds
     stable = 0
-    last_reason = "runtime did not report readiness"
+    waiting_reason = (
+        "waiting for active HIL runtime, arming checks, "
+        "and workstation adapter/cross-host readiness"
+    )
+    # A deadline reached part-way through a sample keeps the last complete
+    # sample's reason, or this generic one if no sample completed.
+    last_reason = waiting_reason
     last_progress: tuple[str, str, str] | None = None
     last_progress_time = 0.0
+
+    def remaining_budget() -> float | None:
+        # Every blocking probe receives only the time left before the overall
+        # readiness deadline, so one slow call cannot overrun it.
+        remaining = deadline - monotonic()
+        return remaining if remaining > 0 else None
+
     _emit_progress("readiness", "waiting", "waiting for runtime, arming checks, and workstation readiness")
     while True:
         now = monotonic()
         if now >= deadline:
             break
         try:
-            runtime = _accepted_result(
-                client.command("runtime.status", {}), "runtime.status"
-            )
+            with _bounded_call(client, deadline - now):
+                runtime = _accepted_result(
+                    client.command("runtime.status", {}), "runtime.status"
+                )
             daemon = runtime.get("daemon") or {}
-            vehicle = client.vehicle_status()
+            budget = remaining_budget()
+            if budget is None:
+                break
+            with _bounded_call(client, budget):
+                vehicle = client.vehicle_status()
             prerequisites_ready = (
                 daemon.get("booted") is True
                 and daemon.get("active") is True
@@ -355,7 +488,12 @@ def coordinate_restart(
             # Preserve the original short-circuit: the workstation status
             # probe is potentially expensive and is only needed after the Pi
             # and vehicle prerequisites have converged.
-            workstation_ready = runner.workstation_healthy() if prerequisites_ready else None
+            workstation_ready = None
+            if prerequisites_ready:
+                budget = remaining_budget()
+                if budget is None:
+                    break
+                workstation_ready = runner.workstation_healthy(timeout_seconds=budget)
             ready = prerequisites_ready and workstation_ready is True
             runtime_progress = (
                 "ready" if daemon.get("booted") is True and daemon.get("active") is True
@@ -390,15 +528,14 @@ def coordinate_restart(
                     )
                     _emit_progress("readiness", "done", "runtime and workstation readiness confirmed")
                     return
-                # Consecutive successful samples are already available for the
-                # next stability check; do not add a poll delay between them.
+                # Space the confirmation samples so three passes demonstrate
+                # stability rather than one instant observed three times.
+                if confirm_interval_seconds > 0:
+                    sleep(min(confirm_interval_seconds, max(deadline - now, 0.0)))
                 continue
             else:
                 stable = 0
-                last_reason = (
-                    "waiting for active HIL runtime, arming checks, "
-                    "and workstation adapter/cross-host readiness"
-                )
+                last_reason = waiting_reason
         except Exception as exc:  # service/node convergence is transient here
             stable = 0
             last_reason = str(exc)
@@ -555,15 +692,16 @@ def profile_status(
 
 def coordinate_start(client: RuntimeApiClient, runner: ProcessRunner, **kwargs: Any) -> None:
     # An idempotent start must not reset simulator time or interrupt a mission.
+    wait = {key: value for key, value in kwargs.items() if key != "confirm_interval_seconds"}
     identity = _progress_operation(
         "pi_api_identity", "checking Pi runtime identity",
-        lambda: wait_runtime_identity(client, **kwargs),
+        lambda: wait_runtime_identity(client, **wait),
     )
     if identity.get("profile") != "hil":
         raise HilRestartError(f"remote runtime profile is {identity.get('profile')!r}, expected 'hil'")
     runtime = _progress_operation(
         "pi_runtime_status", "checking Pi runtime status",
-        lambda: wait_runtime_status(client, **kwargs),
+        lambda: wait_runtime_status(client, **wait),
     )
     daemon = runtime.get("daemon") or {}
     # Start's idempotence gate is deliberately independent of ground-control
@@ -591,13 +729,73 @@ def coordinate_start(client: RuntimeApiClient, runner: ProcessRunner, **kwargs: 
     coordinate_restart(client, runner, **kwargs)
 
 
-def coordinate_stop(client: RuntimeApiClient, runner: ProcessRunner) -> None:
-    identity = wait_runtime_identity(client)
+def _emit_stop_component(component: str, outcome: str, detail: str = "") -> None:
+    """Record one per-owner stop outcome for the operator wrapper and log."""
+    detail = " ".join(str(detail).split())
+    print(f"III_HIL_STOP|{component}|{outcome}|{detail}", flush=True)
+
+
+_PI_UNAVAILABLE_ERRORS = (RuntimeApiError, HilRestartError, OSError, ValueError)
+
+
+def _stop_workstation_without_pi(runner: ProcessRunner, pi_reason: str) -> NoReturn:
+    """Best-effort workstation stop when the Pi runtime cannot be queried.
+
+    The launcher still validates and stops only its recorded owner under its
+    lifecycle lock (and verifies the result). Pi-side endpoint proof and the
+    Pi shutdown itself are impossible, so the overall stop still fails.
+    """
+    _emit_stop_component("pi_runtime", "unreachable", pi_reason)
+    try:
+        runner.workstation("stop")
+    except (HilRestartError, OSError, subprocess.SubprocessError) as exc:
+        _emit_stop_component("workstation", "failed", str(exc))
+        raise HilRestartError(
+            f"Pi runtime unreachable ({pi_reason}); workstation stop also failed: {exc}"
+        ) from exc
+    _emit_stop_component(
+        "workstation", "stopped",
+        "launcher-verified; Pi-side endpoint proof unavailable",
+    )
+    raise HilRestartError(
+        f"Pi runtime unreachable ({pi_reason}); owned workstation HIL components "
+        "were stopped, but the Pi runtime was not shut down"
+    )
+
+
+def coordinate_stop(
+    client: RuntimeApiClient | None,
+    runner: ProcessRunner,
+    *,
+    timeout_seconds: float = 30.0,
+    poll_seconds: float = 2.0,
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+    client_error: str | None = None,
+) -> None:
+    wait = {
+        "timeout_seconds": timeout_seconds, "poll_seconds": poll_seconds,
+        "monotonic": monotonic, "sleep": sleep,
+    }
+    if client is None:
+        _stop_workstation_without_pi(
+            runner, f"client unavailable: {client_error or 'not configured'}"
+        )
+    try:
+        identity = wait_runtime_identity(client, **wait)
+    except _PI_UNAVAILABLE_ERRORS as exc:
+        _stop_workstation_without_pi(runner, f"identity unavailable: {exc}")
+    # A reachable runtime that is positively not virtual HIL is refused before
+    # any mutation, exactly as before: this command must never act beside a
+    # real/opti-track aircraft runtime.
     if identity.get("profile") != "hil":
         raise HilRestartError(
             f"remote runtime profile is {identity.get('profile')!r}, expected 'hil'"
         )
-    runtime = wait_runtime_status(client)
+    try:
+        runtime = wait_runtime_status(client, **wait)
+    except _PI_UNAVAILABLE_ERRORS as exc:
+        _stop_workstation_without_pi(runner, f"status unavailable: {exc}")
     daemon = runtime.get("daemon") or {}
     # Identity establishes this as virtual HIL; refuse if the daemon disagrees.
     # An airborne virtual vehicle may be stopped as an operator emergency action.
@@ -610,20 +808,33 @@ def coordinate_stop(client: RuntimeApiClient, runner: ProcessRunner) -> None:
     # The workstation stop holds its lifecycle lock through ownership checking
     # and process/session termination. Complete it before shutting down the Pi,
     # so a changed or ambiguous owner cannot leave PX4 alive without the Pi graph.
-    runner.workstation("stop")
-    if not runner.workstation_stopped():
+    try:
+        runner.workstation("stop")
+        stopped = runner.workstation_stopped()
+    except (HilRestartError, OSError, subprocess.SubprocessError) as exc:
+        _emit_stop_component("workstation", "failed", str(exc))
+        _emit_stop_component("pi_runtime", "not_attempted", "workstation stop failed")
+        raise
+    if not stopped:
+        _emit_stop_component("workstation", "failed", "canonical ownership/stopped proof unavailable")
+        _emit_stop_component("pi_runtime", "not_attempted", "workstation stopped proof unavailable")
         raise HilRestartError(
             "workstation stop returned, but canonical ownership/stopped proof "
             "remains unavailable; Pi runtime shutdown was not attempted"
         )
+    _emit_stop_component("workstation", "stopped")
     if daemon.get("booted"):
         try:
             runner.system_mutation("shutdown")
-        except (OSError, subprocess.CalledProcessError) as exc:
+        except (OSError, subprocess.CalledProcessError, HilRestartError) as exc:
+            _emit_stop_component("pi_runtime", "failed", str(exc))
             raise HilRestartError(
                 "workstation HIL components are stopped, but Pi runtime shutdown "
-                "failed; workstation PX4/Gazebo are already stopped"
+                f"failed; workstation PX4/Gazebo are already stopped ({exc})"
             ) from exc
+        _emit_stop_component("pi_runtime", "stopped")
+    else:
+        _emit_stop_component("pi_runtime", "already_stopped")
     if not runner.workstation_stopped():
         raise HilRestartError(
             "HIL owned components were stopped, but canonical endpoint/stopped "
@@ -743,6 +954,14 @@ def main() -> int:
             except (RuntimeApiError, OSError, ValueError) as exc:
                 client = None
                 client_error = str(exc)
+            if client is not None and isinstance(getattr(client, "timeout_seconds", None), (int, float)):
+                # A read-only status snapshot must stay responsive; the
+                # client's cold-boot sized default is only for mutations.
+                client.timeout_seconds = min(
+                    client.timeout_seconds,
+                    _env_seconds("III_HIL_STATUS_API_TIMEOUT_SEC", DEFAULT_STATUS_API_TIMEOUT_SEC)
+                    or DEFAULT_STATUS_API_TIMEOUT_SEC,
+                )
             state = profile_status(
                 client,
                 runner,
@@ -754,14 +973,30 @@ def main() -> int:
             else:
                 print_operator_status(state)
             return 0 if state["state"] in {"ready", "running", "stopped"} else 1
-        client = RuntimeApiClient.from_env()
+        timeout_seconds = _env_seconds("III_HIL_RESTART_TIMEOUT_SEC", 240.0)
+        poll_seconds = _env_seconds("III_HIL_RESTART_POLL_SEC", 2.0)
         if args.action == "stop":
-            coordinate_stop(client, runner)
+            # Stop is best effort across owners: an unusable Pi client must
+            # not prevent stopping the workstation-owned simulation.
+            client_error = None
+            try:
+                client = RuntimeApiClient.from_env()
+            except (RuntimeApiError, OSError, ValueError) as exc:
+                client = None
+                client_error = str(exc)
+            coordinate_stop(
+                client, runner, timeout_seconds=timeout_seconds,
+                poll_seconds=poll_seconds, client_error=client_error,
+            )
         else:
+            client = RuntimeApiClient.from_env()
             (coordinate_start if args.action == "start" else coordinate_restart)(
                 client, runner,
-                timeout_seconds=float(os.environ.get("III_HIL_RESTART_TIMEOUT_SEC", "240")),
-                poll_seconds=float(os.environ.get("III_HIL_RESTART_POLL_SEC", "2")),
+                timeout_seconds=timeout_seconds,
+                poll_seconds=poll_seconds,
+                confirm_interval_seconds=_env_seconds(
+                    "III_HIL_RESTART_CONFIRM_INTERVAL_SEC", DEFAULT_CONFIRM_INTERVAL_SEC
+                ),
             )
     except (HilRestartError, RuntimeApiError, OSError, subprocess.CalledProcessError, ValueError) as exc:
         print(f"Coordinated HIL {args.action} failed: {exc}", file=sys.stderr)

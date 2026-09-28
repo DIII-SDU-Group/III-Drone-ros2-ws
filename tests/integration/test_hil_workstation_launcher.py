@@ -37,7 +37,9 @@ def test_hil_workstation_launcher_is_shell_valid_and_uses_isolated_links():
     assert "III_HIL_PX4_SYSTEM_ID:-8" in source
     assert "III_HIL_ROS_DOMAIN_ID:-42" in source
     assert "ros2 launch iii_drone_simulation tf_sim.launch.py" in source
-    assert "/drone_frame_broadcaster/is_alive" in source
+    # The Pi owns the dynamic world->drone transform; workstation readiness
+    # must not wait for its heartbeat.
+    assert "/drone_frame_broadcaster/is_alive" not in source
     assert "ROS_DOMAIN_ID='${ROS_DOMAIN_ID}'" in source
     assert "PX4_PARAM_UXRCE_DDS_DOM_ID" not in source
     assert "PX4_PARAM_UXRCE_DDS_AG_IP" in source
@@ -73,8 +75,14 @@ def test_hil_workstation_launcher_is_shell_valid_and_uses_isolated_links():
     assert "adapter_panes_healthy" in source
     assert 'session_exists "${ADAPTER_SESSION}" && ! adapters_locally_ready' in source
     assert "adapters_ready" in source
-    assert "local -a probe_pids=()" in source
+    assert "adapter_probe_script" in source
+    assert "probe_pids=()" in source
     assert "wait \"${probe_pid}\" || result=1" in source
+    assert 'session_user_command timeout -k 2 "${probe_timeout}" bash -lc "$(adapter_probe_script)"' in source
+    assert "III_HIL_ADAPTER_PROBE_TIMEOUT_SEC" in source
+    assert "III_HIL_PX4_SHELL_TIMEOUT_SEC" in source
+    assert "III_HIL_MAVLINK_START_TIMEOUT_SEC" in source
+    assert "verify_px4_mavlink_endpoints" in source
     assert "canonical_px4_records \"${endpoint_pids}\"" in source
     assert "ADAPTER_READINESS_CONFIRMED=1" in source
     assert "for attempt in {1..90}" in source

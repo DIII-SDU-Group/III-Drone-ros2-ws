@@ -454,7 +454,7 @@ class IiiDevTests(unittest.TestCase):
             "III_HIL_WORKSTATION_ADDRESS": "192.0.2.10",
             "III_DEV_HIL_GC_BIND_SCRIPT": str(binder),
             # Keep persistent-failure wrapper tests bounded; production uses
-            # the script's 30-second final-status deadline.
+            # the script's 90-second final-status deadline.
             "III_DEV_HIL_FINAL_STATUS_TIMEOUT_MS": "1000",
             "III_DEV_OPEN_OPERATOR_WINDOWS": "0",
             "PATH": str(self.bin_dir) + ":" + os.environ["PATH"],
@@ -741,6 +741,77 @@ class IiiDevTests(unittest.TestCase):
         self.assertIn(["gc", "stop"], self.commands())
         status_pid = int(Path(env["FAKE_STATUS_PID_FILE"]).read_text())
         self.assertFalse(Path(f"/proc/{status_pid}").exists())
+
+    def test_hil_final_status_retries_a_hung_probe_within_the_overall_deadline(self):
+        env = {
+            **self.hil_environment(),
+            "III_DEV_HIL_FINAL_STATUS_TIMEOUT_MS": "8000",
+            "III_DEV_HIL_FINAL_STATUS_CALL_TIMEOUT_MS": "400",
+            "FAKE_GC_OWNED_RC": "1",
+            "FAKE_STATUS_COUNTER": str(self.root / "status-counter"),
+            "FAKE_STATUS_PID_FILE": str(self.root / "status-pid"),
+        }
+        Path(env["III_DEV_HIL_COORDINATOR"]).write_text(
+            textwrap.dedent("""\
+                import json, os, sys, time
+                from pathlib import Path
+                args = sys.argv[1:]
+                with Path(os.environ['FAKE_COMMAND_LOG']).open('a') as log:
+                    log.write(json.dumps(['hil', *args]) + '\\n')
+                if args == ['status', '--json']:
+                    counter = Path(os.environ['FAKE_STATUS_COUNTER'])
+                    observed = int(counter.read_text()) if counter.exists() else 0
+                    counter.write_text(str(observed + 1))
+                    if observed == 0:
+                        Path(os.environ['FAKE_STATUS_PID_FILE']).write_text(str(os.getpid()))
+                        time.sleep(30)
+                    print(json.dumps({'state': 'ready', 'components': {
+                        'pi_runtime': 'ready', 'workstation': 'ready',
+                        'gazebo_viewer': 'running', 'ground_control': 'ready'},
+                        'viewer_state': 'running', 'render_mode': 'rendered',
+                        'gc_url': 'http://127.0.0.1:5174',
+                        'log_path': os.environ['III_HIL_LOG_PATH']}))
+                else:
+                    print('started')
+                """),
+            encoding="utf-8",
+        )
+        started = time.monotonic()
+        result = self.run_cli("hil", "start", env=env)
+        self.assertLess(time.monotonic() - started, 6)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.commands().count(["hil", "status", "--json"]), 2)
+        self.assertNotIn(["gc", "stop"], self.commands())
+        hung_pid = int(Path(env["FAKE_STATUS_PID_FILE"]).read_text())
+        self.assertFalse(Path(f"/proc/{hung_pid}").exists())
+        log = (self.root / "hil-logs" / "latest.log").read_text(encoding="utf-8")
+        self.assertIn("exceeded 400 ms call timeout; retrying", log)
+
+    def test_hil_final_status_deadlines_are_validated_and_configurable(self):
+        for key, value, message in (
+            ("III_DEV_HIL_FINAL_STATUS_CALL_TIMEOUT_MS", "0", "invalid final status call timeout 0"),
+            ("III_DEV_HIL_FINAL_STATUS_CALL_TIMEOUT_MS", "soon", "invalid final status call timeout soon"),
+            ("III_DEV_HIL_FINAL_STATUS_TIMEOUT_MS", "600001", "invalid final status deadline 600001"),
+        ):
+            with self.subTest(key=key, value=value):
+                self.log.unlink(missing_ok=True)
+                env = {**self.hil_environment(), key: value, "FAKE_GC_OWNED_RC": "1"}
+                result = self.run_cli("hil", "start", env=env)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(message, result.stderr)
+                self.assertIn(["gc", "stop"], self.commands())
+        # Deadlines beyond the former 30 s hard cap are accepted.
+        self.log.unlink(missing_ok=True)
+        ready = self.run_cli("hil", "start", env={
+            **self.hil_environment(), "III_DEV_HIL_FINAL_STATUS_TIMEOUT_MS": "120000",
+        })
+        self.assertEqual(ready.returncode, 0, ready.stderr)
+
+    def test_hil_final_status_clock_does_not_spawn_python_per_sample(self):
+        source = (WORKSPACE / "scripts/workspace/iii_dev.sh").read_text(encoding="utf-8")
+        gate = source.split("hil_capture_status_json() {", 1)[1].split("\nhil_print_status_json() {", 1)[0]
+        self.assertNotIn("monotonic_ns", gate)
+        self.assertIn("hil_now_ns now_ns", gate)
 
     def test_hil_start_signal_during_final_status_reaps_probe_and_rolls_back(self):
         env = self.hil_hanging_final_status_environment()
@@ -1224,6 +1295,80 @@ class IiiDevTests(unittest.TestCase):
         stopped = self.run_cli("hil", "stop", "--host", "alternate.local", env=env)
         self.assertEqual(stopped.returncode, 0, stopped.stderr)
         self.assertIn(["hil", "stop", "--host", "alternate.local"], self.commands())
+
+    def hil_stop_environment(self, *, coordinator_rc=0, gc_rc=0, components=""):
+        env = self.hil_environment()
+        Path(env["III_DEV_HIL_COORDINATOR"]).write_text(
+            "import json,os,sys\n"
+            "from pathlib import Path\n"
+            "with Path(os.environ['FAKE_COMMAND_LOG']).open('a') as f: f.write(json.dumps(['hil',*sys.argv[1:]])+'\\n')\n"
+            f"sys.stdout.write({components!r})\n"
+            f"if {coordinator_rc}: print('Coordinated HIL stop failed: Pi runtime unreachable (identity unavailable: No route to host)', file=sys.stderr)\n"
+            f"sys.exit({coordinator_rc})\n",
+            encoding="utf-8",
+        )
+        gc = self.root / "gc-stop"
+        gc.write_text(
+            "#!/bin/bash\n"
+            "if [[ \"$1\" == owned ]]; then exit 0; fi\n"
+            "printf '[\"gc\",\"%s\"]\\n' \"$1\" >> \"$FAKE_COMMAND_LOG\"\n"
+            f"if (({gc_rc})); then echo 'ground-control compose stop failed: daemon unavailable' >&2; fi\n"
+            f"exit {gc_rc}\n",
+            encoding="utf-8",
+        )
+        gc.chmod(0o755)
+        env["III_DEV_GC_SCRIPT"] = str(gc)
+        return env
+
+    def test_hil_stop_success_output_is_unchanged(self):
+        result = self.run_cli("hil", "stop", env=self.hil_stop_environment(
+            components="III_HIL_STOP|workstation|stopped|\nIII_HIL_STOP|pi_runtime|stopped|\n",
+        ))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            "✓ Pi runtime and workstation simulation stopped\n✓ Ground control stopped\n\nHIL stopped\n",
+            result.stdout,
+        )
+        self.assertNotIn("III_HIL_STOP", result.stdout)
+        self.assertEqual(self.commands(), [["hil", "stop"], ["gc", "stop"]])
+
+    def test_hil_stop_with_unreachable_pi_still_stops_ground_control(self):
+        env = self.hil_stop_environment(
+            coordinator_rc=1,
+            components=(
+                "III_HIL_STOP|pi_runtime|unreachable|identity unavailable: No route to host\n"
+                "III_HIL_STOP|workstation|stopped|launcher-verified; Pi-side endpoint proof unavailable\n"
+            ),
+        )
+        result = self.run_cli("hil", "stop", env=env)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.commands(), [["hil", "stop"], ["gc", "stop"]])
+        self.assertIn("✗ Pi runtime: unreachable (identity unavailable: No route to host)", result.stdout)
+        self.assertIn("✓ Workstation simulation: stopped (launcher-verified", result.stdout)
+        self.assertIn("✓ Ground control stopped", result.stdout)
+        self.assertNotIn("✓ Pi runtime and workstation simulation stopped", result.stdout)
+        self.assertIn("HIL stop failed at Pi/workstation lifecycle", result.stderr)
+        self.assertIn("Pi runtime unreachable", result.stderr)
+        self.assertIn("HIL stop incomplete", result.stderr)
+        self.assertNotIn("HIL stopped\n", result.stdout)
+
+    def test_hil_stop_reports_ground_control_failure_after_core_stop(self):
+        result = self.run_cli("hil", "stop", env=self.hil_stop_environment(gc_rc=3))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("✓ Pi runtime and workstation simulation stopped", result.stdout)
+        self.assertIn("✗ Ground control: stop failed", result.stdout)
+        self.assertIn("HIL stop failed at ground control", result.stderr)
+        self.assertIn("compose stop failed", result.stderr)
+        self.assertIn("HIL stop incomplete", result.stderr)
+
+    def test_hil_stop_attempts_every_owner_when_both_fail(self):
+        result = self.run_cli(
+            "hil", "stop", env=self.hil_stop_environment(coordinator_rc=1, gc_rc=1)
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.commands(), [["hil", "stop"], ["gc", "stop"]])
+        self.assertIn("HIL stop failed at Pi/workstation lifecycle", result.stderr)
+        self.assertIn("HIL stop failed at ground control", result.stderr)
 
     def test_hil_start_fails_if_ground_control_selects_another_runtime(self):
         env = {**self.hil_environment(), "FAKE_BIND_RC": "1", "FAKE_GC_OWNED_RC": "1"}

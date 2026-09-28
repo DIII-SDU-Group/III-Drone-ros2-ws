@@ -83,6 +83,12 @@ GZ_OWNER_RECORD="${WORKSPACE_ROOT}/runtime/.iii-hil-gazebo-owner-${PX4_INSTANCE}
 # faster lab link without changing the launcher.
 CAMERA_RATE_HZ="${III_HIL_CAMERA_RATE_HZ:-1.0}"
 HIL_RENDERED="${III_HIL_RENDERED:-1}"
+# Bounded waits (seconds) for the PX4 shell, one PX4 shell command, the
+# deterministic MAVLink endpoint set, and one adapter readiness probe.
+PX4_SHELL_TIMEOUT_SEC="${III_HIL_PX4_SHELL_TIMEOUT_SEC:-90}"
+PX4_COMMAND_TIMEOUT_SEC="${III_HIL_PX4_COMMAND_TIMEOUT_SEC:-20}"
+MAVLINK_START_TIMEOUT_SEC="${III_HIL_MAVLINK_START_TIMEOUT_SEC:-20}"
+ADAPTER_PROBE_TIMEOUT_SEC="${III_HIL_ADAPTER_PROBE_TIMEOUT_SEC:-20}"
 usage() {
     cat <<EOF
 Usage: $(basename "$0") {start|status|stop|battery-check} [--host <hostname-or-IPv4>] [--headless|--rendered]
@@ -1259,49 +1265,51 @@ battery_check() {
     echo "HIL battery link ready: workstation charger receives fresh Pi PX4 BatteryStatus."
 }
 
+adapter_probe_script() {
+    # One login shell sources the workspace once and runs every workstation
+    # adapter check concurrently; run_adapter_probes bounds the whole probe.
+    printf "source '%s/setup/setup_dev.bash'; %s\n" "${WORKSPACE_ROOT}" "$(ros_environment)"
+    cat <<'EOF'
+probe_pids=()
+result=0
+timeout 4 ros2 lifecycle get /payload/charger_gripper/charger_gripper | grep -q '^active ' & probe_pids+=("$!")
+timeout 4 ros2 topic echo --once /clock rosgraph_msgs/msg/Clock & probe_pids+=("$!")
+# Check the workstation-owned static branches directly. The dynamic
+# world->drone heartbeat is Pi-owned and cannot exist before Pi boot.
+timeout 6 bash -c 'ros2 run tf2_ros tf2_echo drone cable_gripper 2>&1 | grep -m1 "Translation:"' & probe_pids+=("$!")
+timeout 6 bash -c 'ros2 run tf2_ros tf2_echo drone mmwave 2>&1 | grep -m1 "Translation:"' & probe_pids+=("$!")
+# A live process is insufficient here: the Python rate limiter can remain
+# discoverable after it stops forwarding frames. Verify the actual bounded
+# bandwidth output that the Pi consumes.
+timeout 6 ros2 topic echo /sensor/cable_camera/image_raw --once --field header --qos-reliability best_effort & probe_pids+=("$!")
+for probe_pid in "${probe_pids[@]}"; do
+    wait "${probe_pid}" || result=1
+done
+exit "${result}"
+EOF
+}
+
+run_adapter_probes() {
+    local probe_timeout="${ADAPTER_PROBE_TIMEOUT_SEC}"
+    [[ "${probe_timeout}" =~ ^[1-9][0-9]*$ ]] || probe_timeout=20
+    session_user_command timeout -k 2 "${probe_timeout}" bash -lc "$(adapter_probe_script)" >/dev/null 2>&1
+}
+
 adapters_locally_ready() {
-    local ros_env
-    ros_env="$(ros_environment)"
     adapter_panes_healthy || return 1
-    local -a probe_pids=()
-    local probe_pid result=0
-    session_user_command bash -lc "source '${WORKSPACE_ROOT}/setup/setup_dev.bash'; ${ros_env}; timeout 4 ros2 lifecycle get /payload/charger_gripper/charger_gripper | grep -q '^active '" >/dev/null 2>&1 & probe_pids+=("$!")
-    session_user_command bash -lc "source '${WORKSPACE_ROOT}/setup/setup_dev.bash'; ${ros_env}; timeout 4 ros2 topic echo --once /clock rosgraph_msgs/msg/Clock" >/dev/null 2>&1 & probe_pids+=("$!")
-    # Check the workstation-owned static branches directly. The dynamic
-    # world->drone heartbeat is Pi-owned and cannot exist before Pi boot.
-    session_user_command bash -lc "source '${WORKSPACE_ROOT}/setup/setup_dev.bash'; ${ros_env}; timeout 6 bash -c 'ros2 run tf2_ros tf2_echo drone cable_gripper 2>&1 | grep -m1 \"Translation:\"'" >/dev/null 2>&1 & probe_pids+=("$!")
-    session_user_command bash -lc "source '${WORKSPACE_ROOT}/setup/setup_dev.bash'; ${ros_env}; timeout 6 bash -c 'ros2 run tf2_ros tf2_echo drone mmwave 2>&1 | grep -m1 \"Translation:\"'" >/dev/null 2>&1 & probe_pids+=("$!")
-    # A live process is insufficient here: the Python rate limiter can remain
-    # discoverable after it stops forwarding frames. Verify the actual bounded
-    # bandwidth output that the Pi consumes.
-    session_user_command bash -lc "source '${WORKSPACE_ROOT}/setup/setup_dev.bash'; ${ros_env}; timeout 6 ros2 topic echo /sensor/cable_camera/image_raw --once --field header --qos-reliability best_effort" >/dev/null 2>&1 & probe_pids+=("$!")
-    for probe_pid in "${probe_pids[@]}"; do
-        wait "${probe_pid}" || result=1
-    done
-    return "${result}"
+    run_adapter_probes
 }
 
 adapters_ready() {
-    local ros_env
-    ros_env="$(ros_environment)"
     adapter_panes_healthy || return 1
-    local -a probe_pids=()
-    local probe_pid result=0
-    session_user_command bash -lc "source '${WORKSPACE_ROOT}/setup/setup_dev.bash'; ${ros_env}; timeout 4 ros2 lifecycle get /payload/charger_gripper/charger_gripper | grep -q '^active '" >/dev/null 2>&1 & probe_pids+=("$!")
-    session_user_command bash -lc "source '${WORKSPACE_ROOT}/setup/setup_dev.bash'; ${ros_env}; timeout 4 ros2 topic echo --once /clock rosgraph_msgs/msg/Clock" >/dev/null 2>&1 & probe_pids+=("$!")
+    local result=0
     # Static drone-to-payload transforms are supplied by this workstation;
     # don't wait for the Pi-owned dynamic broadcaster during local readiness.
-    session_user_command bash -lc "source '${WORKSPACE_ROOT}/setup/setup_dev.bash'; ${ros_env}; timeout 6 bash -c 'ros2 run tf2_ros tf2_echo drone cable_gripper 2>&1 | grep -m1 \"Translation:\"'" >/dev/null 2>&1 & probe_pids+=("$!")
-    session_user_command bash -lc "source '${WORKSPACE_ROOT}/setup/setup_dev.bash'; ${ros_env}; timeout 6 bash -c 'ros2 run tf2_ros tf2_echo drone mmwave 2>&1 | grep -m1 \"Translation:\"'" >/dev/null 2>&1 & probe_pids+=("$!")
-    # Verify the actual bounded-bandwidth camera output consumed by the Pi.
-    session_user_command bash -lc "source '${WORKSPACE_ROOT}/setup/setup_dev.bash'; ${ros_env}; timeout 6 ros2 topic echo /sensor/cable_camera/image_raw --once --field header --qos-reliability best_effort" >/dev/null 2>&1 & probe_pids+=("$!")
     # PX4 vehicle status is published by the Pi-local XRCE agent. The Pi
     # Runtime API checks its heartbeat and arming state directly; requiring
     # this DDS publisher to cross back to the workstation rejects an otherwise
     # healthy split-host graph. These probes cover workstation-owned inputs.
-    for probe_pid in "${probe_pids[@]}"; do
-        wait "${probe_pid}" || result=1
-    done
+    run_adapter_probes || result=1
     if ((result == 0)); then
         ADAPTER_READINESS_CONFIRMED=1
     else
@@ -1477,6 +1485,119 @@ print_status() {
     return "${result}"
 }
 
+px4_pane_history() {
+    # -J joins wrapped lines; -S - includes the full scrollback.
+    tmux_command capture-pane -p -J -t "${SIM_SESSION}:simulation.0" -S - 2>/dev/null
+}
+
+px4_shell_marker() {
+    # PX4's shell answers an unknown command with "Invalid command: <name>".
+    # A per-call token therefore proves a live answer; a stale prompt or
+    # earlier output in the pane history can never match it.
+    printf 'iii_hil_sync_%s_%s_%s' "$$" "$(date +%s%N)" "$1"
+}
+
+px4_shell_run() {
+    # Usage: px4_shell_run <timeout-seconds> [command...]
+    # Sends the commands between two unique markers and prints only the
+    # output produced between them once PX4 has processed all of them.
+    local timeout_seconds="$1" begin end history command deadline
+    shift
+    begin="$(px4_shell_marker begin)"
+    end="$(px4_shell_marker end)"
+    tmux_command send-keys -t "${SIM_SESSION}:simulation.0" "${begin}" C-m
+    for command in "$@"; do
+        tmux_command send-keys -t "${SIM_SESSION}:simulation.0" "${command}" C-m
+    done
+    tmux_command send-keys -t "${SIM_SESSION}:simulation.0" "${end}" C-m
+    deadline=$((SECONDS + timeout_seconds))
+    while :; do
+        history="$(px4_pane_history)" || history=""
+        if grep -Fq "Invalid command: ${end}" <<<"${history}"; then
+            awk -v begin="Invalid command: ${begin}" -v end="Invalid command: ${end}" '
+                index($0, end) { exit }
+                started { print }
+                index($0, begin) { started = 1 }
+            ' <<<"${history}"
+            return 0
+        fi
+        ((SECONDS < deadline)) || return 1
+        sleep 0.5
+    done
+}
+
+wait_for_px4_shell() {
+    local deadline=$((SECONDS + PX4_SHELL_TIMEOUT_SEC)) history sync_timeout
+    while ((SECONDS < deadline)); do
+        if ! sim_session_healthy; then
+            echo "PX4 exited before its shell became ready; see tmux session ${SIM_SESSION}." >&2
+            return 1
+        fi
+        # Only probe once PX4 has printed a prompt, so no keystrokes reach the
+        # launcher shell; readiness itself is the live answer to a marker.
+        history="$(px4_pane_history)" || history=""
+        sync_timeout=$((deadline - SECONDS))
+        ((sync_timeout <= 5)) || sync_timeout=5
+        ((sync_timeout >= 1)) || sync_timeout=1
+        if grep -q 'pxh>' <<<"${history}" && px4_shell_run "${sync_timeout}" >/dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
+    echo "PX4 shell did not become ready within ${PX4_SHELL_TIMEOUT_SEC} s." >&2
+    return 1
+}
+
+verify_px4_mavlink_endpoints() {
+    local deadline=$((SECONDS + MAVLINK_START_TIMEOUT_SEC)) status pair
+    local -a missing=()
+    local -a expected=(
+        "${MAVLINK_LOCAL_PORT}:${MAVLINK_REMOTE_PORT}"
+        "${MAVLINK_AUDIT_LOCAL_PORT}:${MAVLINK_AUDIT_REMOTE_PORT}"
+        "${MAVLINK_PARAMETER_LOCAL_PORT}:${MAVLINK_PARAMETER_REMOTE_PORT}"
+        "${MAVLINK_QGC_LOCAL_PORT}:${MAVLINK_QGC_REMOTE_PORT}"
+    )
+    while :; do
+        missing=()
+        status="$(px4_shell_run "${PX4_COMMAND_TIMEOUT_SEC}" "mavlink status")" || status=""
+        for pair in "${expected[@]}"; do
+            grep -Fq "UDP (${pair%%:*}, remote port: ${pair#*:})" <<<"${status}" ||
+                missing+=("${pair%%:*}->${pair#*:}")
+        done
+        ((${#missing[@]} == 0)) && return 0
+        ((SECONDS < deadline)) || break
+        sleep 1
+    done
+    echo "PX4 MAVLink endpoints did not start within ${MAVLINK_START_TIMEOUT_SEC} s; missing UDP local->remote: ${missing[*]}." >&2
+    return 1
+}
+
+configure_px4_mavlink() {
+    local output
+    # rcS starts environment-dependent default MAVLink instances. Replace
+    # them with the complete, deterministic HIL endpoint set so repeated
+    # launches cannot exhaust PX4's instance limit or leave tools attached
+    # to an accidental port.
+    output="$(px4_shell_run "${PX4_COMMAND_TIMEOUT_SEC}" "mavlink stop-all")" || {
+        echo "PX4 did not complete 'mavlink stop-all' within ${PX4_COMMAND_TIMEOUT_SEC} s." >&2
+        return 1
+    }
+    grep -Fq "all instances stopped" <<<"${output}" || {
+        echo "PX4 did not confirm 'mavlink stop-all'; refusing an unverified MAVLink endpoint set." >&2
+        return 1
+    }
+    px4_shell_run "${PX4_COMMAND_TIMEOUT_SEC}" \
+        "mavlink start -x -u ${MAVLINK_LOCAL_PORT} -o ${MAVLINK_REMOTE_PORT} -t ${PI_ADDRESS} -r 4000000 -f -m onboard" \
+        "mavlink start -x -u ${MAVLINK_AUDIT_LOCAL_PORT} -o ${MAVLINK_AUDIT_REMOTE_PORT} -t ${PI_ADDRESS} -r 4000000 -f -m onboard" \
+        "mavlink start -x -u ${MAVLINK_PARAMETER_LOCAL_PORT} -o ${MAVLINK_PARAMETER_REMOTE_PORT} -t 127.0.0.1 -r 4000000 -f -m onboard" \
+        "mavlink start -x -u ${MAVLINK_QGC_LOCAL_PORT} -o ${MAVLINK_QGC_REMOTE_PORT} -t 127.0.0.1 -r 4000000 -f -m onboard" \
+        >/dev/null || {
+        echo "PX4 did not process the MAVLink start commands within ${PX4_COMMAND_TIMEOUT_SEC} s." >&2
+        return 1
+    }
+    verify_px4_mavlink_endpoints
+}
+
 start() {
     local records endpoint_pids px4_count endpoint_count
     require_standard_link
@@ -1551,28 +1672,8 @@ start() {
             III_SIM_TOOLS_GZ_IP=127.0.0.1 \
             III_SIM_TOOLS_PX4_COMMAND="$(px4_command)" \
             "${SIM_LAUNCHER}" "${sim_arguments[@]}"
-        for attempt in {1..90}; do
-            tmux_command capture-pane -p -t "${SIM_SESSION}:simulation.0" -S -80 2>/dev/null | grep -q 'pxh>' && break
-            sleep 1
-        done
-        tmux_command capture-pane -p -t "${SIM_SESSION}:simulation.0" -S -80 | grep -q 'pxh>' || {
-            echo "PX4 shell did not become ready." >&2
-            return 1
-        }
-        # rcS starts environment-dependent default MAVLink instances. Replace
-        # them with the complete, deterministic HIL endpoint set so repeated
-        # launches cannot exhaust PX4's instance limit or leave tools attached
-        # to an accidental port.
-        tmux_command send-keys -t "${SIM_SESSION}:simulation.0" "mavlink stop-all" C-m
-        sleep 2
-        tmux_command send-keys -t "${SIM_SESSION}:simulation.0" \
-            "mavlink start -x -u ${MAVLINK_LOCAL_PORT} -o ${MAVLINK_REMOTE_PORT} -t ${PI_ADDRESS} -r 4000000 -f -m onboard" C-m
-        tmux_command send-keys -t "${SIM_SESSION}:simulation.0" \
-            "mavlink start -x -u ${MAVLINK_AUDIT_LOCAL_PORT} -o ${MAVLINK_AUDIT_REMOTE_PORT} -t ${PI_ADDRESS} -r 4000000 -f -m onboard" C-m
-        tmux_command send-keys -t "${SIM_SESSION}:simulation.0" \
-            "mavlink start -x -u ${MAVLINK_PARAMETER_LOCAL_PORT} -o ${MAVLINK_PARAMETER_REMOTE_PORT} -t 127.0.0.1 -r 4000000 -f -m onboard" C-m
-        tmux_command send-keys -t "${SIM_SESSION}:simulation.0" \
-            "mavlink start -x -u ${MAVLINK_QGC_LOCAL_PORT} -o ${MAVLINK_QGC_REMOTE_PORT} -t 127.0.0.1 -r 4000000 -f -m onboard" C-m
+        wait_for_px4_shell || return 1
+        configure_px4_mavlink || return 1
     fi
     local owner_record
     owner_record="$(wait_for_single_px4_owner)" || return 1

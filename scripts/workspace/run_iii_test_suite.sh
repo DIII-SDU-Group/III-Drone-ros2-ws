@@ -16,6 +16,9 @@ DESCRIPTION
   - generated TypeScript contract freshness check
   - GUI v2 frontend lint, typecheck, unit tests, and production build
   - top-level integration pytest suite under `tests/`
+  - workspace tooling pytest suite under `scripts/workspace` (iii-dev, HIL
+    coordinator/launcher, peer resolution; children, Docker, tmux, SSH and
+    the Pi are faked, so no live HIL/SIM runtime is touched)
   - CLI pytest suite under `tools/III-Drone-CLI/test`
 
   This script intentionally excludes third-party package tests.
@@ -139,5 +142,12 @@ else
 fi
 
 python3 -m pytest tests
+# Workspace tooling tests. Excluded: the powerline final-test manifest contract
+# reads a dataset/template from a sibling checkout outside this workspace, and
+# one perception-seam probe assertion is stale against its script (tracked
+# separately); neither exercises the HIL lifecycle.
+python3 -m pytest scripts/workspace \
+  --ignore=scripts/workspace/test_powerline_final_test_manifest.py \
+  --deselect "scripts/workspace/test_run_hil_perception_seam_probe.py::RetainedOperationPreflightContractTests::test_selected_host_reaches_every_outbound_transport"
 PYTHONPATH="${workspace_root}/tools/III-Drone-CLI${PYTHONPATH:+:${PYTHONPATH}}" \
   python3 -m pytest tools/III-Drone-CLI/test
