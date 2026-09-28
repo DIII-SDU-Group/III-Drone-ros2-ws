@@ -41,10 +41,10 @@ src/BehaviorTree.CPP 3ff6a32ba0497a08519c77a1436e3b81eff1bcd6
 src/BehaviorTree.ROS2 c72596242684ed6f03796665908d337269afb4b3
 src/III-Drone-Configuration d1603616a73e7bc3e2e677032efdaa6ce386a044
 src/III-Drone-Contracts bd963779e25a02a63a931e0cb4deeaa50467f703
-src/III-Drone-Core f3a6e74726263cf18cfe4fd1107ecdf08bf2fa3a
+src/III-Drone-Core 0dca76e84c0be100409a9bf411af5f321964c5a7
 src/III-Drone-GC d67e016e238dfc6317e467c7f0a699145cdc0be3
 src/III-Drone-Interfaces c215835b2f7b45debe0712c806dd6d9a551d0448
-src/III-Drone-Mission b72571a4298fbc54e5ad8f01a3da2cde785eb8d2
+src/III-Drone-Mission 17f612f4dd709075690c2209b652a176a19e5241
 src/III-Drone-Runtime d26be4a8763dae1cce2d0568eac7ec3a24998e16
 src/III-Drone-Simulation 96748914d24b1e36f41e16196024a94dbfb90bad
 src/III-Drone-Simulation/Gazebo-simulation-assets 4bea5842291207ff30a5a384b817146b9930190f
