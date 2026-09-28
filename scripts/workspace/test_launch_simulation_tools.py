@@ -290,3 +290,71 @@ def test_default_px4_command_disables_timestamp_synchronization() -> None:
     command = result.stdout
     assert "PX4_PARAM_UXRCE_DDS_SYNCT=0" in command
     assert command.index("PX4_PARAM_UXRCE_DDS_SYNCT=0") < command.index("/ws/b/bin/px4 -i 0")
+
+
+def _foreign_px4_env(root: Path, px4_partition: str, own_partition: str | None) -> dict[str, str]:
+    bin_dir = root / "bin"
+    bin_dir.mkdir()
+    tmux = bin_dir / "tmux"
+    tmux.write_text(FAKE_TMUX, encoding="utf-8")
+    tmux.chmod(0o755)
+    build_dir = root / "PX4-Autopilot" / "build" / "px4_sitl_default"
+    ps_listing = root / "ps.txt"
+    ps_listing.write_text(f"4321 4321 px4 {build_dir}/bin/px4 -i 97\n", encoding="utf-8")
+    proc = root / "proc" / "4321"
+    proc.mkdir(parents=True)
+    (proc / "environ").write_bytes(f"HOME=/home/iii\0GZ_PARTITION={px4_partition}\0".encode())
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "FAKE_TMUX_STATE": str(root / "tmux-state"),
+        "FAKE_TMUX_LOG": str(root / "tmux.log"),
+        "III_SIM_TOOLS_SESSION": "sim-under-test",
+        "III_SIM_TOOLS_WORKSPACE_ROOT": str(ROOT),
+        "III_SIM_TOOLS_PX4_ROOT": str(root / "PX4-Autopilot"),
+        "III_SIM_TOOLS_PX4_BUILD_DIR": str(build_dir),
+        "III_SIM_TOOLS_PX4_INSTANCE": "97",
+        "III_SIM_TOOLS_PX4_COMMAND": "true",
+        "III_SIM_TOOLS_PS_COMMAND": f"cat {ps_listing}",
+        "III_SIM_TOOLS_PROC_ROOT": str(root / "proc"),
+    }
+    env.pop("GZ_PARTITION", None)
+    if own_partition is not None:
+        env["GZ_PARTITION"] = own_partition
+    return env
+
+
+def test_sim_start_refuses_while_a_hil_partition_owns_the_px4_instance() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        env = _foreign_px4_env(root, "iii_hil_fb50fb32be99_0", None)
+        result = run_launcher(env, "--no-attach", "--headless")
+        assert result.returncode == 2, result.stderr
+        assert "Refusing to start: PX4 instance 97 is owned by another simulation" in result.stderr
+        log = root / "tmux.log"
+        assert "new-session" not in (log.read_text(encoding="utf-8") if log.exists() else "")
+
+
+def test_sim_stop_leaves_a_hil_owned_px4_and_its_lock_alone() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        env = _foreign_px4_env(root, "iii_hil_fb50fb32be99_0", None)
+        lock = Path("/tmp/px4_lock-97")
+        lock.write_text("held by hil", encoding="utf-8")
+        try:
+            result = run_launcher(env, "--stop")
+            assert result.returncode == 0, result.stderr
+            assert "leaving it and its instance lock untouched" in result.stderr
+            assert "Cleaning stale PX4" not in result.stderr
+            assert lock.exists()
+        finally:
+            lock.unlink(missing_ok=True)
+
+
+def test_same_partition_orphan_px4_is_still_cleaned_as_stale() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        env = _foreign_px4_env(root, "iii_hil_fb50fb32be99_0", "iii_hil_fb50fb32be99_0")
+        result = run_launcher(env, "--stop")
+        assert result.returncode == 0, result.stderr
+        assert "Cleaning stale PX4 SITL state for instance 97" in result.stderr

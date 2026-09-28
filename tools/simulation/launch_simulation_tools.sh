@@ -23,6 +23,8 @@ GZ_GUI_COMMAND="${III_SIM_TOOLS_GZ_GUI_COMMAND:-${DEFAULT_GZ_GUI_COMMAND}}"
 GZ_GUI_READY_TIMEOUT_SECONDS="${III_SIM_TOOLS_GZ_GUI_READY_TIMEOUT_SECONDS:-75}"
 GZ_GUI_READY_POLL_INTERVAL_SECONDS="${III_SIM_TOOLS_GZ_GUI_READY_POLL_INTERVAL_SECONDS:-0.25}"
 GZ_GUI_PROC_ROOT="${III_SIM_TOOLS_GZ_GUI_PROC_ROOT:-/proc}"
+PX4_PROC_ROOT="${III_SIM_TOOLS_PROC_ROOT:-/proc}"
+PS_LIST_COMMAND="${III_SIM_TOOLS_PS_COMMAND:-ps -eo pid=,pgid=,comm=,args=}"
 HOST_QGC_UDP_PORT="${III_SIM_TOOLS_HOST_QGC_UDP_PORT:-14550}"
 ATTACH=1
 ATTACH_ONLY=0
@@ -314,11 +316,11 @@ px4_simulation_process_groups() {
 
     # If tmux disappeared unexpectedly, only recover the explicitly selected
     # PX4 instance. Never sweep unrelated PX4, Gazebo, GUI, or build processes.
-    ps -eo pid=,pgid=,comm=,args= | while read -r pid pgid comm args; do
+    ${PS_LIST_COMMAND} | while read -r pid pgid comm args; do
         [[ "${comm}" == "px4" ]] || continue
         case "${args}" in
             *"${PX4_BUILD_DIR}/bin/px4"*" -i ${PX4_INSTANCE}"*)
-                if [[ "${pid}" != "$$" ]]; then
+                if [[ "${pid}" != "$$" ]] && ! px4_owned_by_other_partition "${pid}"; then
                     printf '%s\n' "${pgid}"
                 fi
                 ;;
@@ -326,11 +328,49 @@ px4_simulation_process_groups() {
     done | sort -u
 }
 
+# SIM and the HIL workstation launcher share this PX4 build tree and instance
+# number but run in different Gazebo partitions. A PX4 of this instance whose
+# partition differs from this invocation's belongs to that other owner and must
+# never be swept as "stale" (doing so silently killed a live HIL simulation).
+px4_owned_by_other_partition() {
+    local pid="$1" partition
+    [[ -r "${PX4_PROC_ROOT}/${pid}/environ" ]] || return 1
+    partition="$(tr '\0' '\n' <"${PX4_PROC_ROOT}/${pid}/environ" | sed -n 's/^GZ_PARTITION=//p' | head -n1)"
+    [[ "${partition}" != "${GZ_PARTITION:-}" ]]
+}
+
+px4_foreign_instance_pids() {
+    ${PS_LIST_COMMAND} | while read -r pid pgid comm args; do
+        [[ "${comm}" == "px4" ]] || continue
+        case "${args}" in
+            *"${PX4_BUILD_DIR}/bin/px4"*" -i ${PX4_INSTANCE}"*)
+                if px4_owned_by_other_partition "${pid}"; then
+                    printf '%s\n' "${pid}"
+                fi
+                ;;
+        esac
+    done
+}
+
 cleanup_stale_px4_simulation() {
-    local process_groups
+    local intent="${1:-start}" process_groups foreign
+    foreign="$(px4_foreign_instance_pids | tr '\n' ' ')"
+    if [[ -n "${foreign// /}" ]]; then
+        if [[ "${intent}" == "stop" ]]; then
+            echo "PX4 instance ${PX4_INSTANCE} belongs to another simulation owner (pid ${foreign% }); leaving it and its instance lock untouched." >&2
+        else
+            cat >&2 <<EOF
+Refusing to start: PX4 instance ${PX4_INSTANCE} is owned by another simulation
+(pid ${foreign% }, different Gazebo partition, e.g. the HIL workstation launcher).
+Stop that owner first (./iii-dev hil stop), then retry.
+EOF
+            exit 2
+        fi
+    fi
     process_groups="$(px4_simulation_process_groups)"
 
-    if [[ -z "${process_groups}" && ! -e "/tmp/px4_lock-${PX4_INSTANCE}" && ! -e "/tmp/px4-sock-${PX4_INSTANCE}" ]]; then
+    if [[ -z "${process_groups}" && ( -n "${foreign// /}" ||
+          ( ! -e "/tmp/px4_lock-${PX4_INSTANCE}" && ! -e "/tmp/px4-sock-${PX4_INSTANCE}" ) ) ]]; then
         return
     fi
 
@@ -350,7 +390,11 @@ EOF
         done <<< "${process_groups}"
     fi
 
-    rm -f "/tmp/px4_lock-${PX4_INSTANCE}" "/tmp/px4-sock-${PX4_INSTANCE}"
+    # The instance lock/socket belong to whichever PX4 holds them; never remove
+    # them from under another live owner.
+    if [[ -z "${foreign// /}" ]]; then
+        rm -f "/tmp/px4_lock-${PX4_INSTANCE}" "/tmp/px4-sock-${PX4_INSTANCE}"
+    fi
 }
 
 reset_px4_persistent_sim_params() {
@@ -501,7 +545,7 @@ print_simulation_status() {
 }
 
 stop_simulation_tools() {
-    cleanup_stale_px4_simulation
+    cleanup_stale_px4_simulation stop
 
     if session_exists; then
         tmux_command kill-session -t "${SESSION_NAME}"
