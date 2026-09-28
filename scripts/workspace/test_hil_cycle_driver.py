@@ -19,7 +19,7 @@ def test_failed_reach_cable_ends_charging_wait_for_cleanup(monkeypatch):
         _mode_status_floor={},
     )
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     with pytest.raises(RuntimeError, match="reach_cable failed before cable_charging"):
         module.Driver.wait_mode(driver, "cable_charging", lambda value: value.get("active"), failed_predecessor="reach_cable")
 
@@ -33,7 +33,7 @@ def test_successful_reach_cable_allows_charging_activation(monkeypatch):
         _mode_status_floor={},
     )
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     result = module.Driver.wait_mode(driver, "cable_charging", lambda value: value.get("active"), failed_predecessor="reach_cable")
     assert result["active"] is True
 
@@ -59,7 +59,7 @@ def test_charging_requires_fresh_positive_power_and_latch(monkeypatch, fresh, po
             "sim_state": (stamp, "latched=1;conductor=cable" if latched else "latched=0"),
         }
 
-    monkeypatch.setattr(module.rclpy, "spin_once", spin)
+    monkeypatch.setattr(module, "spin_ready", spin)
     if expected:
         assert module.Driver.wait_charging_evidence(driver, timeout_sec=1.0)["charging_power_w"] == power
     else:
@@ -95,7 +95,7 @@ def test_runtime_api_wait_services_ros_callbacks_and_propagates_result(monkeypat
         time.sleep(0.01)
 
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", spin_once)
+    monkeypatch.setattr(module, "spin_ready", spin_once)
     driver = SimpleNamespace()
     result = module.Driver._runtime_api_call(driver, delayed_request, timeout_sec=3.0)
     assert result == {"accepted": True, "request_id": "receipt-1"}
@@ -106,7 +106,7 @@ def test_runtime_api_wait_services_ros_callbacks_and_propagates_result(monkeypat
 
 def test_runtime_api_wait_propagates_worker_exception(monkeypatch):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: time.sleep(0.01))
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: time.sleep(0.01))
     driver = SimpleNamespace()
 
     def fail_request():
@@ -130,7 +130,7 @@ def test_ingress_disarm_fails_without_rearming():
 ])
 def test_native_prelude_uses_arm_then_takeoff_with_ros_postconditions(monkeypatch, profile, system_id, endpoint):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     status = SimpleNamespace(system_id=system_id, failsafe=False,
         arming_state=module.VehicleStatus.ARMING_STATE_DISARMED,
         nav_state=module.VehicleStatus.NAVIGATION_STATE_AUTO_LOITER)
@@ -208,7 +208,7 @@ def test_dwell_spins_until_minimum_duration_while_mode_stays_running(monkeypatch
     spins = []
     monkeypatch.setattr(module.time, "monotonic", lambda: next(ticks))
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: spins.append(kwargs["timeout_sec"]))
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: spins.append(kwargs["timeout_sec"]))
     driver = SimpleNamespace(mode_status={"inspection_demo": {
         "active": True, "tree_running": True,
     }})
@@ -260,7 +260,7 @@ def test_inspection_auto_recharge_during_dwell_requires_success_then_reach(monke
             _append_inspection_auto_receipts(driver)
 
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", spin)
+    monkeypatch.setattr(module, "spin_ready", spin)
     driver.read_fresh_native_mission_phase = lambda: (
         "reach_cable", {"freshness": "fresh", "modes": [{"mode_key": "reach_cable", "active": True}]}
     )
@@ -273,7 +273,7 @@ def test_inspection_auto_recharge_during_dwell_requires_success_then_reach(monke
 def test_inspection_auto_recharge_race_after_recharge_rejection_is_verified(monkeypatch):
     driver, running = _inspection_transition_driver()
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     phases = iter(("inspection_demo", "reach_cable"))
     driver.read_fresh_native_mission_phase = lambda: (
         (phase := next(phases)),
@@ -307,7 +307,7 @@ def test_inspection_success_waits_for_later_reach_and_runtime_api_convergence(mo
         {"freshness": "fresh", "modes": [{"mode_key": phase, "active": True}]},
     )
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", spin)
+    monkeypatch.setattr(module, "spin_ready", spin)
     decision = driver.advance_inspection_to_reach(running, 1.0)
     assert decision.transition == "automatic"
     assert decision.mission_state["modes"][0]["mode_key"] == "reach_cable"
@@ -332,7 +332,7 @@ def test_inspection_transition_retries_stale_runtime_api_before_reach(monkeypatc
 
     driver.read_fresh_native_mission_phase = read_phase
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     decision = driver.wait_for_inspection_auto_transition(
         running, receipt_index=0, timeout_sec=0.5
     )
@@ -347,7 +347,7 @@ def test_inspection_transition_reports_persistent_runtime_api_nonconvergence(mon
     ticks = iter(index * 0.1 for index in range(100))
     monkeypatch.setattr(module.time, "monotonic", lambda: next(ticks))
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     driver.read_fresh_native_mission_phase = lambda: (_ for _ in ()).throw(RuntimeError(
         "Cannot verify active mission phase from fresh Runtime API state: "
         "{'freshness': 'stale', 'modes': []}"
@@ -362,7 +362,7 @@ def test_inspection_transition_rejects_prior_generation_success_and_reach(monkey
     driver, running = _inspection_transition_driver()
     _append_inspection_auto_receipts(driver, success=(15, 0), reach=(16, 0))
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     assert driver.wait_for_inspection_auto_transition(
         running, receipt_index=0, timeout_sec=0.0
     ) is None
@@ -390,7 +390,7 @@ def test_inspection_manual_recharge_remains_available_when_no_auto_transition(mo
     )
     driver.native_flight_command = lambda command: commands.append(command)
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     driver.wait_native_mission_phase = lambda mode, timeout_sec=15.0: {
         "freshness": "fresh", "modes": [{"mode_key": mode, "active": True}]
     }
@@ -412,7 +412,7 @@ def test_duration_guard_finishes_fresh_automatic_inspection_transition(monkeypat
             _append_inspection_auto_receipts(driver)
 
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", spin)
+    monkeypatch.setattr(module, "spin_ready", spin)
     driver.read_fresh_native_mission_phase = lambda: (
         "reach_cable", {"freshness": "fresh", "modes": [{"mode_key": "reach_cable", "active": True}]}
     )
@@ -430,7 +430,7 @@ def test_duration_guard_ends_without_command_when_inspection_remains_healthy(mon
         "healthy Inspection should not request or verify a recharge command"
     )
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     driver.monitor_inspection_until = module.Driver.monitor_inspection_until.__get__(driver)
     assert driver.monitor_inspection_until(running, time.monotonic() + 0.02) is None
 
@@ -443,7 +443,7 @@ def test_charging_dwell_requires_healthy_phase_and_positive_evidence(
     monkeypatch, status, power, sim_state, expected
 ):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     now = module.time.monotonic()
     driver = SimpleNamespace(
         mode_status={"cable_charging": {"active": True, "tree_running": True}},
@@ -498,7 +498,7 @@ def test_brief_fresh_charging_predicate_failure_is_reported_and_recovered(
         driver.battery_status_sample = (
             stamp, SimpleNamespace(remaining=0.73, voltage_v=15.8)
         )
-    monkeypatch.setattr(module.rclpy, "spin_once", spin)
+    monkeypatch.setattr(module, "spin_ready", spin)
     spans = module.Driver.dwell_mode(
         driver, "cable_charging", 0.3, require_charging_evidence=True
     )
@@ -533,7 +533,7 @@ def test_sustained_fresh_charging_predicate_failure_raises_diagnostics(monkeypat
         driver.battery_status_sample = (
             stamp, SimpleNamespace(remaining=0.7, voltage_v=15.5)
         )
-    monkeypatch.setattr(module.rclpy, "spin_once", spin)
+    monkeypatch.setattr(module, "spin_ready", spin)
     with pytest.raises(RuntimeError, match="invalid beyond grace.*invalid_reasons.*source_ages_sec"):
         module.Driver.dwell_mode(
             driver, "cable_charging", 5.0, require_charging_evidence=True
@@ -549,7 +549,7 @@ def test_charging_dwell_does_not_grace_mode_loss(monkeypatch):
     )
     def spin(*args, **kwargs):
         driver.mode_status["cable_charging"] = {"active": False, "tree_running": False}
-    monkeypatch.setattr(module.rclpy, "spin_once", spin)
+    monkeypatch.setattr(module, "spin_ready", spin)
     with pytest.raises(RuntimeError, match="left its running phase"):
         module.Driver.dwell_mode(
             driver, "cable_charging", 1.0, require_charging_evidence=True
@@ -558,7 +558,7 @@ def test_charging_dwell_does_not_grace_mode_loss(monkeypatch):
 
 def test_charging_dwell_rejects_stale_latched_full_evidence(monkeypatch):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     now = module.time.monotonic()
     driver = SimpleNamespace(
         mode_status={"cable_charging": {"active": True, "tree_running": True}},
@@ -602,7 +602,7 @@ def test_full_charge_wait_allows_bounded_charging_entry_handoff(monkeypatch, ini
         return value, {}
 
     driver.read_fresh_native_mission_phase = phase
-    monkeypatch.setattr(module.rclpy, "spin_once", spin)
+    monkeypatch.setattr(module, "spin_ready", spin)
     evidence = module.Driver.wait_until_fully_charged(driver, 20.0)
     assert clock[0] >= (0.6 if initial_phase == "reach_cable" else 0.4)
     assert evidence["mission_phase"] == "cable_charging"
@@ -645,7 +645,7 @@ def test_full_charge_wait_tolerates_prior_success_flags_until_entry_is_running(m
         return value, {}
 
     driver.read_fresh_native_mission_phase = phase
-    monkeypatch.setattr(module.rclpy, "spin_once", spin)
+    monkeypatch.setattr(module, "spin_ready", spin)
     evidence = module.Driver.wait_until_fully_charged(driver, 90.0)
     assert clock[0] >= 0.8
     assert evidence["mission_phase"] == "cable_charging"
@@ -677,7 +677,7 @@ def test_prior_success_flags_never_bypass_bounded_entry_or_prove_full_charge(mon
             clock[0], SimpleNamespace(remaining=1.0, voltage_v=16.8)
         )
 
-    monkeypatch.setattr(module.rclpy, "spin_once", spin)
+    monkeypatch.setattr(module, "spin_ready", spin)
     with pytest.raises(TimeoutError, match="Cable Charging entry did not converge within 10 seconds"):
         module.Driver.wait_until_fully_charged(driver, 90.0)
     assert 10.0 <= clock[0] <= 10.2
@@ -696,7 +696,7 @@ def test_failed_charging_tree_is_not_tolerated_by_entry_grace(monkeypatch):
         battery_status_sample=None,
         read_fresh_native_mission_phase=lambda: ("reach_cable", {}),
     )
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     with pytest.raises(RuntimeError, match="Cable Charging failed"):
         module.Driver.wait_until_fully_charged(driver, 90.0)
     assert clock[0] == 0.0
@@ -725,7 +725,7 @@ def test_full_charge_entry_wait_is_bounded_and_rejects_unrelated_phase(monkeypat
         }
         driver.battery_status_sample = (clock[0], SimpleNamespace(remaining=0.9, voltage_v=16.5))
 
-    monkeypatch.setattr(module.rclpy, "spin_once", spin)
+    monkeypatch.setattr(module, "spin_ready", spin)
     with pytest.raises(expected):
         module.Driver.wait_until_fully_charged(driver, 90.0)
     assert clock[0] <= 10.2
@@ -758,7 +758,7 @@ def test_full_charge_entry_grace_does_not_reopen_after_convergence(monkeypatch):
         }
         driver.battery_status_sample = (clock[0], SimpleNamespace(remaining=1.0, voltage_v=16.8))
 
-    monkeypatch.setattr(module.rclpy, "spin_once", spin)
+    monkeypatch.setattr(module, "spin_ready", spin)
     with pytest.raises(RuntimeError, match="Unexpected mission phase"):
         module.Driver.wait_until_fully_charged(driver, 90.0)
     assert clock[0] == 0.4
@@ -766,7 +766,7 @@ def test_full_charge_entry_grace_does_not_reopen_after_convergence(monkeypatch):
 
 def test_wait_until_fully_charged_accepts_fresh_latched_status_and_px4_battery(monkeypatch):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     now = module.time.monotonic()
     driver = SimpleNamespace(
         mode_status={"cable_charging": {"active": True, "tree_running": True}},
@@ -797,7 +797,7 @@ def test_wait_until_fully_charged_accepts_fresh_latched_status_and_px4_battery(m
 
 def test_wait_until_fully_charged_still_fails_on_publisher_silence(monkeypatch):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     stale = module.time.monotonic() - 2.5
     driver = SimpleNamespace(
         mode_status={"cable_charging": {"active": True, "tree_running": True}},
@@ -818,7 +818,7 @@ def test_wait_until_fully_charged_still_fails_on_publisher_silence(monkeypatch):
 ])
 def test_wait_until_fully_charged_rejects_disabled_or_unlatched(status, power, sim_state, monkeypatch):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     now = module.time.monotonic()
     driver = SimpleNamespace(
         mode_status={"cable_charging": {"active": True, "tree_running": True}},
@@ -844,7 +844,7 @@ def test_wait_until_fully_charged_times_out_below_battery_threshold(monkeypatch)
     ticks = itertools.count(0.0, 0.1)
     monkeypatch.setattr(module.time, "monotonic", lambda: next(ticks))
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     driver = SimpleNamespace(
         mode_status={"cable_charging": {"active": True, "tree_running": True}},
         runtime_client=SimpleNamespace(_request=lambda *args: {
@@ -866,7 +866,7 @@ def test_wait_until_fully_charged_times_out_below_battery_threshold(monkeypatch)
 
 def test_wait_until_fully_charged_accepts_automatic_leave_only_with_full_evidence(monkeypatch):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     now = module.time.monotonic()
     driver = SimpleNamespace(
         mode_status={"cable_charging": {
@@ -894,7 +894,7 @@ def test_wait_until_fully_charged_accepts_automatic_leave_only_with_full_evidenc
 
 def test_wait_until_fully_charged_does_not_infer_full_from_automatic_leave(monkeypatch):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     now = module.time.monotonic()
     driver = SimpleNamespace(
         mode_status={"cable_charging": {
@@ -951,7 +951,7 @@ def _fresh_leave_driver(initial_modes, command_response=None):
 
 def test_advance_after_charging_accepts_already_active_leave_without_command(monkeypatch):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     driver = _fresh_leave_driver([_fresh_phase("leave_cable")])
     driver.native_flight_command = lambda *args, **kwargs: pytest.fail("leave was already active")
     result = module.Driver.advance_after_charging(
@@ -975,7 +975,7 @@ def test_advance_after_charging_commands_leave_while_still_charging():
 
 def test_automatic_charging_waits_for_leave_without_command(monkeypatch):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     driver = _fresh_leave_driver([
         _fresh_phase("cable_charging"), _fresh_phase("leave_cable"),
     ])
@@ -993,7 +993,7 @@ def test_automatic_charging_timeout_never_falls_back_to_manual(monkeypatch):
     ticks = itertools.count(0.0, 0.1)
     monkeypatch.setattr(module.time, "monotonic", lambda: next(ticks))
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     driver = _fresh_leave_driver(itertools.repeat(_fresh_phase("cable_charging")))
     driver.native_flight_command = lambda *args, **kwargs: pytest.fail("manual Leave forbidden")
     with pytest.raises(TimeoutError, match="automatic Leave"):
@@ -1014,7 +1014,7 @@ def test_automatic_inspection_timeout_never_commands_recharge(monkeypatch):
 
 def test_advance_after_charging_accepts_exact_forbidden_leave_race(monkeypatch):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     response = {
         "accepted": False,
         "rejection": {
@@ -1092,7 +1092,7 @@ def test_wait_leave_success_accepts_fresh_completed_status_after_auto_leave(monk
 ])
 def test_dwell_fails_if_phase_exits_or_fails(monkeypatch, mode):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     driver = SimpleNamespace(mode_status={"inspection_demo": mode})
     with pytest.raises(RuntimeError, match="inspection_demo"):
         module.Driver.dwell_mode(driver, "inspection_demo", 0.01)
@@ -1104,7 +1104,7 @@ def test_native_state_wait_rejects_stale_or_conflicting_arm_evidence(monkeypatch
     ticks = itertools.count(0.0, 0.1)
     monkeypatch.setattr(module.time, "monotonic", lambda: next(ticks))
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     driver = SimpleNamespace(
         native_state_receipts=[],
         runtime_client=SimpleNamespace(vehicle_status=lambda: {
@@ -1136,7 +1136,7 @@ def test_native_cleanup_land_rejection_propagates_after_hold(monkeypatch):
 
 def test_native_cleanup_waits_out_transient_navigation_disagreement(monkeypatch):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     driver, commands = _cleanup_driver(armed=True)
     verified = []
     driver.wait_native_vehicle_state = lambda expected, **kwargs: verified.append(expected)
@@ -1280,7 +1280,7 @@ def test_cleanup_hold_rejection_prevents_claiming_safe_state():
 
 def test_cleanup_owner_timeout_prevents_land_and_safe_return(monkeypatch):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     driver, commands = _cleanup_driver(armed=True, owner_clears=False)
     with pytest.raises(TimeoutError, match="cleared mission modes"):
         module.Driver.land_and_wait(driver, None, timeout_sec=0.1)
@@ -1317,7 +1317,7 @@ def test_native_inspection_activation_requires_confirmed_hold_handoff(hold_ready
 @pytest.mark.parametrize("invalid", ["predecessor", "stale", "ambiguous"])
 def test_native_mission_phase_waits_for_gate_consumer(monkeypatch, invalid):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     matching = {"mode_key": "cable_charging", "active": True, "freshness": "fresh"}
     previous = {"mode_key": "reach_cable", "active": True, "freshness": "fresh"}
     bad = {"freshness": "fresh", "source_availability": "available", "modes": [matching]}
@@ -1342,7 +1342,7 @@ def test_native_mission_phase_waits_for_gate_consumer(monkeypatch, invalid):
 @pytest.mark.parametrize("terminal", ["succeeded", "failed", "rejected", "cancelled"])
 def test_native_terminal_wait_matches_request_and_rejects_failures(monkeypatch, terminal):
     monkeypatch.setattr(module.rclpy, "ok", lambda: True)
-    monkeypatch.setattr(module.rclpy, "spin_once", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     def event(request, status):
         return {"category": "command_result", "request_id": request, "details": {"status": status}}
     samples = iter([[event("old", "succeeded")], [event("current", terminal)]])
@@ -1380,3 +1380,41 @@ rclpy.shutdown()
         cwd=Path(__file__).parent, capture_output=True, text=True, timeout=15,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_spin_ready_services_later_subscriptions_under_backlog():
+    """A busy early subscription must not starve a later one (charger topics)."""
+    import os
+    from rclpy.executors import SingleThreadedExecutor
+    from rclpy.qos import QoSProfile
+    from std_msgs.msg import Int32
+
+    os.environ.setdefault("ROS_AUTOMATIC_DISCOVERY_RANGE", "LOCALHOST")
+    context = module.rclpy.context.Context()
+    module.rclpy.init(context=context, domain_id=91)
+    node = module.rclpy.create_node("spin_ready_fairness", context=context)
+    try:
+        received = {"busy": 0, "late": 0}
+        qos = QoSProfile(depth=100)
+        node.create_subscription(Int32, "busy", lambda _: received.__setitem__("busy", received["busy"] + 1), qos)
+        node.create_subscription(Int32, "late", lambda _: received.__setitem__("late", received["late"] + 1), qos)
+        busy_pub = node.create_publisher(Int32, "busy", qos)
+        late_pub = node.create_publisher(Int32, "late", qos)
+        fake = SimpleNamespace(_executor=SingleThreadedExecutor(context=context), _SPIN_DRAIN_LIMIT=256)
+        fake._executor.add_node(node)
+        deadline = time.monotonic() + 5.0
+        while (busy_pub.get_subscription_count() == 0 or late_pub.get_subscription_count() == 0) \
+                and time.monotonic() < deadline:
+            time.sleep(0.05)
+        for value in range(50):
+            busy_pub.publish(Int32(data=value))
+        late_pub.publish(Int32(data=1))
+        time.sleep(0.3)
+        # One pump must reach the later subscription despite the busy backlog.
+        module.spin_ready(fake, timeout_sec=0.2)
+        assert received["late"] == 1
+        assert received["busy"] >= 1
+        fake._executor.shutdown(timeout_sec=0.0)
+    finally:
+        node.destroy_node()
+        module.rclpy.shutdown(context=context)

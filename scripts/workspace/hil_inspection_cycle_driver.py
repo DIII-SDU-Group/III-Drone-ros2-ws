@@ -24,6 +24,12 @@ import time
 from typing import NamedTuple
 
 import rclpy
+from rclpy.executors import (
+    ConditionReachedException,
+    ShutdownException,
+    SingleThreadedExecutor,
+    TimeoutException,
+)
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
@@ -112,7 +118,31 @@ def select_px4_target(
     return expected_endpoint, expected_system_id
 
 
+
+def spin_ready(node: "Driver", timeout_sec: float) -> None:
+    """Wait up to timeout_sec for work, then service every ready callback.
+
+    rclpy.spin_once() runs a single callback and rebuilds its ready set when
+    its arguments change, so with varying timeouts the earliest-created
+    high-rate PX4 subscriptions were always served first; under load the
+    charger subscriptions starved together. Draining the ready set is fair.
+    """
+    executor = node._executor
+    wait_sec = max(0.0, timeout_sec)
+    for _ in range(node._SPIN_DRAIN_LIMIT):
+        try:
+            handler, _, _ = executor.wait_for_ready_callbacks(timeout_sec=wait_sec)
+        except (TimeoutException, ShutdownException, ConditionReachedException):
+            return
+        handler()
+        if handler.exception() is not None:
+            raise handler.exception()
+        wait_sec = 0.0
+
 class Driver(Node):
+    # Upper bound on callbacks serviced per spin_ready() call.
+    _SPIN_DRAIN_LIMIT = 256
+
     def __init__(self) -> None:
         # PX4 SITL and Gazebo publish a simulation clock across the HIL link.
         # Setpoint timestamps must use that same clock; a default rclpy node
@@ -121,6 +151,9 @@ class Driver(Node):
             "hil_inspection_cycle_driver",
             parameter_overrides=[Parameter("use_sim_time", value=True)],
         )
+        # One executor for the node's lifetime; see spin_ready().
+        self._executor = SingleThreadedExecutor()
+        self._executor.add_node(self)
         self.vehicle: VehicleStatus | None = None
         self.land_detected: VehicleLandDetected | None = None
         self._vehicle_receipt_at: str | None = None
@@ -238,6 +271,11 @@ class Driver(Node):
             custom_mode_qos,
         )
 
+    def destroy_node(self) -> None:
+        self._executor.remove_node(self)
+        self._executor.shutdown(timeout_sec=0.0)
+        super().destroy_node()
+
     def _on_vehicle(self, message: VehicleStatus) -> None:
         self.vehicle = message
         self._vehicle_receipt_at = datetime.now(timezone.utc).isoformat()
@@ -328,7 +366,7 @@ class Driver(Node):
     def wait_vehicle(self, timeout_sec: float = 10.0) -> VehicleStatus:
         deadline = time.monotonic() + timeout_sec
         while rclpy.ok() and time.monotonic() < deadline:
-            rclpy.spin_once(self, timeout_sec=0.2)
+            spin_ready(self, timeout_sec=0.2)
             if self.vehicle is not None:
                 return self.vehicle
         self.get_logger().error(
@@ -364,10 +402,10 @@ class Driver(Node):
             command.source_component = 1
             command.from_external = True
             self.publisher.publish(command)
-            rclpy.spin_once(self, timeout_sec=0.05)
+            spin_ready(self, timeout_sec=0.05)
         deadline = time.monotonic() + 1.0
         while time.monotonic() < deadline:
-            rclpy.spin_once(self, timeout_sec=0.1)
+            spin_ready(self, timeout_sec=0.1)
         matching_acks = [
             ack for ack in self.command_acks
             if ack.command == VehicleCommand.VEHICLE_CMD_DO_SET_MODE
@@ -412,7 +450,7 @@ class Driver(Node):
         for _ in range(repeat_count):
             command.timestamp = self.vehicle.timestamp if self.vehicle is not None else vehicle.timestamp
             self.publisher.publish(command)
-            rclpy.spin_once(self, timeout_sec=0.1)
+            spin_ready(self, timeout_sec=0.1)
 
     def _runtime_api_call(self, operation, *, timeout_sec: float = _RUNTIME_API_REQUEST_TIMEOUT_SEC):
         """Run one bounded Runtime API request while keeping ROS callbacks moving."""
@@ -437,7 +475,7 @@ class Driver(Node):
         try:
             while not done.is_set():
                 if rclpy.ok():
-                    rclpy.spin_once(self, timeout_sec=0.05)
+                    spin_ready(self, timeout_sec=0.05)
                 else:
                     done.wait(0.05)
         finally:
@@ -478,7 +516,7 @@ class Driver(Node):
                     return result
                 if status in {"failed", "rejected", "cancelled"}:
                     raise RuntimeError(f"Native request {request_id} ended {status}: {result}")
-            rclpy.spin_once(self, timeout_sec=0.2)
+            spin_ready(self, timeout_sec=0.2)
         raise TimeoutError(f"Native request {request_id} has no successful terminal result")
 
     def wait_native_mission_phase(self, mode_key: str, timeout_sec: float = 15.0) -> dict:
@@ -500,7 +538,7 @@ class Driver(Node):
             ):
                 self.native_state_receipts.append({"expected_mission_phase": mode_key, "state": state})
                 return state
-            rclpy.spin_once(self, timeout_sec=0.2)
+            spin_ready(self, timeout_sec=0.2)
         raise TimeoutError(f"Native mission phase did not converge to {mode_key}: {state}")
 
     def read_fresh_native_mission_phase(self) -> tuple[str, dict]:
@@ -564,7 +602,7 @@ class Driver(Node):
                         return value
                     if value.get("tree_finished") and value.get("tree_success") and fresh_active_receipt:
                         return value
-            rclpy.spin_once(self, timeout_sec=0.2)
+            spin_ready(self, timeout_sec=0.2)
         raise TimeoutError(
             "no fresh Leave Cable activation or successful terminal status was observed: "
             f"{self.mode_status.get('leave_cable')}"
@@ -621,7 +659,7 @@ class Driver(Node):
                             raise RuntimeError(f"leave_cable failed: {value}")
                         if stamp > running_stamp:
                             return value
-            rclpy.spin_once(self, timeout_sec=0.2)
+            spin_ready(self, timeout_sec=0.2)
         raise TimeoutError(
             "Leave Cable did not publish a fresh successful terminal status: "
             f"{self.mode_status.get('leave_cable')}"
@@ -657,7 +695,7 @@ class Driver(Node):
                 status = self.mode_status.get("cable_charging", {})
                 if status.get("tree_finished") and not status.get("tree_success"):
                     raise RuntimeError(f"Cable Charging failed before automatic Leave: {status}")
-                rclpy.spin_once(self, timeout_sec=0.2)
+                spin_ready(self, timeout_sec=0.2)
                 phase, state = self.read_fresh_native_mission_phase()
             if phase == "cable_charging":
                 raise RuntimeError("ROS stopped before automatic Leave")
@@ -737,7 +775,7 @@ class Driver(Node):
             ):
                 self.native_state_receipts.append({"expected": expected, "state": state})
                 return state
-            rclpy.spin_once(self, timeout_sec=0.2)
+            spin_ready(self, timeout_sec=0.2)
         raise TimeoutError(f"Native vehicle state did not converge to {expected}: {state}")
 
     def wait_native_mission_owner_cleared(self, timeout_sec: float = 15.0) -> dict[str, object]:
@@ -909,7 +947,7 @@ class Driver(Node):
     def wait_local_position(self, timeout_sec: float = 10.0) -> VehicleLocalPosition:
         deadline = time.monotonic() + timeout_sec
         while rclpy.ok() and time.monotonic() < deadline:
-            rclpy.spin_once(self, timeout_sec=0.2)
+            spin_ready(self, timeout_sec=0.2)
             if self.local_position is not None and self.local_position.xy_valid and self.local_position.z_valid:
                 return self.local_position
         raise TimeoutError("no valid PX4 local position received")
@@ -987,7 +1025,7 @@ class Driver(Node):
         for refresh_attempt in range(2):
             deadline = time.monotonic() + timeout_sec
             while rclpy.ok() and time.monotonic() < deadline:
-                rclpy.spin_once(self, timeout_sec=0.2)
+                spin_ready(self, timeout_sec=0.2)
                 vehicle = self.vehicle
                 if vehicle is None:
                     continue
@@ -1080,7 +1118,7 @@ class Driver(Node):
         future = client.call_async(SetBool.Request(data=True))
         deadline = time.monotonic() + 10.0
         while rclpy.ok() and time.monotonic() < deadline:
-            rclpy.spin_once(self, timeout_sec=0.2)
+            spin_ready(self, timeout_sec=0.2)
             if future.done():
                 response = future.result()
                 if not response.success:
@@ -1192,7 +1230,7 @@ class Driver(Node):
         """Wait for fresh landed and disarmed samples from the cleanup phase."""
         deadline = time.monotonic() + timeout_sec
         while rclpy.ok() and time.monotonic() < deadline:
-            rclpy.spin_once(self, timeout_sec=0.2)
+            spin_ready(self, timeout_sec=0.2)
             evidence = self.cleanup_safety_evidence(
                 cleanup_started_monotonic,
                 freshness_sec=freshness_sec,
@@ -1227,7 +1265,7 @@ class Driver(Node):
         )
         deadline = time.monotonic() + timeout_sec
         while rclpy.ok() and time.monotonic() < deadline:
-            rclpy.spin_once(self, timeout_sec=0.2)
+            spin_ready(self, timeout_sec=0.2)
             if future.done():
                 response = future.result()
                 if response.gripper_command_response != GripperCommand.Response.GRIPPER_COMMAND_RESPONSE_SUCCESS:
@@ -1239,7 +1277,7 @@ class Driver(Node):
         else:
             raise TimeoutError("gripper open command timed out")
         while rclpy.ok() and time.monotonic() < deadline:
-            rclpy.spin_once(self, timeout_sec=0.2)
+            spin_ready(self, timeout_sec=0.2)
             if (
                 self.gripper_status is not None
                 and self.gripper_status.gripper_status
@@ -1317,7 +1355,7 @@ class Driver(Node):
         saw_active = False
         status_floor = self._mode_status_floor.get(name, (-1, -1))
         while rclpy.ok() and time.monotonic() < deadline:
-            rclpy.spin_once(self, timeout_sec=0.2)
+            spin_ready(self, timeout_sec=0.2)
             # The caller has already observed this predecessor active in the
             # current cycle. Its failure prevents the successor from ever
             # activating; land through finally instead of hovering until the
@@ -1351,7 +1389,7 @@ class Driver(Node):
         """
         deadline = time.monotonic() + timeout_sec
         while rclpy.ok() and time.monotonic() < deadline:
-            rclpy.spin_once(self, timeout_sec=0.2)
+            spin_ready(self, timeout_sec=0.2)
             if name == "custom_operation" and self.custom_operation_mode_id is not None:
                 return self.custom_operation_mode_id
             value = self.mode_status.get(name)
@@ -1365,7 +1403,7 @@ class Driver(Node):
         """Prove fresh simulated latch and charging power before requesting leave."""
         started = time.monotonic()
         while rclpy.ok() and time.monotonic() - started < timeout_sec:
-            rclpy.spin_once(self, timeout_sec=0.2)
+            spin_ready(self, timeout_sec=0.2)
             now = time.monotonic()
             if not all(
                 key in self.charging_samples
@@ -1407,7 +1445,7 @@ class Driver(Node):
             if before_spin >= deadline and invalid_since is None:
                 break
             remaining = max(0.01, deadline - before_spin)
-            rclpy.spin_once(self, timeout_sec=min(0.2, remaining))
+            spin_ready(self, timeout_sec=min(0.2, remaining))
             value = self.mode_status.get(name)
             if not isinstance(value, dict):
                 raise RuntimeError(f"{name} status disappeared during dwell")
@@ -1643,7 +1681,7 @@ class Driver(Node):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
-            rclpy.spin_once(self, timeout_sec=min(0.2, remaining))
+            spin_ready(self, timeout_sec=min(0.2, remaining))
         if timeout_sec > 0.2 and (last_api_error or last_api_phase == "inspection_demo"):
             evidence = self._inspection_auto_transition_evidence(running_stamp, receipt_index)
             if evidence is not None:
@@ -1675,7 +1713,7 @@ class Driver(Node):
         deadline = time.monotonic() + dwell_sec
         while rclpy.ok() and time.monotonic() < deadline and (stop_at is None or time.monotonic() < stop_at):
             limit = min(deadline, stop_at) if stop_at is not None else deadline
-            rclpy.spin_once(self, timeout_sec=min(0.2, max(0.01, limit - time.monotonic())))
+            spin_ready(self, timeout_sec=min(0.2, max(0.01, limit - time.monotonic())))
             automatic = self.wait_for_inspection_auto_transition(
                 running_status, receipt_index=receipt_index, timeout_sec=0.001
             )
@@ -1787,7 +1825,7 @@ class Driver(Node):
                 )
             if time.monotonic() >= deadline:
                 return None
-            rclpy.spin_once(self, timeout_sec=min(0.2, max(0.01, deadline - time.monotonic())))
+            spin_ready(self, timeout_sec=min(0.2, max(0.01, deadline - time.monotonic())))
         return None
 
     def wait_until_fully_charged(
@@ -1803,7 +1841,7 @@ class Driver(Node):
         latest: dict[str, object] = {}
         while rclpy.ok() and time.monotonic() < deadline:
             remaining = deadline - time.monotonic()
-            rclpy.spin_once(self, timeout_sec=min(0.2, max(0.01, remaining)))
+            spin_ready(self, timeout_sec=min(0.2, max(0.01, remaining)))
             mode = self.mode_status.get("cable_charging")
             if not isinstance(mode, dict):
                 raise RuntimeError("Cable Charging status disappeared while waiting for full charge")
