@@ -78,10 +78,20 @@ def test_live_checks_use_injected_status_and_fault_counts(tmp_path: Path) -> Non
     target = endurance.Target("sim", "container", None)
     unsafe = {"freshness": "fresh", "latest": {"command_transport": {"armed": True, "in_air": False},
                                                "ros_uxrce": {"armed": False, "in_air": False}}}
+    plan = json.loads((run_dir / "run_plan.json").read_text())
+    plan["started_at"] = "2026-09-28T06:00:00+00:00"
+    (run_dir / "run_plan.json").write_text(json.dumps(plan))
+    start = 1790575200  # 2026-09-28T06:00:00Z
+    lines = [f"[ERROR] [{start + 60}.1] [control.maneuver_controller]: CableAware terminal tracking failed: continuity envelope 12",
+             f"[WARN] [{start + 61}.2] [mission.executor]: slow response 3 ms",
+             f"[ERROR] [{start - 60}.0] [control.maneuver_controller]: before the run, ignored"]
     report = endurance.evaluate(run_dir, target=target, fetch_status=lambda host: unsafe,
-                                count_faults=lambda t, d: {"continuity envelope": 2, "committed rebased": 0})
+                                log_lines=lambda t, d: lines, strict_warnings=True)
     assert not report["accepted"]
+    assert report["log_counts"] == {"ERROR": 1, "WARN": 1, "FATAL": 0}
     assert any("continuity faults" in failure for failure in report["failures"])
+    assert any("1 ERROR" in failure for failure in report["failures"])
+    assert any("1 WARN" in failure for failure in report["failures"])
     assert "final Runtime API status is not fresh landed/disarmed" in report["failures"]
 
 
@@ -91,3 +101,11 @@ def test_hil_observer_commands_go_over_ssh_with_bounded_options() -> None:
     assert command[0] == "ssh" and "BatchMode=yes" in command and "ConnectTimeout=8" in command
     assert command[-2] == "iii@192.0.2.10"
     assert "setup_hil.bash" in command[-1]
+
+
+def test_log_patterns_group_repeated_diagnostics() -> None:
+    lines = [f"[ERROR] [100.0] [ctl]: Terminal hold stream fwp:{n}:1 failed (phase=2)" for n in range(5)]
+    lines.append("[INFO] [100.0] [ctl]: ignored")
+    summary = endurance.summarize_log_lines(lines, 0, 200)
+    assert summary["counts"]["ERROR"] == 5
+    assert len(summary["patterns"]) == 1 and summary["patterns"][0]["count"] == 5

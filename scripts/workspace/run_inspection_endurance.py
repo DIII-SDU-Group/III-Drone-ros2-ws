@@ -25,6 +25,7 @@ import argparse
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import sys
@@ -259,22 +260,48 @@ def execute(args: argparse.Namespace) -> Path:
 # Acceptance
 
 
-def count_continuity_faults(target: Target, run_dir: Path) -> dict[str, int]:
-    """Count Core continuity faults in controller logs written during the run."""
+LOG_LINE = re.compile(r"^\[(ERROR|WARN|FATAL)\] \[(\d+)\.\d+\] \[([^\]]+)\]: (.*)$")
+
+
+def message_pattern(message: str) -> str:
+    """Collapse run-specific numbers/ids so repeated diagnostics group together."""
+    pattern = re.sub(r"0x[0-9a-fA-F]+", "0x#", message)
+    pattern = re.sub(r"[0-9a-f]{8,}", "#", pattern)
+    return re.sub(r"-?\d+(\.\d+)?", "#", pattern)[:240]
+
+
+def summarize_log_lines(lines: list[str], since_epoch: float, until_epoch: float) -> dict[str, Any]:
+    """Group ERROR/WARN/FATAL ROS log lines emitted inside [since, until]."""
+    groups: dict[tuple[str, str, str], dict[str, Any]] = {}
+    counts = {"ERROR": 0, "WARN": 0, "FATAL": 0}
+    markers = {marker: 0 for marker in CONTINUITY_FAULT_MARKERS}
+    for line in lines:
+        match = LOG_LINE.match(line.strip())
+        if not match:
+            continue
+        level, stamp, node, message = match.groups()
+        if not since_epoch <= int(stamp) <= until_epoch:
+            continue
+        counts[level] += 1
+        for marker in markers:
+            if marker in message:
+                markers[marker] += 1
+        key = (level, node, message_pattern(message))
+        group = groups.setdefault(key, {"level": level, "node": node, "pattern": key[2],
+                                        "count": 0, "example": message[:400]})
+        group["count"] += 1
+    ordered = sorted(groups.values(), key=lambda g: (g["level"] != "FATAL", g["level"] != "ERROR", -g["count"]))
+    return {"counts": counts, "continuity_markers": markers, "patterns": ordered}
+
+
+def collect_log_lines(target: Target, run_dir: Path) -> list[str]:
+    """ERROR/WARN/FATAL lines from ROS node logs written during the run."""
     rel = run_dir.relative_to(ROOT)
     base = PI_WS if target.name == "hil" else CONTAINER_WS
-    profile_logs = f"{base}/runtime_logs/{target.name}"
-    marker = f"{base}/{rel}/.run_started"
-    counts: dict[str, int] = {}
-    for pattern in CONTINUITY_FAULT_MARKERS:
-        script = (f"find {profile_logs} -name '*.log' -newer {marker} -print0 2>/dev/null"
-                  f" | xargs -0 -r cat | grep -c {shlex.quote(pattern)} || true")
-        result = run(target.observer_shell(script), check=False, timeout=120)
-        try:
-            counts[pattern] = int(result.stdout.strip().splitlines()[-1])
-        except (ValueError, IndexError):
-            counts[pattern] = -1
-    return counts
+    script = (f"find {base}/runtime_logs/{target.name} -name '*.log' -newer {base}/{rel}/.run_started"
+              f" -print0 2>/dev/null | xargs -0 -r grep -h -E '^\\[(ERROR|WARN|FATAL)\\]' | head -n 200000 || true")
+    result = run(target.observer_shell(script), check=False, timeout=300)
+    return result.stdout.splitlines()
 
 
 def fetch_vehicle_status(host: str) -> dict[str, Any]:
@@ -282,9 +309,9 @@ def fetch_vehicle_status(host: str) -> dict[str, Any]:
         return json.load(response)
 
 
-def evaluate(run_dir: Path, *, target: Target | None = None,
+def evaluate(run_dir: Path, *, target: Target | None = None, strict_warnings: bool = False,
              fetch_status: Callable[[str], dict[str, Any]] = fetch_vehicle_status,
-             count_faults: Callable[[Target, Path], dict[str, int]] = count_continuity_faults
+             log_lines: Callable[[Target, Path], list[str]] = collect_log_lines
              ) -> dict[str, Any]:
     """Judge a run. Every failed check is listed; nothing short-circuits."""
     plan = json.loads((run_dir / "run_plan.json").read_text())
@@ -363,9 +390,20 @@ def evaluate(run_dir: Path, *, target: Target | None = None,
                               "completed_cycles_in_window": len(in_window), "cycles": cycles,
                               "full_charge_proofs": len(charges)}
     if target is not None:
-        faults = count_faults(target, run_dir)
-        report["continuity_faults"] = faults
-        check(all(count == 0 for count in faults.values()), f"continuity faults {faults}")
+        since = datetime.fromisoformat(plan["started_at"]).timestamp()
+        until = datetime.fromisoformat(execution.get("finished_at", utc_now())).timestamp()
+        findings = summarize_log_lines(log_lines(target, run_dir), since, until)
+        (run_dir / "log_findings.json").write_text(json.dumps(findings, indent=2) + "\n")
+        report["log_counts"] = findings["counts"]
+        report["continuity_faults"] = findings["continuity_markers"]
+        report["log_patterns"] = [{k: g[k] for k in ("level", "node", "count", "pattern")}
+                                  for g in findings["patterns"][:40]]
+        check(all(count == 0 for count in findings["continuity_markers"].values()),
+              f"continuity faults {findings['continuity_markers']}")
+        check(findings["counts"]["ERROR"] == 0 and findings["counts"]["FATAL"] == 0,
+              f"node logs contain {findings['counts']['ERROR']} ERROR / {findings['counts']['FATAL']} FATAL lines")
+        if strict_warnings:
+            check(findings["counts"]["WARN"] == 0, f"node logs contain {findings['counts']['WARN']} WARN lines")
         try:
             vehicle = fetch_status(target.api_host)
             latest = vehicle.get("latest", {})
@@ -392,6 +430,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", help="HIL Pi target override (as for ./iii-dev hil --host)")
     parser.add_argument("--no-probe", action="store_true", help="skip the passive perception probe")
     parser.add_argument("--evaluate-only", type=Path, metavar="RUN_DIR")
+    parser.add_argument("--strict-warnings", action="store_true",
+                        help="also fail on any WARN line in node logs during the run")
     args = parser.parse_args(argv)
     try:
         if args.evaluate_only:
@@ -404,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
             run_dir = execute(args)
             plan = json.loads((run_dir / "run_plan.json").read_text())
             target = Target(plan["target"], discover_container(), plan.get("pi_peer"))
-        report = evaluate(run_dir, target=target)
+        report = evaluate(run_dir, target=target, strict_warnings=args.strict_warnings)
     except (RunnerError, subprocess.SubprocessError, OSError) as exc:
         print(f"[endurance] error: {exc}", file=sys.stderr)
         return 2
