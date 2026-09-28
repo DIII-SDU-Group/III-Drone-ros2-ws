@@ -97,3 +97,59 @@ runtime, authenticates, reads every operator state domain, and writes artifacts
 under `log/gui-v2-sim-e2e-smoke/`. Mutating sim-only workflow and flight command
 extensions are documented in
 `src/III-Drone-GC/docs/gui-v2-sim-e2e-smoke.md`.
+
+## Canonical Inspection Endurance (SIM and HIL)
+
+Purpose: prove that the canonical `inspection-production` mission cycles
+Inspection → Reach Cable → Charge → Leave Cable → Inspection automatically
+for a sustained window, with clean node logs, on the current source. The
+same tool judges SIM (all processes in the workspace devcontainer) and HIL
+(mission/control on the Pi, SITL and adapters on the workstation).
+
+Authority boundary: the runner starts only passive observers (lifecycle
+observer and perception probe) and the automatic-cycle driver
+`scripts/workspace/hil_inspection_cycle_driver.py`. The driver arms, takes
+off, flies the mission and performs its own landed/disarmed cleanup; it never
+writes PX4 firmware or parameters. HIL runs without the propulsion battery
+(see `AGENTS.md`/`CLAUDE.md`); no physical confirmation is requested.
+
+Prerequisites: a ready stack for the target profile.
+
+```bash
+./iii-dev stack status
+```
+
+```bash
+./iii-dev hil status
+```
+
+Run (default 1800 s window, at least 4 in-window cycles):
+
+```bash
+python3 scripts/workspace/run_inspection_endurance.py --target sim
+```
+
+```bash
+python3 scripts/workspace/run_inspection_endurance.py --target hil
+```
+
+Evidence lands in `runtime/endurance/<target>-<UTC>/`: `run_plan.json`
+(source identity of the superproject and every submodule),
+`driver_events.json`, `mission_lifecycle_observation.json`,
+`execution_result.json`, `log_findings.json` (grouped ERROR/WARN node log
+lines written during the run) and `acceptance_report.json`. Success is exit
+code 0 with `"accepted": true`; every failed check is listed under
+`failures`. Only cycles whose Inspection resumption was received inside the
+window count. Any ERROR/FATAL node log line or Core continuity fault fails the
+run; add `--strict-warnings` to also fail on WARN lines.
+
+Re-judge existing evidence without flying:
+
+```bash
+python3 scripts/workspace/run_inspection_endurance.py --evaluate-only runtime/endurance/<run-dir>
+```
+
+On failure, keep the run directory, inspect `failures` and `log_findings.json`,
+and bring the stack to a known state with `./iii-dev stack status` or
+`./iii-dev hil status` before the next attempt. The evaluator tests run
+offline with `python3 -m pytest scripts/workspace/test_run_inspection_endurance.py`.
