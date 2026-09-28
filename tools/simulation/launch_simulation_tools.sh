@@ -11,7 +11,12 @@ PX4_INSTANCE="${III_SIM_TOOLS_PX4_INSTANCE:-0}"
 RESET_PX4_PARAMS_ON_RECREATE="${III_SIM_TOOLS_RESET_PX4_PARAMS_ON_RECREATE:-1}"
 GZ_WORLD="${III_SIM_TOOLS_GZ_WORLD:-hca_full_pylon_setup}"
 SIM_ASSET_INSTALLER="${III_SIM_TOOLS_ASSET_INSTALLER:-${WORKSPACE_ROOT}/src/III-Drone-Simulation/scripts/install_gazebo_simulation_assets.sh}"
-DEFAULT_PX4_COMMAND="source ${WORKSPACE_ROOT}/setup/setup_dev.bash && cd ${PX4_ROOT} && make px4_sitl_default && cd ${PX4_BUILD_DIR}/rootfs && exec env HEADLESS=1 PX4_SIM_MODEL=gz_d4s_dc_drone GZ_IP=\$GZ_IP ${PX4_BUILD_DIR}/bin/px4 -i ${PX4_INSTANCE}"
+# UXRCE_DDS_SYNCT=0 keeps PX4 DDS timestamps in the lockstep simulation-time
+# domain (as in HIL). With synchronization enabled, host stalls look like agent
+# clock jumps; PX4 then resets its timesync filter and publishes samples with a
+# zero offset (boot-relative stamps between wall-clock stamps), which Core
+# correctly fences as a position-source epoch change.
+DEFAULT_PX4_COMMAND="source ${WORKSPACE_ROOT}/setup/setup_dev.bash && cd ${PX4_ROOT} && make px4_sitl_default && cd ${PX4_BUILD_DIR}/rootfs && exec env HEADLESS=1 PX4_SIM_MODEL=gz_d4s_dc_drone GZ_IP=\$GZ_IP PX4_PARAM_UXRCE_DDS_SYNCT=0 ${PX4_BUILD_DIR}/bin/px4 -i ${PX4_INSTANCE}"
 PX4_COMMAND="${III_SIM_TOOLS_PX4_COMMAND:-${DEFAULT_PX4_COMMAND}}"
 DEFAULT_GZ_GUI_COMMAND="source ${WORKSPACE_ROOT}/setup/setup_dev.bash && ready=0; for attempt in {1..60}; do if gz service -i --service /world/${GZ_WORLD}/scene/info 2>&1 | grep -q 'Service providers'; then ready=1; break; fi; sleep 1; done; if [ \"\${ready}\" != 1 ]; then echo 'Timed out waiting for Gazebo world ${GZ_WORLD}' >&2; exit 1; fi; exec gz sim -g"
 GZ_GUI_COMMAND="${III_SIM_TOOLS_GZ_GUI_COMMAND:-${DEFAULT_GZ_GUI_COMMAND}}"

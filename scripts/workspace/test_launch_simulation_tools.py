@@ -276,3 +276,17 @@ def test_rendered_start_repairs_only_the_owned_gazebo_viewer() -> None:
     if cache_before[0]:
         assert real_cache.stat().st_ino == cache_before[1]
         assert real_cache.stat().st_mtime_ns == cache_before[2]
+
+
+def test_default_px4_command_disables_timestamp_synchronization() -> None:
+    """SIM must match HIL: PX4 DDS stamps stay in the lockstep sim-time domain."""
+    result = subprocess.run(
+        ["bash", "-c", f'source <(grep -m1 "^DEFAULT_PX4_COMMAND=" "{SCRIPT}"); printf "%s" "$DEFAULT_PX4_COMMAND"'],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "WORKSPACE_ROOT": "/ws", "PX4_ROOT": "/ws/PX4", "PX4_BUILD_DIR": "/ws/b", "PX4_INSTANCE": "0"},
+    )
+    command = result.stdout
+    assert "PX4_PARAM_UXRCE_DDS_SYNCT=0" in command
+    assert command.index("PX4_PARAM_UXRCE_DDS_SYNCT=0") < command.index("/ws/b/bin/px4 -i 0")
