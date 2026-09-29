@@ -232,3 +232,18 @@ def test_sim_acceptance_needs_no_physical_px4_record(tmp_path: Path) -> None:
                                           cycle("2026-09-28T06:20:00+00:00")])
     report = endurance.evaluate(run_dir)
     assert report["accepted"] and "physical_px4" not in report
+
+
+def test_fast_cycles_accept_commanded_transitions_and_are_labelled(tmp_path: Path) -> None:
+    events = [{"event": "inspection_recharge_commanded"}, {"event": "leave_cable_commanded"},
+              {"event": "charging_full_verified", "evidence": {"battery_remaining": 0.99, "battery_age_sec": 0.01}},
+              {"event": "charging_full_verified", "evidence": {"battery_remaining": 0.99, "battery_age_sec": 0.01}},
+              {"event": "final_safe_landed_disarmed", "cleanup_safety_evidence": {"safe_landed_disarmed": True}}]
+    run_dir = write_run(tmp_path, cycles=[cycle("2026-09-28T06:10:00+00:00"),
+                                          cycle("2026-09-28T06:20:00+00:00")], events=events)
+    assert "manual recharge/leave intent used" in endurance.evaluate(run_dir)["failures"]
+    plan = json.loads((run_dir / "run_plan.json").read_text())
+    (run_dir / "run_plan.json").write_text(json.dumps({**plan, "fast_cycles": True}))
+    report = endurance.evaluate(run_dir)
+    assert report["accepted"], report["failures"]
+    assert report["fast_cycles"] is True

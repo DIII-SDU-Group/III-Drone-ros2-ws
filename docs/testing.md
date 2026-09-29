@@ -162,6 +162,17 @@ HIL port (UDP `14542`, from `10.41.10.2`) for the whole run and writes
 fails if that record is missing, has a gap over 5 s, comes from another peer,
 or shows the physical PX4 armed at any point.
 
+For isolated checks, `--fast-cycles` commands each recharge after 20 s of
+healthy Inspection instead of waiting for the simulated battery to drain. Every
+mode transition and its evidence is still judged, including full-charge proof,
+but the report is labelled `"fast_cycles": true` because the automatic
+low-battery trigger is not exercised. The qualification campaign stays
+battery-driven.
+
+```bash
+python3 scripts/workspace/run_inspection_endurance.py --target sim --fresh-start --strict-warnings --fast-cycles --duration-sec 900 --required-cycles 3
+```
+
 Re-judge existing evidence without flying:
 
 ```bash

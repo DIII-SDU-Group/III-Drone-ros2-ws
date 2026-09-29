@@ -53,6 +53,8 @@ MAX_CHARGING_TO_LEAVE_SEC = 90.0
 # runtime re-registration, preflight, and up to 90 s CustomOperation ingress);
 # the driver still fails on its own timeouts, so this hides nothing.
 OBSERVER_PRELUDE_TIMEOUT_SEC = 420
+# Fast-cycle mode: healthy Inspection time before the recharge is commanded.
+FAST_CYCLE_INSPECTION_DWELL_SEC = 20
 
 
 class RunnerError(RuntimeError):
@@ -213,6 +215,7 @@ def execute(args: argparse.Namespace) -> Path:
         "duration_sec": args.duration_sec, "required_cycles": args.required_cycles,
         "scenario": args.scenario, "hold_phase": args.hold_phase,
         "physical_px4_monitor": target.name == "hil",
+        "fast_cycles": bool(getattr(args, "fast_cycles", False)),
         "source_identity": source_identity(),
     }
     (run_dir / "run_plan.json").write_text(json.dumps(plan, indent=2) + "\n")
@@ -298,10 +301,14 @@ def execute(args: argparse.Namespace) -> Path:
         raise RunnerError(f"observer/probe did not start; see {rel}/observer_runner.log")
 
     driver_env = {"III_HIL_PI_ENDPOINT": peer} if target.name == "hil" else {}
+    # Fast cycles command the recharge after a short Inspection dwell instead
+    # of waiting for the simulated battery to drain; every mode transition and
+    # its evidence is still exercised and judged.
+    cycle_mode = (f" --inspection-dwell-sec {FAST_CYCLE_INSPECTION_DWELL_SEC}" if plan["fast_cycles"]
+                  else " --automatic-cycles --automatic-recharge-timeout-sec 600")
     driver_cmd = (
         f"python3 scripts/workspace/hil_inspection_cycle_driver.py --artifact-dir {CONTAINER_WS}/{rel}"
-        f" --automatic-cycles --automatic-recharge-timeout-sec 600 --charging-dwell-sec 0"
-        f" --charge-until-full-timeout-sec 90")
+        f"{cycle_mode} --charging-dwell-sec 0 --charge-until-full-timeout-sec 90")
     if hold_scenario:
         driver_cmd += (f" --operator-hold-phase {args.hold_phase}"
                        f" --operator-hold-after-sec {args.hold_after_sec}")
@@ -486,8 +493,9 @@ def evaluate(run_dir: Path, *, target: Target | None = None, strict_warnings: bo
         cycles.append(entry)
 
     names = [event.get("event") for event in events]
-    check("inspection_recharge_commanded" not in names and "leave_cable_commanded" not in names,
-          "manual recharge/leave intent used")
+    if not plan.get("fast_cycles"):
+        check("inspection_recharge_commanded" not in names and "leave_cable_commanded" not in names,
+              "manual recharge/leave intent used")
     charges = [event for event in events if event.get("event") == "charging_full_verified"]
     check(len(charges) >= len(in_window), f"full-charge proofs {len(charges)} < cycles {len(in_window)}")
     for event in charges:
@@ -503,7 +511,8 @@ def evaluate(run_dir: Path, *, target: Target | None = None, strict_warnings: bo
                               "active_duration_sec": observer.get("active_duration_sec"),
                               "completed_cycles_total": len(completed),
                               "completed_cycles_in_window": len(in_window), "cycles": cycles,
-                              "full_charge_proofs": len(charges)}
+                              "full_charge_proofs": len(charges),
+                              "fast_cycles": bool(plan.get("fast_cycles"))}
     if physical_px4 is not None:
         report["physical_px4"] = physical_px4
     if target is not None:
@@ -621,6 +630,9 @@ def main(argv: list[str] | None = None) -> int:
                         default="inspection_demo", help="mission phase in which to take Hold (hold scenario)")
     parser.add_argument("--hold-after-sec", type=float, default=10.0,
                         help="dwell in the hold phase before taking Hold (hold scenario)")
+    parser.add_argument("--fast-cycles", action="store_true",
+                        help="command each recharge after a short Inspection dwell instead of waiting for "
+                             "battery drain (isolated checks; not a battery-driven qualification)")
     parser.add_argument("--fresh-start", action="store_true",
                         help="recreate the simulation epoch first (SIM: stack start --recreate-sim, HIL: hil restart)")
     parser.add_argument("--evaluate-only", type=Path, metavar="RUN_DIR")
