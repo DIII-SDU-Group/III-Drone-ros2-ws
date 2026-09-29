@@ -193,3 +193,42 @@ def test_hold_scenario_rejects_any_warning_and_missing_handover(tmp_path: Path) 
     assert not report["accepted"]
     assert "operator Hold handover was not verified" in report["failures"]
     assert any("node logs not silent" in failure for failure in report["failures"])
+
+
+def _hil_run(tmp_path: Path, disarm: dict | None) -> Path:
+    run_dir = write_run(tmp_path, cycles=[cycle("2026-09-28T06:10:00+00:00"),
+                                          cycle("2026-09-28T06:20:00+00:00")],
+                        execution={"driver_exit": 0, "observer_exit": 0, "probe_exit": 0,
+                                   "px4_monitor_exit": 0 if disarm and disarm["remained_disarmed"] else 1})
+    (run_dir / "run_plan.json").write_text(json.dumps(
+        {"target": "hil", "duration_sec": 1800, "required_cycles": 2, "physical_px4_monitor": True}))
+    if disarm is not None:
+        (run_dir / "physical_px4_disarm.json").write_text(json.dumps(disarm))
+    return run_dir
+
+
+def test_hil_acceptance_requires_the_physical_px4_disarm_record(tmp_path: Path) -> None:
+    good = {"remained_disarmed": True, "failures": [], "observed_sec": 1900.0, "samples": 1890,
+            "armed_samples": 0, "max_gap_sec": 1.2, "peers": ["10.41.10.2"]}
+    (tmp_path / "good").mkdir()
+    report = endurance.evaluate(_hil_run(tmp_path / "good", good))
+    assert report["accepted"], report["failures"]
+    assert report["physical_px4"]["armed_samples"] == 0
+
+    (tmp_path / "missing").mkdir()
+    report = endurance.evaluate(_hil_run(tmp_path / "missing", None))
+    assert "missing physical_px4_disarm.json" in report["failures"]
+
+    armed = dict(good, remained_disarmed=False, armed_samples=3,
+                 failures=["physical PX4 reported armed in 3 samples"])
+    (tmp_path / "armed").mkdir()
+    report = endurance.evaluate(_hil_run(tmp_path / "armed", armed))
+    assert "physical PX4: physical PX4 reported armed in 3 samples" in report["failures"]
+    assert "px4_monitor_exit=1" in report["failures"]
+
+
+def test_sim_acceptance_needs_no_physical_px4_record(tmp_path: Path) -> None:
+    run_dir = write_run(tmp_path, cycles=[cycle("2026-09-28T06:10:00+00:00"),
+                                          cycle("2026-09-28T06:20:00+00:00")])
+    report = endurance.evaluate(run_dir)
+    assert report["accepted"] and "physical_px4" not in report

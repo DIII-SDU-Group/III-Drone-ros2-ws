@@ -14,6 +14,10 @@ HIL/SIM endurance work. It expects the target stack to already be up
    back from the Pi, and writes `execution_result.json`;
 5. evaluates acceptance into `acceptance_report.json`.
 
+In HIL, a passive listener on the Pi also records the physical PX4's MAVLink
+heartbeats for the whole run, so acceptance proves the physical flight
+controller stayed disarmed while the workstation SITL flew.
+
 `--evaluate-only RUN_DIR` re-runs step 5 on existing evidence. The runner never
 arms or commands the vehicle itself; the driver owns flight commands and its
 own landed/disarmed cleanup.
@@ -204,6 +208,7 @@ def execute(args: argparse.Namespace) -> Path:
         "started_at": utc_now(), "target": target.name, "pi_peer": peer,
         "duration_sec": args.duration_sec, "required_cycles": args.required_cycles,
         "scenario": args.scenario, "hold_phase": args.hold_phase,
+        "physical_px4_monitor": target.name == "hil",
         "source_identity": source_identity(),
     }
     (run_dir / "run_plan.json").write_text(json.dumps(plan, indent=2) + "\n")
@@ -213,7 +218,8 @@ def execute(args: argparse.Namespace) -> Path:
     if target.name == "hil":
         run(["ssh", *SSH_OPTIONS, f"iii@{peer}", f"mkdir -p {shlex.quote(remote_dir)}"])
         run(["scp", "-q", *SSH_OPTIONS, str(scripts / "observe_hil_mission_lifecycle.py"),
-             str(scripts / "hil_perception_probe.py"), f"iii@{peer}:{remote_dir}/"], timeout=60)
+             str(scripts / "hil_perception_probe.py"), str(scripts / "physical_px4_disarm_monitor.py"),
+             f"iii@{peer}:{remote_dir}/"], timeout=60)
         observer_src = f"{remote_dir}/observe_hil_mission_lifecycle.py"
         probe_src = f"{remote_dir}/hil_perception_probe.py"
     else:
@@ -232,6 +238,11 @@ def execute(args: argparse.Namespace) -> Path:
         f"printf '%s\\n' $$ > {remote_dir}/probe.pid && exec /usr/bin/python3 {probe_src}"
         f" --artifact-dir {remote_dir} --duration-sec {args.duration_sec + 600}"
         f" > {remote_dir}/probe.log 2>&1")
+    # Generous upper bound; the runner interrupts it when the run ends.
+    px4_monitor_cmd = (
+        f"printf '%s\\n' $$ > {remote_dir}/px4_monitor.pid && exec /usr/bin/python3"
+        f" {remote_dir}/physical_px4_disarm_monitor.py --artifact-dir {remote_dir}"
+        f" --duration-sec {args.duration_sec + 3600} > {remote_dir}/px4_monitor.log 2>&1")
     local_log = lambda name: open(run_dir / name, "w")  # noqa: E731
     hold_scenario = args.scenario == "hold"
     if hold_scenario:
@@ -244,6 +255,9 @@ def execute(args: argparse.Namespace) -> Path:
                                     stderr=subprocess.STDOUT)
     probe = None if args.no_probe else subprocess.Popen(
         target.observer_shell(probe_cmd), stdout=local_log("probe_runner.log"), stderr=subprocess.STDOUT)
+    px4_monitor = subprocess.Popen(
+        target.observer_shell(px4_monitor_cmd), stdout=local_log("px4_monitor_runner.log"),
+        stderr=subprocess.STDOUT) if plan["physical_px4_monitor"] else None
 
     def pid_published(name: str) -> bool:
         return run(target.observer_shell(f"test -s {remote_dir}/{name}"), check=False, timeout=30).returncode == 0
@@ -257,10 +271,13 @@ def execute(args: argparse.Namespace) -> Path:
         lambda: observer.poll() is None and pid_published("observer.pid"), PROCESS_READY_TIMEOUT_SEC)
     if ready and probe is not None:
         ready = wait_for(lambda: probe.poll() is None and pid_published("probe.pid"), PROCESS_READY_TIMEOUT_SEC)
+    if ready and px4_monitor is not None:
+        ready = wait_for(lambda: px4_monitor.poll() is None and pid_published("px4_monitor.pid"),
+                         PROCESS_READY_TIMEOUT_SEC)
     if not ready:
-        for name in ("observer.pid", "probe.pid"):
+        for name in ("observer.pid", "probe.pid", "px4_monitor.pid"):
             interrupt(name)
-        for process in (observer, probe):
+        for process in (observer, probe, px4_monitor):
             if process is not None:
                 try:
                     process.wait(timeout=30)
@@ -288,9 +305,16 @@ def execute(args: argparse.Namespace) -> Path:
     interrupt("probe.pid")
     observer_rc = observer.wait(timeout=args.duration_sec + 1200) if observer is not None else 0
     probe_rc = probe.wait(timeout=300) if probe is not None else 0
+    # The physical PX4 record spans the whole run, including the observer's
+    # final landed/disarmed grace.
+    if px4_monitor is not None:
+        interrupt("px4_monitor.pid")
+    px4_monitor_rc = px4_monitor.wait(timeout=60) if px4_monitor is not None else None
 
     execution: dict[str, Any] = {"driver_exit": driver_rc, "observer_exit": observer_rc,
                                  "probe_exit": probe_rc, "finished_at": utc_now()}
+    if px4_monitor_rc is not None:
+        execution["px4_monitor_exit"] = px4_monitor_rc
     if target.name == "hil":
         sync = run(["rsync", "-a", "-e", "ssh " + " ".join(SSH_OPTIONS),
                     f"iii@{peer}:{remote_dir}/", f"{run_dir}/"], check=False, timeout=600)
@@ -364,6 +388,21 @@ def collect_log_lines(target: Target, run_dir: Path) -> list[str]:
     return result.stdout.splitlines()
 
 
+def physical_px4_failures(run_dir: Path, plan: dict[str, Any]) -> tuple[list[str], dict[str, Any] | None]:
+    """HIL: the physical PX4 must have stayed disarmed with a continuous record."""
+    if not plan.get("physical_px4_monitor"):
+        return [], None
+    path = run_dir / "physical_px4_disarm.json"
+    if not path.exists():
+        return ["missing physical_px4_disarm.json"], None
+    summary = json.loads(path.read_text())
+    failures = [f"physical PX4: {failure}" for failure in summary.get("failures", [])]
+    if summary.get("remained_disarmed") is not True and not failures:
+        failures.append("physical PX4 disarm record is not accepted")
+    return failures, {key: summary.get(key) for key in (
+        "remained_disarmed", "observed_sec", "samples", "armed_samples", "max_gap_sec", "peers")}
+
+
 def fetch_vehicle_status(host: str) -> dict[str, Any]:
     with urllib.request.urlopen(f"http://{host}:8765/vehicle/status", timeout=10) as response:
         return json.load(response)
@@ -393,9 +432,11 @@ def evaluate(run_dir: Path, *, target: Target | None = None, strict_warnings: bo
         return json.loads(path.read_text())
 
     execution = load("execution_result.json") or {}
-    for key in ("driver_exit", "observer_exit", "probe_exit", "evidence_sync_exit"):
+    for key in ("driver_exit", "observer_exit", "probe_exit", "evidence_sync_exit", "px4_monitor_exit"):
         if key in execution:
             check(execution[key] == 0, f"{key}={execution[key]}")
+    px4_failures, physical_px4 = physical_px4_failures(run_dir, plan)
+    failures.extend(px4_failures)
     observer = load("mission_lifecycle_observation.json") or {}
     events = load("driver_events.json") or []
 
@@ -451,6 +492,8 @@ def evaluate(run_dir: Path, *, target: Target | None = None, strict_warnings: bo
                               "completed_cycles_total": len(completed),
                               "completed_cycles_in_window": len(in_window), "cycles": cycles,
                               "full_charge_proofs": len(charges)}
+    if physical_px4 is not None:
+        report["physical_px4"] = physical_px4
     if target is not None:
         since = datetime.fromisoformat(plan["started_at"]).timestamp()
         until = datetime.fromisoformat(execution.get("finished_at", utc_now())).timestamp()
@@ -500,9 +543,11 @@ def evaluate_hold(run_dir: Path, plan: dict[str, Any], *, target: Target | None,
         if (run_dir / "execution_result.json").exists() else {}
     if not execution:
         failures.append("missing execution_result.json")
-    for key in ("driver_exit", "probe_exit", "evidence_sync_exit"):
+    for key in ("driver_exit", "probe_exit", "evidence_sync_exit", "px4_monitor_exit"):
         if key in execution and execution[key] != 0:
             failures.append(f"{key}={execution[key]}")
+    px4_failures, physical_px4 = physical_px4_failures(run_dir, plan)
+    failures.extend(px4_failures)
     events = json.loads((run_dir / "driver_events.json").read_text()) \
         if (run_dir / "driver_events.json").exists() else []
     handover = [e for e in events if e.get("event") == "operator_hold_handover_verified"]
@@ -514,6 +559,8 @@ def evaluate_hold(run_dir: Path, plan: dict[str, Any], *, target: Target | None,
     report: dict[str, Any] = {"evaluated_at": utc_now(), "target": plan["target"], "scenario": "hold",
                               "hold_phase": plan.get("hold_phase"),
                               "handover": handover[-1] if handover else None}
+    if physical_px4 is not None:
+        report["physical_px4"] = physical_px4
     if target is not None:
         since = datetime.fromisoformat(plan["started_at"]).timestamp()
         until = datetime.fromisoformat(execution.get("finished_at", utc_now())).timestamp()
@@ -585,7 +632,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     summary = {key: report.get(key) for key in ("accepted", "target", "scenario", "hold_phase",
                                                 "active_duration_sec", "completed_cycles_in_window",
-                                                "full_charge_proofs", "log_counts")}
+                                                "full_charge_proofs", "log_counts", "physical_px4")}
     print(json.dumps(summary))
     for failure in report["failures"]:
         print(f"[endurance] FAIL: {failure}", file=sys.stderr)

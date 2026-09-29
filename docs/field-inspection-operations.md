@@ -31,15 +31,23 @@ and is not the primary field flight-control path.
    Confirm the pinned aircraft, runtime, and profile before login.
 3. From Mission, use **Start aircraft system** for the canonical supervised
    boot/start path and confirm every readiness stage.
-4. Arm and take off with RC/QGroundControl.
-5. Fly manually to the powerline overview position.
-6. Start PL mapper and inspect the live vector and orthogonal projection views.
-7. Store the powerline overview after visual approval.
-8. Fly manually to each pylon and capture endpoint 1 and endpoint 2. Capturing a
+4. Before arming, confirm the **Onboard clock settled** preflight item. The
+   Pi has no trusted real-time clock, so chrony steps the clock when it first
+   reaches a time source. A step during flight shifts every ROS timestamp and
+   PX4's synchronized time. The item passes only when chrony is synchronized
+   (`Leap status: Normal`) with a residual offset within 0.1 s. It is a hard
+   gate for inspection activation and Runtime API arming on aircraft profiles.
+   The Pi therefore needs a reachable time source in the field. On the Pi,
+   `chronyc tracking` shows the same state.
+5. Arm and take off with RC/QGroundControl.
+6. Fly manually to the powerline overview position.
+7. Start PL mapper and inspect the live vector and orthogonal projection views.
+8. Store the powerline overview after visual approval.
+9. Fly manually to each pylon and capture endpoint 1 and endpoint 2. Capturing a
    slot again replaces it; clear removes both.
-9. Position the aircraft outside the corridor, between pylons. Starting from
+10. Position the aircraft outside the corridor, between pylons. Starting from
    either side is supported. The onboard eligibility check is authoritative.
-10. Confirm every hard preflight item and start the constant inspection mission.
+11. Confirm every hard preflight item and start the constant inspection mission.
 
 Stored overviews use global coordinates and are reprojected into the current
 local world frame after a local-reference change. There is one stored powerline

@@ -146,6 +146,13 @@ code 0 with `"accepted": true`; every failed check is listed under
 window count. Any ERROR/FATAL node log line or Core continuity fault fails the
 run; add `--strict-warnings` to also fail on WARN lines.
 
+In HIL the runner also starts `scripts/workspace/physical_px4_disarm_monitor.py`
+on the Pi. It passively listens to the physical PX4's MAVLink heartbeats on the
+HIL port (UDP `14542`, from `10.41.10.2`) for the whole run and writes
+`physical_px4_heartbeats.jsonl` and `physical_px4_disarm.json`. HIL acceptance
+fails if that record is missing, has a gap over 5 s, comes from another peer,
+or shows the physical PX4 armed at any point.
+
 Re-judge existing evidence without flying:
 
 ```bash
@@ -166,7 +173,35 @@ python3 scripts/workspace/run_inspection_endurance.py --target sim --fresh-start
 
 Phases: `inspection_demo`, `reach_cable`, `leave_cable`.
 
+### Qualification campaign (SIM, then deploy, then HIL)
+
+A change is qualified when one commit passes the strict SIM run, is deployed,
+and then passes the strict HIL run. The campaign runs that sequence and stops
+at the first failure. The stages are:
+
+1. SIM endurance with `--fresh-start --strict-warnings`.
+2. `./iii-dev stack stop`.
+3. `iii deploy dev --host HOST --build --restart`.
+4. HIL endurance with `--fresh-start --strict-warnings`, including the physical PX4 disarm record.
+5. `./iii-dev hil stop`. This runs whenever HIL may have started, even after a failure.
+
+```bash
+python3 scripts/workspace/run_qualification_campaign.py --host 192.168.1.251
+```
+
+The campaign refuses tracked uncommitted changes in the superproject or any
+submodule unless you pass `--allow-dirty`; the dirty repositories are then
+recorded. Evidence lands in `runtime/qualification/<UTC>-<sha>/`, with
+`sim/` and `hil/` run directories, one log per stage and
+`campaign_report.json`. That report holds the source identity, each stage's
+exit code, elapsed time and acceptance summary, and `"qualified": true` only
+when every stage passed. The command takes about 75 minutes with the default
+1800 s windows. Run it detached, for example under `setsid nohup`, so a closed
+terminal does not interrupt it.
+
 On failure, keep the run directory, inspect `failures` and `log_findings.json`,
 and bring the stack to a known state with `./iii-dev stack status` or
 `./iii-dev hil status` before the next attempt. The evaluator tests run
-offline with `python3 -m pytest scripts/workspace/test_run_inspection_endurance.py`.
+offline with `python3 -m pytest scripts/workspace/test_run_inspection_endurance.py
+scripts/workspace/test_physical_px4_disarm_monitor.py
+scripts/workspace/test_run_qualification_campaign.py`.
