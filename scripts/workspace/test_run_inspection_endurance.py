@@ -275,3 +275,11 @@ def test_sitl_imu_timing_counts_gaps_after_startup(tmp_path: Path, monkeypatch) 
     monkeypatch.setattr(endurance, "ROOT", tmp_path)
     timing = endurance.sitl_imu_timing(0.0, 4e9, roots=(root,))
     assert timing["gaps"] == 2 and timing["worst_gap_ms"] == 40.0
+
+
+def test_probe_window_stays_within_the_probe_bound() -> None:
+    probe_source = (Path(__file__).resolve().parent / "hil_perception_probe.py").read_text()
+    assert f"MAX_DURATION_SEC = {endurance.PROBE_MAX_DURATION_SEC:.1f}" in probe_source
+    assert endurance.probe_duration_sec(1800) == 2400
+    # Indefinite soak runs must not hand the probe a window it rejects.
+    assert endurance.probe_duration_sec(604800) == endurance.PROBE_MAX_DURATION_SEC

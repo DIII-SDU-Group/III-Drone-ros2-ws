@@ -53,12 +53,20 @@ MAX_CHARGING_TO_LEAVE_SEC = 90.0
 # runtime re-registration, preflight, and up to 90 s CustomOperation ingress);
 # the driver still fails on its own timeouts, so this hides nothing.
 OBSERVER_PRELUDE_TIMEOUT_SEC = 420
+# hil_perception_probe.py is a bounded capture (MAX_DURATION_SEC). Longer or
+# indefinite runs record perception evidence for the probe's first window only.
+PROBE_MAX_DURATION_SEC = 3600
 # Fast-cycle mode: healthy Inspection time before the recharge is commanded.
 FAST_CYCLE_INSPECTION_DWELL_SEC = 20
 
 
 class RunnerError(RuntimeError):
     pass
+
+
+def probe_duration_sec(run_duration_sec: float) -> float:
+    """Probe capture window: the run plus landing tail, within the probe's bound."""
+    return min(run_duration_sec + 600, PROBE_MAX_DURATION_SEC)
 
 
 def utc_now() -> str:
@@ -216,6 +224,7 @@ def execute(args: argparse.Namespace) -> Path:
         "scenario": args.scenario, "hold_phase": args.hold_phase,
         "physical_px4_monitor": target.name == "hil",
         "fast_cycles": bool(getattr(args, "fast_cycles", False)),
+        "probe_duration_sec": None if args.no_probe else probe_duration_sec(args.duration_sec),
         "source_identity": source_identity(),
     }
     (run_dir / "run_plan.json").write_text(json.dumps(plan, indent=2) + "\n")
@@ -251,7 +260,7 @@ def execute(args: argparse.Namespace) -> Path:
         f" > {remote_dir}/observer.log 2>&1")
     probe_cmd = (
         f"printf '%s\\n' $$ > {remote_dir}/probe.pid && exec /usr/bin/python3 {probe_src}"
-        f" --artifact-dir {remote_dir} --duration-sec {args.duration_sec + 600}"
+        f" --artifact-dir {remote_dir} --duration-sec {probe_duration_sec(args.duration_sec)}"
         f" > {remote_dir}/probe.log 2>&1")
     # Generous upper bound; the runner interrupts it when the run ends.
     px4_monitor_cmd = (
