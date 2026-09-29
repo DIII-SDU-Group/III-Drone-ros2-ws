@@ -6,12 +6,19 @@ import json
 from pathlib import Path
 import sys
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_inspection_endurance as endurance  # noqa: E402
 
 START = "2026-09-28T06:00:00+00:00"
 DEADLINE = "2026-09-28T06:30:00+00:00"
 
+
+@pytest.fixture(autouse=True)
+def _no_real_px4_logs(monkeypatch) -> None:
+    # evaluate() scans the workspace's real PX4 SITL logs; keep tests hermetic.
+    monkeypatch.setattr(endurance, "PX4_SITL_LOG_ROOTS", ())
 
 def cycle(resumed: str, charging: str = "2026-09-28T06:05:00+00:00",
           leave: str = "2026-09-28T06:05:40+00:00") -> dict:
@@ -247,3 +254,24 @@ def test_fast_cycles_accept_commanded_transitions_and_are_labelled(tmp_path: Pat
     report = endurance.evaluate(run_dir)
     assert report["accepted"], report["failures"]
     assert report["fast_cycles"] is True
+
+
+def test_sitl_imu_timing_counts_gaps_after_startup(tmp_path: Path, monkeypatch) -> None:
+    import types
+    import numpy as np
+
+    root = tmp_path / "log"
+    (root / "2026-09-29").mkdir(parents=True)
+    log = root / "2026-09-29" / "12_00_00.ulg"
+    log.write_bytes(b"x")
+    stamps = np.arange(0, 5_000_000, 4000, dtype=np.int64)
+    dt = np.full(len(stamps), 4000, dtype=np.int64)
+    dt[0] = 2_400_000          # start-up gap, ignored
+    dt[500] = 40_000           # real gap at 2 s
+    dt[900] = 24_000
+    fake = types.SimpleNamespace(data_list=[types.SimpleNamespace(
+        name="sensor_combined", data={"timestamp": stamps, "accelerometer_integral_dt": dt})])
+    monkeypatch.setitem(sys.modules, "pyulog", types.SimpleNamespace(ULog=lambda *a, **k: fake))
+    monkeypatch.setattr(endurance, "ROOT", tmp_path)
+    timing = endurance.sitl_imu_timing(0.0, 4e9, roots=(root,))
+    assert timing["gaps"] == 2 and timing["worst_gap_ms"] == 40.0

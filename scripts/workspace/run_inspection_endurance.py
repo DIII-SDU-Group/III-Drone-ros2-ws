@@ -422,6 +422,48 @@ def physical_px4_failures(run_dir: Path, plan: dict[str, Any]) -> tuple[list[str
         "remained_disarmed", "observed_sec", "samples", "armed_samples", "max_gap_sec", "peers")}
 
 
+PX4_SITL_LOG_ROOTS = (ROOT / "PX4-Autopilot/build/px4_sitl_default/rootfs/0/log",  # SIM instance 0
+                      ROOT / "PX4-Autopilot/build/px4_sitl_default/rootfs/log")    # HIL launcher
+# EKF2 clamps its IMU integration step to 2 x EKF2_PREDICT_US (20 ms by default)
+# without rescaling the velocity increment, so every longer SITL IMU gap adds a
+# spurious vertical velocity step. Gaps mean the simulation was not real-time.
+IMU_GAP_MS = 20.0
+
+
+def sitl_imu_timing(since_epoch: float, until_epoch: float,
+                    roots: tuple[Path, ...] | None = None) -> dict[str, Any]:
+    """Count SITL IMU integration gaps over IMU_GAP_MS in ulogs written during the run."""
+    roots = PX4_SITL_LOG_ROOTS if roots is None else roots
+    try:
+        from pyulog import ULog
+    except ImportError:
+        return {"available": False, "reason": "pyulog not installed"}
+    logs, gaps, worst_ms = [], 0, 0.0
+    for root in roots:
+        for path in sorted(root.glob("*/*.ulg")) if root.exists() else []:
+            # Only logs last written during this run (plus the landing tail).
+            if not since_epoch <= path.stat().st_mtime <= until_epoch + 600:
+                continue
+            try:
+                ulog = ULog(str(path), ["sensor_combined"])
+            except Exception:  # noqa: BLE001 - a truncated live log is skipped, not fatal
+                continue
+            data = next((d.data for d in ulog.data_list if d.name == "sensor_combined"), None)
+            if data is None or len(data["timestamp"]) < 2:
+                continue
+            # Skip each log's first second: PX4 start-up always has one long gap.
+            elapsed = (data["timestamp"] - data["timestamp"][0]) / 1e6
+            dt_ms = data["accelerometer_integral_dt"] / 1000.0
+            window = (elapsed > 1.0)
+            count = int(((dt_ms > IMU_GAP_MS) & window).sum())
+            logs.append({"log": str(path.relative_to(ROOT)), "gaps": count})
+            gaps += count
+            if window.any():
+                worst_ms = max(worst_ms, float(dt_ms[window].max()))
+    return {"available": True, "gap_threshold_ms": IMU_GAP_MS, "gaps": gaps,
+            "worst_gap_ms": round(worst_ms, 1), "logs": logs}
+
+
 def fetch_vehicle_status(host: str) -> dict[str, Any]:
     with urllib.request.urlopen(f"http://{host}:8765/vehicle/status", timeout=10) as response:
         return json.load(response)
@@ -525,6 +567,8 @@ def evaluate(run_dir: Path, *, target: Target | None = None, strict_warnings: bo
         report["recording_lost_messages"] = findings["recording_lost_messages"]
         report["log_patterns"] = [{k: g[k] for k in ("level", "node", "count", "pattern")}
                                   for g in findings["patterns"][:40]]
+        # A metric, not a failure: it says whether SITL ran in real time.
+        report["sitl_imu_timing"] = sitl_imu_timing(since, until)
         check(all(count == 0 for count in findings["continuity_markers"].values()),
               f"continuity faults {findings['continuity_markers']}")
         check(findings["counts"]["ERROR"] == 0 and findings["counts"]["FATAL"] == 0,
