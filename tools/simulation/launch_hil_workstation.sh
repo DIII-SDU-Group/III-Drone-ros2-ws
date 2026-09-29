@@ -89,6 +89,12 @@ PX4_SHELL_TIMEOUT_SEC="${III_HIL_PX4_SHELL_TIMEOUT_SEC:-90}"
 PX4_COMMAND_TIMEOUT_SEC="${III_HIL_PX4_COMMAND_TIMEOUT_SEC:-20}"
 MAVLINK_START_TIMEOUT_SEC="${III_HIL_MAVLINK_START_TIMEOUT_SEC:-20}"
 ADAPTER_PROBE_TIMEOUT_SEC="${III_HIL_ADAPTER_PROBE_TIMEOUT_SEC:-20}"
+# Each probe is a fresh ROS 2 CLI participant with the daemon disabled, so it
+# pays full DDS discovery (measured ~3.2 s for `ros2 lifecycle get` on an idle
+# HIL graph; more while five probes discover concurrently and PX4/Gazebo start).
+# Per-probe limits sized below that falsely reported a healthy stack as not
+# ready. The probe set as a whole stays bounded by ADAPTER_PROBE_TIMEOUT_SEC.
+ADAPTER_SINGLE_PROBE_TIMEOUT_SEC="${III_HIL_ADAPTER_SINGLE_PROBE_TIMEOUT_SEC:-12}"
 usage() {
     cat <<EOF
 Usage: $(basename "$0") {start|status|stop|battery-check} [--host <hostname-or-IPv4>] [--headless|--rendered]
@@ -1269,19 +1275,20 @@ adapter_probe_script() {
     # One login shell sources the workspace once and runs every workstation
     # adapter check concurrently; run_adapter_probes bounds the whole probe.
     printf "source '%s/setup/setup_dev.bash'; %s\n" "${WORKSPACE_ROOT}" "$(ros_environment)"
+    printf 'probe_timeout=%q\n' "${ADAPTER_SINGLE_PROBE_TIMEOUT_SEC}"
     cat <<'EOF'
 probe_pids=()
 result=0
-timeout 4 ros2 lifecycle get /payload/charger_gripper/charger_gripper | grep -q '^active ' & probe_pids+=("$!")
-timeout 4 ros2 topic echo --once /clock rosgraph_msgs/msg/Clock & probe_pids+=("$!")
+timeout "${probe_timeout}" ros2 lifecycle get /payload/charger_gripper/charger_gripper | grep -q '^active ' & probe_pids+=("$!")
+timeout "${probe_timeout}" ros2 topic echo --once /clock rosgraph_msgs/msg/Clock & probe_pids+=("$!")
 # Check the workstation-owned static branches directly. The dynamic
 # world->drone heartbeat is Pi-owned and cannot exist before Pi boot.
-timeout 6 bash -c 'ros2 run tf2_ros tf2_echo drone cable_gripper 2>&1 | grep -m1 "Translation:"' & probe_pids+=("$!")
-timeout 6 bash -c 'ros2 run tf2_ros tf2_echo drone mmwave 2>&1 | grep -m1 "Translation:"' & probe_pids+=("$!")
+timeout "${probe_timeout}" bash -c 'ros2 run tf2_ros tf2_echo drone cable_gripper 2>&1 | grep -m1 "Translation:"' & probe_pids+=("$!")
+timeout "${probe_timeout}" bash -c 'ros2 run tf2_ros tf2_echo drone mmwave 2>&1 | grep -m1 "Translation:"' & probe_pids+=("$!")
 # A live process is insufficient here: the Python rate limiter can remain
 # discoverable after it stops forwarding frames. Verify the actual bounded
 # bandwidth output that the Pi consumes.
-timeout 6 ros2 topic echo /sensor/cable_camera/image_raw --once --field header --qos-reliability best_effort & probe_pids+=("$!")
+timeout "${probe_timeout}" ros2 topic echo /sensor/cable_camera/image_raw --once --field header --qos-reliability best_effort & probe_pids+=("$!")
 for probe_pid in "${probe_pids[@]}"; do
     wait "${probe_pid}" || result=1
 done

@@ -233,6 +233,7 @@ WORKSPACE_ROOT={workspace}
 ADAPTER_SESSION=mock
 ADAPTER_READINESS_CONFIRMED=0
 ADAPTER_PROBE_TIMEOUT_SEC={probe_timeout}
+ADAPTER_SINGLE_PROBE_TIMEOUT_SEC={probe_timeout}
 adapter_panes_healthy() {{ return 0; }}
 ros_environment() {{ printf '%s' 'export MOCK_ROS_ENV=1'; }}
 session_user_command() {{ "$@"; }}
@@ -1459,3 +1460,18 @@ def test_start_uses_marker_synchronised_px4_shell_instead_of_fixed_sleeps() -> N
     assert "configure_px4_mavlink || return 1" in start
     assert "sleep 2" not in start
     assert "-S -80" not in source
+
+
+def test_hil_adapter_probes_allow_cold_ros2_discovery_within_the_overall_bound() -> None:
+    # Each probe is a fresh daemon-less ROS 2 CLI participant; on an idle HIL
+    # graph `ros2 lifecycle get` alone took ~3.2 s, so 4 s per-probe limits
+    # falsely reported a healthy stack as not ready right after a restart.
+    import re
+
+    source = LAUNCHER.read_text(encoding="utf-8")
+    probes = launcher_function(source, "adapter_probe_script", "run_adapter_probes")
+    assert not re.search(r"timeout [0-9]+ (ros2|bash)", probes)
+    assert probes.count('timeout "${probe_timeout}"') == 5
+    single = int(re.search(r'III_HIL_ADAPTER_SINGLE_PROBE_TIMEOUT_SEC:-([0-9]+)', source).group(1))
+    overall = int(re.search(r'III_HIL_ADAPTER_PROBE_TIMEOUT_SEC:-([0-9]+)', source).group(1))
+    assert 3 * 3.2 <= single < overall
