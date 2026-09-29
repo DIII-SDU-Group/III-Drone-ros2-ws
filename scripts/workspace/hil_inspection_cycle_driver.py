@@ -2371,9 +2371,14 @@ def main() -> int:
             # Full charging can advance the canonical next_mode before the
             # optional manual intent reaches Runtime API. The advance helper
             # accepts that only with fresh full-charge and Leave evidence.
+            # The mission decides Leave by how this charge began: an automatic
+            # (battery-low) recharge leaves by itself at full charge, while a
+            # commanded recharge sets the stay-on-cable bypass and waits for a
+            # Leave intent. Commanding Leave after an automatic recharge races
+            # the mission's own transition.
             leave_transition = driver.advance_after_charging(
                 full_charge_evidence=full_evidence,
-                automatic_only=args.automatic_cycles,
+                automatic_only=args.automatic_cycles or transition.transition == "automatic",
             )
             if leave_transition["transition"] == "automatic":
                 record({
