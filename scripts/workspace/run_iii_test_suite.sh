@@ -142,12 +142,8 @@ else
 fi
 
 python3 -m pytest tests
-# Workspace tooling tests. Excluded: the powerline final-test manifest contract
-# reads a dataset/template from a sibling checkout outside this workspace, and
-# one perception-seam probe assertion is stale against its script (tracked
-# separately); neither exercises the HIL lifecycle.
-python3 -m pytest scripts/workspace \
-  --ignore=scripts/workspace/test_powerline_final_test_manifest.py \
-  --deselect "scripts/workspace/test_run_hil_perception_seam_probe.py::RetainedOperationPreflightContractTests::test_selected_host_reaches_every_outbound_transport"
+# Workspace tooling tests. The powerline final-test manifest contract skips
+# itself when the sibling disturbance_nmpc dataset checkout is absent.
+python3 -m pytest scripts/workspace
 PYTHONPATH="${workspace_root}/tools/III-Drone-CLI${PYTHONPATH:+:${PYTHONPATH}}" \
   python3 -m pytest tools/III-Drone-CLI/test

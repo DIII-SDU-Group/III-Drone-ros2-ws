@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 import subprocess
 
 
@@ -45,13 +46,53 @@ iii --help >/dev/null
     assert result.stderr == ""
 
 
+def _stub_hil_peer_resolver(tmp_path: Path, *, route: str | None) -> tuple[Path, Path]:
+    """Shadow ``python3`` so setup_hil.bash never probes DNS/mDNS or SSH.
+
+    Only the resolve_hil_peer.py invocation is intercepted (its arguments are
+    recorded); every other python3 call is delegated to the real interpreter.
+    ``route`` is the resolver's stdout ("peer source"); ``None`` simulates an
+    unreachable aircraft.
+    """
+    real_python = shutil.which("python3", path="/usr/local/bin:/usr/bin:/bin")
+    assert real_python
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    record = tmp_path / "resolver-args"
+    outcome = (
+        f"echo '{route}'; exit 0"
+        if route is not None
+        else "echo 'HIL peer resolution for stub failed' >&2; exit 1"
+    )
+    shim = bin_dir / "python3"
+    shim.write_text(
+        "#!/bin/bash\n"
+        'case "${1:-}" in\n'
+        "  */scripts/workspace/resolve_hil_peer.py)\n"
+        f"    shift; printf '%s\\n' \"$@\" > '{record}'; {outcome} ;;\n"
+        "esac\n"
+        f'exec {real_python} "$@"\n',
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+    return bin_dir, record
+
+
+def _hil_environment(tmp_path: Path, bin_dir: Path) -> dict[str, str]:
+    return {
+        "HOME": str(tmp_path),
+        "PATH": f"{bin_dir}:/usr/local/bin:/usr/bin:/bin",
+        # Hermetic: never read the host's onboard runtime env or peer caches.
+        "III_HIL_ONBOARD_RUNTIME_ENV": str(tmp_path / "absent-runtime.env"),
+        "III_HIL_PEER_STATE_DIR": str(tmp_path / "peer-state"),
+    }
+
+
 def test_hil_shell_binds_runtime_controls_to_aircraft_without_local_fallback(
     tmp_path: Path,
 ) -> None:
-    environment = {
-        "HOME": str(tmp_path),
-        "PATH": "/usr/local/bin:/usr/bin:/bin",
-    }
+    # TEST-NET addresses: the resolver result is only a transport routing hint.
+    bin_dir, record = _stub_hil_peer_resolver(tmp_path, route="192.0.2.10 192.0.2.20")
     command = """
 set -eu
 source setup/setup_hil.bash
@@ -65,11 +106,15 @@ test "$III_SSH_HOST" = iii.local
 test "$III_RUNTIME_API_URL" = http://iii.local:8765
 test -z "${III_RUNTIME_API_TOKEN_FILE:-}"
 test -z "${GZ_IP:-}"
+# The resolved peer pins the DDS/PX4 transport route but never replaces the
+# aircraft hostname used for runtime controls.
+test "$III_HIL_RESOLVED_PI_ADDRESS" = 192.0.2.10
+test "$III_HIL_WORKSTATION_ADDRESS" = 192.0.2.20
 """
     result = subprocess.run(
         ["bash", "--noprofile", "--norc", "-c", command],
         cwd=ROOT,
-        env=environment,
+        env=_hil_environment(tmp_path, bin_dir),
         capture_output=True,
         text=True,
         check=False,
@@ -78,6 +123,36 @@ test -z "${GZ_IP:-}"
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
     assert result.stderr == ""
+    assert record.read_text(encoding="utf-8").splitlines() == [
+        "iii.local",
+        str(tmp_path / "peer-state"),
+        "0",
+    ]
+
+
+def test_hil_shell_reports_unresolved_peer_without_failing(tmp_path: Path) -> None:
+    bin_dir, _record = _stub_hil_peer_resolver(tmp_path, route=None)
+    command = """
+set -eu
+source setup/setup_hil.bash
+test "$III_RUNTIME_API_URL" = http://iii.local:8765
+test -z "${III_HIL_RESOLVED_PI_ADDRESS:-}"
+"""
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-c", command],
+        cwd=ROOT,
+        env=_hil_environment(tmp_path, bin_dir),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+    assert (
+        "no reachable Pi IPv4 was resolved for iii.local; continuing with the hostname"
+        in result.stderr
+    )
 
 
 def test_remote_runtime_binding_preserves_explicit_url_and_drops_stale_token(

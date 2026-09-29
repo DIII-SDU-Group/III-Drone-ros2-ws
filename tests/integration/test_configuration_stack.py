@@ -1,5 +1,4 @@
 from pathlib import Path
-import shutil
 
 import yaml
 from launch_ros.actions import Node
@@ -76,26 +75,18 @@ def test_core_launch_selects_mode_specific_configuration_file(tmp_path, monkeypa
         lambda _cmd: type("Reader", (), {"read": staticmethod(lambda: "")})(),
     )
 
-    real_selector = iii_config_dir / "profiles" / "real.yaml"
-    real_parameters = (
-        iii_config_dir / "parameter_sets" / "real" / "tracked" / "default.yaml"
-    )
-    real_state = iii_config_dir / "state" / "real" / "contract.json"
-    real_selector.parent.mkdir(parents=True)
-    real_parameters.parent.mkdir(parents=True)
-    real_state.parent.mkdir(parents=True)
-    shutil.copyfile(CONFIG_SOURCE_DIR / "profiles" / "real.yaml", real_selector)
-    shutil.copyfile(
-        CONFIG_SOURCE_DIR / "parameter_sets" / "real" / "tracked" / "default.yaml",
-        real_parameters,
-    )
-    real_state.write_text("{}\n", encoding="utf-8")
+    # Start from an empty writable root: the launch file must reconcile each
+    # profile's own selector scope from the installed (ament) contract, which
+    # also writes the authenticated state binding. A hand-written binding would
+    # be rejected by the transactional reconciliation gate.
+    assert not iii_config_dir.exists()
 
     monkeypatch.delenv("SIMULATION", raising=False)
     real_description = core_module.generate_launch_description()
     assert _configuration_server_param_file(real_description) == str(
         iii_config_dir / "parameter_sets" / "real" / "tracked" / "default.yaml"
     )
+    assert (iii_config_dir / "state" / "real" / "contract.json").is_file()
 
     monkeypatch.setenv("SIMULATION", "true")
     sim_description = core_module.generate_launch_description()

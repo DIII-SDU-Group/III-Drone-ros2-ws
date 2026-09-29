@@ -14,6 +14,10 @@ HIL/SIM endurance work. It expects the target stack to already be up
    back from the Pi, and writes `execution_result.json`;
 5. evaluates acceptance into `acceptance_report.json`.
 
+Before flying, the runner proves that the target runs the installed tracked
+parameter defaults (`check_parameter_provenance.py`): a selected snapshot or
+locally preserved values would qualify parameters no commit describes.
+
 In HIL, a passive listener on the Pi also records the physical PX4's MAVLink
 heartbeats for the whole run, so acceptance proves the physical flight
 controller stayed disarmed while the workstation SITL flew.
@@ -219,12 +223,20 @@ def execute(args: argparse.Namespace) -> Path:
         run(["ssh", *SSH_OPTIONS, f"iii@{peer}", f"mkdir -p {shlex.quote(remote_dir)}"])
         run(["scp", "-q", *SSH_OPTIONS, str(scripts / "observe_hil_mission_lifecycle.py"),
              str(scripts / "hil_perception_probe.py"), str(scripts / "physical_px4_disarm_monitor.py"),
-             f"iii@{peer}:{remote_dir}/"], timeout=60)
+             str(scripts / "check_parameter_provenance.py"), f"iii@{peer}:{remote_dir}/"], timeout=60)
         observer_src = f"{remote_dir}/observe_hil_mission_lifecycle.py"
         probe_src = f"{remote_dir}/hil_perception_probe.py"
     else:
         observer_src = f"{CONTAINER_WS}/scripts/workspace/observe_hil_mission_lifecycle.py"
         probe_src = f"{CONTAINER_WS}/scripts/workspace/hil_perception_probe.py"
+    provenance_src = (f"{remote_dir}/check_parameter_provenance.py" if target.name == "hil"
+                      else f"{CONTAINER_WS}/scripts/workspace/check_parameter_provenance.py")
+    provenance = run(target.observer_shell(
+        f"python3 {provenance_src} --profile {target.name}"), check=False, timeout=60)
+    (run_dir / "parameter_provenance.json").write_text(provenance.stdout)
+    if provenance.returncode != 0:
+        raise RunnerError(f"target does not run the tracked parameter defaults; see {rel}/parameter_provenance.json"
+                          f"\n{provenance.stdout[-1500:]}{provenance.stderr[-500:]}")
     # A marker for "logs written during this run" on the observer host.
     marker = f"{remote_dir}/.run_started"
 

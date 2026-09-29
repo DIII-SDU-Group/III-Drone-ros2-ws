@@ -146,6 +146,15 @@ code 0 with `"accepted": true`; every failed check is listed under
 window count. Any ERROR/FATAL node log line or Core continuity fault fails the
 run; add `--strict-warnings` to also fail on WARN lines.
 
+Before flying, the runner proves that the target runs the installed tracked
+parameter defaults (`scripts/workspace/check_parameter_provenance.py`, written
+to `parameter_provenance.json`). It refuses to run when the profile selector
+(`profiles/<scope>.yaml`, scope `sim` or `hil`) points at a saved snapshot, or
+when the living `tracked/default.yaml` holds locally preserved values that
+differ from the installed default. Either way the run would qualify parameters
+that no commit describes. In SIM, restore the tracked defaults recoverably with
+`iii config sim reset`, which seals a checkpoint of the old state first.
+
 In HIL the runner also starts `scripts/workspace/physical_px4_disarm_monitor.py`
 on the Pi. It passively listens to the physical PX4's MAVLink heartbeats on the
 HIL port (UDP `14542`, from `10.41.10.2`) for the whole run and writes

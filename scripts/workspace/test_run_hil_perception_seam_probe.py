@@ -168,7 +168,8 @@ class RetainedOperationPreflightContractTests(unittest.TestCase):
         self.assertIn('"${PI_USER}@${PI_HOST}"', self.source)
         self.assertIn('"${PI_USER}@${PI_HOST}:${REMOTE_ARTIFACT}/."', self.source)
         self.assertIn('"${WORKSPACE_ROOT}/tools/simulation/launch_hil_workstation.sh" --host "${PI_HOST}"', self.source)
-        self.assertIn('Peer address=\\\\\\"${PI_ADDRESS}\\\\\\"', self.source)
+        # The resolved Pi address reaches the launcher's DDS peer configuration.
+        self.assertIn('export III_HIL_PI_ENDPOINT="${PI_HOST}" III_HIL_PI_ADDRESS="${PI_ADDRESS}"', self.source)
 
     def test_manifest_records_selected_host_and_resolved_route(self):
         self.assertIn('"pi_host": sys.argv[3]', self.source)
