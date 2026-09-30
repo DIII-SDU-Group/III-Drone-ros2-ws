@@ -146,6 +146,14 @@ code 0 with `"accepted": true`; every failed check is listed under
 window count. Any ERROR/FATAL node log line or Core continuity fault fails the
 run; add `--strict-warnings` to also fail on WARN lines.
 
+Every cable release in the run is also judged from the PX4 SITL flight logs
+(`scripts/workspace/cable_release_ulog.py`, written to
+`cable_release_report.json`). Each counted cycle needs a release, and each
+release must keep PX4's land detector clear until CableTakeoff, push with
+thrust above hover and below saturation, stay pressed against the conductor
+(at most 0.1 m/s vertical speed and 5 cm of estimated vertical drift), and let CableTakeoff sag at most
+5 cm below its reference.
+
 Before flying, the runner proves that the target runs the installed tracked
 parameter defaults (`scripts/workspace/check_parameter_provenance.py`, written
 to `parameter_provenance.json`). It refuses to run when the profile selector

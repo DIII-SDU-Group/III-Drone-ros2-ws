@@ -431,7 +431,38 @@ px4_assets_current() {
         "${PX4_ROOT}/Tools/simulation/gz/worlds/hca_full_pylon_setup.sdf" &&
     cmp -s \
         "${asset_root}/Gazebo-simulation-assets/init.d-posix_airframes/99999_gz_d4s_dc_drone" \
-        "${PX4_ROOT}/ROMFS/px4fmu_common/init.d-posix/airframes/99999_gz_d4s_dc_drone"
+        "${PX4_ROOT}/ROMFS/px4fmu_common/init.d-posix/airframes/99999_gz_d4s_dc_drone" &&
+    px4_world_models_current "${asset_root}/Gazebo-simulation-assets/world_models"
+}
+
+# World models (the pylon and conductor collisions, conductors.yaml) are
+# installed next to the vehicle models; a stale copy would fly the old world.
+px4_world_models_current() {
+    local world_models="$1"
+    local model
+    for model in "${world_models}"/*/; do
+        diff -rq "${model}" "${PX4_ROOT}/Tools/simulation/gz/models/$(basename "${model}")" >/dev/null || return 1
+    done
+}
+
+# The default PX4 command builds PX4 before starting it. A custom command (HIL)
+# starts the built binary directly, which reads its airframes from the build
+# tree, so rebuild when the installed airframe is newer than the build's copy.
+ensure_px4_build_airframes_current() {
+    if [[ -z "${III_SIM_TOOLS_PX4_COMMAND:-}" || "${III_SIM_TOOLS_ENSURE_ASSETS_WITH_CUSTOM_COMMAND:-0}" != "1" ]]; then
+        return
+    fi
+    if cmp -s \
+        "${PX4_ROOT}/ROMFS/px4fmu_common/init.d-posix/airframes/99999_gz_d4s_dc_drone" \
+        "${PX4_BUILD_DIR}/etc/init.d-posix/airframes/99999_gz_d4s_dc_drone"; then
+        return
+    fi
+    echo "Rebuilding PX4 SITL: the build tree holds a stale D4S airframe." >&2
+    (
+        source "${WORKSPACE_ROOT}/setup/setup_dev.bash" &&
+        cd "${PX4_ROOT}" &&
+        make px4_sitl_default
+    )
 }
 
 ensure_px4_assets_current() {
@@ -585,6 +616,7 @@ if ! session_exists; then
     # Viewer-only repair of a live session must not rewrite either one.
     ensure_px4_assets_current
     refresh_px4_build_cache_if_needed
+    ensure_px4_build_airframes_current
     tmux_command new-session -d -s "${SESSION_NAME}" -n "simulation" "$(tmux_shell_command "${PX4_COMMAND}")"
     tmux_command set-option -t "${SESSION_NAME}" remain-on-exit on
     tmux_command select-pane -t "${SESSION_NAME}:simulation.0" -T "PX4 / Gazebo"

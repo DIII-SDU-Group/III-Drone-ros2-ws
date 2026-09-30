@@ -19,6 +19,10 @@ DEADLINE = "2026-09-28T06:30:00+00:00"
 def _no_real_px4_logs(monkeypatch) -> None:
     # evaluate() scans the workspace's real PX4 SITL logs; keep tests hermetic.
     monkeypatch.setattr(endurance, "PX4_SITL_LOG_ROOTS", ())
+    # Every cycle's cable release is judged from those logs; by default each
+    # release passed.
+    monkeypatch.setattr(endurance.cable_release_ulog, "report",
+                        lambda *args: {"available": True, "releases": [{"failures": []}] * 100, "failures": []})
 
 def cycle(resumed: str, charging: str = "2026-09-28T06:05:00+00:00",
           leave: str = "2026-09-28T06:05:40+00:00") -> dict:
@@ -283,3 +287,27 @@ def test_probe_window_stays_within_the_probe_bound() -> None:
     assert endurance.probe_duration_sec(1800) == 2400
     # Indefinite soak runs must not hand the probe a window it rejects.
     assert endurance.probe_duration_sec(604800) == endurance.PROBE_MAX_DURATION_SEC
+
+
+def test_cable_release_failures_and_missing_releases_fail_acceptance(tmp_path: Path, monkeypatch) -> None:
+    run_dir = write_run(tmp_path, cycles=[cycle("2026-09-28T06:10:00+00:00")])
+    plan = json.loads((run_dir / "run_plan.json").read_text())
+    plan["started_at"] = START
+    (run_dir / "run_plan.json").write_text(json.dumps(plan))
+    target = endurance.Target("sim", "container", None)
+    safe = {"freshness": "fresh", "latest": {"command_transport": {"armed": False, "in_air": False},
+                                             "ros_uxrce": {"armed": False, "in_air": False}}}
+
+    monkeypatch.setattr(endurance.cable_release_ulog, "report", lambda *args: {
+        "available": True, "releases": [{"failures": ["x"]}],
+        "failures": ["cable release a.ulg: push saturates thrust (1.00)"]})
+    report = endurance.evaluate(run_dir, target=target, fetch_status=lambda host: safe, log_lines=lambda t, d: [])
+    assert not report["accepted"]
+    assert "cable release a.ulg: push saturates thrust (1.00)" in report["failures"]
+    assert json.loads((run_dir / "cable_release_report.json").read_text())["releases"]
+
+    monkeypatch.setattr(endurance.cable_release_ulog, "report",
+                        lambda *args: {"available": True, "releases": [], "failures": []})
+    report = endurance.evaluate(run_dir, target=target, fetch_status=lambda host: safe, log_lines=lambda t, d: [])
+    assert "cable releases in PX4 logs 0 < cycles 1" in report["failures"]
+

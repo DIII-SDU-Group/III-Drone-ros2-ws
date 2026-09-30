@@ -41,6 +41,8 @@ import time
 from typing import Any, Callable
 import urllib.request
 
+import cable_release_ulog
+
 ROOT = Path(__file__).resolve().parents[2]
 CONTAINER_WS = "/home/iii/ws"
 PI_WS = "/home/iii/ws"
@@ -578,6 +580,13 @@ def evaluate(run_dir: Path, *, target: Target | None = None, strict_warnings: bo
                                   for g in findings["patterns"][:40]]
         # A metric, not a failure: it says whether SITL ran in real time.
         report["sitl_imu_timing"] = sitl_imu_timing(since, until)
+        releases = cable_release_ulog.report(since, until, PX4_SITL_LOG_ROOTS, ROOT)
+        (run_dir / "cable_release_report.json").write_text(json.dumps(releases, indent=2) + "\n")
+        report["cable_releases"] = len(releases["releases"])
+        check(releases["available"], f"cable releases not judged: {releases.get('reason')}")
+        check(len(releases["releases"]) >= len(in_window),
+              f"cable releases in PX4 logs {len(releases['releases'])} < cycles {len(in_window)}")
+        failures.extend(releases["failures"])
         check(all(count == 0 for count in findings["continuity_markers"].values()),
               f"continuity faults {findings['continuity_markers']}")
         check(findings["counts"]["ERROR"] == 0 and findings["counts"]["FATAL"] == 0,

@@ -20,6 +20,18 @@ as PX4 manual/Position/Hold, Mission, CustomOperation, or a control transition.
 The GUI Flight page is for simulation and commissioning. It is not a joystick
 and is not the primary field flight-control path.
 
+## Aircraft Prerequisite: Hover Thrust
+
+Leaving the cable pushes the aircraft up against the conductor with an
+acceleration setpoint, which PX4 converts to thrust using `MPC_THR_HOVER`
+(PX4 restores that value on every disarm, including on the cable). Before
+flying cable releases, set `MPC_THR_HOVER` to the aircraft's measured hover
+thrust, for example the `hover_thrust_estimate` of a steady hover in a flight
+log. An untuned value (PX4's default is 0.5) can leave the push too weak to
+carry the aircraft when the gripper opens. The runtime never writes PX4
+parameters; this is a manual commissioning step. See
+[Leaving the cable](mission-and-behavior-layer.md#leaving-the-cable).
+
 ## Preparation And Start
 
 1. On the aircraft, provision the real-profile runtime environment and start

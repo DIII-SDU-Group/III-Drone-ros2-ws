@@ -89,6 +89,48 @@ The trees encode robust patterns:
 - mapper mode changes (start/pause/freeze/stop)
 - gripper state handling
 
+### Leaving the cable
+
+`leave_cable_tree.xml` arms the vehicle while the gripper still holds the
+conductor, then pushes it up against the conductor before opening the gripper:
+
+1. `HoverOnCable` with `cable_release_push="true"` commands the vertical axis as
+   an upward acceleration, `/behavior/cable_release_push_acceleration`
+   (default 3.0 m/s^2). PX4 turns an acceleration setpoint into thrust = hover
+   thrust x (1 + a/g), so the push force is set by that value. A velocity
+   setpoint would not bound it: the conductor stops the vehicle, the velocity
+   error never closes, and PX4's integrator winds thrust up to its maximum. The
+   push requests PX4 takeoff with a small acceleration
+   (`cable_push_takeoff_request_acceleration`) and ramps to the target at
+   `cable_push_jerk` only while PX4 applies it: its land detector reports the
+   vehicle airborne and its position controller commands thrust
+   (`/fmu/out/vehicle_local_position_setpoint`). Far above the ground PX4
+   reports airborne as soon as it arms, while its spool-up still commands zero
+   thrust, so the land detector alone is not enough. The sustained action
+   succeeds when the push is established (Core logs the hover thrust PX4
+   assumes), and the push then continues until CableTakeoff takes over. It
+   fails if PX4 does not apply it within `cable_push_start_timeout_s` or stops
+   applying it.
+2. `WaitForPX4Airborne` requires PX4's land detector to report not landed, not
+   maybe landed and no ground contact, and PX4 to command thrust, without
+   interruption for 1 s (samples older than 2.5 s and 1 s count as unknown).
+3. Only then does `GripperCommand` open the gripper, and `CableTakeoff` starts.
+
+If step 1 or 2 fails, the gripper stays closed, the vehicle is force-disarmed on
+the conductor and Leave Cable fails.
+
+PX4 cannot declare the vehicle landed during the push: from takeoff it needs
+thrust near idle plus a commanded descent, and the push commands neither. The
+push force relies on PX4's `MPC_THR_HOVER`, which PX4 also restores on every
+disarm: a hover thrust 10% low still leaves an 18% push at the default. Tune
+`MPC_THR_HOVER` on the aircraft (for example from the hover-thrust estimate of
+a flight log) before flying cable releases.
+
+Every SIM and HIL endurance run judges each release from the PX4 flight logs
+(`scripts/workspace/cable_release_ulog.py`, `cable_release_report.json`): land
+detector clear until CableTakeoff, push thrust above hover and below
+saturation, no vertical motion while pressed, and no CableTakeoff sag.
+
 ## 7. PX4 Integration Positioning
 
 Mission package uses `px4_ros2_cpp` and custom mode executor wrappers.

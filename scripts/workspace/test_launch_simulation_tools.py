@@ -358,3 +358,93 @@ def test_same_partition_orphan_px4_is_still_cleaned_as_stale() -> None:
         result = run_launcher(env, "--stop")
         assert result.returncode == 0, result.stderr
         assert "Cleaning stale PX4 SITL state for instance 97" in result.stderr
+
+
+AIRFRAME = "99999_gz_d4s_dc_drone"
+
+
+def _asset_env(root: Path) -> dict[str, str]:
+    """A fake workspace whose PX4 copies of the D4S assets are all current."""
+    bin_dir = root / "bin"
+    bin_dir.mkdir()
+    tmux = bin_dir / "tmux"
+    tmux.write_text(FAKE_TMUX, encoding="utf-8")
+    tmux.chmod(0o755)
+    make = bin_dir / "make"
+    make.write_text(f"#!/bin/sh\necho \"make $*\" >> {root / 'make.log'}\n", encoding="utf-8")
+    make.chmod(0o755)
+    workspace = root / "ws"
+    (workspace / "setup").mkdir(parents=True)
+    (workspace / "setup" / "setup_dev.bash").write_text("", encoding="utf-8")
+    assets = root / "sim" / "Gazebo-simulation-assets"
+    installer = root / "sim" / "scripts" / "install.sh"
+    installer.parent.mkdir(parents=True)
+    installer.write_text(f"#!/bin/sh\necho installed >> {root / 'installer.log'}\n", encoding="utf-8")
+    installer.chmod(0o755)
+    px4 = root / "PX4-Autopilot"
+    files = {
+        "models/d4s_dc_drone/model.sdf": "Tools/simulation/gz/models/d4s_dc_drone/model.sdf",
+        "worlds/hca_full_pylon_setup.sdf": "Tools/simulation/gz/worlds/hca_full_pylon_setup.sdf",
+        f"init.d-posix_airframes/{AIRFRAME}": f"ROMFS/px4fmu_common/init.d-posix/airframes/{AIRFRAME}",
+        "world_models/hcaa_pylon_setup/conductors.yaml": "Tools/simulation/gz/models/hcaa_pylon_setup/conductors.yaml",
+    }
+    for source, installed in files.items():
+        for path in (assets / source, px4 / installed):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(source, encoding="utf-8")
+    (px4 / "ROMFS/px4fmu_common/init.d-posix/airframes/CMakeLists.txt").write_text(AIRFRAME, encoding="utf-8")
+    build_airframe = px4 / "build/px4_sitl_default/etc/init.d-posix/airframes" / AIRFRAME
+    build_airframe.parent.mkdir(parents=True)
+    build_airframe.write_text(f"init.d-posix_airframes/{AIRFRAME}", encoding="utf-8")
+    return {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "FAKE_TMUX_STATE": str(root / "tmux-state"),
+        "FAKE_TMUX_LOG": str(root / "tmux.log"),
+        "III_SIM_TOOLS_SESSION": "asset-freshness",
+        "III_SIM_TOOLS_WORKSPACE_ROOT": str(workspace),
+        "III_SIM_TOOLS_PX4_ROOT": str(px4),
+        "III_SIM_TOOLS_PX4_BUILD_DIR": str(px4 / "build/px4_sitl_default"),
+        "III_SIM_TOOLS_ASSET_INSTALLER": str(installer),
+        "III_SIM_TOOLS_PX4_COMMAND": "true",
+        "III_SIM_TOOLS_ENSURE_ASSETS_WITH_CUSTOM_COMMAND": "1",
+        "III_SIM_TOOLS_PS_COMMAND": "true",
+    }
+
+
+def _log(path: Path) -> str:
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def test_current_assets_and_build_start_without_reinstalling_or_rebuilding() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        result = run_launcher(_asset_env(root), "--no-attach", "--headless")
+        assert result.returncode == 0, result.stderr
+        assert _log(root / "installer.log") == ""
+        assert _log(root / "make.log") == ""
+
+
+def test_a_changed_world_model_reinstalls_the_assets() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        env = _asset_env(root)
+        (root / "sim/Gazebo-simulation-assets/world_models/hcaa_pylon_setup/conductors.yaml").write_text(
+            "conductor_radius_m: 0.0125", encoding="utf-8")
+        result = run_launcher(env, "--no-attach", "--headless")
+        assert result.returncode == 0, result.stderr
+        assert _log(root / "installer.log") == "installed\n"
+
+
+def test_a_custom_px4_command_rebuilds_a_build_tree_with_a_stale_airframe() -> None:
+    # HIL starts the built PX4 binary directly; it reads airframes from the
+    # build tree, which only a PX4 build refreshes.
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        env = _asset_env(root)
+        (root / "PX4-Autopilot/build/px4_sitl_default/etc/init.d-posix/airframes" / AIRFRAME).write_text(
+            "stale", encoding="utf-8")
+        result = run_launcher(env, "--no-attach", "--headless")
+        assert result.returncode == 0, result.stderr
+        assert "stale D4S airframe" in result.stderr
+        assert _log(root / "make.log") == "make px4_sitl_default\n"
