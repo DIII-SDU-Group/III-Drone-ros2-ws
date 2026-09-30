@@ -187,3 +187,41 @@ def test_main_records_external_ros_shutdown(tmp_path, monkeypatch) -> None:
     assert node._alive_at_finish is False
     assert node._alive_at_destroy is False
     assert state["shutdown_after_destroy"] is False
+
+
+def test_probe_decodes_the_lossless_compressed_camera_stream(tmp_path) -> None:
+    import types
+
+    import cv2
+    import numpy as np
+    from cv_bridge import CvBridge
+    from sensor_msgs.msg import CompressedImage
+
+    # compressed_image_transport's PNG output for an rgb8 camera.
+    rgb = np.zeros((48, 64, 3), dtype=np.uint8)
+    rgb[:, 32:] = (255, 0, 0)  # red right half
+    ok, png = cv2.imencode(".png", cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+    assert ok
+    message = CompressedImage()
+    message.format = "rgb8; png compressed bgr8"
+    message.data = png.tobytes()
+
+    buckets = {}
+    probe = types.SimpleNamespace(
+        _record=lambda name, msg, metadata: buckets.setdefault(name, {"metadata": metadata}),
+        _elapsed=lambda: 5.0,
+        _last_image_saved_at=float("-inf"),
+        _bridge=CvBridge(),
+        _image_sequence=0,
+        _jsonl_path=tmp_path / "probe.jsonl",
+    )
+    probe_class = next(value for value in vars(PROBE).values()
+                       if isinstance(value, type) and hasattr(value, "_on_image"))
+    probe_class._on_image(probe, message)
+
+    saved = buckets["camera_image"]["saved_camera"]
+    assert "error" not in saved, saved
+    frame = cv2.imread(str(tmp_path / saved["file"]))
+    assert frame.shape == (48, 64, 3)
+    # Decoded as BGR: the red half has a high third channel.
+    assert frame[:, 40:, 2].mean() > 200 and frame[:, :24, 2].mean() < 30

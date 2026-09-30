@@ -34,7 +34,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.signals import SignalHandlerOptions
-from sensor_msgs.msg import Image, PointCloud2
+from sensor_msgs.msg import CompressedImage, PointCloud2
 from std_msgs.msg import Float32
 from iii_drone_interfaces.msg import Powerline
 
@@ -42,7 +42,9 @@ from iii_drone_interfaces.msg import Powerline
 MAX_DURATION_SEC = 3600.0
 IMAGE_SAVE_PERIOD_SEC = 1.0
 TOPICS = {
-    "camera_image": "/sensor/cable_camera/image_raw",
+    # The simulated camera crosses the HIL link as lossless PNG (see
+    # iii_drone_simulation sim_assets.launch.py); raw frames stay on the workstation.
+    "camera_image": "/sensor/cable_camera/image_raw/compressed",
     "mmwave_points": "/sensor/mmwave/points",
     "hough_yaw": "/perception/hough_transformer/cable_yaw_angle",
     "direction_pose": "/perception/pl_dir_computer/powerline_direction_pose",
@@ -132,7 +134,7 @@ class HilPerceptionProbe(Node):
             durability=DurabilityPolicy.VOLATILE,
         )
         self._subscriptions = [
-            self.create_subscription(Image, TOPICS["camera_image"], self._on_image, qos),
+            self.create_subscription(CompressedImage, TOPICS["camera_image"], self._on_image, qos),
             self.create_subscription(PointCloud2, TOPICS["mmwave_points"], self._on_mmwave, qos),
             self.create_subscription(Float32, TOPICS["hough_yaw"], self._on_hough_yaw, qos),
             self.create_subscription(PoseStamped, TOPICS["direction_pose"], self._on_direction_pose, qos),
@@ -179,13 +181,10 @@ class HilPerceptionProbe(Node):
             "is_dense": bool(message.is_dense),
         }
 
-    def _on_image(self, message: Image) -> None:
+    def _on_image(self, message: CompressedImage) -> None:
         metadata = {
-            "width": int(message.width),
-            "height": int(message.height),
-            "encoding": str(message.encoding),
-            "step": int(message.step),
-            "is_bigendian": bool(message.is_bigendian),
+            "format": str(message.format),
+            "compressed_bytes": len(message.data),
         }
         bucket = self._record("camera_image", message, metadata)
         now = self._elapsed()
@@ -193,7 +192,8 @@ class HilPerceptionProbe(Node):
             return
         self._last_image_saved_at = now
         try:
-            frame = self._bridge.imgmsg_to_cv2(message, desired_encoding="bgr8")
+            frame = self._bridge.compressed_imgmsg_to_cv2(message, desired_encoding="bgr8")
+            metadata["height"], metadata["width"] = int(frame.shape[0]), int(frame.shape[1])
             metrics = image_metrics(frame)
             self._image_sequence += 1
             filename = f"camera_{self._image_sequence:06d}.jpg"

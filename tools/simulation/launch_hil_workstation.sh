@@ -1286,9 +1286,9 @@ timeout "${probe_timeout}" ros2 topic echo --once /clock rosgraph_msgs/msg/Clock
 timeout "${probe_timeout}" bash -c 'ros2 run tf2_ros tf2_echo drone cable_gripper 2>&1 | grep -m1 "Translation:"' & probe_pids+=("$!")
 timeout "${probe_timeout}" bash -c 'ros2 run tf2_ros tf2_echo drone mmwave 2>&1 | grep -m1 "Translation:"' & probe_pids+=("$!")
 # A live process is insufficient here: the Python rate limiter can remain
-# discoverable after it stops forwarding frames. Verify the actual bounded
-# bandwidth output that the Pi consumes.
-timeout "${probe_timeout}" ros2 topic echo /sensor/cable_camera/image_raw --once --field header --qos-reliability best_effort & probe_pids+=("$!")
+# discoverable after it stops forwarding frames. Verify the actual bounded,
+# compressed output that the Pi consumes.
+timeout "${probe_timeout}" ros2 topic echo /sensor/cable_camera/image_raw/compressed --once --field header --qos-reliability best_effort & probe_pids+=("$!")
 for probe_pid in "${probe_pids[@]}"; do
     wait "${probe_pid}" || result=1
 done
