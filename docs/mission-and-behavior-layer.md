@@ -120,11 +120,19 @@ If step 1 or 2 fails, the gripper stays closed, the vehicle is force-disarmed on
 the conductor and Leave Cable fails.
 
 PX4 cannot declare the vehicle landed during the push: from takeoff it needs
-thrust near idle plus a commanded descent, and the push commands neither. The
-push force relies on PX4's `MPC_THR_HOVER`, which PX4 also restores on every
-disarm: a hover thrust 10% low still leaves an 18% push at the default. Tune
-`MPC_THR_HOVER` on the aircraft (for example from the hover-thrust estimate of
-a flight log) before flying cable releases.
+thrust near idle plus a commanded descent, and the push commands neither.
+
+The push force does not rely on PX4's `MPC_THR_HOVER` (which PX4 restores on
+every disarm). Core measures the thrust the vehicle actually hovers at from
+PX4's commanded thrust in steady free flight before the cable landing
+(`HoverThrustMeter`), reads the hover thrust PX4 assumes once the push starts
+(thrust / (1 + a/g)), and sizes the acceleration so PX4 commands
+`cable_push_thrust_over_hover` (1.3) times the measured hover thrust, capped at
+`cable_push_max_thrust` (0.95). Without a measurement (e.g. after a restart on
+the cable) it pushes at the configured acceleration and warns. CableTakeoff
+still starts from PX4's assumed hover thrust, so an untuned `MPC_THR_HOVER`
+makes it sag (about 20 cm at 14% low, 55 cm at the 0.5 default in SIM): tune it
+on the aircraft before flying cable releases.
 
 Every SIM and HIL endurance run judges each release from the PX4 flight logs
 (`scripts/workspace/cable_release_ulog.py`, `cable_release_report.json`): land

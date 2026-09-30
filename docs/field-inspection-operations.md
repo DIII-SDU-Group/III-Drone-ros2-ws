@@ -22,14 +22,14 @@ and is not the primary field flight-control path.
 
 ## Aircraft Prerequisite: Hover Thrust
 
-Leaving the cable pushes the aircraft up against the conductor with an
-acceleration setpoint, which PX4 converts to thrust using `MPC_THR_HOVER`
-(PX4 restores that value on every disarm, including on the cable). Before
-flying cable releases, set `MPC_THR_HOVER` to the aircraft's measured hover
-thrust, for example the `hover_thrust_estimate` of a steady hover in a flight
-log. An untuned value (PX4's default is 0.5) can leave the push too weak to
-carry the aircraft when the gripper opens. The runtime never writes PX4
-parameters; this is a manual commissioning step. See
+Before flying cable releases, set PX4's `MPC_THR_HOVER` to the aircraft's
+measured hover thrust, for example the `hover_thrust_estimate` of a steady
+hover in a flight log. PX4 restores it on every disarm, including on the cable,
+so every CableTakeoff starts from it: an untuned value (PX4's default is 0.5)
+makes the takeoff from the cable sag by tens of centimetres. The Leave Cable
+push sizes itself from the hover thrust measured in flight, but only if the
+aircraft flew steadily before landing on the cable. The runtime never writes
+PX4 parameters; this is a manual commissioning step. See
 [Leaving the cable](mission-and-behavior-layer.md#leaving-the-cable).
 
 ## Preparation And Start
