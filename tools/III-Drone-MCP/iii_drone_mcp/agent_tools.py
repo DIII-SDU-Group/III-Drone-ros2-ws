@@ -1662,7 +1662,15 @@ class DroneAgentTools:
                 recovery_result = self.system("start", timeout_sec=recovery_timeout)
                 last_state["recovery_result"] = recovery_result.data
             rclpy.spin_once(self.node, timeout_sec=0.05)
-        return ToolResult(False, last_state, "maneuver controller is not lifecycle-active")
+        lifecycle = last_state.get("lifecycle", {})
+        return ToolResult(
+            False,
+            last_state,
+            "maneuver controller is not lifecycle-active "
+            f"(lifecycle={lifecycle.get('label', 'unknown')}, "
+            f"clear_queue_service_ready={last_state.get('clear_queue_service_ready')}, "
+            f"recovery_attempted={last_state.get('recovery_attempted')})",
+        )
 
     def _maneuver_controller_state(self, timeout_sec: float = 0.5) -> dict[str, Any]:
         if not self._maneuver_controller_get_state.wait_for_service(timeout_sec=timeout_sec):

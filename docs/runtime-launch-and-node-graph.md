@@ -159,6 +159,21 @@ At the process level, the canonical path is launch-driven:
 - the daemon owns service processes that are not lifecycle nodes
 - supervision logic decides which managed nodes may be configured/activated
 
+When a lifecycle node's process dies and launch respawns it while the node is
+meant to be active, the system manager configures and activates the new
+process again. A process start or exit discards the supervisor's cached
+lifecycle state for that node, so recovery always waits for the new process to
+report its own state rather than trusting its predecessor's.
+
+III C++ executables spin their nodes with `iii_drone::utils::MultiThreadedExecutor`
+(`iii_drone_core/utils/multi_threaded_executor.hpp`), not rclcpp's
+`MultiThreadedExecutor`. On Jazzy the upstream executor can permanently drop a
+mutually exclusive callback group, including a node's default group with its
+lifecycle services and timers, from its wait set
+([ros2/rclcpp#3240](https://github.com/ros2/rclcpp/issues/3240)). The III
+executor requests the rebuild that restores the group directly after every
+mutually exclusive callback. Use it for new multi-threaded III executables.
+
 `mission_executor` is gated by `micro_ros_agent: ready`. The micro-ROS agent service may be alive while PX4 is absent; readiness follows configured FMU topic heartbeats. This supports starting the III system before PX4 SITL or the physical flight controller is available, then bringing PX4 online later and rerunning `iii system start`.
 
 ## 6. Runtime Topology Summary
