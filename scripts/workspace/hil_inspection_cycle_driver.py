@@ -550,10 +550,16 @@ class Driver(Node):
         or settle_timeout_sec elapses, then fail exactly as before.
         """
         deadline = time.monotonic() + settle_timeout_sec
+        # HIL soak run 16: one read landed in the 0.5 s Cable Charging ->
+        # Leave Cable handoff (both modes active) and took ~3 s to return,
+        # exhausting the window. Fail only after several reads.
+        minimum_reads = 3
+        reads = 0
         while True:
             state = _call_runtime_api(self,
                 lambda: self.runtime_client._request("GET", "/mission/status")
             )
+            reads += 1
             active = [mode for mode in state.get("modes", []) if mode.get("active")]
             if (
                 state.get("freshness") == "fresh"
@@ -562,7 +568,7 @@ class Driver(Node):
                 and active[0].get("freshness") == "fresh"
             ):
                 break
-            if time.monotonic() >= deadline or not rclpy.ok():
+            if (time.monotonic() >= deadline and reads >= minimum_reads) or not rclpy.ok():
                 raise RuntimeError(f"Cannot verify active mission phase from fresh Runtime API state: {state}")
             spin_ready(self, timeout_sec=0.1)
         mode_key = str(active[0].get("mode_key", ""))

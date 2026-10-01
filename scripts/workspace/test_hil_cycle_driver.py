@@ -1536,3 +1536,49 @@ def test_operator_hold_scenario_fast_forwards_with_intent_services(monkeypatch):
     names = [e["event"] for e in events]
     assert names[:3] == ["reach_cable_active", "charging_power_verified", "leave_cable_commanded"]
     assert names[-1] == "operator_hold_handover_verified" and commands == ["px4.hold"]
+
+
+def test_phase_read_survives_one_slow_read_inside_a_mode_handoff(monkeypatch):
+    # HIL soak run 16: the only read inside the 0.5 s Cable Charging -> Leave
+    # Cable handoff showed both modes active and took ~3 s to return.
+    handoff = {"freshness": "fresh", "source_availability": "available", "modes": [
+        {"mode_key": "cable_charging", "active": True, "freshness": "fresh"},
+        {"mode_key": "leave_cable", "active": True, "freshness": "fresh"}]}
+    settled = {"freshness": "fresh", "source_availability": "available", "modes": [
+        {"mode_key": "cable_charging", "active": False, "freshness": "fresh"},
+        {"mode_key": "leave_cable", "active": True, "freshness": "fresh"}]}
+    now = [0.0]
+    responses = [handoff, settled]
+
+    def request(method, path):
+        assert (method, path) == ("GET", "/mission/status")
+        response = responses.pop(0)
+        if response is handoff:
+            now[0] += 3.5
+        return response
+
+    driver = SimpleNamespace(runtime_client=SimpleNamespace(_request=request), native_state_receipts=[])
+    monkeypatch.setattr(module.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(module.rclpy, "ok", lambda: True)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
+    phase, state = module.Driver.read_fresh_native_mission_phase(driver)
+    assert phase == "leave_cable"
+    assert state is settled
+
+
+def test_phase_read_still_fails_when_two_modes_stay_active(monkeypatch):
+    stuck = {"freshness": "fresh", "source_availability": "available", "modes": [
+        {"mode_key": "cable_charging", "active": True, "freshness": "fresh"},
+        {"mode_key": "leave_cable", "active": True, "freshness": "fresh"}]}
+    now = [0.0]
+
+    def request(method, path):
+        now[0] += 1.5
+        return stuck
+
+    driver = SimpleNamespace(runtime_client=SimpleNamespace(_request=request), native_state_receipts=[])
+    monkeypatch.setattr(module.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(module.rclpy, "ok", lambda: True)
+    monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
+    with pytest.raises(RuntimeError, match="Cannot verify active mission phase"):
+        module.Driver.read_fresh_native_mission_phase(driver)
