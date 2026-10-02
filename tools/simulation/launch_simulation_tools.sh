@@ -489,6 +489,8 @@ ensure_px4_build_airframes_current() {
     fi
     echo "Rebuilding PX4 SITL: the build tree holds a stale D4S airframe." >&2
     (
+        # The ROS setup scripts read unset variables.
+        set +u
         source "${WORKSPACE_ROOT}/setup/setup_dev.bash" &&
         cd "${PX4_ROOT}" &&
         make px4_sitl_default
