@@ -62,6 +62,7 @@ Native command migration:
 
 Stack start options:
   --headless                Do not start Gazebo GUI or QGroundControl
+  --sim-model gz_<model>    PX4 simulation model, e.g. gz_d4s_dc_drone_powerline_eval
   --recreate-sim            Recreate SITL and clear its persistent parameters
   --no-gui                  Do not start the ground-control web application
 
@@ -115,7 +116,7 @@ command_usage() {
             printf 'Usage: ./iii-dev sim {start|restart|attach|status|stop}\n'
             ;;
         sim:start|sim:restart)
-            printf 'Usage: ./iii-dev sim %s [--headless]\n' "${action}"
+            printf 'Usage: ./iii-dev sim %s [--headless] [--sim-model gz_<model>]\n' "${action}"
             ;;
         sim:attach|sim:status|sim:stop)
             printf 'Usage: ./iii-dev sim %s\n' "${action}"
@@ -238,28 +239,34 @@ run_sim() {
     fi
 
     case "${action}" in
-        start)
-            for argument in "$@"; do
-                if [[ "${argument}" == "--headless" ]]; then
-                    headless=1
-                else
-                    iii_dev_die "sim start accepts only --headless."
-                    return
-                fi
+        start|restart)
+            local sim_args=()
+            while (($# > 0)); do
+                case "$1" in
+                    --headless)
+                        headless=1
+                        sim_args+=(--headless)
+                        ;;
+                    --sim-model)
+                        if (($# < 2)); then
+                            iii_dev_die "sim ${action} --sim-model needs a gz_<model> value."
+                            return
+                        fi
+                        sim_args+=(--sim-model "$2")
+                        shift
+                        ;;
+                    *)
+                        iii_dev_die "sim ${action} accepts only --headless and --sim-model gz_<model>."
+                        return
+                        ;;
+                esac
+                shift
             done
-            iii_dev_exec never "${SIM_SCRIPT}" --no-attach "$@"
-            ((headless)) || sim_start_qgc
-            ;;
-        restart)
-            for argument in "$@"; do
-                if [[ "${argument}" == "--headless" ]]; then
-                    headless=1
-                else
-                    iii_dev_die "sim restart accepts only --headless."
-                    return
-                fi
-            done
-            iii_dev_exec never "${SIM_SCRIPT}" --recreate --no-attach "$@"
+            if [[ "${action}" == "start" ]]; then
+                iii_dev_exec never "${SIM_SCRIPT}" --no-attach "${sim_args[@]}"
+            else
+                iii_dev_exec never "${SIM_SCRIPT}" --recreate --no-attach "${sim_args[@]}"
+            fi
             ((headless)) || sim_start_qgc
             ;;
         attach)
@@ -1397,7 +1404,8 @@ stack_start() {
     local argument
     local -a sim_args=()
 
-    for argument in "$@"; do
+    while (($# > 0)); do
+        argument="$1"
         case "${argument}" in
             --headless)
                 headless=1
@@ -1408,11 +1416,20 @@ stack_start() {
             --no-gui)
                 start_gui=0
                 ;;
+            --sim-model)
+                if (($# < 2)); then
+                    iii_dev_die "stack start --sim-model needs a gz_<model> value."
+                    return
+                fi
+                sim_args+=(--sim-model "$2")
+                shift
+                ;;
             *)
                 iii_dev_die "Unknown stack start option: ${argument}"
                 return
                 ;;
         esac
+        shift
     done
 
     lock_stack_mutation || return

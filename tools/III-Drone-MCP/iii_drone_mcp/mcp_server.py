@@ -1077,11 +1077,12 @@ class DroneMcpServer:
             ),
             ToolSpec(
                 "simulation",
-                "Start, restart, stop, or inspect the PX4/Gazebo/QGroundControl simulation tool session; start/restart can run backend-only.",
+                "Start, restart, stop, or inspect the PX4/Gazebo/QGroundControl simulation tool session; start/restart can run backend-only and select the PX4 model (sim_model, e.g. gz_d4s_dc_drone_powerline_eval; a running session keeps its model, use restart to switch).",
                 _object_schema(
                     {
                         "command": {"type": "string", "enum": ["start", "restart", "stop", "status"]},
                         "headless": {"type": "boolean"},
+                        "sim_model": {"type": "string"},
                         "wait_ready": {"type": "boolean"},
                         "ready_timeout_sec": {"type": "number"},
                         "timeout_sec": {"type": "number"},
