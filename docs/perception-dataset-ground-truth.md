@@ -35,13 +35,18 @@ The compatibility topic `/simulation/ground_truth/drone/odometry` remains record
 
 Each `RadarPointSource` contains:
 
-- `source_class`: `VALID_PHYSICAL_CONDUCTOR=1`, `PHANTOM=2`, or `CLUTTER_NO_PHYSICAL_SOURCE=3`;
+- `source_class`: `VALID_PHYSICAL_CONDUCTOR=1`, `PHANTOM=2`, `CLUTTER_NO_PHYSICAL_SOURCE=3`, or `VALID_PHYSICAL_PYLON=4`;
 - `physical_conductor_id`: canonical ID for class 1, deliberately empty for explicitly classified nonphysical returns;
+- `physical_pylon_id`: pylon ID from `pylons.yaml` for class 4, empty otherwise;
 - `ideal_generating_point_{world,sensor}`: the exact point selected by the radar generator before along/cross/normal measurement noise;
-- `nearest_physical_point_{world,sensor}`: the geometrically nearest canonical centerline point;
-- `generating_point_equals_nearest_point`: states whether those concepts coincide for this simulation model.
+- `nearest_physical_point_{world,sensor}`: the geometrically nearest canonical centerline point, regardless of the radar FOV;
+- `generating_point_equals_nearest_point`: whether those two points coincide;
+- `conductor_parameter_m`: arc length of the generating point along its conductor polyline;
+- `generating_geometry_class`: `ORTHOGONAL_NEAREST=1` when the generating point is the nearest point, `FOV_LIMITED=2` when the FOV forced a different point;
+- `active_support_boundaries`: bitmask of the finite-FOV azimuth, elevation and range limits active at the generating point (always 0 for the default view cone);
+- `unconstrained_nearest_distance_m` and `line_of_sight_tangent_angle_rad`: distance to the nearest centerline point, and the acute angle between the generating ray and the conductor tangent.
 
-The current generator produces physical conductor returns only. The nonphysical classes are reserved and enforced by validation so future phantom/clutter generation cannot silently lose provenance. `/simulation/ground_truth/mmwave/conductor_labels` remains as a compact point-aligned `PointCloud2` compatibility topic.
+The production model produces physical conductor returns only; the powerline SLAM evaluation variant below adds pylon returns. The nonphysical classes are reserved and enforced by validation so future phantom/clutter generation cannot silently lose provenance. `/simulation/ground_truth/mmwave/conductor_labels` remains as a compact point-aligned `PointCloud2` compatibility topic.
 
 ## Camera truth
 
@@ -51,6 +56,34 @@ Each `/sensor/cable_camera/image_raw` frame triggers, using the exact same simul
 - `/simulation/ground_truth/cable_camera/frame` (`CameraFrameGroundTruth`).
 
 The frame message lists every physical conductor, not only visible ones. State is `OUTSIDE_FOV`, `NO_VISIBLE_PIXELS`, or `VISIBLE`, with mask value, visible pixel count, and an in-bounds bounding box when visible. The instance mask analytically rasterizes the exact canonical centerlines with physical radius and z-buffers conductors against each other. It does **not** currently test occlusion by non-conductor rendered meshes such as pylons or the vehicle; this is the remaining distinction from a true renderer instance pass.
+
+## Powerline SLAM evaluation variant
+
+`d4s_dc_drone_powerline_eval` (airframe `99997_gz_d4s_dc_drone_powerline_eval`,
+`PX4_SIM_MODEL=gz_d4s_dc_drone_powerline_eval`) is generated from the
+production model by
+`Gazebo-simulation-assets/scripts/create_powerline_eval_drone_variant.py`. Its
+dynamics, collisions and other sensors are the production ones. It adds:
+
+- pylon radar returns (`VALID_PHYSICAL_PYLON`) from the evaluator-only pylon map
+  `world_models/hcaa_pylon_setup/pylons.yaml`. These returns are part of
+  `/sensor/mmwave/points`, so this variant changes the runtime radar input and
+  is never the default;
+- the finite rectangular radar FOV (`fov_model` `FINITE_RECTANGULAR`, 0.25 m
+  minimum range, 0.6107 rad azimuth/elevation half-angles) instead of the
+  production `view_cone_slope` cone;
+- an evaluator-only `pylon_semantic_camera` with the `cable_camera` pose and
+  intrinsics, and per-frame pylon truth with the camera's source stamp:
+  `/simulation/ground_truth/cable_camera/pylon_instance_mask`,
+  `/simulation/ground_truth/cable_camera/pylon_frame`
+  (`PylonCameraFrameGroundTruth`) and
+  `/simulation/ground_truth/cable_camera/pylon_exact_frame`
+  (`PylonExactMaskFrameGroundTruth`);
+- `/sensor/cable_camera/camera_info`, stamped like the camera frames.
+
+With `radar_model` `AOP_FAST_POINT` the plugin instead runs the simulator-v2
+IWR6843AOP model and publishes `/simulation/ground_truth/<radar_instance>/scan_v2`
+(`RadarScanTruthV2`) in place of `/simulation/ground_truth/mmwave/scan`.
 
 ## Recording and validation
 
