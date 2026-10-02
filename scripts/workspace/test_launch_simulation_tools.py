@@ -448,3 +448,87 @@ def test_a_custom_px4_command_rebuilds_a_build_tree_with_a_stale_airframe() -> N
         assert result.returncode == 0, result.stderr
         assert "stale D4S airframe" in result.stderr
         assert _log(root / "make.log") == "make px4_sitl_default\n"
+
+
+def test_the_default_px4_model_is_the_production_drone() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        env = _asset_env(root)
+        env.pop("III_SIM_TOOLS_PX4_COMMAND")
+        env.pop("III_SIM_TOOLS_PX4_SIM_MODEL", None)
+        result = run_launcher(env, "--no-attach", "--headless")
+        assert result.returncode == 0, result.stderr
+        assert "PX4_SIM_MODEL=gz_d4s_dc_drone\\ GZ_IP" in _log(root / "tmux.log")
+
+
+def test_sim_model_selects_the_px4_model_of_a_new_session() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        env = _asset_env(root)
+        env.pop("III_SIM_TOOLS_PX4_COMMAND")
+        result = run_launcher(
+            env, "--no-attach", "--headless", "--sim-model", "gz_d4s_dc_drone_powerline_eval")
+        assert result.returncode == 0, result.stderr
+        assert "PX4_SIM_MODEL=gz_d4s_dc_drone_powerline_eval\\ GZ_IP" in _log(root / "tmux.log")
+
+
+def test_the_sim_model_environment_variable_selects_the_px4_model() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        env = _asset_env(root)
+        env.pop("III_SIM_TOOLS_PX4_COMMAND")
+        env["III_SIM_TOOLS_PX4_SIM_MODEL"] = "gz_d4s_dc_drone_powerline_eval"
+        result = run_launcher(env, "--no-attach", "--headless")
+        assert result.returncode == 0, result.stderr
+        assert "PX4_SIM_MODEL=gz_d4s_dc_drone_powerline_eval\\ GZ_IP" in _log(root / "tmux.log")
+
+
+def test_an_invalid_sim_model_is_rejected_before_starting() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        env = _asset_env(root)
+        result = run_launcher(env, "--no-attach", "--headless", "--sim-model", "d4s_dc_drone")
+        assert result.returncode == 1
+        assert "expected gz_<model>" in result.stderr
+        assert "new-session" not in _log(root / "tmux.log")
+
+
+def test_a_selected_iii_model_that_is_not_installed_reinstalls_the_assets() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        env = _asset_env(root)
+        variant = root / "sim/Gazebo-simulation-assets/models/d4s_dc_drone_powerline_eval/model.sdf"
+        variant.parent.mkdir(parents=True)
+        variant.write_text("variant", encoding="utf-8")
+        result = run_launcher(
+            env, "--no-attach", "--headless", "--sim-model", "gz_d4s_dc_drone_powerline_eval")
+        assert result.returncode == 0, result.stderr
+        assert _log(root / "installer.log") == "installed\n"
+
+
+def test_a_changed_variant_model_reinstalls_the_assets_for_any_selected_model() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        env = _asset_env(root)
+        for base in ("sim/Gazebo-simulation-assets/models", "PX4-Autopilot/Tools/simulation/gz/models"):
+            variant = root / base / "d4s_dc_drone_powerline_eval/model.sdf"
+            variant.parent.mkdir(parents=True)
+            variant.write_text("variant", encoding="utf-8")
+        (root / "sim/Gazebo-simulation-assets/models/d4s_dc_drone_powerline_eval/model.sdf").write_text(
+            "changed variant", encoding="utf-8")
+        result = run_launcher(env, "--no-attach", "--headless")
+        assert result.returncode == 0, result.stderr
+        assert _log(root / "installer.log") == "installed\n"
+
+
+def test_status_reports_the_requested_and_the_running_px4_model() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        env = _foreign_px4_env(root, "iii_sim_partition", "iii_sim_partition")
+        (root / "proc" / "4321" / "environ").write_bytes(
+            b"GZ_PARTITION=iii_sim_partition\0PX4_SIM_MODEL=gz_d4s_dc_drone_powerline_eval\0")
+        env["III_SIM_TOOLS_STATUS_DISCOVERY_TIMEOUT_SEC"] = "1"
+        result = run_launcher(env, "--status")
+        assert result.returncode == 0, result.stderr
+        assert "px4_sim_model_requested: gz_d4s_dc_drone\n" in result.stdout
+        assert "px4_sim_model_running: gz_d4s_dc_drone_powerline_eval\n" in result.stdout

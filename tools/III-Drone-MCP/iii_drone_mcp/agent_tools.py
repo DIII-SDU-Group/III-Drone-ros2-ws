@@ -4095,18 +4095,20 @@ class DroneAgentTools:
         headless: bool = False,
         wait_ready: bool = True,
         ready_timeout_sec: float = 180.0,
+        sim_model: Optional[str] = None,
     ) -> ToolResult:
         script = self._workspace_root / "tools" / "simulation" / "launch_simulation_tools.sh"
+        model_args = ["--sim-model", sim_model] if sim_model else []
         if command == "start":
             timeout_sec = 180.0 if timeout_sec is None else timeout_sec
-            command_args = [str(script), "--no-attach"]
+            command_args = [str(script), "--no-attach", *model_args]
             if headless:
                 command_args.append("--headless")
             result = self._run_tool_command(command_args, timeout_sec=timeout_sec)
             return self._wait_for_simulation_ready(result, ready_timeout_sec) if result.success and wait_ready else result
         if command == "restart":
             timeout_sec = 180.0 if timeout_sec is None else timeout_sec
-            command_args = [str(script), "--no-attach", "--recreate"]
+            command_args = [str(script), "--no-attach", "--recreate", *model_args]
             if headless:
                 command_args.append("--headless")
             result = self._run_tool_command(command_args, timeout_sec=timeout_sec)
@@ -4118,6 +4120,28 @@ class DroneAgentTools:
             timeout_sec = 10.0 if timeout_sec is None else timeout_sec
             return self._run_tool_command([str(script), "--status"], timeout_sec=timeout_sec)
         raise ValueError(f"unknown simulation command: {command}")
+
+    def _gazebo_drone_model(self) -> str:
+        """Gazebo entity name of the simulated drone.
+
+        III_GAZEBO_DRONE_MODEL overrides; otherwise the name follows the running
+        PX4 SITL model (gz_<model> spawns <model>_<instance>).
+        """
+        configured = os.environ.get("III_GAZEBO_DRONE_MODEL")
+        if configured:
+            return configured
+        instance = os.environ.get("III_SIM_TOOLS_PX4_INSTANCE", "0")
+        running = ""
+        try:
+            status = self.simulation("status", timeout_sec=15.0)
+            for line in str((status.data or {}).get("stdout", "")).splitlines():
+                if line.startswith("px4_sim_model_running:"):
+                    running = line.split(":", 1)[1].strip()
+        except Exception:  # noqa: BLE001 - fall back to the production drone name
+            running = ""
+        if running.startswith("gz_"):
+            return f"{running[len('gz_'):]}_{instance}"
+        return f"d4s_dc_drone_{instance}"
 
     @staticmethod
     def _simulation_status_flags(stdout: str) -> dict[str, bool]:
@@ -4463,9 +4487,7 @@ class DroneAgentTools:
             gazebo_pose = self._lookup_gazebo_drone_model_pose(timeout_sec=float(kwargs.get("gazebo_timeout_sec", 5.0)))
             record["gazebo_ground_truth_pose"] = gazebo_pose
             record["recorded_from"]["gazebo_world"] = "hca_full_pylon_setup"
-            record["recorded_from"]["gazebo_model"] = os.environ.get(
-                "III_GAZEBO_DRONE_MODEL", "d4s_dc_drone_0"
-            )
+            record["recorded_from"]["gazebo_model"] = self._gazebo_drone_model()
             record["recorded_from"]["gazebo_model_pose"] = {
                 "position": gazebo_pose["position"],
                 "orientation": gazebo_pose["orientation"],
@@ -4587,9 +4609,8 @@ class DroneAgentTools:
 
         recorded_from = position.get("recorded_from") if isinstance(position.get("recorded_from"), dict) else {}
         world = str(recorded_from.get("gazebo_world") or "hca_full_pylon_setup")
-        model = os.environ.get(
-            "III_GAZEBO_DRONE_MODEL",
-            str(recorded_from.get("gazebo_model") or "d4s_dc_drone_0"),
+        model = os.environ.get("III_GAZEBO_DRONE_MODEL") or str(
+            recorded_from.get("gazebo_model") or self._gazebo_drone_model()
         )
         half_yaw = gazebo_pose["yaw"] / 2.0
         request = Pose()
@@ -4699,7 +4720,7 @@ class DroneAgentTools:
         model_name: str | None = None,
         timeout_sec: float = 5.0,
     ) -> dict[str, Any]:
-        model_name = model_name or os.environ.get("III_GAZEBO_DRONE_MODEL", "d4s_dc_drone_0")
+        model_name = model_name or self._gazebo_drone_model()
         local_error = ""
         try:
             result = self.gazebo(

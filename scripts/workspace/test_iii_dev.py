@@ -344,6 +344,21 @@ class IiiDevTests(unittest.TestCase):
         self.assertIn("Expected one", result.stderr)
         self.assertEqual(self.exec_commands(), [])
 
+    def test_simulation_start_forwards_the_selected_px4_model(self) -> None:
+        result = self.run_cli(
+            "sim", "start", "--headless", "--sim-model", "gz_d4s_dc_drone_powerline_eval")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.exec_commands()[0][-4:],
+            ["--no-attach", "--headless", "--sim-model", "gz_d4s_dc_drone_powerline_eval"],
+        )
+
+        self.log.write_text("", encoding="utf-8")
+        result = self.run_cli("sim", "restart", "--headless", "--sim-model")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("--sim-model needs a gz_<model> value", result.stderr)
+        self.assertEqual(self.exec_commands(), [])
+
     def test_simulation_actions_have_explicit_non_attaching_semantics(self) -> None:
         result = self.run_cli("sim", "start", "--headless")
         self.assertEqual(result.returncode, 0, result.stderr)
