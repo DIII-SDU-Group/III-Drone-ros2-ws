@@ -444,6 +444,9 @@ def test_a_custom_px4_command_rebuilds_a_build_tree_with_a_stale_airframe() -> N
         env = _asset_env(root)
         (root / "PX4-Autopilot/build/px4_sitl_default/etc/init.d-posix/airframes" / AIRFRAME).write_text(
             "stale", encoding="utf-8")
+        # Like the ROS setup scripts, read a variable that may be unset.
+        (root / "ws/setup/setup_dev.bash").write_text(
+            ': "${AMENT_TRACE_SETUP_FILES}"\n', encoding="utf-8")
         result = run_launcher(env, "--no-attach", "--headless")
         assert result.returncode == 0, result.stderr
         assert "stale D4S airframe" in result.stderr
