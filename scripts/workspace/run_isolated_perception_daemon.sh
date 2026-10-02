@@ -8,8 +8,10 @@ ISOLATION_ROOT="${III_DATASET_ISOLATION_ROOT:-${WORKSPACE_ROOT}/runtime/isolated
 source "${WORKSPACE_ROOT}/setup/setup_dev.bash"
 export HOME="${III_DATASET_HOME:-/home/iii}"
 export ROS_DOMAIN_ID="${III_DATASET_ROS_DOMAIN_ID:-74}"
-export ROS_LOCALHOST_ONLY=1
-export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+# Localhost-only discovery reaches at most 32 DDS participants per domain;
+# callers inside an isolated network namespace may select SUBNET discovery.
+export ROS_LOCALHOST_ONLY="${III_DATASET_ROS_LOCALHOST_ONLY:-1}"
+export ROS_AUTOMATIC_DISCOVERY_RANGE="${III_DATASET_ROS_DISCOVERY_RANGE:-LOCALHOST}"
 export GZ_PARTITION="${III_DATASET_GZ_PARTITION:-iii_dataset_28topics_20260813}"
 export GZ_IP=127.0.0.1
 export CONFIG_BASE_DIR="${ISOLATION_ROOT}/config"

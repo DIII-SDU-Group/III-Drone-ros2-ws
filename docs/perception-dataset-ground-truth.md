@@ -59,31 +59,51 @@ The frame message lists every physical conductor, not only visible ones. State i
 
 ## Powerline SLAM evaluation variant
 
-`d4s_dc_drone_powerline_eval` (airframe `99997_gz_d4s_dc_drone_powerline_eval`,
-`PX4_SIM_MODEL=gz_d4s_dc_drone_powerline_eval`) is generated from the
-production model by
-`Gazebo-simulation-assets/scripts/create_powerline_eval_drone_variant.py`. Its
-dynamics, collisions and other sensors are the production ones. It adds:
+`d4s_dc_drone_powerline_eval` (airframe `99997_gz_d4s_dc_drone_powerline_eval`)
+is the sensor layout used for powerline SLAM development (powerline_slam layout
+U0_F50_C20). It is generated from the production model by
+`Gazebo-simulation-assets/scripts/create_powerline_eval_drone_variant.py`; its
+dynamics, collisions and remaining sensors are the production ones. Select it
+with both:
 
-- pylon radar returns (`VALID_PHYSICAL_PYLON`) from the evaluator-only pylon map
-  `world_models/hcaa_pylon_setup/pylons.yaml`. These returns are part of
-  `/sensor/mmwave/points`, so this variant changes the runtime radar input and
-  is never the default;
-- the finite rectangular radar FOV (`fov_model` `FINITE_RECTANGULAR`, 0.25 m
-  minimum range, 0.6107 rad azimuth/elevation half-angles) instead of the
-  production `view_cone_slope` cone;
+- the PX4 model: `./iii-dev sim start --sim-model gz_d4s_dc_drone_powerline_eval`
+  (or `launch_simulation_tools.sh --sim-model ...`, the MCP `simulation` tool's
+  `sim_model`, or `III_SIM_TOOLS_PX4_SIM_MODEL`); and
+- the configuration constant `/tf/sim/sensor_layout: d4s_dc_drone_powerline_eval`
+  in the active sim parameter set, which selects the matching static transforms
+  in `tf_sim.launch.py` and the Radar-F bridges in `sim_assets.launch.py`.
+
+The variant has:
+
+- Radar-U: the production upward radar mount (`/tf/sim/drone_to_mmwave`), topics
+  `/sensor/mmwave/points` and `/sensor/mmwave/points_full`, frame `mmwave`,
+  running the simulator-v2 IWR6843AOP model (`radar_model` `AOP_FAST_POINT`,
+  profile `RADAR_U_v1`);
+- Radar-F: a second simulator-v2 radar 50 deg forward from upward
+  (`/tf/sim/powerline_eval/drone_to_mmwave_forward`), topics
+  `/sensor/mmwave_forward/points` and `/sensor/mmwave_forward/points_full`,
+  frame `mmwave_forward`, profile `RADAR_F_v1`, hardware-triggered 5.10112 ms
+  after Radar-U;
+- the cable camera 20 deg from upward
+  (`/tf/sim/powerline_eval/drone_to_cable_camera`), with images and
+  `/sensor/cable_camera/camera_info` in frame `cable_camera`;
 - an evaluator-only `pylon_semantic_camera` with the `cable_camera` pose and
   intrinsics, and per-frame pylon truth with the camera's source stamp:
   `/simulation/ground_truth/cable_camera/pylon_instance_mask`,
   `/simulation/ground_truth/cable_camera/pylon_frame`
   (`PylonCameraFrameGroundTruth`) and
   `/simulation/ground_truth/cable_camera/pylon_exact_frame`
-  (`PylonExactMaskFrameGroundTruth`);
-- `/sensor/cable_camera/camera_info`, stamped like the camera frames.
+  (`PylonExactMaskFrameGroundTruth`).
 
-With `radar_model` `AOP_FAST_POINT` the plugin instead runs the simulator-v2
-IWR6843AOP model and publishes `/simulation/ground_truth/<radar_instance>/scan_v2`
-(`RadarScanTruthV2`) in place of `/simulation/ground_truth/mmwave/scan`.
+The radar profiles are in `models/d4s_dc_drone_powerline_eval/radar` (with
+`PROVENANCE.json` recording their powerline_slam sources) and the radar scene
+(terrain, structure and pylon-lattice scatterers) in
+`world_models/hcaa_pylon_setup/radar`. Simulator-v2 returns from conductors,
+pylons, structures, terrain and false alarms are all part of the runtime point
+clouds, so this variant changes the runtime radar input and is never the
+default. Per scan, each radar publishes
+`/simulation/ground_truth/<radar_instance>/scan_v2` (`RadarScanTruthV2`) in
+place of `/simulation/ground_truth/mmwave/scan`.
 
 ## Recording and validation
 

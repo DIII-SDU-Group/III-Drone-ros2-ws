@@ -1,0 +1,308 @@
+{
+  "schema": "iii.powerline-slam-corridor-flights/v1",
+  "description": "Corridor flights for powerline SLAM integration tests in the live III simulation, mirroring the waypoint legs of the powerline_slam r21 dual-radar stimulus used by its r22-r26 development recordings. Flown with III fly_to_position operations instead of the powerline offboard runner, so leg timing is approximated: each leg starts when its command is issued and ends when the next leg starts, at least duration_s later.",
+  "source": {
+    "repository": "git@github.com:frnyb/powerline-slam.git",
+    "commit": "c0e368f439ae10dc08e69edde0a6fb6e1715c3ab",
+    "path": "corridor_simulation/config/r21/r21_dual_radar_stimulus_v1.json",
+    "sha256": "e5df7b420268491b581da1c05b651b67abc81a04598251a393c444b2d237eb70",
+    "status": "FROZEN_FOR_DEVELOPMENT_DRY_RUN_ONLY"
+  },
+  "frames": {
+    "target_world_m": "Gazebo world ENU of hca_full_pylon_setup (powerline_slam WO002_SIM_DESIGN_ENU)",
+    "yaw_rad": "PX4 NED heading; the III world (north-west-up) yaw is -yaw_rad"
+  },
+  "sensor_layout": "d4s_dc_drone_powerline_eval",
+  "minimum_live_height_m": 1.2,
+  "motion_profile": {
+    "name": "corridor",
+    "average_velocity_mps": 0.8,
+    "maximum_velocity_mps": 1.2,
+    "acceleration_mps2": 0.5,
+    "jerk_mps3": 1.0,
+    "average_yaw_rate_rps": 0.3,
+    "maximum_yaw_rate_rps": 0.5
+  },
+  "flights": {
+    "a_to_b": {
+      "pylon_order": [
+        "pylon_a",
+        "pylon_b"
+      ],
+      "legs": [
+        {
+          "section": "first_pylon_acquisition",
+          "name": "a_view_1_approach",
+          "target_world_m": [
+            7.8,
+            -2.9,
+            0.8
+          ],
+          "yaw_rad": 1.513729371326894,
+          "duration_s": 20.0,
+          "role": "pylon_a_view"
+        },
+        {
+          "section": "first_pylon_acquisition",
+          "name": "a_view_1_hold",
+          "target_world_m": [
+            7.8,
+            -2.9,
+            0.8
+          ],
+          "yaw_rad": 1.513729371326894,
+          "duration_s": 10.0,
+          "role": "pylon_a_view"
+        },
+        {
+          "section": "first_pylon_acquisition",
+          "name": "a_view_2_approach",
+          "target_world_m": [
+            7.0,
+            -2.5,
+            0.8
+          ],
+          "yaw_rad": 1.610499723891866,
+          "duration_s": 12.0,
+          "role": "pylon_a_view"
+        },
+        {
+          "section": "first_pylon_acquisition",
+          "name": "a_view_2_hold",
+          "target_world_m": [
+            7.0,
+            -2.5,
+            0.8
+          ],
+          "yaw_rad": 1.610499723891866,
+          "duration_s": 10.0,
+          "role": "pylon_a_view"
+        },
+        {
+          "section": "alignment_transition",
+          "name": "a_alignment",
+          "target_world_m": [
+            6.0,
+            -2.2,
+            0.8
+          ],
+          "yaw_rad": -1.3238076161238397,
+          "duration_s": 8.0,
+          "role": "alignment"
+        },
+        {
+          "section": "span_traversal",
+          "name": "a_to_b_span",
+          "target_world_m": [
+            -17.4,
+            3.7,
+            0.8
+          ],
+          "yaw_rad": -1.3238076161238397,
+          "duration_s": 30.0,
+          "role": "span"
+        },
+        {
+          "section": "second_pylon_acquisition",
+          "name": "b_view_1_approach",
+          "target_world_m": [
+            -18.7,
+            3.5,
+            0.8
+          ],
+          "yaw_rad": -1.3238076161238397,
+          "duration_s": 12.0,
+          "role": "pylon_b_view"
+        },
+        {
+          "section": "second_pylon_acquisition",
+          "name": "b_view_1_hold",
+          "target_world_m": [
+            -18.7,
+            3.5,
+            0.8
+          ],
+          "yaw_rad": -1.3238076161238397,
+          "duration_s": 10.0,
+          "role": "pylon_b_view"
+        },
+        {
+          "section": "second_pylon_acquisition",
+          "name": "b_view_2_approach",
+          "target_world_m": [
+            -18.7,
+            4.35,
+            0.8
+          ],
+          "yaw_rad": -1.3238076161238397,
+          "duration_s": 12.0,
+          "role": "pylon_b_view"
+        },
+        {
+          "section": "second_pylon_acquisition",
+          "name": "b_view_2_hold",
+          "target_world_m": [
+            -18.7,
+            4.35,
+            0.8
+          ],
+          "yaw_rad": -1.3238076161238397,
+          "duration_s": 10.0,
+          "role": "pylon_b_view"
+        },
+        {
+          "section": "terminal_hold_exit",
+          "name": "a_to_b_exit",
+          "target_world_m": [
+            -17.2,
+            3.8,
+            0.8
+          ],
+          "yaw_rad": -1.3238076161238397,
+          "duration_s": 6.0,
+          "role": "exit"
+        }
+      ]
+    },
+    "b_to_a": {
+      "pylon_order": [
+        "pylon_b",
+        "pylon_a"
+      ],
+      "legs": [
+        {
+          "section": "first_pylon_acquisition",
+          "name": "b_view_1_approach",
+          "target_world_m": [
+            -18.7,
+            4.35,
+            0.8
+          ],
+          "yaw_rad": -1.1722211671459708,
+          "duration_s": 20.0,
+          "role": "pylon_b_view"
+        },
+        {
+          "section": "first_pylon_acquisition",
+          "name": "b_view_1_hold",
+          "target_world_m": [
+            -18.7,
+            4.35,
+            0.8
+          ],
+          "yaw_rad": -1.1722211671459708,
+          "duration_s": 10.0,
+          "role": "pylon_b_view"
+        },
+        {
+          "section": "first_pylon_acquisition",
+          "name": "b_view_2_approach",
+          "target_world_m": [
+            -18.7,
+            3.5,
+            0.8
+          ],
+          "yaw_rad": -0.9805842105001132,
+          "duration_s": 12.0,
+          "role": "pylon_b_view"
+        },
+        {
+          "section": "first_pylon_acquisition",
+          "name": "b_view_2_hold",
+          "target_world_m": [
+            -18.7,
+            3.5,
+            0.8
+          ],
+          "yaw_rad": -0.9805842105001132,
+          "duration_s": 10.0,
+          "role": "pylon_b_view"
+        },
+        {
+          "section": "alignment_transition",
+          "name": "b_alignment",
+          "target_world_m": [
+            -17.4,
+            3.9,
+            0.8
+          ],
+          "yaw_rad": 1.823735020801073,
+          "duration_s": 8.0,
+          "role": "alignment"
+        },
+        {
+          "section": "span_traversal",
+          "name": "b_to_a_span",
+          "target_world_m": [
+            6.2,
+            -2.2,
+            0.8
+          ],
+          "yaw_rad": 1.823735020801073,
+          "duration_s": 30.0,
+          "role": "span"
+        },
+        {
+          "section": "second_pylon_acquisition",
+          "name": "a_view_1_approach",
+          "target_world_m": [
+            7.0,
+            -2.5,
+            0.8
+          ],
+          "yaw_rad": 1.823735020801073,
+          "duration_s": 12.0,
+          "role": "pylon_a_view"
+        },
+        {
+          "section": "second_pylon_acquisition",
+          "name": "a_view_1_hold",
+          "target_world_m": [
+            7.0,
+            -2.5,
+            0.8
+          ],
+          "yaw_rad": 1.823735020801073,
+          "duration_s": 10.0,
+          "role": "pylon_a_view"
+        },
+        {
+          "section": "second_pylon_acquisition",
+          "name": "a_view_2_approach",
+          "target_world_m": [
+            7.8,
+            -2.9,
+            0.8
+          ],
+          "yaw_rad": 1.823735020801073,
+          "duration_s": 12.0,
+          "role": "pylon_a_view"
+        },
+        {
+          "section": "second_pylon_acquisition",
+          "name": "a_view_2_hold",
+          "target_world_m": [
+            7.8,
+            -2.9,
+            0.8
+          ],
+          "yaw_rad": 1.823735020801073,
+          "duration_s": 10.0,
+          "role": "pylon_a_view"
+        },
+        {
+          "section": "terminal_hold_exit",
+          "name": "b_to_a_exit",
+          "target_world_m": [
+            6.0,
+            -2.3,
+            0.8
+          ],
+          "yaw_rad": 1.823735020801073,
+          "duration_s": 6.0,
+          "role": "exit"
+        }
+      ]
+    }
+  }
+}
