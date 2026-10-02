@@ -46,8 +46,8 @@ src/III-Drone-GC d67e016e238dfc6317e467c7f0a699145cdc0be3
 src/III-Drone-Interfaces 43071158bac9f1985ea54aa56002c01dc742f4de
 src/III-Drone-Mission f17a16e0cd662f7b7b47d847686bc88341be4b8b
 src/III-Drone-Runtime 6941bea825047db856faedec45735e287164bbb5
-src/III-Drone-Simulation 1625bec0c0509222f12892f0db25eb9fead3974e
-src/III-Drone-Simulation/Gazebo-simulation-assets 99684844769856c1e7617d0165dbcdd5e6f1b685
+src/III-Drone-Simulation 887ea559c970b9d9b27b933ec96bac8bc20d2393
+src/III-Drone-Simulation/Gazebo-simulation-assets d02a0c8bcbd881676d674d0d1d59c47569e181b6
 src/III-Drone-Supervision 2b887ba029c7156b6981a2c43866d3d1bd257d5d
 src/Micro-XRCE-DDS-Agent 73622810d984349b80bbac0ef55fc0b694d62222
 src/dynamic_message_introspection 5ad2f03ec713818dafe0926c81225d6351d65268

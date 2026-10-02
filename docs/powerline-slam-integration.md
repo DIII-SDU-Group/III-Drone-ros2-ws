@@ -33,6 +33,11 @@ schedule. Radar-F has its own evaluator truth
 The camera publishes an ideal pinhole `camera_info` (fx = fy = 381.361,
 cx = 319.5, cy = 239.5, no distortion) with each image stamp.
 
+The variant has no Gazebo magnetometer: PX4 simulates the field from its world
+magnetic model (`SENS_EN_MAGSIM 1` in airframe 99997), as the powerline_slam
+development runtime did and as III production did until 2026-08-24
+(Gazebo-simulation-assets `1b4c739`); see finding 1.
+
 `Gazebo-simulation-assets/scripts/create_powerline_eval_drone_variant.py`
 generates the model and PX4 airframe 99997 from the production model and
 airframe; `--check` fails when they differ from a fresh generation, and
@@ -100,7 +105,7 @@ after the run unless `--keep-running` is given. Run it in a container
 disconnected from its network:
 
 ```bash
-III_POWERLINE_RUN_ID=powerline_slam_live02 scripts/workspace/run_isolated_powerline_slam_flights.sh --flights a_to_b b_to_a
+III_POWERLINE_RUN_ID=powerline_slam_live04 scripts/workspace/run_isolated_powerline_slam_flights.sh --flights a_to_b b_to_a
 ```
 
 DDS discovery: the evaluation layout runs about 37 DDS participants.
@@ -115,17 +120,31 @@ to start unless the network namespace has nothing but the loopback interface;
 inventory, rates, real-time factor, the PX4 time contract, sensor stamps, the
 Radar-F trigger offset, radar points per scan and PX4 heading against truth.
 
-### Acceptance flights (`powerline_slam_live02`, seed 20261002)
+### Acceptance flights (seed 20261002)
+
+With the current variant (`powerline_slam_live03` a_to_b, `powerline_slam_live03b`
+b_to_a):
 
 | | `a_to_b` | `b_to_a` |
 |---|---|---|
-| Duration / messages | 165.5 s / 190 590 | 180.1 s / 205 089 |
+| Duration / messages | 164.8 s / 191 033 | 176.9 s / 206 730 |
 | Contract topics with messages | 27 of 28 (+ `timesync_status` empty by contract) | 27 of 28 (+ `timesync_status` empty by contract) |
-| Real-time factor | 0.956 | 0.945 |
-| Radar-U / Radar-F scans | 4743 / 4742 | 5103 / 5103 |
-| Camera images | 1572 | 1700 |
-| Radar points per scan, p50 (max) U / F | 9 (21) / 7 (27) | 9 (20) / 7 (24) |
+| Real-time factor | 0.964 | 0.971 |
+| Radar-U / Radar-F scans | 4762 / 4737 | 5148 / 5151 |
+| Camera images | 1587 | 1718 |
+| Radar points per scan, p50 (max) U / F | 9 (20) / 7 (26) | 9 (21) / 7 (23) |
+| PX4 heading − truth, mean (max \|·\| within legs) | 0.004 rad (0.018) | 0.003 rad (0.024) |
 | Bag verification, analysis checks | passed | passed |
+
+`powerline_slam_live02` flew both directions before the magnetometer change
+with the same results except PX4's heading (finding 1). In `powerline_slam_live03`
+the b_to_a flight stopped at its seventh leg: the runner's lifecycle query of
+the maneuver controller timed out while the host was overloaded by other work
+(load 24–26), `iii system start` then reported every node active, and the
+runner's configuration restore at shutdown timed out too; the re-flight
+(`live03b`) passed. The recorders reported 115–261 messages lost on the
+transport layer per flight (of about 200 000); radar and camera header stamps
+show no gaps.
 
 ### Time contract (measured)
 
@@ -134,19 +153,22 @@ the Gazebo simulation-time domain. The values below compare stamps with the
 latest `/clock` at bag receipt, so they are receipt-order diagnostics, not
 source-time truth:
 
-- PX4 `timestamp` − `/clock`: p50 −4 ms (one 4 ms physics step), p99 16–20 ms,
+- PX4 `timestamp` − `/clock`: p50 −4 to 0 ms (within one 4 ms physics step), p99 16–20 ms,
   max 40 ms; `timestamp` − `timestamp_sample`: 0–8 ms;
   `/fmu/out/timesync_status` carries no messages.
 - Radar header stamps are the scan's simulation time (receipt lag p50 0 ms) at
   a constant 33.3 ms period; Radar-F − Radar-U stamp: 4–8 ms, mean 5.05–5.14 ms
   (the 5.10112 ms schedule on the 4 ms physics step).
 - Camera image stamps are the render time (receipt lag p50 12 ms, period
-  100 ms). `camera_info` carries the same stamps (every stamp matched in the
-  span both topics cover: 1572/1572 and 1677/1677), but the plugin emits it
-  after the frame's ground-truth render, so it arrives about 1 s late (p50
-  1.0–1.1 s, max 4.2 s at real-time factor 0.95). A live consumer should take
-  the intrinsics from the calibration file (or latch them) instead of pairing
-  every image with its `camera_info`.
+  100 ms); the image reaches ROS through the Gazebo bridge. `camera_info`
+  carries the same stamps (every stamp matched in the span both topics cover,
+  e.g. 1572/1572 and 1677/1677), but the sensor plugin emits it at the end of
+  the frame's ground-truth render (conductor and pylon masks), which runs
+  slower than real time, so it arrives 1.0–1.1 s late at p50 and up to 5.4 s
+  late, and the last 2–3 s of a flight's frames have no `camera_info` or
+  camera truth in the bag. A live consumer should take the intrinsics from the
+  calibration file (or latch them) instead of pairing every image with its
+  `camera_info`.
 
 ### Frames
 
@@ -207,7 +229,7 @@ loaders:
 | `calibration --output DIR --doppler-source SET [--compare SET]` | The runtime calibration set (radar, camera extrinsics and intrinsics, Doppler calibrations) from the sim parameter set and the variant model. Against the dev13 set (`runtime_calibration_U0_F50_C20_R0`) it differs only in frame names (`mmwave`/`mmwave_forward` instead of `radar_up`/`radar_forward`) and in Radar-U's 180° boresight roll; camera intrinsics and extrinsics and Radar-F are identical. |
 | `mission-priors --evidence FILE --output FILE [--to-world FLIGHT_PLAN]` | Commanded-pose priors (sidecar schema 4) from a flight's `mission_phase_evidence.json`: no prior on the first leg, each later leg from its begin + 5 s, 0.3 m / 0.03 rad. |
 | `map-prior --source FILE --flight-plan FILE --output FILE` | A `WO002_SIM_DESIGN_ENU` map prior in III `world`, covariances included. |
-| `imu-covariance --flight DIR [--flight DIR ...] --output FILE` | The gyro covariance from `sensor_combined` in each flight's four guarded hover holds, with powerline_slam's stationarity checks (run where ROS is sourced). |
+| `imu-covariance --flight DIR [--flight DIR ...] --output FILE` | The gyro covariance from `sensor_combined` in each flight's four guarded hover holds, with powerline_slam's stationarity checks (run where ROS is sourced). Under III's flight stack the holds measure vehicle motion (finding 2). |
 
 Map prior and mission priors of one estimator run must share a map frame:
 either both in `WO002_SIM_DESIGN_ENU` (the replay convention) or both in
@@ -215,36 +237,49 @@ either both in `WO002_SIM_DESIGN_ENU` (the replay convention) or both in
 
 ## Findings that affect the integration
 
-1. **PX4 heading bias in III's simulation.** PX4 v1.16 reads Gazebo's
+1. **PX4 heading (fixed in the evaluation layout).** PX4 v1.16 reads Gazebo's
    magnetometer, whose field at the world's location (Odense) has a
-   declination of −3.1°, while PX4's world magnetic model expects +4.30° (PX4's
-   `gz_bridge` notes a frame bug in the Gazebo magnetometer). PX4's heading
-   estimate therefore differs from truth by 0.03–0.14 rad in flight (a_to_b mean
-   0.070 rad, b_to_a 0.042 rad) and by about 0.085 rad in a standalone hover
-   (PX4 and Gazebo only). The powerline_slam development PX4 build simulated
-   the magnetometer inside PX4 and tracked commanded headings within 0.0033 rad
-   in its pose-tracking dry runs. The bias affects the production layout too.
-   The variant could reproduce the development conditions with
-   `param set-default SENS_EN_MAGSIM 1` in airframe 99997 and no Gazebo
-   magnetometer in its model; whether the evaluation should instead keep a
-   realistic heading error is a research decision.
-2. **Hover motion.** The gyro covariance from the live02 hover holds is
-   1.4e-4, 2.4e-4 and 2.4e-7 rad²/s² (x, y, z) against about 1.2e-6, 1.1e-6
-   and 5.8e-8 in the r18 development inputs. The gyro noise model is the same,
-   so this is vehicle motion under III's flight stack.
+   declination of −3.1° as PX4 reads it, while PX4's world magnetic model
+   expects +4.30° (PX4's `gz_bridge` notes a frame bug in the Gazebo
+   magnetometer). With it, PX4's heading differed from truth by 0.03–0.14 rad
+   in flight (live02 mean 0.070 and 0.042 rad) and by about 0.085 rad in a
+   standalone hover (PX4 and Gazebo only). The variant therefore simulates the
+   magnetometer in PX4. With it the heading error is 0.003–0.004 rad mean and
+   at most 0.024 rad within legs (live03), with one 0.053 rad excursion 2.5 s
+   before the first leg, and −0.020 and +0.006 rad mean in two standalone
+   hovers. What remains is PX4 v1.16's estimator: it fuses the model's
+   declination only while the vehicle is not GNSS-aided or not moving, where
+   v1.15's default (`EKF2_DECL_TYPE` 7) always did; the powerline_slam
+   development runtime (v1.15) tracked commanded headings within 0.0033 rad.
+   The production layout keeps Gazebo's magnetometer and its heading bias.
+2. **Hover motion.** In the hover holds of the live flights the gyro variance
+   (1.3–1.9e-4, 1.2–2.7e-4 and 0.2–1.8e-6 rad²/s², x, y, z) equals the variance
+   of the true angular velocity (ratio 1.000), so it is vehicle motion, not
+   sensor noise; the r18 development inputs had about 1.2e-6, 1.1e-6 and
+   5.8e-8. A PX4-only hover of the same model (PX4 position hold, no III nodes)
+   moves 1.2–1.9e-5 in roll and pitch, with III's or the development
+   accelerometer noise alike. About a factor 10 thus comes from III's flight
+   stack during holds and a factor 10–15 from PX4 v1.16 and this simulation. A
+   gyro covariance computed from hover holds measures this motion.
 3. **IMU accelerometer noise.** The variant inherits III's current
-   accelerometer noise (white 0.0064–0.0069 m/s², bias 0.0006) instead of the
-   development model's (0.00186, bias 0.006).
+   accelerometer noise (white 0.0064–0.0069 m/s², bias 0.0006; PX4's upstream
+   x500 values) instead of the development model's (0.00186, bias 0.006). A
+   standalone hover with the development values moved the same.
 4. **Radar-U mount.** The III simulation mount is rotated 180° about the
    boresight relative to the development mount; the calibration generator
    follows the III mount.
-5. **`camera_info` latency** (see the time contract).
+5. **`camera_info` latency and truth at the end of a flight** (see the time
+   contract).
 6. **The powerline_slam replay pipeline does not accept III bags as is.** It
    requires a clock-contract proof from its instrumented PX4 build, checks the
    recorded `model.sdf` and the frozen 11-phase mission, reads radar topics by
    their powerline names (`radar_up`, `radar_forward`), and writes to frozen
    result roots. Accepting III recordings needs either an approved PX4
    instrumentation or a work-order change of the estimator's input contract.
+   PX4 needs no instrumentation to pair its clock with the simulation's: in
+   two standalone hovers 57 346 of 57 362 and 8 122 of 8 140 `sensor_combined`
+   timestamps equal the stamp of a Gazebo IMU sample bridged next to them (the
+   rest fall at bridge gaps).
 
 ## Decisions for the integration work order
 
@@ -265,15 +300,17 @@ Recommendations, for the research work order to confirm or replace:
 - **Output:** a new topic next to `/perception/pl_mapper/powerline` instead of
   replacing it, with no consumer switched until the estimator is evaluated
   live.
-- **Heading:** decide on finding 1 before evaluating against truth.
+- **Heading:** the evaluation layout simulates the magnetometer in PX4
+  (finding 1); the residual heading error of PX4 v1.16 stays within the
+  0.03 rad mission-prior sigma.
 - **Hardware:** map Radar-U and Radar-F to the physical mounts later.
 
 ## Reproducing
 
 ```bash
 # Inside the devcontainer, disconnected from its network:
-III_POWERLINE_RUN_ID=powerline_slam_live03 scripts/workspace/run_isolated_powerline_slam_flights.sh
-python3 scripts/workspace/analyze_powerline_slam_flight.py datasets/powerline_slam/powerline_slam_live03/a_to_b/bag
+III_POWERLINE_RUN_ID=powerline_slam_live04 scripts/workspace/run_isolated_powerline_slam_flights.sh
+python3 scripts/workspace/analyze_powerline_slam_flight.py datasets/powerline_slam/powerline_slam_live04/a_to_b/bag
 # With network access, against a powerline_slam checkout:
 scripts/workspace/setup_powerline_slam_estimator_env.sh --powerline-root PATH
 ```
