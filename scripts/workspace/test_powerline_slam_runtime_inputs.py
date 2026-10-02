@@ -180,6 +180,39 @@ class MapPriorTest(unittest.TestCase):
                 inputs.convert_map_prior(write(root / "map_prior.json", prior), plan)
 
 
+class GroundCovarianceTest(unittest.TestCase):
+    @staticmethod
+    def samples(gyro_mean: float = 0.0, count: int = 6000, seed: int = 7) -> list:
+        import numpy as np
+
+        rng = np.random.default_rng(seed)
+        return [
+            (index * 10_000_000, rng.normal(gyro_mean, 2e-4, 3), np.array([0.0, 0.0, 9.81]) + rng.normal(0.0, 6e-3, 3))
+            for index in range(count)
+        ]
+
+    def test_disarmed_ground_segment_measures_sensor_noise(self) -> None:
+        document = inputs.ground_gyro_covariance(self.samples(), [inputs.ARMING_STATE_DISARMED] * 30)
+        covariance = document["angular_velocity_covariance_drone_rad2ps2"]
+        for axis in range(3):
+            self.assertAlmostEqual(4e-8, covariance[axis][axis], delta=4e-9)
+        self.assertEqual("disarmed_ground", document["source"])
+        (window,) = document["stationary_windows"]
+        self.assertEqual([inputs.HOLD_SETTLE_NS, 59_990_000_000 - inputs.HOLD_END_GUARD_NS],
+                         window["source_time_window_ns"])
+        self.assertNotIn("centered", window)
+
+    def test_rejects_an_armed_or_moving_segment(self) -> None:
+        with self.assertRaises(SystemExit):
+            inputs.ground_gyro_covariance(self.samples(), [inputs.ARMING_STATE_DISARMED, 2])
+        with self.assertRaises(SystemExit):
+            inputs.ground_gyro_covariance(self.samples(), [])
+        with self.assertRaises(SystemExit):
+            inputs.ground_gyro_covariance(self.samples(gyro_mean=0.05), [inputs.ARMING_STATE_DISARMED])
+        with self.assertRaises(SystemExit):
+            inputs.ground_gyro_covariance(self.samples(count=1000), [inputs.ARMING_STATE_DISARMED])
+
+
 class StationaryWindowTest(unittest.TestCase):
     def test_guarded_hold_windows(self) -> None:
         windows = inputs.stationary_windows(evidence([0.0] * 8))

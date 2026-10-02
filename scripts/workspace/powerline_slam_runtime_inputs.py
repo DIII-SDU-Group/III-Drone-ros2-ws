@@ -25,10 +25,12 @@ map-prior
     Gazebo-to-ROS mapping (flight_plan.json).
 
 imu-covariance
-    The gyro covariance (drone FLU, rad^2/s^2) from /fmu/out/sensor_combined
-    in the four guarded hover holds of each given flight, with the stationarity
-    checks of the powerline_slam builder. Reads bags, so it needs the sourced
-    ROS workspace (devcontainer).
+    The gyro covariance (drone FLU, rad^2/s^2) from /fmu/out/sensor_combined,
+    with the stationarity checks of the powerline_slam builder: --ground from a
+    run's ground_imu segment, disarmed on the ground, which measures sensor
+    noise only; --flight from the four guarded hover holds of each flight (the
+    powerline_slam rule), which under III's flight stack include the vehicle's
+    motion. Reads bags, so it needs the sourced ROS workspace (devcontainer).
 
 --to-world FLIGHT_PLAN expresses the mission priors in the III world frame too;
 map prior and mission priors of one estimator run must share a map frame.
@@ -67,6 +69,7 @@ DOPPLER_FILES = ("doppler_calibration.json", "doppler_calibration_radar_forward.
 # Guarded hover-hold windows of the powerline_slam gyro covariance builder.
 HOLD_SETTLE_NS = 2_000_000_000
 HOLD_END_GUARD_NS = 500_000_000
+ARMING_STATE_DISARMED = 1
 # III world (north-west-up) from Gazebo world ENU; the translation is the
 # flight's live mapping offset.
 R_WORLD_FROM_DESIGN = ((0.0, 1.0, 0.0), (-1.0, 0.0, 0.0), (0.0, 0.0, 1.0))
@@ -373,61 +376,108 @@ def stationary_windows(evidence: dict[str, Any]) -> list[tuple[str, int, int]]:
     return windows
 
 
-def build_imu_covariance(flight_dirs: Sequence[Path]) -> dict[str, Any]:
+def stationary_window(gyro: Any, accel: Any, label: str) -> dict[str, Any]:
+    """Mean-free gyro samples (drone FLU) of one window, rejected unless the IMU is stationary."""
     import numpy as np
-    from rclpy.serialization import deserialize_message
-    import rosbag2_py
-    from px4_msgs.msg import SensorCombined
 
-    frd_to_flu = np.asarray(R_FLU_FROM_FRD)
-    centered, evidence = [], []
-    for flight in flight_dirs:
-        windows = stationary_windows(json.loads((flight / "mission_phase_evidence.json").read_text()))
-        samples: dict[str, list[tuple[int, Any, Any]]] = {name: [] for name, _, _ in windows}
-        reader = rosbag2_py.SequentialReader()
-        reader.open(rosbag2_py.StorageOptions(uri=str(flight / "bag"), storage_id=""),
-                    rosbag2_py.ConverterOptions("cdr", "cdr"))
-        reader.set_filter(rosbag2_py.StorageFilter(topics=["/fmu/out/sensor_combined"]))
-        last = -1
-        while reader.has_next():
-            _, raw, _ = reader.read_next()
-            message = deserialize_message(raw, SensorCombined)
-            # UXRCE_DDS_SYNCT=0: PX4 timestamps share the /clock domain of the evidence.
-            source_ns = int(message.timestamp) * 1000
-            if source_ns <= last:
-                raise SystemExit(f"{flight.name}: SensorCombined source time reset or duplicate")
-            last = source_ns
-            for name, begin, end in windows:
-                if begin <= source_ns <= end:
-                    if int(message.gyro_clipping) != 0:
-                        raise SystemExit(f"{flight.name}/{name}: clipped gyro sample")
-                    samples[name].append((source_ns, frd_to_flu @ np.asarray(message.gyro_rad, dtype=float),
-                                          frd_to_flu @ np.asarray(message.accelerometer_m_s2, dtype=float)))
-        for name, begin, end in windows:
-            rows = samples[name]
-            if len(rows) < 200:
-                raise SystemExit(f"{flight.name}/{name}: fewer than 200 IMU samples")
-            gyro = np.stack([row[1] for row in rows])
-            accel = np.stack([row[2] for row in rows])
-            gyro_mean = gyro.mean(axis=0)
-            accel_norm_mean = float(np.linalg.norm(accel, axis=1).mean())
-            accel_axis_std_norm = float(np.linalg.norm(accel.std(axis=0, ddof=1)))
-            if (np.linalg.norm(gyro_mean) > 0.01 or abs(accel_norm_mean - 9.81) > 0.5
-                    or accel_axis_std_norm > 0.1):
-                raise SystemExit(f"{flight.name}/{name}: IMU does not corroborate a stationary hold")
-            centered.extend(gyro - gyro_mean)
-            evidence.append({"flight": str(flight), "phase": name, "source_time_window_ns": [begin, end],
-                             "sample_count": len(rows), "gyro_mean_norm_radps": float(np.linalg.norm(gyro_mean)),
-                             "accel_norm_mean_mps2": accel_norm_mean,
-                             "accel_axis_std_norm_mps2": accel_axis_std_norm})
-    data = np.asarray(centered)
-    covariance = data.T @ data / (len(data) - len(evidence))
+    gyro, accel = np.asarray(gyro, dtype=float), np.asarray(accel, dtype=float)
+    gyro_mean = gyro.mean(axis=0)
+    accel_norm_mean = float(np.linalg.norm(accel, axis=1).mean())
+    accel_axis_std_norm = float(np.linalg.norm(accel.std(axis=0, ddof=1)))
+    if (np.linalg.norm(gyro_mean) > 0.01 or abs(accel_norm_mean - 9.81) > 0.5
+            or accel_axis_std_norm > 0.1):
+        raise SystemExit(f"{label}: the IMU does not corroborate a stationary window")
+    return {"centered": gyro - gyro_mean, "sample_count": len(gyro),
+            "gyro_mean_norm_radps": float(np.linalg.norm(gyro_mean)),
+            "accel_norm_mean_mps2": accel_norm_mean, "accel_axis_std_norm_mps2": accel_axis_std_norm}
+
+
+def pooled_gyro_covariance(windows: Sequence[dict[str, Any]], source: str,
+                           evidence: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    import numpy as np
+
+    data = np.concatenate([window["centered"] for window in windows])
+    covariance = data.T @ data / (len(data) - len(windows))
     covariance = (covariance + covariance.T) / 2
     if len(data) < 4000 or float(np.linalg.eigvalsh(covariance)[0]) <= 0.0:
         raise SystemExit("gyro covariance has too few samples or is not positive definite")
     return {"angular_velocity_covariance_drone_rad2ps2": covariance.tolist(),
             "emitted_rate_unit": "rad/s", "covariance_unit": "rad^2/s^2", "frame": "drone_FLU",
-            "stationary_windows": evidence}
+            "source": source, "stationary_windows": list(evidence)}
+
+
+def window_evidence(statistics: dict[str, Any], **identity: Any) -> dict[str, Any]:
+    return {**identity, **{key: value for key, value in statistics.items() if key != "centered"}}
+
+
+def read_sensor_combined(bag_dir: Path, label: str) -> tuple[list[tuple[int, Any, Any]], list[int]]:
+    """SensorCombined samples (source ns, gyro FLU, accel FLU) and VehicleStatus arming states of a bag."""
+    import numpy as np
+    from rclpy.serialization import deserialize_message
+    import rosbag2_py
+    from px4_msgs.msg import SensorCombined, VehicleStatus
+
+    frd_to_flu = np.asarray(R_FLU_FROM_FRD)
+    reader = rosbag2_py.SequentialReader()
+    reader.open(rosbag2_py.StorageOptions(uri=str(bag_dir), storage_id=""),
+                rosbag2_py.ConverterOptions("cdr", "cdr"))
+    reader.set_filter(rosbag2_py.StorageFilter(topics=["/fmu/out/sensor_combined", "/fmu/out/vehicle_status_v1"]))
+    samples, arming_states, last = [], [], -1
+    while reader.has_next():
+        topic, raw, _ = reader.read_next()
+        if topic == "/fmu/out/vehicle_status_v1":
+            arming_states.append(int(deserialize_message(raw, VehicleStatus).arming_state))
+            continue
+        message = deserialize_message(raw, SensorCombined)
+        # UXRCE_DDS_SYNCT=0: PX4 timestamps share the /clock domain of the evidence.
+        source_ns = int(message.timestamp) * 1000
+        if source_ns <= last:
+            raise SystemExit(f"{label}: SensorCombined source time reset or duplicate")
+        last = source_ns
+        if int(message.gyro_clipping) != 0:
+            raise SystemExit(f"{label}: clipped gyro sample")
+        samples.append((source_ns, frd_to_flu @ np.asarray(message.gyro_rad, dtype=float),
+                        frd_to_flu @ np.asarray(message.accelerometer_m_s2, dtype=float)))
+    return samples, arming_states
+
+
+def build_imu_covariance(flight_dirs: Sequence[Path]) -> dict[str, Any]:
+    """Pooled over the guarded hover holds of the flights (the powerline_slam rule)."""
+    windows, evidence = [], []
+    for flight in flight_dirs:
+        holds = stationary_windows(json.loads((flight / "mission_phase_evidence.json").read_text()))
+        samples, _ = read_sensor_combined(flight / "bag", flight.name)
+        for name, begin, end in holds:
+            rows = [row for row in samples if begin <= row[0] <= end]
+            if len(rows) < 200:
+                raise SystemExit(f"{flight.name}/{name}: fewer than 200 IMU samples")
+            window = stationary_window([row[1] for row in rows], [row[2] for row in rows], f"{flight.name}/{name}")
+            windows.append(window)
+            evidence.append(window_evidence(window, flight=str(flight), phase=name, source_time_window_ns=[begin, end]))
+    return pooled_gyro_covariance(windows, "hover_holds", evidence)
+
+
+def ground_gyro_covariance(samples: Sequence[tuple[int, Any, Any]], arming_states: Sequence[int]) -> dict[str, Any]:
+    """From a segment disarmed on the ground: sensor noise without vehicle motion."""
+    if not arming_states or any(int(state) != ARMING_STATE_DISARMED for state in arming_states):
+        raise SystemExit("the ground segment is not disarmed throughout")
+    if not samples:
+        raise SystemExit("the ground segment has no IMU samples")
+    begin = samples[0][0] + HOLD_SETTLE_NS
+    end = samples[-1][0] - HOLD_END_GUARD_NS
+    rows = [row for row in samples if begin <= row[0] <= end]
+    if len(rows) < 2:
+        raise SystemExit("the ground segment is too short")
+    window = stationary_window([row[1] for row in rows], [row[2] for row in rows], "ground")
+    evidence = [window_evidence(window, window="disarmed_ground", source_time_window_ns=[begin, end])]
+    return pooled_gyro_covariance([window], "disarmed_ground", evidence)
+
+
+def build_ground_imu_covariance(ground_dir: Path) -> dict[str, Any]:
+    samples, arming_states = read_sensor_combined(ground_dir / "bag", ground_dir.name)
+    document = ground_gyro_covariance(samples, arming_states)
+    document["stationary_windows"][0]["ground_imu"] = str(ground_dir)
+    return document
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -450,8 +500,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     map_prior.add_argument("--flight-plan", type=Path, required=True)
     map_prior.add_argument("--output", type=Path, required=True)
     imu = commands.add_parser("imu-covariance")
-    imu.add_argument("--flight", type=Path, action="append", required=True,
-                     help="flight directory (bag/ and mission_phase_evidence.json); repeatable")
+    source = imu.add_mutually_exclusive_group(required=True)
+    source.add_argument("--ground", type=Path, metavar="GROUND_IMU_DIR",
+                        help="a run's ground_imu directory: the IMU disarmed on the ground")
+    source.add_argument("--flight", type=Path, action="append",
+                        help="flight directory (bag/ and mission_phase_evidence.json); repeatable; "
+                             "pools its hover holds, which include the vehicle's motion")
     imu.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
 
@@ -468,7 +522,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.command == "map-prior":
         document = convert_map_prior(args.source, args.flight_plan)
     else:
-        document = build_imu_covariance(args.flight)
+        document = build_ground_imu_covariance(args.ground) if args.ground else build_imu_covariance(args.flight)
     args.output.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
     print(args.output)
     return 0

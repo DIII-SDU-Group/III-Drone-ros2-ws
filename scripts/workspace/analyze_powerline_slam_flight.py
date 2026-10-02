@@ -11,7 +11,12 @@ Reports, from the bag alone:
   Radar-F trigger offset, and camera_info/image stamp agreement;
 - the simulator-v2 radar point counts per scan;
 - the heading of PX4's estimate (vehicle_odometry) against the Gazebo ground
-  truth, both in NED, matched in source time.
+  truth, both in NED, matched in source time;
+- the clock pairing of PX4's sensor_combined timestamps with the stamps of
+  Gazebo's own IMU samples (/simulation/gazebo/imu), when recorded;
+- with --mission-evidence, whether every image during the legs has its
+  camera_info and camera truth (the recorder subscribes to them just after the
+  image stream, so the first frames of the pre-roll may lack them).
 
 Run inside the devcontainer with the workspace sourced. Exits nonzero when the
 bag misses a contract topic or a stamp invariant fails.
@@ -45,6 +50,11 @@ RADAR_TOPICS = ("/sensor/mmwave/points_full", "/sensor/mmwave_forward/points_ful
 CAMERA_TOPICS = ("/sensor/cable_camera/image_raw", "/sensor/cable_camera/camera_info")
 TRUTH_ODOMETRY = "/simulation/ground_truth/drone/odometry"
 HEADING_MATCH_NS = 20_000_000
+GAZEBO_IMU = "/simulation/gazebo/imu"
+CAMERA_TRUTH = "/simulation/ground_truth/cable_camera/frame"
+# Share of PX4 IMU timestamps that must equal a Gazebo IMU sample stamp; the
+# rest fall where the bridge dropped a Gazebo sample.
+CLOCK_PAIRING_MIN_SHARE = 0.99
 
 
 def quaternion_yaw(w: float, x: float, y: float, z: float) -> float:
@@ -73,7 +83,7 @@ def summary(values: list[float]) -> dict[str, float] | None:
     }
 
 
-def analyze(bag_dir: Path) -> dict[str, Any]:
+def analyze(bag_dir: Path, mission_evidence: Path | None = None) -> dict[str, Any]:
     reader = rosbag2_py.SequentialReader()
     reader.open(
         rosbag2_py.StorageOptions(uri=str(bag_dir), storage_id=""),
@@ -81,7 +91,8 @@ def analyze(bag_dir: Path) -> dict[str, Any]:
     )
     types = {item.name: item.type for item in reader.get_all_topics_and_types()}
     classes = {name: get_message(kind) for name, kind in types.items()}
-    decode = set(PX4_TOPICS) | set(RADAR_TOPICS) | set(CAMERA_TOPICS) | {"/clock", TRUTH_ODOMETRY}
+    decode = set(PX4_TOPICS) | set(RADAR_TOPICS) | set(CAMERA_TOPICS) | {"/clock", TRUTH_ODOMETRY, CAMERA_TRUTH}
+    decode |= {GAZEBO_IMU} & set(types)
 
     counts: dict[str, int] = defaultdict(int)
     first_receipt: dict[str, int] = {}
@@ -95,6 +106,8 @@ def analyze(bag_dir: Path) -> dict[str, Any]:
     radar_points: dict[str, list[int]] = defaultdict(list)
     px4_heading: list[tuple[int, float]] = []
     truth_heading: list[tuple[int, float]] = []
+    px4_imu_stamps: list[int] = []
+    gazebo_imu_stamps: list[int] = []
 
     while reader.has_next():
         topic, raw, receipt_ns = reader.read_next()
@@ -107,6 +120,9 @@ def analyze(bag_dir: Path) -> dict[str, Any]:
         if topic == "/clock":
             clock_receipt.append(receipt_ns)
             clock_sim.append(int(message.clock.sec) * 1_000_000_000 + int(message.clock.nanosec))
+            continue
+        if topic == GAZEBO_IMU:
+            gazebo_imu_stamps.append(stamp_ns(message.header))
             continue
         if topic == TRUTH_ODOMETRY:
             # Gazebo world ENU, body FLU -> heading in NED.
@@ -124,6 +140,8 @@ def analyze(bag_dir: Path) -> dict[str, Any]:
             if topic == "/fmu/out/vehicle_odometry":
                 # Body FRD to NED.
                 px4_heading.append((timestamp_ns, quaternion_yaw(*(float(value) for value in message.q))))
+            if topic == "/fmu/out/sensor_combined":
+                px4_imu_stamps.append(timestamp_ns)
             continue
         header_ns = stamp_ns(message.header)
         stamps[topic].append(header_ns)
@@ -162,13 +180,32 @@ def analyze(bag_dir: Path) -> dict[str, Any]:
             nearest = min(candidates, key=lambda i: abs(truth_times[i] - stamp))
             if abs(truth_times[nearest] - stamp) <= HEADING_MATCH_NS:
                 heading_errors.append(wrap(heading - truth_heading[nearest][1]))
-    # The plugin emits camera_info after the frame's ground-truth render, so its
-    # receipt lags the image; at the bag boundaries an info can lack its image
-    # or the reverse. Compare the stamps in the span both topics cover.
+    clock_pairing = None
+    if gazebo_imu_stamps:
+        gazebo_set = set(gazebo_imu_stamps)
+        exact = sum(1 for stamp in px4_imu_stamps if stamp in gazebo_set)
+        clock_pairing = {"px4_imu_samples": len(px4_imu_stamps), "equal_to_a_gazebo_imu_stamp": exact,
+                         "share": exact / len(px4_imu_stamps) if px4_imu_stamps else 0.0}
+    # At the bag boundaries a camera_info can lack its image or the reverse
+    # (earlier recordings emitted camera_info after the frame's truth render).
+    # Compare the stamps in the span both topics cover.
     images, infos = stamps[CAMERA_TOPICS[0]], stamps[CAMERA_TOPICS[1]]
     span = (max(images[0], infos[0]), min(images[-1], infos[-1])) if images and infos else (1, 0)
     image_span = {stamp for stamp in images if span[0] <= stamp <= span[1]}
     info_span = {stamp for stamp in infos if span[0] <= stamp <= span[1]}
+    mission_coverage = None
+    if mission_evidence is not None:
+        phases = json.loads(mission_evidence.read_text(encoding="utf-8"))["planned_phases"]
+        mission_begin = int(phases[0]["source_time_interval_ns"]["begin"])
+        mission_end = int(phases[-1]["source_time_interval_ns"]["end"])
+        mission_images = [stamp for stamp in images if mission_begin <= stamp <= mission_end]
+        info_set, truth_set = set(infos), set(stamps[CAMERA_TRUTH])
+        mission_coverage = {
+            "legs_source_time_ns": [mission_begin, mission_end],
+            "images": len(mission_images),
+            "without_camera_info": sum(1 for stamp in mission_images if stamp not in info_set),
+            "without_camera_truth": sum(1 for stamp in mission_images if stamp not in truth_set),
+        }
 
     missing = [topic for topic in RECORD_TOPICS if counts.get(topic, 0) == 0 and topic not in EMPTY_BY_CONTRACT]
     extra = sorted(set(counts) - set(RECORD_TOPICS))
@@ -181,6 +218,12 @@ def analyze(bag_dir: Path) -> dict[str, Any]:
             all(b > a for a, b in zip(stamps[t], stamps[t][1:])) for t in (*RADAR_TOPICS, CAMERA_TOPICS[0])
         ),
     }
+    if clock_pairing is not None:
+        checks["PX4 IMU timestamps pair with Gazebo IMU samples"] = clock_pairing["share"] >= CLOCK_PAIRING_MIN_SHARE
+    if mission_coverage is not None:
+        checks["every image during the legs has camera_info and camera truth"] = (
+            mission_coverage["without_camera_info"] == 0 and mission_coverage["without_camera_truth"] == 0
+        )
     return {
         "bag": str(bag_dir),
         "duration_s": duration_s,
@@ -196,6 +239,8 @@ def analyze(bag_dir: Path) -> dict[str, Any]:
         "radar_forward_minus_up_trigger_ms": summary(trigger_offsets),
         "radar_points_per_scan": {t: summary([float(v) for v in values]) for t, values in radar_points.items()},
         "px4_heading_minus_truth_heading_rad": summary(heading_errors),
+        "px4_gazebo_imu_clock_pairing": clock_pairing,
+        "camera_coverage_during_legs": mission_coverage,
         "camera_info_and_image_stamps_in_common_span": {
             "matching": len(info_span & image_span), "camera_info": len(info_span), "image": len(image_span),
             "camera_info_outside_span": len(infos) - len(info_span), "images_outside_span": len(images) - len(image_span),
@@ -209,8 +254,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("bag", type=Path, help="bag directory of a recorded flight")
     parser.add_argument("--output", type=Path, help="write the report as JSON")
+    parser.add_argument("--mission-evidence", type=Path,
+                        help="the flight's mission_phase_evidence.json, to check camera coverage during the legs")
     args = parser.parse_args()
-    report = analyze(args.bag)
+    report = analyze(args.bag, args.mission_evidence)
     text = json.dumps(report, indent=2)
     if args.output:
         args.output.write_text(text + "\n", encoding="utf-8")

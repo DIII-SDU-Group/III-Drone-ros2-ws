@@ -12,7 +12,12 @@ without ROS.
 Each flight directory holds the exact-topic bag, ``mission_phase_evidence.json``
 (every leg's planned command and its source-time interval on the simulation
 clock, from which the estimator's commanded-position priors are built), the
-live flight plan and pose samples.
+live flight plan and pose samples. A flight's bag stops only once the camera
+truth, which is rendered behind the simulation, covers its last leg.
+
+Before the first takeoff the run records ``ground_imu/``: the IMU disarmed on
+the ground, which measures sensor noise without vehicle motion (hover holds
+measure the vehicle's motion as well).
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import datetime as dt
+import functools
 import hashlib
 import json
 import math
@@ -41,6 +47,15 @@ SIM_MODEL = "gz_d4s_dc_drone_powerline_eval"
 STAGING_FIXTURE = "mid_corridor_taken_off_conductors_visible"
 PRE_ROLL_SEC = 3.0
 POST_ROLL_SEC = 3.0
+# Camera truth is rendered after each frame and can run seconds behind the
+# simulation; a flight's bag stops once it covers the last leg, or after this
+# wall-clock limit.
+TRUTH_DRAIN_TIMEOUT_SEC = 60.0
+# A fly command that finds the maneuver controller not ready (a lifecycle query
+# can time out on an overloaded host) is issued up to this many times.
+LEG_COMMAND_ATTEMPTS = 3
+LEG_COMMAND_RETRY_SEC = 5.0
+GROUND_IMU_SEC = 60.0
 
 # Exact recording contract. Runtime inputs of the powerline SLAM estimator
 # first, then III runtime context, then evaluator-only simulator truth.
@@ -78,7 +93,24 @@ TRUTH_TOPICS: tuple[str, ...] = (
     "/simulation/ground_truth/cable_camera/pylon_frame",
     "/simulation/ground_truth/cable_camera/pylon_exact_frame",
 )
-RECORD_TOPICS: tuple[str, ...] = RUNTIME_TOPICS + CONTEXT_TOPICS + TRUTH_TOPICS
+# Gazebo's IMU samples: their stamps pair PX4's uXRCE-DDS timestamps with the
+# simulation clock at the source.
+CLOCK_EVIDENCE_TOPICS: tuple[str, ...] = ("/simulation/gazebo/imu",)
+RECORD_TOPICS: tuple[str, ...] = RUNTIME_TOPICS + CONTEXT_TOPICS + TRUTH_TOPICS + CLOCK_EVIDENCE_TOPICS
+GROUND_IMU_TOPICS: tuple[str, ...] = (
+    "/clock",
+    "/fmu/out/sensor_combined",
+    "/fmu/out/vehicle_status_v1",
+    "/simulation/gazebo/imu",
+    "/simulation/ground_truth/drone/state",
+)
+# Per-frame camera truth, published after the frame's masks.
+CAMERA_TRUTH_DRAIN_TOPICS: dict[str, str] = {
+    "/simulation/ground_truth/cable_camera/frame": "iii_drone_interfaces/msg/CameraFrameGroundTruth",
+    "/simulation/ground_truth/cable_camera/pylon_frame": "iii_drone_interfaces/msg/PylonCameraFrameGroundTruth",
+    "/simulation/ground_truth/cable_camera/pylon_exact_frame":
+        "iii_drone_interfaces/msg/PylonExactMaskFrameGroundTruth",
+}
 # PX4_PARAM_UXRCE_DDS_SYNCT=0 disables uXRCE-DDS time synchronization, so this
 # topic is recorded (to prove it) but must stay empty.
 EMPTY_BY_CONTRACT: frozenset[str] = frozenset({"/fmu/out/timesync_status"})
@@ -207,13 +239,14 @@ def mission_phase_evidence(
     }
 
 
-def verify_bag(metadata_path: Path) -> dict[str, Any]:
+def verify_bag(metadata_path: Path, expected_topics: Sequence[str] = RECORD_TOPICS) -> dict[str, Any]:
     """Exact topic set; every topic has messages except the empty-by-contract ones, which must be empty."""
-    report = dataset.verify_exact_bag_topics(metadata_path, RECORD_TOPICS)
+    report = dataset.verify_exact_bag_topics(metadata_path, expected_topics)
     topics = report["metadata"]["topics"]
-    disallowed = sorted(set(report["zero_message_topics"]) - EMPTY_BY_CONTRACT)
-    nonempty = sorted(topic for topic in EMPTY_BY_CONTRACT if topics.get(topic, {}).get("message_count", 0) > 0)
-    report["allowed_zero_message_topics"] = sorted(set(report["zero_message_topics"]) & EMPTY_BY_CONTRACT)
+    empty_by_contract = EMPTY_BY_CONTRACT & set(expected_topics)
+    disallowed = sorted(set(report["zero_message_topics"]) - empty_by_contract)
+    nonempty = sorted(topic for topic in empty_by_contract if topics.get(topic, {}).get("message_count", 0) > 0)
+    report["allowed_zero_message_topics"] = sorted(set(report["zero_message_topics"]) & empty_by_contract)
     report["disallowed_zero_message_topics"] = disallowed
     report["checks"]["continuous_topics_have_messages"] = not disallowed
     report["checks"]["timesync_topic_is_empty"] = not nonempty
@@ -232,18 +265,25 @@ def write_json(path: Path, value: Any) -> Path:
 
 
 class SimulationClock:
-    """Latest /clock value, received on its own node and executor thread."""
+    """Latest /clock value and latest header stamps of watched topics, on its own node and executor thread."""
 
-    def __init__(self) -> None:
+    def __init__(self, watched_topics: dict[str, str] | None = None) -> None:
         import rclpy
         from rclpy.executors import SingleThreadedExecutor
-        from rclpy.qos import qos_profile_sensor_data
+        from rclpy.qos import QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
         from rosgraph_msgs.msg import Clock
+        from rosidl_runtime_py.utilities import get_message
 
         self._node = rclpy.create_node("powerline_slam_flight_clock")
         self._lock = threading.Lock()
         self._now_ns: int | None = None
+        self._stamps: dict[str, int | None] = {topic: None for topic in watched_topics or {}}
         self._node.create_subscription(Clock, "/clock", self._on_clock, qos_profile_sensor_data)
+        for topic, type_name in (watched_topics or {}).items():
+            self._node.create_subscription(
+                get_message(type_name), topic, functools.partial(self._on_stamped, topic),
+                QoSProfile(depth=100, reliability=ReliabilityPolicy.RELIABLE),
+            )
         self._executor = SingleThreadedExecutor()
         self._executor.add_node(self._node)
         self._thread = threading.Thread(target=self._executor.spin, daemon=True)
@@ -252,6 +292,24 @@ class SimulationClock:
     def _on_clock(self, message: Any) -> None:
         with self._lock:
             self._now_ns = int(message.clock.sec) * 1_000_000_000 + int(message.clock.nanosec)
+
+    def _on_stamped(self, topic: str, message: Any) -> None:
+        stamp = int(message.header.stamp.sec) * 1_000_000_000 + int(message.header.stamp.nanosec)
+        with self._lock:
+            previous = self._stamps[topic]
+            self._stamps[topic] = stamp if previous is None else max(previous, stamp)
+
+    def wait_for_stamps(self, minimum_ns: int, timeout_sec: float) -> dict[str, int | None]:
+        """Wait until every watched topic carried a stamp at or after minimum_ns; return the latest stamps."""
+        deadline = time.monotonic() + timeout_sec
+        while True:
+            with self._lock:
+                latest = dict(self._stamps)
+            if all(stamp is not None and stamp >= minimum_ns for stamp in latest.values()):
+                return latest
+            if time.monotonic() > deadline:
+                return latest
+            time.sleep(0.1)
 
     def now_ns(self, timeout_sec: float = 10.0) -> int:
         deadline = time.monotonic() + timeout_sec
@@ -283,6 +341,8 @@ class CorridorRunner(dataset.DatasetRunner):
         self.catalog = catalog
         self.catalog_sha256 = sha256_file(CATALOG_PATH)
         self.clock: SimulationClock | None = None
+        self.ground_imu: dict[str, Any] | None = None
+        self._leg_attempts: dict[str, int] = {}
 
     def ensure_ready(self) -> None:
         status = self.tools.simulation("status")
@@ -299,10 +359,52 @@ class CorridorRunner(dataset.DatasetRunner):
                                       ready_timeout_sec=240),
                 f"{command} simulation with {SIM_MODEL}",
             )
+        self.clock = SimulationClock(CAMERA_TRUTH_DRAIN_TOPICS)
+        # Before the base class arms and takes off.
+        self.ground_imu = self.record_ground_imu(self.run_dir / "ground_imu")
         super().ensure_ready()
-        self.clock = SimulationClock()
         profile = dataset.MotionProfile(**self.catalog["motion_profile"])
         self.apply_motion_profile(profile)
+
+    def ensure_system_started(self) -> None:
+        system = self.tools.system("status")
+        stdout = str((system.data or {}).get("stdout", "")).lower()
+        if not system.success or "booted: false" in stdout or "inactive" in stdout:
+            self.require(self.tools.system("boot", timeout_sec=180), "boot canonical system")
+            self.require(self.tools.system("start", timeout_sec=180), "start canonical system")
+
+    def record_ground_imu(self, ground_dir: Path) -> dict[str, Any]:
+        """GROUND_IMU_SEC of IMU and Gazebo IMU, disarmed on the ground; recorded, never fatal."""
+        assert self.clock is not None
+        try:
+            self.ensure_system_started()
+            status = self.require(self.tools.px4("status", timeout_sec=20), "read PX4 status")
+            if bool(status.get("in_air")) or bool(status.get("armed")):
+                result: dict[str, Any] = {"status": "skipped", "reason": "the vehicle is armed or in the air"}
+            else:
+                bag_dir = ground_dir / "bag"
+                recording_id = f"ground_imu_{int(time.time())}"
+                self.require(self.tools.rosbag_record(
+                    "start", recording_id=recording_id, output_dir=str(bag_dir), all_topics=False,
+                    topics=list(GROUND_IMU_TOPICS), include_hidden_topics=False, startup_grace_sec=1.5,
+                ), "start ground IMU rosbag")
+                self._recording_id = recording_id
+                begin_ns = self.clock.now_ns()
+                self.clock.sleep_until_ns(begin_ns + int(GROUND_IMU_SEC * 1e9))
+                end_ns = self.clock.now_ns()
+                self.stop_bag()
+                bag = verify_bag(bag_dir / "metadata.yaml", GROUND_IMU_TOPICS)
+                result = {
+                    "status": "passed" if bag["success"] else "failed",
+                    "recording_id": recording_id,
+                    "source_time_span_ns": [begin_ns, end_ns],
+                    "bag_verification": bag,
+                }
+        except Exception as exc:  # noqa: BLE001 - the flights do not depend on it
+            self.safe_recover()
+            result = {"status": "failed", "error": str(exc)}
+        write_json(ground_dir / "verification.json", {"recorded_at": utc_now(), **result})
+        return result
 
     def start_bag(self, flight_dir: Path, recording_id: str) -> None:
         bag_dir = flight_dir / "bag"
@@ -318,11 +420,18 @@ class CorridorRunner(dataset.DatasetRunner):
     def fly_leg(self, samples: list[dict[str, Any]], leg: dict[str, Any], index: int) -> int:
         """Issue the leg's fly-to command; own the leg for at least duration_s."""
         assert self.clock is not None
-        begin_ns = self.clock.now_ns()
-        result = self.tools.start_operation(
-            "fly_to_position", **{key: leg["live_target"][key] for key in ("frame_id", "x", "y", "z", "yaw")},
-            cancel_existing=True, clear_queue=False, send_timeout_sec=20, maneuver_ready_timeout_sec=60,
-        )
+        for attempt in range(1, LEG_COMMAND_ATTEMPTS + 1):
+            # The leg begins with the command that is accepted.
+            begin_ns = self.clock.now_ns()
+            result = self.tools.start_operation(
+                "fly_to_position", **{key: leg["live_target"][key] for key in ("frame_id", "x", "y", "z", "yaw")},
+                cancel_existing=True, clear_queue=False, send_timeout_sec=20, maneuver_ready_timeout_sec=60,
+            )
+            not_ready = (result.data or {}).get("error") == "maneuver_controller_not_ready"
+            if result.success or not not_ready or attempt == LEG_COMMAND_ATTEMPTS:
+                break
+            time.sleep(LEG_COMMAND_RETRY_SEC)
+        self._leg_attempts[leg["name"]] = attempt
         goal_id = str(self.require(result, f"fly {leg['name']}")["goal_id"])
         deadline = time.monotonic() + 180.0
         while True:
@@ -359,6 +468,7 @@ class CorridorRunner(dataset.DatasetRunner):
         self.start_pl_mapper_with_retries("reset PL mapper after staging")
         samples: list[dict[str, Any]] = []
         begins: list[int] = []
+        self._leg_attempts = {}
         recording_id = f"{direction}_{int(time.time())}"
         try:
             self.start_bag(flight_dir, recording_id)
@@ -368,6 +478,7 @@ class CorridorRunner(dataset.DatasetRunner):
                 begins.append(self.fly_leg(samples, leg, index))
             end_ns = self.clock.now_ns()
             self.clock.sleep_until_ns(end_ns + int(POST_ROLL_SEC * 1e9))
+            truth_stamps = self.clock.wait_for_stamps(end_ns, TRUTH_DRAIN_TIMEOUT_SEC)
             self.stop_bag()
         except Exception:
             self.safe_recover()
@@ -376,8 +487,9 @@ class CorridorRunner(dataset.DatasetRunner):
         write_json(flight_dir / "mission_phase_evidence.json", evidence)
         write_json(flight_dir / "trajectory.json", {"samples": samples})
         bag = verify_bag(flight_dir / "bag/metadata.yaml")
+        truth_covered = all(stamp is not None and stamp >= end_ns for stamp in truth_stamps.values())
         result = {
-            "status": "passed" if bag["success"] else "failed",
+            "status": "passed" if bag["success"] and truth_covered else "failed",
             "direction": direction,
             "sim_model": SIM_MODEL,
             "started_at": started_at,
@@ -386,6 +498,9 @@ class CorridorRunner(dataset.DatasetRunner):
             "bag_verification": bag,
             "leg_count": len(plan),
             "source_time_span_ns": [begins[0], end_ns],
+            "camera_truth_drain": {"covers_last_leg": truth_covered, "required_stamp_ns": end_ns,
+                                   "latest_stamps_ns": truth_stamps},
+            "leg_command_attempts": dict(self._leg_attempts),
         }
         write_json(flight_dir / "verification.json", result)
         return result
@@ -450,6 +565,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     failures = []
     try:
         runner.ensure_ready()
+        manifest["ground_imu"] = runner.ground_imu
+        write_json(run_dir / "run_manifest.json", manifest)
         for direction in args.flights:
             flight_dir = run_dir / direction
             try:
@@ -460,7 +577,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 failures.append(f"{direction}: {exc}")
             write_json(run_dir / "run_manifest.json", manifest)
     finally:
-        runner.close()
+        try:
+            runner.close()
+        except Exception as exc:  # noqa: BLE001 - recorded; the flights stand
+            manifest["close_error"] = str(exc)
+            print(f"WARNING: closing the runner failed: {exc}", file=sys.stderr)
     manifest["completed_at"] = utc_now()
     manifest["status"] = "recorded" if not failures else "failed"
     write_json(run_dir / "run_manifest.json", manifest)

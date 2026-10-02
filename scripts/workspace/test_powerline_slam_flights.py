@@ -31,9 +31,18 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual("d4s_dc_drone_powerline_eval", catalog["sensor_layout"])
 
     def test_exact_topic_contract(self) -> None:
-        self.assertEqual(28, len(flights.RECORD_TOPICS))
+        self.assertEqual(29, len(flights.RECORD_TOPICS))
         self.assertEqual(len(flights.RECORD_TOPICS), len(set(flights.RECORD_TOPICS)))
         self.assertTrue(flights.EMPTY_BY_CONTRACT <= set(flights.RUNTIME_TOPICS))
+        self.assertIn("/simulation/gazebo/imu", flights.RECORD_TOPICS)
+        # The flight waits for the per-frame camera truth it records.
+        self.assertTrue(set(flights.CAMERA_TRUTH_DRAIN_TOPICS) <= set(flights.TRUTH_TOPICS))
+        # The ground segment records the IMU and the arming state, not the flight contract.
+        self.assertEqual(
+            {"/clock", "/fmu/out/sensor_combined", "/fmu/out/vehicle_status_v1", "/simulation/gazebo/imu",
+             "/simulation/ground_truth/drone/state"},
+            set(flights.GROUND_IMU_TOPICS),
+        )
         for topic in (
             "/sensor/mmwave/points_full",
             "/sensor/mmwave_forward/points_full",
