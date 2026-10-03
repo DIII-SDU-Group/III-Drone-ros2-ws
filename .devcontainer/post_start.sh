@@ -7,8 +7,15 @@ set -euo pipefail
 # - refresh iii CLI argcomplete wiring in ~/.bashrc
 # - reinstall the editable CLI package inside the container
 # - build the workspace with the standard debug configuration
-# - run the schema-aware configuration install/update that requires the built
-#   iii_drone_configuration native extension
+# - install and restart the supervised daemon and Runtime API
+
+POST_START_READY=/run/lock/iii-dev-post-start.ready
+exec 7>/run/lock/iii-dev-post-start.lock
+flock -x 7
+if [[ "${1:-}" == "--if-needed" && -f "${POST_START_READY}" ]]; then
+    exit 0
+fi
+rm -f "${POST_START_READY}"
 
 ensure_workspace_runtime_ownership() {
     local target_user="iii"
@@ -78,11 +85,26 @@ complete -o nospace -o default -F _iii_python_argcomplete iii
 EOF
 fi
 
-# Refresh Python dependencies for existing devcontainers, then reinstall the
-# editable III-Drone-CLI wrapper.
+# The old deployment Python distribution was removed from this editable
+# workspace. Clear it before refreshing dependencies so its obsolete pins do
+# not conflict with the current requirements on reused devcontainers.
+if pip3 show iii-deployment >/dev/null 2>&1; then
+    pip3 uninstall -y iii-deployment
+fi
+
+# Refresh workspace Python dependencies, then install the local editable III
+# distributions. The deployment/ directory now contains Ansible and systemd
+# assets rather than a Python package.
 pip3 install -r ./requirements.txt
+pip3 install -e ./src/III-Drone-Contracts
+pip3 install -e ./src/III-Drone-Configuration
 pip3 uninstall -y iii 2> /dev/null
 pip3 install -e ./tools/III-Drone-CLI
+# Simulation acceptance and fixture helpers invoke the MCP command-line
+# entrypoints directly from the devcontainer.  Install the workspace package so
+# those helpers do not depend on an ad-hoc PYTHONPATH or a manually prepared
+# shell.
+pip3 install -e ./tools/III-Drone-MCP
 
 # Refresh PX4 Gazebo simulation assets if the checkout is present.
 if [ -d /home/iii/ws/PX4-Autopilot ]; then
@@ -107,11 +129,11 @@ COLCON_CMAKE_ARGS=(
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 )
 
-# micro_ros_agent does not declare the vendored Micro XRCE-DDS Agent as a ROS
-# package dependency, so build the CMake package first and source it explicitly.
+# micro_ros_agent needs both the vendored Micro XRCE-DDS Agent and the generated
+# micro_ros_msgs package in the install prefix before its own build starts.
 COLCON_HOME=/home/iii/ws colcon build \
     "${COLCON_COMMON_ARGS[@]}" \
-    --packages-select microxrcedds_agent \
+    --packages-select microxrcedds_agent micro_ros_msgs \
     "${COLCON_CMAKE_ARGS[@]}"
 
 set +u
@@ -130,13 +152,10 @@ set -u
 
 COLCON_HOME=/home/iii/ws colcon build \
     "${COLCON_COMMON_ARGS[@]}" \
-    --packages-skip microxrcedds_agent micro_ros_agent \
+    --packages-skip microxrcedds_agent micro_ros_msgs micro_ros_agent \
     "${COLCON_CMAKE_ARGS[@]}"
-
-# Install configuration after the workspace build so the native validation
-# extension used by the configuration tools matches the current sources.
-./src/III-Drone-Configuration/scripts/install.sh .config
 
 # Install and run the daemon through systemd so dev mirrors onboard runtime ownership.
 ./scripts/systemd/install_dev_systemd_service.sh
 ./scripts/systemd/install_runtime_api_service.sh
+touch "${POST_START_READY}"

@@ -1,0 +1,56 @@
+---
+# Developer-host defaults. This file deliberately has no release receiver,
+# snapshot pinning, signing, or trust-store configuration.
+iii_runtime_user: iii
+iii_runtime_group: iii
+iii_runtime_uid: 1100
+iii_runtime_gid: 1100
+iii_runtime_owner_effective: "{{ (iii_runtime_uid | string) if ansible_check_mode else iii_runtime_user }}"
+iii_runtime_group_effective: "{{ (iii_runtime_gid | string) if ansible_check_mode else iii_runtime_group }}"
+iii_runtime_api_port: 8765
+iii_hostname_manage: true
+iii_px4_interface_driver: macb
+iii_px4_host_address: 10.41.10.1/24
+iii_px4_peer_address: 10.41.10.2
+iii_px4_mavlink_udp_port: 14540
+iii_px4_system_id: 1
+iii_px4_uxrce_dds_udp_port: 8888
+iii_hil_uxrce_dds_udp_port: 8889
+iii_hil_mavlink_udp_port: 14542
+# The physical PX4 HIL baseline above remains separate from workstation SITL.
+iii_hil_sitl_mavlink_udp_port: 14544
+iii_hil_px4_system_id: 8
+iii_hardware_packages:
+  - udev
+  - usbutils
+  - v4l-utils
+iii_host_packages:
+  - avahi-daemon
+  - ca-certificates
+  - chrony
+  - curl
+  - netplan.io
+  - openssh-server
+  - python3
+  - python3-pip
+  - python3-venv
+  - rsync
+  - sudo
+  - udev
+  - usbutils
+  - util-linux
+  - v4l-utils
+  - xz-utils
+iii_ros_packages:
+  - ros-dev-tools
+  - ros-jazzy-ros-base
+  - ros-jazzy-rmw-cyclonedds-cpp
+  - ros-jazzy-usb-cam
+iii_runtime_supplementary_groups:
+  - dialout
+  - render
+  - video
+iii_application_units:
+  - iii-system-daemon.service
+  - iii-runtime-api.service
+  - iii.target

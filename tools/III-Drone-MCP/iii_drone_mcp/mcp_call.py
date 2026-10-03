@@ -36,7 +36,7 @@ def main() -> None:
     parser.add_argument("tool", help="MCP tool name, for example simulation or px4")
     parser.add_argument("arguments", nargs="?", help="JSON object with tool arguments")
     parser.add_argument("--artifact-dir", default=os.environ.get("III_DRONE_MCP_ARTIFACT_DIR", "/tmp/iii_drone/iii_drone_agent"))
-    parser.add_argument("--px4-system-address", default="udpin://0.0.0.0:14540")
+    parser.add_argument("--px4-system-address", default=os.environ.get("III_PX4_SYSTEM_ADDRESS", "udpin://0.0.0.0:14540"))
     parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of text")
     parser.add_argument("--log-stderr", action="store_true", help="Keep middleware logs on stderr instead of writing them to an artifact log")
     args = parser.parse_args()

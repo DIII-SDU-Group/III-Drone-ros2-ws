@@ -1,14 +1,17 @@
 # Host Development Commands
 
-`iii-dev` is the workspace-root command for operating the development stack
-without opening a terminal inside the devcontainer. It is a transport and
-coordination layer: PX4/Gazebo remains owned by the simulation launcher, the
-ROS graph remains owned by the III daemon, and ground control remains owned by
-its host-side Docker Compose project.
+`iii-dev` is the workspace-root command for SIM/HIL orchestration, container
+access, and development tmux helpers. Install the [native `dev`
+ground-computer profile](ground-computer-installation.md) first. The installed
+`iii` command owns runtime, API, and recorder controls; the installed GC
+launcher owns the web UI. PX4/Gazebo remains owned by the simulation launcher
+and the ROS graph by the III daemon.
 
 ## Prerequisites
 
 - Run commands from this checkout on the development host.
+- Run `python3 scripts/install_gc.py --profile dev` on the host and put
+  `~/.local/bin` on `PATH`.
 - Docker must be installed and accessible to the current user.
 - The workspace devcontainer must either exist or be creatable through the Dev
   Container CLI. `container up` uses an installed `devcontainer` executable and
@@ -21,9 +24,8 @@ Container discovery uses the exact
 multiple running matches. Commands run as `iii` in `/home/iii/ws` after sourcing
 `setup/setup_dev.bash`.
 
-Every command group and subcommand supports both `-h` and `--help`. Help for
-wrapper-owned commands is rendered on the host without contacting Docker;
-nested `system` help is forwarded to the canonical in-container III CLI.
+Every `iii-dev` command group supports `-h` and `--help` without contacting
+Docker. Use `iii --help` for ordinary runtime commands.
 
 ## Normal Simulation Workflow
 
@@ -43,8 +45,8 @@ Useful views:
 ```bash
 ./iii-dev stack status
 ./iii-dev sim attach
-./iii-dev system attach
-./iii-dev gui logs --follow
+iii --runtime-target sim system attach
+~/.local/share/iii/gc/workspace/scripts/workspace/iii_ground_control.sh logs
 ```
 
 Stop all three ownership domains in reverse order:
@@ -64,9 +66,13 @@ Container and configured shell access:
 ```bash
 ./iii-dev container status
 ./iii-dev container up
+./iii-dev container down
 ./iii-dev shell
 ./iii-dev exec ros2 node list
 ```
+
+`container down` stops the running devcontainer associated with this checkout.
+It leaves other workspaces' containers alone and succeeds if this one is already stopped.
 
 Simulation operations:
 
@@ -84,37 +90,50 @@ recreates the canonical simulation session and applies the simulation
 launcher's PX4 parameter-reset policy. `sim start` is idempotent and does not
 attach to tmux. `sim attach` never creates a missing session.
 
-Every in-container system command can be forwarded without duplicating its
-argument model:
+The native installed CLI checks this checkout's devcontainer identity and
+routes runtime commands into it. Select SIM explicitly from a native shell:
 
 ```bash
-./iii-dev system boot
-./iii-dev system start
-./iii-dev system status
-./iii-dev system logs mission_executor --follow
-./iii-dev system service restart micro_ros_agent
-./iii-dev system shutdown
+iii --runtime-target sim system boot
+iii --runtime-target sim system start
+iii --runtime-target sim system status
+iii --runtime-target sim system logs mission_executor --follow
+iii --runtime-target sim system service restart micro_ros_agent
+iii --runtime-target sim system shutdown
 ```
 
-The separately systemd-owned runtime API has explicit controls:
+Inside the devcontainer, source `setup/setup_dev.bash` and omit
+`--runtime-target`; `iii` then operates on the local SIM runtime. The
+separately systemd-owned Runtime API has explicit native controls:
 
 ```bash
-./iii-dev api start
-./iii-dev api status
-./iii-dev api logs --follow
-./iii-dev api restart
-./iii-dev api stop
+iii --runtime-target sim api start
+iii --runtime-target sim api status
+iii --runtime-target sim api logs --follow
+iii --runtime-target sim api restart
+iii --runtime-target sim api stop
 ```
 
-Ground-control operations remain host-side:
+Manual recorder controls also use `iii`:
 
 ```bash
-./iii-dev gui start
-./iii-dev gui status
-./iii-dev gui logs --follow
-./iii-dev gui restart
-./iii-dev gui stop
+iii --runtime-target sim rosbag status
+iii --runtime-target sim rosbag list
+iii --runtime-target sim rosbag start --id inspection
+iii --runtime-target sim rosbag stop --id inspection
 ```
+
+The installed web UI remains host-side:
+
+```bash
+~/.local/share/iii/gc/workspace/scripts/workspace/iii_ground_control.sh start
+~/.local/share/iii/gc/workspace/scripts/workspace/iii_ground_control.sh status
+~/.local/share/iii/gc/workspace/scripts/workspace/iii_ground_control.sh stop
+```
+
+`iii-dev system`, `api`, `gui`, and `rosbag` now print migration guidance and
+exit without acting on the runtime. `iii-dev stack` composes the native CLI
+and installed GUI launcher; it does not duplicate their command surfaces.
 
 ## Stack Variants
 

@@ -90,6 +90,26 @@ iii_dev_exec() {
         iii-dev "${III_DEV_CONTAINER_WORKSPACE}" "$@"
 }
 
+# A devcontainer shares the workspace with occasional root-owned maintenance and
+# CI commands.  Root-owned generated files make the normal ``iii`` user fail
+# late in a boot-time incremental build.  Repair only generated trees and only
+# entries owned by root; source and user-owned artifacts are never touched.
+iii_dev_repair_generated_ownership() {
+    local container_id
+    local repair_shell
+
+    container_id="$(iii_dev_container_id)" || return
+    repair_shell='set -eu; workspace="$1"; target_user="$2"; target_group="$(id -gn "$target_user")"; for root in build install log; do path="$workspace/$root"; [ -d "$path" ] || continue; find "$path" -xdev -uid 0 -exec chown "$target_user:$target_group" -- {} +; done'
+    "${III_DEV_DOCKER_BIN}" exec \
+        --user root \
+        --workdir "${III_DEV_CONTAINER_WORKSPACE}" \
+        "${container_id}" \
+        bash -lc "${repair_shell}" \
+        iii-dev-repair-generated-ownership \
+        "${III_DEV_CONTAINER_WORKSPACE}" \
+        "${III_DEV_CONTAINER_USER}"
+}
+
 iii_dev_container_status() {
     local running all
 
@@ -112,9 +132,18 @@ iii_dev_container_status() {
 iii_dev_container_up() {
     local command_name="${III_DEV_DEVCONTAINER_BIN:-devcontainer}"
     local -a devcontainer_command=()
+    local container_id=""
 
     iii_dev_require_docker || return
     if [[ -n "$(iii_dev_running_containers)" ]]; then
+        container_id="$(iii_dev_container_id)" || return
+        if ! "${III_DEV_DOCKER_BIN}" exec --user "${III_DEV_CONTAINER_USER}" \
+            "${container_id}" test -f /run/lock/iii-dev-post-start.ready; then
+            printf 'Workspace devcontainer is running; completing interrupted post-start setup.\n'
+            "${III_DEV_DOCKER_BIN}" exec --user "${III_DEV_CONTAINER_USER}" \
+                --workdir "${III_DEV_CONTAINER_WORKSPACE}" "${container_id}" \
+                bash .devcontainer/post_start.sh --if-needed || return
+        fi
         iii_dev_container_status
         return 0
     fi
@@ -131,6 +160,46 @@ iii_dev_container_up() {
     fi
 
     "${devcontainer_command[@]}" up --workspace-folder "${III_DEV_WORKSPACE_ROOT}"
-    iii_dev_container_id >/dev/null
+    container_id="$(iii_dev_container_id)" || return
+    "${III_DEV_DOCKER_BIN}" exec --user "${III_DEV_CONTAINER_USER}" \
+        "${container_id}" test -f /run/lock/iii-dev-post-start.ready || {
+        iii_dev_error "The devcontainer started, but its post-start setup did not complete."
+        return 1
+    }
     iii_dev_container_status
+}
+
+iii_dev_container_down() {
+    local rows container_id
+    local -a containers=()
+
+    iii_dev_require_docker || return
+    rows="$(iii_dev_running_containers)" || return
+    while IFS=$'\t' read -r container_id _container_name; do
+        [[ -n "${container_id}" ]] && containers+=("${container_id}")
+    done <<< "${rows}"
+
+    if ((${#containers[@]} == 0)); then
+        printf 'Workspace devcontainer is already stopped.\n'
+        return 0
+    fi
+    if ((${#containers[@]} != 1)); then
+        iii_dev_error "Expected one running workspace devcontainer, found ${#containers[@]}:"
+        printf '%s\n' "${rows}" >&2
+        return 1
+    fi
+
+    container_id="${containers[0]}"
+    printf 'Stopping workspace devcontainer %s...\n' "${container_id}"
+    "${III_DEV_DOCKER_BIN}" stop --time 20 "${container_id}" >/dev/null || {
+        iii_dev_error "Failed to stop workspace devcontainer ${container_id}."
+        return 1
+    }
+    rows="$(iii_dev_running_containers)" || return
+    if [[ -n "${rows}" ]]; then
+        iii_dev_error "Workspace devcontainer is still running after stop:"
+        printf '%s\n' "${rows}" >&2
+        return 1
+    fi
+    printf 'Workspace devcontainer stopped.\n'
 }

@@ -1,0 +1,9 @@
+[Unit]
+Description=III application control plane
+Requires=iii-system-daemon.service
+Wants=iii-runtime-api.service
+After=iii-system-daemon.service iii-runtime-api.service
+AllowIsolate=no
+
+[Install]
+WantedBy=multi-user.target

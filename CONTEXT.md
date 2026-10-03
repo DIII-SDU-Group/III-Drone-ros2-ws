@@ -72,6 +72,10 @@ _Avoid_: Full stack, normal path
 The top-level mission run owned by the mission executor's mode executor.
 _Avoid_: Individual mode transition
 
+**Mission Exit**:
+The one authoritative transition that ends a **Mission Sequence** because PX4 took command authority away from the mission executor for anything the mission did not initiate (an operator mode change such as Hold or Position, stick override, or PX4 failsafe). It closes tree dispatch, stops trees, releases the mission's maneuver ownership in Core explicitly, stops mission-started side effects, and reports the exit reason.
+_Avoid_: Mission stop, abort, interruption
+
 ## Relationships
 
 - **Agent Operations Tooling** exposes **Direct Operation** and **Mission Execution** capabilities to agents.
@@ -84,6 +88,10 @@ _Avoid_: Individual mode transition
 - Mission and custom-operation activation clear queued maneuver work before taking control.
 - Custom-operation activation and deactivation clear queued maneuver work.
 - **Mission Sequence** activation and deactivation clear queued maneuver work.
+- Switching PX4 out of the **Mission-Owned Mode** is how an operator ends a **Mission Sequence**; it is a **Mission Exit**, logged INFO. A PX4 failsafe is also a **Mission Exit** but stays loud (ERROR).
+- Mission-driven transitions (next-mode handoffs, the executor's own land/takeoff/arm/disarm, the mission-done mode) keep the mode executor in charge and are never a **Mission Exit**.
+- After a **Mission Exit** no behavior tree dispatches maneuver, mode-executor, gripper, or PL mapper commands until the next **Mission Sequence**.
+- A **Mission Exit** tells the **Maneuver Execution System** that the mission consumer released control; Core ends that consumer's goals and retained owners explicitly instead of inferring it from PX4 navigation state.
 - The **Operations Controller** accepts new **Direct Operation** maneuver goals only when the **Maneuver Execution System** is **Current Maneuver Idle**.
 - Clearing queued maneuver work is an atomic service operation on the **Maneuver Execution System** and does not cancel the currently executing maneuver.
 - The **Operations Controller** owns direct control only while **Custom Operation Mode** is active.
@@ -126,6 +134,9 @@ _Avoid_: Individual mode transition
 
 > **Dev:** "Can mission and direct operation both publish PX4 setpoints while the operator decides?"
 > **Domain expert:** "No. There is exactly one **Reference Owner** at a time."
+
+> **Dev:** "How does an operator stop a running mission?"
+> **Domain expert:** "By selecting another PX4 mode, usually Hold. That is a **Mission Exit**: the mission stops dispatching, releases its control in Core and reports why, quietly."
 
 ## Flagged ambiguities
 

@@ -4,6 +4,13 @@
 
 Canonical operational entrypoint is the III CLI (`iii`), backed by the supervision daemon and a launch-driven runtime graph.
 
+Inside the SIM devcontainer or onboard Pi, `iii` operates on the local
+runtime after sourcing its `setup/` profile. The [native ground-computer
+install](ground-computer-installation.md) routes the same runtime command over
+Docker to the matching SIM devcontainer or over SSH to a selected Pi. Native
+GC routing checks CLI source identity before execution; `iii-dev` owns only
+SIM/HIL stack composition and container helpers.
+
 Operational sequence:
 1. Environment profile is loaded from `setup/*.bash` (for example dev/sim profile).
 2. `iii system boot` ensures the system daemon is running.
@@ -76,6 +83,12 @@ Examples from the specification:
 
 - `micro_ros_agent`
 
+In split-host HIL, `micro_ros_agent` owns the workstation PX4 SITL endpoint on
+Pi UDP port 8890 and is the readiness gate for the mission graph. The physical
+PX4 transport is deliberately not started in this profile: it is not part of
+the virtual-flight proof and would consume Pi capacity. Real and OptiTrack
+profiles own their physical PX4 transport separately.
+
 ### 2.4 Real / OptiTrack profile entities
 
 - managed TF real launch wrapper (`tf`)
@@ -145,6 +158,21 @@ At the process level, the canonical path is launch-driven:
 - the daemon tracks which launched processes are alive
 - the daemon owns service processes that are not lifecycle nodes
 - supervision logic decides which managed nodes may be configured/activated
+
+When a lifecycle node's process dies and launch respawns it while the node is
+meant to be active, the system manager configures and activates the new
+process again. A process start or exit discards the supervisor's cached
+lifecycle state for that node, so recovery always waits for the new process to
+report its own state rather than trusting its predecessor's.
+
+III C++ executables spin their nodes with `iii_drone::utils::MultiThreadedExecutor`
+(`iii_drone_core/utils/multi_threaded_executor.hpp`), not rclcpp's
+`MultiThreadedExecutor`. On Jazzy the upstream executor can permanently drop a
+mutually exclusive callback group, including a node's default group with its
+lifecycle services and timers, from its wait set
+([ros2/rclcpp#3240](https://github.com/ros2/rclcpp/issues/3240)). The III
+executor requests the rebuild that restores the group directly after every
+mutually exclusive callback. Use it for new multi-threaded III executables.
 
 `mission_executor` is gated by `micro_ros_agent: ready`. The micro-ROS agent service may be alive while PX4 is absent; readiness follows configured FMU topic heartbeats. This supports starting the III system before PX4 SITL or the physical flight controller is available, then bringing PX4 online later and rerunning `iii system start`.
 

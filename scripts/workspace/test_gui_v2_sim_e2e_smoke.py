@@ -2,6 +2,7 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import SimpleNamespace
 import json
+from contextlib import nullcontext
 import threading
 
 import pytest
@@ -108,6 +109,299 @@ def test_request_ids_do_not_replay_between_runs():
     assert first != second
 
 
+def test_browser_password_falls_back_to_runtime_token_file(monkeypatch, tmp_path):
+    token_file = tmp_path / "runtime-token"
+    token_file.write_text("provisioned-secret\n", encoding="ascii")
+    monkeypatch.delenv("III_RUNTIME_API_BROWSER_PASSWORD", raising=False)
+    monkeypatch.setenv("III_RUNTIME_API_TOKEN_FILE", str(token_file))
+
+    assert smoke.default_browser_password() == "provisioned-secret"
+
+
+def test_explicit_browser_password_takes_precedence(monkeypatch, tmp_path):
+    token_file = tmp_path / "runtime-token"
+    token_file.write_text("runtime-token\n", encoding="ascii")
+    monkeypatch.setenv("III_RUNTIME_API_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("III_RUNTIME_API_BROWSER_PASSWORD", "operator-secret")
+
+    assert smoke.default_browser_password() == "operator-secret"
+
+
+def test_configuration_revision_requires_integer_revision():
+    assert smoke.configuration_revision(
+        {"latest": {"manifest": {"status": {"tuning_revision": 17}}}}
+    ) == 17
+    with pytest.raises(smoke.SmokeFailure, match="tuning revision"):
+        smoke.configuration_revision(
+            {"latest": {"manifest": {"status": {"tuning_revision": True}}}}
+        )
+
+
+@pytest.mark.parametrize("active_flag", ["run_mutating_workflows", "run_flight_commands", "run_inspection_cycle"])
+def test_any_state_changing_workflow_requires_failure_recovery(active_flag):
+    args = SimpleNamespace(
+        run_mutating_workflows=False,
+        run_flight_commands=False,
+        run_inspection_cycle=False,
+    )
+    setattr(args, active_flag, True)
+
+    assert smoke.recovery_required(args)
+
+
+def test_read_only_workflow_does_not_request_vehicle_recovery():
+    args = SimpleNamespace(
+        run_mutating_workflows=False,
+        run_flight_commands=False,
+        run_inspection_cycle=False,
+    )
+
+    assert not smoke.recovery_required(args)
+
+
+def test_hil_profile_is_an_explicit_smoke_target():
+    args = smoke.parse_args(["--expected-profile", "hil"])
+
+    assert args.expected_profile == "hil"
+    assert args.pi_host is None
+    assert args.runtime_url == "http://iii.local:8765"
+
+
+def test_hil_runtime_url_defaults_to_inherited_pi_hostname_without_api_url(monkeypatch):
+    monkeypatch.setenv("III_HIL_PI_ENDPOINT", "pi.example")
+    monkeypatch.delenv("III_RUNTIME_API_URL", raising=False)
+
+    args = smoke.parse_args(["--expected-profile", "hil"])
+
+    assert args.runtime_url == "http://pi.example:8765"
+
+
+def test_explicit_hil_host_overrides_inherited_target(monkeypatch):
+    monkeypatch.setenv("III_HIL_PI_ENDPOINT", "inherited.local")
+    monkeypatch.setenv("III_HIL_PI_ADDRESS", "10.42.0.15")
+    monkeypatch.setenv("III_RUNTIME_API_URL", "http://inherited.local:8765")
+
+    args = smoke.parse_args(["--expected-profile", "hil", "--host", "192.0.2.40"])
+
+    assert args.pi_host == "192.0.2.40"
+    assert args.runtime_url == "http://192.0.2.40:8765"
+
+
+def test_hil_route_resolution_uses_host_route_source(monkeypatch):
+    monkeypatch.setattr(smoke.socket, "getaddrinfo", lambda *args: [(None, None, None, None, ("192.0.2.40", 0))])
+    monkeypatch.setattr(
+        smoke.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="192.0.2.40 dev wlan0 src 192.0.2.10\n", stderr=""),
+    )
+    monkeypatch.delenv("III_HIL_WORKSTATION_ADDRESS", raising=False)
+    monkeypatch.setattr(smoke.socket, "create_connection", lambda *args, **kwargs: nullcontext())
+
+    assert smoke.resolve_hil_network("pi.example") == ("192.0.2.40", "192.0.2.10")
+
+
+def test_hil_route_resolution_skips_unreachable_first_dns_address(monkeypatch):
+    monkeypatch.setattr(
+        smoke.socket,
+        "getaddrinfo",
+        lambda *args: [
+            (None, None, None, None, ("10.42.0.15", 0)),
+            (None, None, None, None, ("192.168.1.251", 0)),
+        ],
+    )
+    monkeypatch.setattr(
+        smoke.subprocess,
+        "run",
+        lambda command, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=f"{command[-1]} dev eth0 src 192.168.1.10\n",
+            stderr="",
+        ),
+    )
+    attempts = []
+
+    def connect(address, timeout):
+        attempts.append((address, timeout))
+        if address[0] == "10.42.0.15":
+            raise OSError("unreachable stale address")
+        return nullcontext()
+
+    monkeypatch.setattr(smoke.socket, "create_connection", connect)
+    monkeypatch.delenv("III_HIL_WORKSTATION_ADDRESS", raising=False)
+
+    assert smoke.resolve_hil_network("pi.example") == ("192.168.1.251", "192.168.1.10")
+    assert attempts == [(('10.42.0.15', 22), 0.75), (('192.168.1.251', 22), 0.75)]
+
+
+def test_hil_route_resolution_rejects_workstation_override_for_another_link(monkeypatch):
+    monkeypatch.setattr(smoke.socket, "getaddrinfo", lambda *args: [(None, None, None, None, ("192.0.2.40", 0))])
+    monkeypatch.setattr(
+        smoke.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="192.0.2.40 dev wlan0 src 192.0.2.10\n", stderr=""),
+    )
+    monkeypatch.setenv("III_HIL_WORKSTATION_ADDRESS", "10.42.0.1")
+
+    with pytest.raises(smoke.SmokeFailure, match="does not match route"):
+        smoke.resolve_hil_network("pi.example")
+
+
+def test_smoke_hil_target_is_selected_from_explicit_argument(monkeypatch, tmp_path):
+    monkeypatch.setattr(smoke, "resolve_hil_network", lambda host: ("192.0.2.40", "192.0.2.10"))
+    args = smoke.parse_args(["--expected-profile", "hil", "--host", "pi.example", "--workspace", str(tmp_path)])
+
+    runner = smoke.SmokeRunner(args)
+
+    assert (runner.pi_host, runner.pi_address, runner.workstation_address) == (
+        "pi.example",
+        "192.0.2.40",
+        "192.0.2.10",
+    )
+
+
+def test_hil_mcp_child_receives_selected_peer_and_route_source(monkeypatch, tmp_path):
+    monkeypatch.setenv("III_HIL_ROS_DOMAIN_ID", "42")
+    monkeypatch.setenv("III_HIL_GZ_PARTITION", "test-partition")
+    runner = object.__new__(smoke.SmokeRunner)
+    runner.workspace = tmp_path
+    runner.artifacts = tmp_path / "artifacts"
+    runner.args = SimpleNamespace(expected_profile="hil")
+    runner.pi_host = "pi.example"
+    runner.pi_address = "192.0.2.40"
+    runner.workstation_address = "192.0.2.10"
+    runner.record_structured_artifact = lambda *_args, **_kwargs: None
+    results = iter(
+        [
+            SimpleNamespace(returncode=0, stdout="container-id\n", stderr=""),
+            SimpleNamespace(returncode=0, stdout='{"success":true}', stderr=""),
+        ]
+    )
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        return next(results)
+
+    monkeypatch.setattr(smoke.subprocess, "run", run)
+
+    runner.call_sim_mcp("runtime.status", {}, artifact_name="status")
+
+    child = calls[1][-1]
+    assert "III_HIL_PI_ENDPOINT=pi.example" in child
+    assert "III_HIL_PI_ADDRESS=192.0.2.40" in child
+    assert "III_RUNTIME_API_URL=http://pi.example:8765" in child
+    assert "RMW_IMPLEMENTATION=rmw_fastrtps_cpp" in child
+    assert "FASTDDS_BUILTIN_TRANSPORTS=UDPv4" in child
+
+
+def test_hil_smoke_passes_host_to_fixture_resolver(monkeypatch, tmp_path):
+    runner = object.__new__(smoke.SmokeRunner)
+    runner.workspace = tmp_path
+    runner.artifacts = tmp_path
+    runner.args = SimpleNamespace(fixture_resolver="resolver", expected_profile="hil")
+    runner.pi_host = "pi.example"
+    calls = []
+
+    def run(command, **_kwargs):
+        calls.append(command)
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({"success": True, "data": {"target_source": "gazebo_ground_truth_mapped_to_live_ros_world"}}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(smoke.subprocess, "run", run)
+
+    runner.resolve_fixture("fixture")
+
+    assert calls[0][calls[0].index("--host") + 1] == "pi.example"
+
+
+def test_sim_smoke_keeps_pi_target_unset(monkeypatch):
+    monkeypatch.setenv("III_HIL_PI_ENDPOINT", "pi.example")
+
+    args = smoke.parse_args([])
+
+    assert args.expected_profile == "sim"
+    assert args.pi_host is None
+
+
+def test_cable_aware_fixture_preserves_recorded_clearance_altitude():
+    assert smoke.fixture_flight_altitude(0.611, cable_aware=True) == 0.611
+    assert smoke.fixture_flight_altitude(0.611, cable_aware=False) == pytest.approx(0.671)
+
+
+def test_default_http_timeout_exceeds_proxy_operation_budget(monkeypatch):
+    monkeypatch.delenv("III_GUI_V2_E2E_HTTP_TIMEOUT_SEC", raising=False)
+
+    args = smoke.parse_args([])
+
+    assert args.http_timeout_s > 180.0
+
+
+def test_flight_workflow_waits_for_stable_arming_readiness_before_dispatch():
+    runner = object.__new__(smoke.SmokeRunner)
+    calls = []
+
+    def wait_for_stable(name, path, headers, predicate, **kwargs):
+        calls.append(("wait", name, path, kwargs))
+        ready = {
+            "arming_checks_passed": True,
+            "latest": {"command_transport": {"command_available": True}},
+            "armed": True,
+            "in_air": True,
+            "nav_state": "hold",
+            "telemetry_fields": {
+                "armed": {
+                    "value": True,
+                    "freshness": "fresh",
+                    "source_availability": "available",
+                    "disagreement": False,
+                },
+                "in_air": {
+                    "value": True,
+                    "freshness": "fresh",
+                    "source_availability": "available",
+                    "disagreement": False,
+                },
+                "nav_state": {
+                    "value": "hold",
+                    "freshness": "fresh",
+                    "source_availability": "available",
+                    "disagreement": False,
+                },
+            },
+        }
+        if name == "px4-landed-disarmed":
+            ready["armed"] = False
+            ready["in_air"] = False
+            ready["telemetry_fields"]["armed"]["value"] = False
+            ready["telemetry_fields"]["in_air"]["value"] = False
+        assert predicate(ready)
+        return ready
+
+    runner.wait_for_stable_state = wait_for_stable
+    runner.wait_for_state = lambda *args, **kwargs: calls.append(("wait_state", args[0]))
+    runner.dispatch_command = lambda name, command_id, parameters, headers: calls.append(
+        ("dispatch", name, command_id)
+    )
+
+    runner.run_flight_commands({})
+
+    assert calls[0][0:3] == ("wait", "px4-arming-ready", "/proxy/vehicle/status")
+    assert calls[0][3]["consecutive_samples"] == 3
+    assert calls[1] == ("dispatch", "px4-arm", "px4.arm")
+
+
+def test_frontend_url_uses_provisioned_gc_port(monkeypatch):
+    monkeypatch.delenv("III_GC_FRONTEND_URL", raising=False)
+    monkeypatch.setenv("III_GC_FRONTEND_PORT", "5173")
+
+    args = smoke.parse_args([])
+
+    assert args.frontend_url == "http://127.0.0.1:5173"
+
+
 def test_frontend_session_payload_matches_browser_storage_contract():
     payload = smoke.frontend_session_payload(
         token="token",
@@ -162,6 +456,141 @@ def test_retryable_command_fails_immediately_on_non_retryable_rejection():
         runner.dispatch_retryable_command(
             "pylon-capture", "pylon.capture_current", {"pylon_id": 3}, {}, timeout_s=1, interval_s=0
         )
+
+
+def test_configuration_retry_refreshes_revision_after_compare_and_swap_race():
+    runner = object.__new__(smoke.SmokeRunner)
+    states = iter(
+        [
+            {
+                "latest": {
+                    "manifest": {
+                        "status": {"tuning_revision": 1},
+                        "nodes": [
+                            {"groups": [{"parameters": [{"name": "/safe", "current_value": 1.0}]}]}
+                        ],
+                    },
+                }
+            },
+            {
+                "latest": {
+                    "manifest": {
+                        "status": {"tuning_revision": 2},
+                        "nodes": [
+                            {"groups": [{"parameters": [{"name": "/safe", "current_value": 1.0}]}]}
+                        ],
+                    },
+                }
+            },
+        ]
+    )
+    runner.get_state = lambda *_args: next(states)
+    calls = []
+
+    def dispatch(_name, _command, parameters, *_args, **_kwargs):
+        calls.append(parameters)
+        if len(calls) == 1:
+            return {
+                "accepted": False,
+                "rejection": {
+                    "code": "forbidden",
+                    "message": "stale expected revision",
+                    "retryable": False,
+                },
+            }
+        return {"accepted": True}
+
+    runner.dispatch_command = dispatch
+    result = runner.apply_configuration_edit_with_retry(
+        "configuration-apply",
+        {"node_id": "node", "name": "/safe", "value": 1.1},
+        {},
+        timeout_s=1,
+        interval_s=0,
+    )
+
+    assert result["accepted"] is True
+    assert [call["expected_revision"] for call in calls] == [1, 2]
+
+
+def test_mutating_smoke_accepts_expected_missing_sensor_degradation():
+    runner = object.__new__(smoke.SmokeRunner)
+    runner.args = SimpleNamespace(expected_profile="hil", rosbag_observation_s=0.0)
+    calls = []
+
+    def dispatch(name, command_id, parameters, headers, require_accepted=True):
+        calls.append((command_id, parameters, require_accepted))
+        if command_id == "powerline.overview.update":
+            return {
+                "accepted": False,
+                "rejection": {
+                    "code": "degraded_state",
+                    "message": "at least 4 live powerline lines are required; mapper has no overview",
+                },
+            }
+        if command_id == "rosbag.start":
+            return {
+                "accepted": True,
+                "result": {"rosbag": {"recording_id": "smoke-recording"}},
+            }
+        return {"accepted": True}
+
+    runner.dispatch_command = dispatch
+    runner.wait_for_state = lambda *_args, **_kwargs: {
+        "recording": True,
+        "recording_id": "smoke-recording",
+        "size_bytes": 1024,
+    }
+    runner.get_state = lambda *_args, **_kwargs: {
+        "latest": {
+            "recordings": [
+                {"recording_id": "smoke-recording", "size_bytes": 1024}
+            ]
+        }
+    }
+    runner.round_trip_safe_configuration_parameter = lambda _headers: None
+    runner.run_mutating_workflows({})
+
+    assert calls[0] == ("runtime.boot", {"profile": "hil"}, True)
+    assert any(command_id == "powerline.overview.update" and not required for command_id, _, required in calls)
+    assert any(command_id == "custom_operation.hover.start" and not required for command_id, _, required in calls)
+    assert all(
+        require_accepted
+        for command_id, _, require_accepted in calls
+        if command_id not in smoke.EXPECTED_BENCH_DEGRADED_COMMANDS
+    )
+
+
+def test_mutating_smoke_proves_manual_recording_then_runs_guarded_overview_capture():
+    command_ids = [command_id for _, command_id, _ in smoke.MUTATING_WORKFLOW_COMMANDS]
+
+    start_recording = command_ids.index("rosbag.start")
+    update_overview = command_ids.index("powerline.overview.update")
+    stop_recording = command_ids.index("rosbag.stop")
+    stop_mapper = command_ids.index("perception.pl_mapper.stop")
+
+    assert start_recording < stop_recording < update_overview < stop_mapper
+    start_parameters = smoke.MUTATING_WORKFLOW_COMMANDS[start_recording][2]
+    assert start_parameters == {
+        "all_topics": False,
+        "topics": [
+            "/clock",
+            "/fmu/out/vehicle_status_v1",
+            "/perception/pl_mapper/powerline",
+            "/perception/pl_mapper/state",
+            "/supervision/system_health",
+        ],
+    }
+
+
+def test_custom_operation_smoke_start_carries_hold_confirmation():
+    _, _, parameters = next(
+        command
+        for command in smoke.MUTATING_WORKFLOW_COMMANDS
+        if command[1] == "custom_operation.hover.start"
+    )
+
+    assert parameters["hold_confirmed"] is True
 
 
 def test_concurrent_heartbeats_are_serialized():
@@ -233,6 +662,105 @@ def test_landed_safe_state_requires_fresh_disarmed_and_not_in_air_evidence():
     assert not smoke.vehicle_landed_and_disarmed({**state, "armed": True})
 
 
+def test_flight_smoke_waits_for_fused_state_between_commands():
+    runner = object.__new__(smoke.SmokeRunner)
+    events = []
+
+    runner.dispatch_command = lambda name, command_id, parameters, headers: events.append(
+        ("command", name, command_id)
+    )
+
+    def wait_stable(name, path, headers, predicate, **kwargs):
+        states = {
+            "px4-arming-ready": {
+                "arming_checks_passed": True,
+                "latest": {"command_transport": {"command_available": True}},
+            },
+            "px4-armed": {
+                "armed": True,
+                "telemetry_fields": {
+                    "armed": {
+                        "value": True,
+                        "freshness": "fresh",
+                        "source_availability": "available",
+                        "disagreement": False,
+                    }
+                },
+            },
+            "px4-landed-disarmed": {
+                "armed": False,
+                "in_air": False,
+                "telemetry_fields": {
+                    "armed": {
+                        "value": False,
+                        "freshness": "fresh",
+                        "source_availability": "available",
+                        "disagreement": False,
+                    },
+                    "in_air": {
+                        "value": False,
+                        "freshness": "fresh",
+                        "source_availability": "available",
+                        "disagreement": False,
+                    },
+                },
+            },
+            "px4-holding": {
+                "nav_state": "hold",
+                "in_air": True,
+                "telemetry_fields": {
+                    "nav_state": {
+                        "value": "hold",
+                        "freshness": "fresh",
+                        "source_availability": "available",
+                        "disagreement": False,
+                    }
+                },
+            },
+        }
+        state = states[name]
+        assert predicate(state)
+        events.append(("stable", name))
+        return state
+
+    def wait(name, path, headers, predicate, **kwargs):
+        states = {
+            "px4-airborne": {
+                "armed": True,
+                "in_air": True,
+                "telemetry_fields": {
+                    "in_air": {
+                        "value": True,
+                        "freshness": "fresh",
+                        "source_availability": "available",
+                        "disagreement": False,
+                    }
+                },
+            },
+        }
+        state = states[name]
+        assert predicate(state)
+        events.append(("state", name))
+        return state
+
+    runner.wait_for_stable_state = wait_stable
+    runner.wait_for_state = wait
+
+    runner.run_flight_commands({})
+
+    assert events == [
+        ("stable", "px4-arming-ready"),
+        ("command", "px4-arm", "px4.arm"),
+        ("stable", "px4-armed"),
+        ("command", "px4-takeoff", "px4.takeoff"),
+        ("state", "px4-airborne"),
+        ("command", "px4-hold", "px4.hold"),
+        ("stable", "px4-holding"),
+        ("command", "px4-land", "px4.land"),
+        ("stable", "px4-landed-disarmed"),
+    ]
+
+
 def test_operation_completion_can_be_scoped_to_exact_action():
     state = {
         "active_operation_id": None,
@@ -264,6 +792,7 @@ def test_fixture_resolution_rejects_stored_ros_fallback(tmp_path, monkeypatch):
     runner.artifacts = tmp_path
     runner.args = SimpleNamespace(
         fixture_resolver="resolver",
+        expected_profile="sim",
     )
     result = SimpleNamespace(
         returncode=0,
@@ -280,7 +809,7 @@ def test_fixture_resolution_preserves_authoritative_mapped_pose(tmp_path, monkey
     runner = object.__new__(smoke.SmokeRunner)
     runner.workspace = tmp_path
     runner.artifacts = tmp_path
-    runner.args = SimpleNamespace(fixture_resolver="resolver")
+    runner.args = SimpleNamespace(fixture_resolver="resolver", expected_profile="sim")
     target = {
         "target_source": "gazebo_ground_truth_mapped_to_live_ros_world",
         "frame_id": "world",
@@ -304,7 +833,7 @@ def test_fixture_application_accepts_authoritative_setup_evidence(tmp_path, monk
     runner = object.__new__(smoke.SmokeRunner)
     runner.workspace = tmp_path
     runner.artifacts = tmp_path
-    runner.args = SimpleNamespace(fixture_resolver="resolver")
+    runner.args = SimpleNamespace(fixture_resolver="resolver", expected_profile="sim")
     target = {
         "setup_only": True,
         "fixture_id": "pos_pylon_1",
@@ -326,7 +855,7 @@ def test_fixture_application_rejects_missing_setup_evidence(tmp_path, monkeypatc
     runner = object.__new__(smoke.SmokeRunner)
     runner.workspace = tmp_path
     runner.artifacts = tmp_path
-    runner.args = SimpleNamespace(fixture_resolver="resolver")
+    runner.args = SimpleNamespace(fixture_resolver="resolver", expected_profile="sim")
     result = SimpleNamespace(
         returncode=0,
         stdout=json.dumps({"success": True, "data": {"setup_only": True}}),
@@ -343,6 +872,21 @@ def test_acceptance_rosbag_topics_exclude_bulk_sensor_streams():
     assert "/perception/pl_mapper/powerline" in smoke.INSPECTION_EVIDENCE_TOPICS
     assert all("image" not in topic for topic in smoke.INSPECTION_EVIDENCE_TOPICS)
     assert all("points" not in topic for topic in smoke.INSPECTION_EVIDENCE_TOPICS)
+
+
+def test_visible_live_line_count_uses_provider_visibility_contract():
+    state = {
+        "live_geometry": {
+            "lines": [
+                {"id": 1, "in_field_of_view": True},
+                {"id": 2, "in_field_of_view": False},
+                {"id": 3, "in_field_of_view": True},
+                {"id": 4},
+            ]
+        }
+    }
+
+    assert smoke.visible_live_line_count(state) == 2
 
 
 def test_seed_sim_pylon_overview_uses_mapped_fixtures_without_applying_them():
@@ -375,8 +919,8 @@ def test_configuration_helpers_require_authoritative_manifest_and_find_parameter
     parameter = {
         "node_id": "trajectory_generator",
         "name": "/control/trajectory_interpolator/interpolation_avg_velocity_m_s",
-        "current_value": 0.75,
-        "persisted_value": 0.75,
+        "current_value": 0.5,
+        "persisted_value": 0.5,
     }
     state = {
         "source_availability": "available",
@@ -390,7 +934,7 @@ def test_configuration_helpers_require_authoritative_manifest_and_find_parameter
 
     assert smoke.configuration_manifest_available(state)
     assert smoke.configuration_parameter(state, parameter["name"]) == parameter
-    assert smoke.numeric_values_match(0.75, 0.75)
+    assert smoke.numeric_values_match(0.5, 0.5)
     assert not smoke.numeric_values_match(True, 1.0)
     assert not smoke.configuration_manifest_available({"source_availability": "unavailable"})
 
@@ -399,6 +943,10 @@ def test_inspection_battery_reset_uses_workspace_container_and_records_evidence(
     runner = object.__new__(smoke.SmokeRunner)
     runner.workspace = tmp_path
     runner.artifacts = tmp_path
+    runner.args = SimpleNamespace(expected_profile="hil")
+    runner.pi_host = "iii.local"
+    runner.pi_address = "192.0.2.40"
+    runner.workstation_address = "192.0.2.10"
     runner.step_index = 0
     runner.summary = {"steps": []}
     calls = []
@@ -424,6 +972,8 @@ def test_inspection_battery_reset_uses_workspace_container_and_records_evidence(
     assert calls[0][0][:3] == ["docker", "ps", "--filter"]
     assert calls[1][0][:5] == ["docker", "exec", "--user", "iii", "container-id"]
     assert "battery.reset" in calls[1][0][-1]
+    assert "--px4-system-address udpin://0.0.0.0:14551" in calls[1][0][-1]
+    assert "III_MAVSDK_SERVER_PORT=50052" in calls[1][0][-1]
     assert json.loads((tmp_path / "01-inspection-battery-reset.json").read_text())["success"] is True
 
 
@@ -441,6 +991,29 @@ def test_simulated_battery_reset_visibility_allows_accelerated_discharge():
     state["battery_remaining"] = 0.95
     state["telemetry_fields"]["battery_remaining"]["freshness"] = "stale"
     assert not smoke.simulated_battery_reset_visible(state, 100.0)
+
+
+def test_hil_battery_reset_accepts_only_exact_px4_token_acknowledgement():
+    accepted = {
+        "success": False,
+        "message": "battery reset was acknowledged but no battery status was observed",
+        "data": {
+            "reset_token": 7,
+            "acknowledgement_token": 7,
+            "target_remaining_pct": 65.0,
+            "initial_percentage_parameter": {"param_value": 65.0},
+            "battery_after": None,
+            "observed_remaining_pct": None,
+        },
+    }
+
+    assert smoke.acknowledged_hil_battery_reset(accepted)
+    assert not smoke.acknowledged_hil_battery_reset(
+        {**accepted, "data": {**accepted["data"], "acknowledgement_token": 6}}
+    )
+    assert not smoke.acknowledged_hil_battery_reset(
+        {**accepted, "message": "parameter transport failed"}
+    )
 
 
 def test_mission_modes_selectable_requires_every_registered_px4_bit():

@@ -9,6 +9,9 @@ set(CMAKE_CXX_COMPILER_TARGET "aarch64-linux-gnu")
 set(CMAKE_AR "/usr/bin/aarch64-linux-gnu-ar" CACHE FILEPATH "Target archiver" FORCE)
 set(CMAKE_RANLIB "/usr/bin/aarch64-linux-gnu-ranlib" CACHE FILEPATH "Target ranlib" FORCE)
 set(CMAKE_STRIP "/usr/bin/aarch64-linux-gnu-strip" CACHE FILEPATH "Target strip" FORCE)
+set(CMAKE_CROSSCOMPILING_EMULATOR
+    "/usr/local/bin/iii-run-target-emulated"
+    CACHE STRING "Pinned target emulator for build-time contract exporters" FORCE)
 # CMake resolves the generator program before applying root-path modes. Pin it
 # to the amd64 builder so the ARM64 sysroot's gmake is never executed.
 set(CMAKE_MAKE_PROGRAM "/usr/bin/make" CACHE FILEPATH "Builder make" FORCE)

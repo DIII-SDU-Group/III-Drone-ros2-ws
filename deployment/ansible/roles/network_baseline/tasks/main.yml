@@ -1,0 +1,22 @@
+---
+- name: Set the convenient aircraft hostname
+  ansible.builtin.hostname:
+    name: iii
+  notify: Restart Avahi for III hostname
+  when: iii_hostname_manage
+
+- name: Publish the aircraft hostname on local networks
+  ansible.builtin.systemd_service:
+    name: avahi-daemon.service
+    state: started
+    enabled: true
+  when: not ansible_check_mode
+
+- name: Install the direct PX4 Ethernet link
+  ansible.builtin.template:
+    src: 80-iii-px4.yaml.j2
+    dest: /etc/netplan/80-iii-px4.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Apply host-owned PX4 Ethernet

@@ -1,0 +1,4 @@
+---
+- name: Reload systemd for III control plane
+  ansible.builtin.systemd_service:
+    daemon_reload: true

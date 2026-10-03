@@ -1,0 +1,4 @@
+---
+- name: Leave the distribution Raspberry Pi boot configuration untouched
+  ansible.builtin.debug:
+    msg: "Using the image-provided Raspberry Pi boot configuration."

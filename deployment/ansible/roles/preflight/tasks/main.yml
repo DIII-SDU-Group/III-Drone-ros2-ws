@@ -1,0 +1,6 @@
+---
+- name: Report the developer field host
+  ansible.builtin.debug:
+    msg: >-
+      Provisioning {{ inventory_hostname }} as an editable III developer host.
+      No receiver, signing, enrollment, trust-store, or secret input is required.
