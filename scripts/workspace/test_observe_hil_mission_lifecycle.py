@@ -63,6 +63,7 @@ def _replay(
     safety_after_modes: bool = False,
     cleanup_mode_replay: tuple[str, dict[str, object], tuple[int | None, int | None]] | None = None,
     cleanup_failsafe: bool = False,
+    duration_sec: float = 1,
 ) -> dict[str, object]:
     state = {"running": True, "mode_index": 0, "final_safety_sent": False}
     monkeypatch.setattr(observer, "Node", _FakeNode)
@@ -112,7 +113,7 @@ def _replay(
             "--artifact-dir",
             str(tmp_path),
             "--duration-sec",
-            "1",
+            str(duration_sec),
             "--required-cycles",
             str(required_cycles),
             "--prelude-timeout-sec",
@@ -515,3 +516,76 @@ def test_cleanup_failsafe_always_latches(monkeypatch, tmp_path):
     assert result["mission_failure_latched"] is True
     assert result["mission_failure_kind"] == "px4_failsafe"
     assert result["cleanup_outcome"] == "safe_landed_disarmed"
+
+
+def _periodic_cycles(cycles: int, samples_per_phase: int) -> list[tuple[str, dict[str, object], tuple[int, int]]]:
+    """Canonical cycles with periodic status replays, as the modes publish them."""
+    sequence: list[tuple[str, dict[str, object], tuple[int, int]]] = []
+    stamp = 1_000
+    def emit(name: str, status: dict[str, object]) -> None:
+        nonlocal stamp
+        stamp += 1
+        sequence.append((name, status, (stamp, 0)))
+    for _ in range(cycles):
+        for name in ("inspection_demo", "reach_cable", "cable_charging", "leave_cable"):
+            emit(name, INACTIVE)
+            for _ in range(samples_per_phase):
+                emit(name, ACTIVE)
+            if name == "leave_cable":
+                emit(name, {"active": False, "tree_finished": True, "tree_success": True})
+            emit(name, INACTIVE)
+    return sequence
+
+
+# HIL soak runs: the observer re-joined every phase sample on every status
+# sample, so its CPU (and the Pi load) grew through every long run.
+def test_long_periodic_replay_costs_linear_time(monkeypatch, tmp_path):
+    def replay_seconds(samples_per_phase: int, directory: Path) -> float:
+        directory.mkdir()
+        sequence = _periodic_cycles(2, samples_per_phase)
+        started = time.perf_counter()
+        _replay(monkeypatch, directory, sequence, duration_sec=3600)
+        return time.perf_counter() - started
+
+    short = replay_seconds(500, tmp_path / "short")
+    long = replay_seconds(2000, tmp_path / "long")
+    # Four times the samples: linear cost is ~4x, the old quadratic cost ~16x.
+    assert long < 8 * max(short, 0.05)
+
+
+def _without_wall_clock(value: object) -> object:
+    """Drop receipt times and durations; keep source-stamped evidence."""
+    if isinstance(value, dict):
+        return {
+            key: _without_wall_clock(item)
+            for key, item in value.items()
+            if not (
+                key.endswith("_at")
+                or "monotonic" in key
+                or key in {"time", "artifact_dir", "age_sec", "active_duration_sec"}
+            )
+        }
+    if isinstance(value, list):
+        return [_without_wall_clock(item) for item in value]
+    return value
+
+
+def test_incremental_phase_join_matches_full_rebuild(monkeypatch, tmp_path):
+    import random
+
+    for seed in range(8):
+        rng = random.Random(seed)
+        sequence = _periodic_cycles(3, rng.randint(2, 6))
+        # Deliver some samples late (source order kept by stamps).
+        for _ in range(len(sequence) // 6):
+            index = rng.randrange(1, len(sequence))
+            sequence[index - 1], sequence[index] = sequence[index], sequence[index - 1]
+        results = []
+        for incremental in (True, False):
+            monkeypatch.setattr(observer, "INCREMENTAL_PHASE_JOIN", incremental)
+            directory = tmp_path / f"seed{seed}_{incremental}"
+            directory.mkdir()
+            result = _replay(monkeypatch, directory, sequence, required_cycles=3, duration_sec=3600)
+            results.append(json.dumps(_without_wall_clock(result), sort_keys=True, default=str))
+        assert results[0] == results[1], f"seed {seed}"
+
