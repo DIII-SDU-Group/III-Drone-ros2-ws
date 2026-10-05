@@ -61,11 +61,16 @@ PERIODIC_TOPICS = ("/clock", "/fmu/out/sensor_combined", GAZEBO_IMU, "/simulatio
 
 
 def missing_samples(values: list[int]) -> int:
-    """Samples missing from a periodic stream: gaps beyond 1.5 median periods."""
-    gaps = [b - a for a, b in zip(values, values[1:]) if b > a]
+    """Samples missing from a periodic stream: gaps beyond 1.5 regular intervals.
+
+    The regular interval is the 90th percentile, not the median: PX4 publishes
+    its 100 Hz streams on the 4 ms simulation grid, alternating 8 and 12 ms
+    intervals, and a sample one grid step late (16 ms, then 4 ms) is not lost.
+    """
+    gaps = sorted(b - a for a, b in zip(values, values[1:]) if b > a)
     if len(gaps) < 10:
         return 0
-    period = statistics.median(gaps)
+    period = gaps[int(0.9 * (len(gaps) - 1))]
     return sum(max(0, round(gap / period) - 1) for gap in gaps if gap > 1.5 * period)
 
 
@@ -200,10 +205,14 @@ def analyze(bag_dir: Path, mission_evidence: Path | None = None) -> dict[str, An
     }
     clock_pairing = None
     if gazebo_imu_stamps:
+        # Within the span of the Gazebo IMU samples: the recorder subscribes
+        # to the streams one after another.
         gazebo_set = set(gazebo_imu_stamps)
-        exact = sum(1 for stamp in px4_imu_stamps if stamp in gazebo_set)
-        clock_pairing = {"px4_imu_samples": len(px4_imu_stamps), "equal_to_a_gazebo_imu_stamp": exact,
-                         "share": exact / len(px4_imu_stamps) if px4_imu_stamps else 0.0}
+        first, last = min(gazebo_imu_stamps), max(gazebo_imu_stamps)
+        paired = [stamp for stamp in px4_imu_stamps if first <= stamp <= last]
+        exact = sum(1 for stamp in paired if stamp in gazebo_set)
+        clock_pairing = {"px4_imu_samples": len(paired), "equal_to_a_gazebo_imu_stamp": exact,
+                         "share": exact / len(paired) if paired else 0.0}
     # At the bag boundaries a camera_info can lack its image or the reverse
     # (earlier recordings emitted camera_info after the frame's truth render).
     # Compare the stamps in the span both topics cover.
