@@ -80,7 +80,7 @@ commits. Failure compensates prior updates; failed compensation enters an
 explicit divergent fault and blocks writes. Restart-required values stay pending
 until fresh whole-graph readback after full stop/start or a cold restart.
 
-## 6. Capture And Mirror Contract
+## 6. Snapshot Retrieval And Mirror Contract
 
 Accepted tuning revisions are published as `configuration_revision` events and
 full configuration-domain patches. A missed revision is therefore detectable,
@@ -94,39 +94,20 @@ entry, and acknowledges only the exact target head. Release turnover does not
 hide the prior session: retained target sessions remain readable for backfill.
 Mirror loss is reported as degraded but does not block a target-durable Apply.
 
-Use the CLI to seal saved sets locally; retrieval never loads the set or changes
-the active/default selector:
-
-```bash
-iii config capture pull --target sim \
-  --snapshot snapshots/tuned.yaml --name tuned-hover \
-  --description "Stable hover tuning after indoor trial"
-
-iii config capture list
-iii config capture show <capture-id>
-iii config capture diff <capture-id> --against baseline
-iii config capture verify <capture-id>
-iii config capture export --capture-id <capture-id> --archive tuning.zip
-iii config capture import tuning.zip
-```
-
-Captures are content-addressed under Git-ignored `.iii/captures/<capture-id>/`.
-The immutable source binds the complete semantic ROS parameter document (including
-wildcard, nested namespace, and node-specific sections), source YAML hash, target/profile,
-release/workspace and manifest identities, baseline/session, current WAL head
-entry (including its operator transaction), pending-boot state, and timestamps.
-Operator short names/descriptions are separate content-addressed metadata, so
-duplicate display names and repeated pulls never overwrite source evidence.
-Portable archives authenticate every member and reject secret-bearing parameter
-names, unsafe paths, tamper, and partial content.
+A named snapshot stays on the aircraft. To keep a copy, use **Download** on the
+GUI Configuration page. It sends the runtime API's read-only
+`configuration.snapshot.download` command, which returns the snapshot YAML after
+the runtime has checked its content SHA-256, and saves the file under the
+snapshot's file name. Retrieval never loads the set or changes the
+active/default selector. A downloaded set becomes a tracked default only through
+a reviewed change to `config/parameter_sets/{real,sim}/tracked/default.yaml`
+and its contract hashes (see section 3).
 
 Named snapshots are not generic cache. Deployment, restart, reconciliation, and
-runtime-snapshot cleanup do not prune them. Normal deletion is allowed only for
-an inactive, non-default, non-pending named set and requires its verified local
-capture receipt. Force deletion is a separate planned operation with the exact
-`delete:<snapshot-id>` confirmation. Current-session journal compaction is a
-validated no-op; complete WAL/checkpoints and retained sessions remain available
-while mirrors or captures may reference them.
+runtime-snapshot cleanup do not prune them, and no operator command deletes
+them. Current-session journal compaction is a validated no-op; complete
+WAL/checkpoints and retained sessions remain available while mirrors may
+reference them.
 
 ## 7. Editing Configuration During Development
 
