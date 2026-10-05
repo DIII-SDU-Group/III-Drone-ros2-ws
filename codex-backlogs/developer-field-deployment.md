@@ -79,45 +79,66 @@ development iterations use online deployment only; never power off the Pi.
 
 ## In-Progress
 
-### P3.T0: OptiTrack pose ingress and PX4 external-vision bridge (lab-blocked)
+### P3.T0: OptiTrack flight-basics profile (prepared; lab acceptance pending)
 
-The `opti_track` name remains reserved for the intended real-aircraft graph and
-real parameter family, but it contains no OptiTrack/NatNet receiver, rigid-body
-mapping, coordinate-frame transform, or publisher to PX4
-`vehicle_visual_odometry`. It is therefore deliberately non-bootable and absent
-from onboard mission catalogs until the bridge is implemented and validated; it
-must not be represented as field-ready.
+The lab's setup document (kept locally at `docs/references/OptiTrack_setup.pdf`,
+excluded from Git because it contains credentials) settled the inputs that
+blocked this item: Motive 3.1.4 at `192.168.10.3` streams NatNet unicast at
+about 120 Hz to the lab gateway `192.168.10.1`, which publishes each rigid body
+as `/body_splitter/body_<id>/pose` (`PoseStamped`, best effort) in ROS domain 0;
+the rigid-body name is its numeric Motive ID; the drone Pi joins the lab Wi-Fi
+`OptiTrack_5G`. The facts, the data flow, and commissioning are in
+[`docs/opti-track-lab-readiness.md`](../docs/opti-track-lab-readiness.md); the
+flight procedure is
+[`docs/opti-track-lab-session-checklist.md`](../docs/opti-track-lab-session-checklist.md).
 
-Required external inputs before implementation:
+User decisions: `opti_track` is a reduced flight-basics profile (no cable,
+payload, perception, or overviews; flies with and without the payload). A pose
+relay on the drone Pi bridges the lab domain 0 into the stack domain (default
+42) as PX4 `/fmu/in/vehicle_visual_odometry` and sets PX4's EKF global origin
+once per flight-controller boot. Motion capture is the height reference with the
+barometer as backup; `UXRCE_DDS_SYNCT=0` with `EKF2_EV_DELAY`. QGroundControl
+uses the telemetry radio; a safety pilot flies with RC; 6S battery; the flight
+controller runs the latest PX4 built from the pinned fork. Missions: M1 "OT
+Hover" (default), M2 "OT Maneuvers", M3 OT Cycle (Takeoff, Shuttle, Land), M4
+OT Mode Loop.
 
-1. OptiTrack server address and whether this is unicast or multicast delivery.
-2. The aircraft rigid-body name/ID and the authoritative OptiTrack world-frame
-   orientation/origin.
-3. The intended host for the bridge (OptiTrack workstation or Pi) and the ROS
-   domain/network route to the aircraft.
+Prepared on branch `claude/optitrack-profile-prep-7c0d12`; the package work
+lands through integration:
 
-Current blocker: OptiTrack is intentionally deferred until the lab session.
-No server stream, rigid-body identity, frame convention, or target network
-route is available yet, so this item cannot be implemented or hardware-closed
-without inventing the required integration contract.
+- Platform: the stack domain is provisioned for every aircraft profile
+  (`iii host provision --ros-domain-id`), an optional Wi-Fi client
+  (`--wifi-ssid`), onboard `setup_real.bash`/`setup_opti_track.bash` that adopt
+  `/etc/iii/runtime.env`, `iii px4 inspect` with an `opti_track` DDS proof, and
+  the PX4 baseline `deployment/px4/opti-track.nsh`.
+- Packages: the relay `opti_track_pose_relay` (III-Drone-Core), the reduced
+  graph with the relay service and its freshness readiness
+  (III-Drone-Supervision), the relay parameters and a bootable `opti_track`
+  (III-Drone-Configuration), the OptiTrack missions (III-Drone-Mission), and
+  profile capabilities with the external-vision state (III-Drone-Contracts,
+  -Runtime, -GC).
 
-Pre-lab readiness is captured in
-[`docs/opti-track-lab-readiness.md`](../docs/opti-track-lab-readiness.md). It
-contains no placeholder network, rigid-body, frame, or PX4 values and does not
-authorize booting the reserved profile.
+Still to capture at the lab: the rigid-body ID, Motive's up axis and axes, the
+pose header-stamp clock, Wi-Fi latency, the cage dimensions for the geofence,
+`MPC_THR_HOVER` per payload configuration, the tuned `EKF2_EV_DELAY`, and a
+review of the `real` parameter set that `opti_track` uses.
 
 Acceptance:
 
-- [x] The absent bridge cannot be mistaken for a commissioned field profile:
-  `opti_track` is non-bootable and excluded from onboard catalog defaults.
-- [ ] A maintained bridge receives the selected rigid body and publishes a
-  stamped ROS pose/odometry contract at the agreed frame and rate.
-- [ ] The bridge converts that contract to PX4 external vision on the existing
-  uXRCE-DDS path with a tested, documented ENU/FLU to PX4 frame conversion.
-- [ ] The `opti_track` supervised profile owns or depends on the bridge and
-  refuses active field operation when pose freshness is lost.
-- [ ] Disarmed hardware validation captures both the OptiTrack pose and the
-  PX4 accepted external-vision/vehicle-odometry response.
+- [x] The lab contract (network, stream, topic, QoS, domain, naming, Wi-Fi,
+  watchdog, lab rules) is recorded without credentials.
+- [x] Platform: provisioning, Wi-Fi client, onboard setup profiles, PX4 link
+  inspection, and the PX4 baseline are implemented and unit-tested.
+- [ ] The relay receives the configured rigid body, converts it to PX4 external
+  vision with a tested frame conversion, and stops publishing on stale input.
+- [ ] The reduced supervised profile owns the relay and gates on its freshness.
+- [ ] The OptiTrack missions are in the onboard catalog for `opti_track`.
+- [ ] Lab commissioning: the Pi is on `OptiTrack_5G`, the PX4 baseline is
+  applied, and `iii px4 inspect --profile opti_track` passes at the lab.
+- [ ] Disarmed validation: PX4's local position and heading follow Motive with
+  the external-vision estimator flags set; streams retained.
+- [ ] Flight ladder: pilot-flown hover, `MPC_THR_HOVER`, GUI custom operations,
+  then M1, M2, M3, M4.
 
 ## Previously Completed
 

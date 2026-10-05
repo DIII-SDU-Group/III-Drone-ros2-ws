@@ -1,8 +1,11 @@
 # Field Inspection Operations
 
 This document is the authoritative operator workflow for the field inspection
-demo. Simulation staging helpers are development tools and are not part of this
-workflow.
+demo on the `real` runtime profile. Simulation staging helpers are development
+tools and are not part of this workflow. OptiTrack lab flights use the reduced
+`opti_track` profile instead, which has no cable, payload, or perception
+workflow; follow the [OptiTrack lab session checklist](opti-track-lab-session-checklist.md)
+for them.
 
 ## Control Authority
 
@@ -30,13 +33,25 @@ makes the takeoff from the cable sag by tens of centimetres. The Leave Cable
 push sizes itself from the hover thrust measured in flight, but only if the
 aircraft flew steadily before landing on the cable. The runtime never writes
 PX4 parameters; this is a manual commissioning step. See
-[Leaving the cable](mission-and-behavior-layer.md#leaving-the-cable).
+[Leaving the cable](mission-and-behavior-layer.md#leaving-the-cable). Measure it
+per payload configuration: the OptiTrack lab flies with and without the payload.
+
+## Aircraft Prerequisite: PX4 DDS Domain
+
+`iii host provision` writes the stack's ROS 2 domain for every aircraft profile
+(`--ros-domain-id`, default 42) into `/etc/iii/runtime.env`. Set the flight
+controller's `UXRCE_DDS_DOM_ID` to the same value (PX4's default is 0) and
+reboot it; otherwise no PX4 topic reaches the stack. `iii px4 inspect --host
+<pi>` proves it with a `/fmu/out/vehicle_status_v1` sample in that domain. The
+OptiTrack baseline [`deployment/px4/opti-track.nsh`](../deployment/px4/opti-track.nsh)
+sets it for the lab.
 
 ## Preparation And Start
 
-1. On the aircraft, provision the real-profile runtime environment and start
-   the independently supervised `iii-runtime-api.service`. It must reject dev
-   credentials, generic identity, or a non-real profile.
+1. On the aircraft, provision the real-profile runtime environment
+   (`iii host provision --profile real`) and start the independently
+   supervised `iii-runtime-api.service`. It must reject dev credentials,
+   generic identity, or a non-real profile.
 2. On the operator laptop, [install the `deploy` ground-computer profile](ground-computer-installation.md),
    provision `~/.config/iii-ground-control.env`, and run
    `~/.local/share/iii/gc/workspace/scripts/workspace/iii_ground_control.sh start`.

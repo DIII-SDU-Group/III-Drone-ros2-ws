@@ -66,7 +66,9 @@ the source checkout to remain at the same path. Put local GUI settings in
 `start`, `status`, `logs`, or `stop`. A real-aircraft GUI profile needs the
 expected runtime and system identity configured before start. QGroundControl
 is a separate native application managed with `iii qgc start|status|stop` and
-its user service; starting the web UI never starts QGroundControl itself.
+its user service; starting the web UI never starts QGroundControl itself. For
+real and OptiTrack flights it connects through the telemetry radio plugged into
+the ground computer.
 
 On a `dev` workstation, `./iii-dev sim start` launches the devcontainer SIM
 and rendered workstation applications; `./iii-dev hil start` coordinates the
@@ -93,6 +95,15 @@ III_SSH_HOST=iii.local iii --runtime-target opti_track system status
 
 If you source `setup/setup_field.bash`, its `real` target is a shell default;
 an explicit `--runtime-target opti_track` selects OptiTrack for that command.
+
+In the OptiTrack lab the ground computer joins the lab Wi-Fi `OptiTrack_5G`,
+where the provisioned Pi is also a Wi-Fi client; select the Pi as `iii.local`
+or by its `192.168.10.x` address with `III_SSH_HOST` or `--host`. For the GUI,
+set `III_GC_EXPECTED_PROFILE=opti_track` with the aircraft's runtime and system
+identity in `~/.config/iii-ground-control.env`. QGroundControl reaches the
+flight controller over the telemetry radio connected to the ground computer,
+not through the Pi. The [OptiTrack lab session checklist](opti-track-lab-session-checklist.md)
+has the flight procedure.
 
 When logged into the devcontainer or Pi, source its local `setup/` runtime
 profile and run `iii` directly; there is no SSH hop from the runtime host to

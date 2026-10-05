@@ -49,7 +49,7 @@ The authoritative launch topology comes from the canonical system specification 
 The model is organized as:
 
 - `common entities`
-  Present in all profiles, for example configuration, payload, perception, control, and mission nodes.
+  Present in the full profiles, for example configuration, payload, perception, control, and mission nodes. The reduced `opti_track` profile keeps only the subset listed in section 2.5.
 
 - `common services`
   Daemon-owned non-lifecycle processes present in the selected profile, for example `micro_ros_agent`.
@@ -87,13 +87,43 @@ In split-host HIL, `micro_ros_agent` owns the workstation PX4 SITL endpoint on
 Pi UDP port 8890 and is the readiness gate for the mission graph. The physical
 PX4 transport is deliberately not started in this profile: it is not part of
 the virtual-flight proof and would consume Pi capacity. Real and OptiTrack
-profiles own their physical PX4 transport separately.
+profiles own their physical PX4 transport separately: their agent listens on
+Pi UDP port 8888 for the flight controller on the Ethernet link.
 
-### 2.4 Real / OptiTrack profile entities
+Every aircraft profile (`hil`, `real`, `opti_track`) runs the stack in the ROS
+domain provisioned in `/etc/iii/runtime.env` (`iii_ros_domain_id`, default 42)
+with Fast DDS over UDPv4. The agent creates PX4's DDS participant in the domain
+that PX4's `UXRCE_DDS_DOM_ID` selects, so that parameter must equal the
+provisioned domain. The onboard `setup/setup_*.bash` profiles import the same
+settings.
+
+### 2.4 Real profile entities
 
 - managed TF real launch wrapper (`tf`)
 - managed cable camera wrapper (`cable_camera`)
 - `/sensor/mmwave/mmwave`
+
+### 2.5 OptiTrack reduced profile
+
+`opti_track` is a reduced flight-basics graph for the OptiTrack lab, where there
+is no cable. It runs with and without the payload mounted:
+
+- `configuration_server`, `tf`, `trajectory_generator`, `maneuver_controller`,
+  `rosbag_recorder`, `mission_executor`, and `custom_operation`
+- daemon services: `micro_ros_agent` (UDP 8888) and the motion-capture pose
+  relay (`opti_track_pose_relay`)
+
+There is no payload node, perception chain, overview provider, cable camera, or
+mmWave node. The relay subscribes to the lab gateway's
+`/body_splitter/body_<id>/pose` in the lab ROS domain (0) and publishes PX4
+external vision on `/fmu/in/vehicle_visual_odometry` in the stack domain. Its
+readiness is the heartbeat `/opti_track/pose_relay/fresh`, published only while
+fresh poses flow, so `iii system start` waits for motion capture (up to 120 s).
+The relay also sets PX4's EKF global origin once per flight-controller boot.
+The relay (III-Drone-Core), this graph (III-Drone-Supervision), and its
+parameters (III-Drone-Configuration) belong to those packages; see
+[OptiTrack lab readiness](opti-track-lab-readiness.md) for the data flow and the
+lab facts.
 
 ## 3. Node Categories
 

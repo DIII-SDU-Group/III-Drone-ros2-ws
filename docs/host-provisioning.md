@@ -53,6 +53,12 @@ installs unsandboxed systemd units that run the workspace after it has been
 built.  It does not need a receiver bundle, signing key, trust store,
 enrollment file, runtime token, immutable release, or finalization pass.
 
+For every profile it also writes the stack's ROS 2 domain (`--ros-domain-id`,
+default 42) and Fast DDS settings into `/etc/iii/runtime.env`; the flight
+controller's `UXRCE_DDS_DOM_ID` must equal that domain. `--wifi-ssid` adds an
+optional Wi-Fi client, for example for the OptiTrack lab; see
+[Pi, PX4, and HIL links](deployment-hardware-roles.md).
+
 The cross-deployed Pi runtime intentionally skips the desktop-only
 `iii_drone_simulation` package and build-only sample packages. HIL sensor and
 transform peers are workstation-owned, so installing Gazebo on the aircraft
