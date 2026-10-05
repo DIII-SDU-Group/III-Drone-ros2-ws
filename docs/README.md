@@ -18,6 +18,8 @@ Core runtime documentation remains in the package and subsystem guides:
 - `ground-computer-installation.md` for the native operator workstation and
   field ground-computer install, pins, paths, and runtime routing.
 - `host-development-commands.md` for everyday workstation commands.
+- `local-record-registry.md` for where the CLI, configuration, and ground-control
+  companion keep local operation records.
 - `adr/0010-developer-field-deployment.md` for the deployment decision.
 
 Deployment is intentionally developer-first: ordinary SSH, rsync, an editable

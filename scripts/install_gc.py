@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import hashlib
+import importlib
 import json
 import os
 from pathlib import Path
@@ -151,7 +152,7 @@ def check_prerequisites() -> None:
                 f"required checkout input is missing: {REPO_ROOT / relative}"
             )
     try:
-        import venv  # noqa: F401
+        importlib.import_module("venv")
     except ImportError as exc:
         raise InstallError("the Python venv module is required") from exc
     for executable in ("git", "docker", "curl", "ssh", "systemctl"):

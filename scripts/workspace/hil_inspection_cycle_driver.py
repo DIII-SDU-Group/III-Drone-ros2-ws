@@ -1368,7 +1368,6 @@ class Driver(Node):
         terminal failure for this wait.
         """
         deadline = time.monotonic() + timeout_sec
-        saw_update = False
         saw_active = False
         status_floor = self._mode_status_floor.get(name, (-1, -1))
         while rclpy.ok() and time.monotonic() < deadline:
@@ -1387,7 +1386,6 @@ class Driver(Node):
             if isinstance(stamp, (tuple, list)) and len(stamp) == 2:
                 if (int(stamp[0]), int(stamp[1])) <= status_floor:
                     continue
-            saw_update = True
             if value.get("active"):
                 saw_active = True
                 self._mode_status_floor.pop(name, None)

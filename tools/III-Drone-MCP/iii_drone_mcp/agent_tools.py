@@ -59,7 +59,6 @@ from iii_drone_interfaces.srv import (
 from iii_drone_mission.operations_client import OperationsClient, OperationResult
 from iii_drone_mcp.px4_command_client import Px4CommandClient
 from iii_drone_mcp.simulation_observation import (
-    all_conductor_samples,
     compact_conductors,
     conductor_height_range,
     conductor_samples,
@@ -5397,7 +5396,6 @@ class DroneAgentTools:
 
         corridor = corridor_model(geometry)
         center = corridor["center"]
-        span_axis = corridor["span_axis"]
         lateral_axis = corridor["lateral_axis"]
         z_range = conductor_height_range(geometry)
         try:

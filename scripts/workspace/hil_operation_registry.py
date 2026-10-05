@@ -269,7 +269,7 @@ def _validate_reconciliation(directory: Path, names: set[str]) -> dict[str, str]
         raise RegistryScanError("reconciliation operation_id is malformed")
     plan_id = _require_hex(journal.get("plan_id"), label="reconciliation plan_id")
     _require_hex(journal.get("initial_state_id"), label="reconciliation initial_state_id")
-    state_id = _require_hex(journal.get("state_id"), label="reconciliation state_id")
+    _require_hex(journal.get("state_id"), label="reconciliation state_id")
     if journal_id != _newline_identity(journal, "journal_id"):
         raise RegistryScanError("reconciliation journal content identity mismatch")
     phase = _require_string(journal.get("phase"), label="reconciliation phase")

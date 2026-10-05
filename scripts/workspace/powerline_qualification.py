@@ -11,13 +11,8 @@ from __future__ import annotations
 import argparse
 import csv
 import dataclasses
-import hashlib
 import json
 import math
-import os
-import subprocess
-import sys
-import time
 from pathlib import Path
 from typing import Callable
 
@@ -430,7 +425,7 @@ def nearest_curve_distance(g: Corridor, p: np.ndarray):
 
 def validate(tr: Trajectory,g: Corridor):
     dt=np.diff(tr.t); dv=np.diff(tr.v,axis=0); accel=np.linalg.norm(dv/dt[:,None],axis=1)
-    speed=np.linalg.norm(tr.v,axis=1); dyaw=np.unwrap(tr.yaw); yaw_acc=np.diff(tr.yaw_rate)/dt
+    speed=np.linalg.norm(tr.v,axis=1); dyaw=np.unwrap(tr.yaw)
     world=g.world(tr.p[:,0],tr.p[:,1],tr.p[:,2]); distances,nearest=nearest_curve_distance(g,tr.p)
     c0_clear=g.z(g.ids[0],tr.p[:,0])-tr.p[:,2]
     checks={

@@ -8,7 +8,6 @@ import os
 from pathlib import Path
 import re
 import signal
-import sys
 import time
 from typing import Any, Callable
 
@@ -1762,13 +1761,11 @@ class MissionDeployWorkflow:
         started = time.monotonic()
         max_wait_sec = self.args.fly_wait_timeout_sec if self.args.fly_wait_timeout_sec > 0.0 else None
         last_feedback_at: float | None = None
-        latest_wait: ToolResult | None = None
         latest_pose: ToolResult | None = None
         latest_idle: ToolResult | None = None
 
         while True:
             wait = tools.operation_goal_status(goal_id)
-            latest_wait = wait
             data = wait.data if isinstance(wait.data, dict) else {}
             state = str(data.get("state") or wait.message or "")
             if state in {"succeeded", "failed", "cancelled", "rejected"}:

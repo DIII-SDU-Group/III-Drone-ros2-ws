@@ -432,7 +432,6 @@ class SmokeRunner:
             candidate = original - 0.01
         edit = {"node_id": parameter["node_id"], "name": name, "value": candidate}
         changed = False
-        changed_state = initial
         try:
             self.apply_configuration_edit_with_retry(
                 "configuration-round-trip-apply",
@@ -441,7 +440,7 @@ class SmokeRunner:
                 timeout_s=60.0,
             )
             changed = True
-            changed_state = self.wait_for_state(
+            self.wait_for_state(
                 "configuration-round-trip-changed",
                 "/proxy/configuration/status",
                 headers,

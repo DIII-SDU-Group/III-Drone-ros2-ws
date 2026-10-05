@@ -15,6 +15,7 @@ starts with the push holds exactly one release. Per release this checks:
 """
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from typing import Any
 
@@ -174,7 +175,7 @@ def load(path: Path) -> dict[str, dict[str, np.ndarray]]:
 def report(since_epoch: float, until_epoch: float, roots: tuple[Path, ...], root: Path) -> dict[str, Any]:
     """Every cable release in logs last written during [since, until + 600 s]."""
     try:
-        import pyulog  # noqa: F401
+        importlib.import_module("pyulog")
     except ImportError:
         return {"available": False, "reason": "pyulog not installed", "releases": [], "failures": []}
     releases, failures = [], []

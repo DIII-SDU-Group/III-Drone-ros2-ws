@@ -6,9 +6,9 @@ was written. They are not current operator instructions and must not be used to
 authorize a build, release, deployment, or flight.
 
 For current procedures, start at the
-[documentation map](README.md), the
-[deployment and field operations manual](deployment-and-field-operations.md), or
-the [generated III command reference](generated/iii-command-reference.md).
+[documentation map](README.md), [build and environments](build-and-environments.md)
+for deployment, the [field inspection operations](field-inspection-operations.md)
+procedure, or the live `iii --help` output.
 
 ## Deployment And Feature Backlogs
 

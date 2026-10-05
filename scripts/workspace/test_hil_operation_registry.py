@@ -47,7 +47,7 @@ def _cli_plan(identifier: str = CLI_ID) -> dict[str, object]:
         "command": "system boot",
         "argv": ["iii", "system", "boot"],
         "mutating": False,
-        "context": {"target": None, "profile": "hil", "release_id": None},
+        "context": {"target": None, "profile": "hil"},
     }
     value["plan_id"] = _identity(value, "plan_id")
     return value
