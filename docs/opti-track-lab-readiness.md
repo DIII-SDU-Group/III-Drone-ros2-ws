@@ -184,6 +184,12 @@ iii deploy dev --host 10.42.0.15 --build --restart
 
 The deployed revision must contain the package changes listed above.
 
+The Pi takes its time from NTP over the lab network's internet. As a fallback
+for an unsettled onboard clock, `iii host clock sync` can make the ground
+computer the Pi's time source; that needs chrony on the ground computer with
+`allow 192.168.10.0/24` (see
+[aircraft clock synchronization](ground-computer-installation.md#aircraft-clock-synchronization)).
+
 ### 3. Apply the PX4 OptiTrack baseline
 
 Copy [`deployment/px4/opti-track.nsh`](../deployment/px4/opti-track.nsh) to the

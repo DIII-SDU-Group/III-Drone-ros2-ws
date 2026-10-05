@@ -63,8 +63,9 @@ this checkout.
 The installed GUI launcher uses its own content snapshot, so it does not need
 the source checkout to remain at the same path. Put local GUI settings in
 `~/.config/iii-ground-control.env`, then run the installed launcher with
-`start`, `status`, `logs`, or `stop`. A real-aircraft GUI profile needs the
-expected runtime and system identity configured before start. QGroundControl
+`start`, `status`, `logs`, or `stop`. An aircraft GUI profile (`real` or
+`opti_track`) needs the expected runtime and system identity configured before
+start; the launcher and the GUI proxy refuse an unpinned one. QGroundControl
 is a separate native application managed with `iii qgc start|status|stop` and
 its user service; starting the web UI never starts QGroundControl itself. For
 real and OptiTrack flights it connects through the telemetry radio plugged into
@@ -111,6 +112,52 @@ itself. `iii-dev` remains the workstation helper for SIM/HIL orchestration,
 container access, and simulation tmux sessions. The Pi CLI is installed by
 `iii deploy dev` and uses the checked-out Pi workspace. Deploy it from the
 same checkout before expecting native GC routing to pass its identity check.
+
+## Aircraft clock synchronization
+
+The Pi has no trusted real-time clock. On `real` and `opti_track` the runtime
+API refuses arming and mission activation until the Pi's chrony reports
+`Leap status: Normal` with an offset of at most 0.1 s. The Pi normally reaches
+NTP itself: in the OptiTrack lab over the lab network's internet (the lab
+gateway provides NAT). When an aircraft appears with an unsettled clock, the
+installed GUI runs, once per appearance:
+
+```bash
+iii host clock sync --profile <real|opti_track> --host iii.local \
+  --confirm --non-interactive --json
+```
+
+Run the same command by hand when needed; `--dry-run` shows the plan without
+contacting the aircraft. It runs on the ground computer and:
+
+1. refuses (exit 20) unless the aircraft's runtime API reports the selected
+   profile and live PX4 state showing the aircraft disarmed and landed;
+   unknown, stale, or disputed state also refuses;
+2. leaves a settled clock alone, and steps a Pi that already follows a time
+   source but is too far off (`chronyc makestep`);
+3. otherwise adds this ground computer, at the address the Pi sees for the SSH
+   connection, as a runtime-only chrony source on the Pi
+   (`sudo chronyc add server <address> iburst`, through the passwordless sudo
+   that provisioning grants), then steps once it is selected;
+4. exits 0 only when the clock is settled; otherwise it exits non-zero within
+   40 s (the GUI stops it after 45 s) and prints one JSON result.
+
+It never changes this ground computer's configuration, and nothing it adds to
+the Pi survives a chrony restart. The ground-computer fallback needs chrony on
+this computer serving the Pi, which Ubuntu's default `systemd-timesyncd` does
+not do. Install `chrony`, then add to `/etc/chrony/chrony.conf`:
+
+```text
+# Serve the aircraft: lab Wi-Fi and the direct USB-Ethernet link.
+allow 192.168.10.0/24
+allow 10.42.0.0/24
+# Keep serving without internet (field use).
+local stratum 10
+```
+
+and run `sudo systemctl restart chrony`. Allow UDP 123 through any local
+firewall. Use the Pi's IPv4 address with `--host` if SSH to `iii.local` uses
+IPv6.
 
 The installer and routing tests use staged files and fake Docker/SSH commands.
 A successful dry run or unit test does not establish Pi deployment, rendered

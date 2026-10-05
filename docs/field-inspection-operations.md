@@ -57,7 +57,9 @@ sets it for the lab.
    `~/.local/share/iii/gc/workspace/scripts/workspace/iii_ground_control.sh start`.
    Confirm the pinned aircraft, runtime, and profile before login.
 3. From Mission, use **Start aircraft system** for the canonical supervised
-   boot/start path and confirm every readiness stage.
+   boot/start path and confirm every readiness stage. The flight controller must
+   be powered and connected first: the runtime API refuses runtime lifecycle
+   commands unless live PX4 state shows the aircraft disarmed and landed.
 4. Before arming, confirm the **Onboard clock settled** preflight item. The
    Pi has no trusted real-time clock, so chrony steps the clock when it first
    reaches a time source. A step during flight shifts every ROS timestamp and
@@ -65,7 +67,10 @@ sets it for the lab.
    (`Leap status: Normal`) with a residual offset within 0.1 s. It is a hard
    gate for inspection activation and Runtime API arming on aircraft profiles.
    The Pi therefore needs a reachable time source in the field. On the Pi,
-   `chronyc tracking` shows the same state.
+   `chronyc tracking` shows the same state. When the clock is unsettled, the
+   GUI runs `iii host clock sync`, which steps the Pi or, without internet,
+   makes the ground computer its time source; see
+   [aircraft clock synchronization](ground-computer-installation.md#aircraft-clock-synchronization).
 5. Arm and take off with RC/QGroundControl.
 6. Fly manually to the powerline overview position.
 7. Start PL mapper and inspect the live vector and orthogonal projection views.

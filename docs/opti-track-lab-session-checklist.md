@@ -61,6 +61,13 @@ stack domain (42); prefix lab-topic commands with `ROS_DOMAIN_ID=0`.
       constant: restart the runtime (stop, then start) after changing it. Until
       it is set, the relay stays alive but never ready and reports
       `rigid_body_id not configured`.
+- [ ] The flight controller is powered and connected to the Pi over Ethernet
+      before the III system is started from the GUI. On `opti_track` the
+      runtime API refuses boot, start, stop, restart, shutdown, and service
+      commands unless live PX4 state shows the aircraft disarmed and landed;
+      before boot that state comes from MAVSDK over the PX4 MAVLink link (UDP
+      14540). The CLI, on the Pi or routed from the ground computer, talks to
+      the system daemon directly and is not gated.
 - [ ] Boot and start the profile, from the GUI (**Start aircraft system**) or
       from the ground computer:
 
@@ -74,12 +81,24 @@ stack domain (42); prefix lab-topic commands with `ROS_DOMAIN_ID=0`.
       relay is ready. `system start` waits up to 120 s for the relay's
       `/opti_track/pose_relay/fresh` heartbeat; a timeout means no fresh pose
       (wrong or unset ID, no stream, or no Wi-Fi).
+- [ ] The onboard clock is settled (GUI preflight, or `chronyc tracking` on the
+      Pi: `Leap status: Normal`, offset within 0.1 s); arming and missions wait
+      for it. The Pi normally gets NTP over the lab network's internet. If it
+      stays unsettled, the GUI runs `iii host clock sync`; by hand:
+
+      ```bash
+      iii host clock sync --profile opti_track --host <pi> --confirm
+      ```
+
+      It refuses unless the aircraft is disarmed and landed. Without internet
+      it uses the ground computer as the time source, which needs chrony with
+      `allow 192.168.10.0/24` there (see
+      [aircraft clock synchronization](ground-computer-installation.md#aircraft-clock-synchronization)).
 - [ ] `iii px4 inspect --host <pi> --profile opti_track` succeeds, including a
       `/fmu/out/vehicle_status_v1` sample in the stack domain.
 - [ ] On the Pi, `ros2 topic hz /fmu/in/vehicle_visual_odometry --window 50`
       reads about 50 Hz (the relay output rate).
-- [ ] The GUI shows the external-vision state fresh and the onboard clock
-      settled.
+- [ ] The GUI shows the external-vision state fresh.
 
 ## 4. Disarmed acceptance: PX4 local position against Motive
 
