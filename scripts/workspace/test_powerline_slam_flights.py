@@ -53,11 +53,36 @@ class CatalogTest(unittest.TestCase):
         for topic in flights.TRUTH_TOPICS:
             self.assertTrue(topic.startswith("/simulation/ground_truth/"))
 
+    def test_images_and_streams_have_recorders_of_their_own(self) -> None:
+        self.assertEqual(set(flights.RECORD_TOPICS), set(flights.IMAGE_TOPICS) | set(flights.STREAM_TOPICS))
+        self.assertFalse(set(flights.IMAGE_TOPICS) & set(flights.STREAM_TOPICS))
+        self.assertEqual(26, len(flights.STREAM_TOPICS))
+        # The streams' recorder takes no camera-resolution image.
+        for topic in flights.STREAM_TOPICS:
+            self.assertNotIn("image", topic)
+            self.assertNotIn("mask", topic)
+
+    def test_recorder_transport_losses_from_its_log(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "rosbag_stderr.log"
+            log.write_text("[INFO] Recording stopped\n[WARN] [1.0] [rosbag2_recorder]: "
+                           "Number of messages lost on the transport layer: 263\n")
+            self.assertEqual(263, flights.reported_transport_losses(str(log)))
+            log.write_text("[INFO] Recording stopped\n")
+            self.assertEqual(0, flights.reported_transport_losses(str(log)))
+            self.assertIsNone(flights.reported_transport_losses(str(Path(directory) / "missing.log")))
+        self.assertIsNone(flights.reported_transport_losses(None))
+
     def test_cli_defaults_fly_both_directions(self) -> None:
         args = flights.build_parser().parse_args(["--dry-run"])
         self.assertTrue(args.dry_run)
         self.assertEqual(["a_to_b", "b_to_a"], args.flights)
         self.assertFalse(args.keep_running)
+        # Each flight flies in its own process unless --single-process.
+        self.assertFalse(args.single_process)
+        self.assertFalse(args.append)
 
 
 class FrameTest(unittest.TestCase):

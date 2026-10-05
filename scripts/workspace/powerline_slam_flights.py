@@ -13,11 +13,17 @@ Each flight directory holds the exact-topic bag, ``mission_phase_evidence.json``
 (every leg's planned command and its source-time interval on the simulation
 clock, from which the estimator's commanded-position priors are built), the
 live flight plan and pose samples. A flight's bag stops only once the camera
-truth, which is rendered behind the simulation, covers its last leg.
+truth, which is rendered behind the simulation, covers its last leg. Two
+recorders take the flight, one for the camera-resolution images and one for
+every other stream, and their bags are merged into the flight's bag.
 
 Before the first takeoff the run records ``ground_imu/``: the IMU disarmed on
 the ground, which measures sensor noise without vehicle motion (hover holds
 measure the vehicle's motion as well).
+
+Each flight of a run flies in its own process (``--append`` to the run
+directory): in long single-process runs the III tools' node has stopped
+receiving service responses during the second flight.
 """
 
 from __future__ import annotations
@@ -30,6 +36,9 @@ import hashlib
 import json
 import math
 import os
+import re
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -51,8 +60,11 @@ POST_ROLL_SEC = 3.0
 # simulation; a flight's bag stops once it covers the last leg, or after this
 # wall-clock limit.
 TRUTH_DRAIN_TIMEOUT_SEC = 60.0
-# A fly command that finds the maneuver controller not ready (a lifecycle query
-# can time out on an overloaded host) is issued up to this many times.
+# A fly command that finds the maneuver controller not ready is issued up to
+# this many times. In long runs the III tools' node has stopped receiving any
+# service response for minutes (lifecycle and configuration queries alike)
+# while PX4, the controller and the supervision daemon were fine, so a retry
+# first replaces that node.
 LEG_COMMAND_ATTEMPTS = 3
 LEG_COMMAND_RETRY_SEC = 5.0
 GROUND_IMU_SEC = 60.0
@@ -114,6 +126,19 @@ CAMERA_TRUTH_DRAIN_TOPICS: dict[str, str] = {
 # PX4_PARAM_UXRCE_DDS_SYNCT=0 disables uXRCE-DDS time synchronization, so this
 # topic is recorded (to prove it) but must stay empty.
 EMPTY_BY_CONTRACT: frozenset[str] = frozenset({"/fmu/out/timesync_status"})
+# III's ROS graph is UDP-only (setup/ros_setup.bash) and the host caps socket
+# receive buffers (net.core.rmem_max, 212 KB here). The camera-resolution
+# images carry 99 % of a flight's bytes (21 MB/s, 0.6-0.9 MB each); a recorder
+# that takes them overflows its socket during their bursts and loses samples of
+# every other stream (100-300 per flight). They therefore have a recorder of
+# their own, and the two bags are merged in receipt order.
+IMAGE_TOPICS: tuple[str, ...] = (
+    "/sensor/cable_camera/image_raw",
+    "/simulation/ground_truth/cable_camera/conductor_instance_mask",
+    "/simulation/ground_truth/cable_camera/pylon_instance_mask",
+)
+STREAM_TOPICS: tuple[str, ...] = tuple(topic for topic in RECORD_TOPICS if topic not in IMAGE_TOPICS)
+RECORDER_LOSS = re.compile(r"Number of messages lost on the transport layer: (\d+)")
 
 
 def sha256_file(path: Path) -> str:
@@ -239,6 +264,48 @@ def mission_phase_evidence(
     }
 
 
+def bag_message_counts(metadata_path: Path) -> dict[str, int]:
+    import yaml
+
+    info = yaml.safe_load(metadata_path.read_text(encoding="utf-8"))["rosbag2_bagfile_information"]
+    return {item["topic_metadata"]["name"]: int(item["message_count"]) for item in info["topics_with_message_count"]}
+
+
+def merge_bags(parts: Sequence[Path], output: Path) -> dict[str, int]:
+    """One MCAP bag of the parts' messages in receipt order; the per-topic counts must add up."""
+    import rosbag2_py
+    import yaml
+
+    if output.exists():
+        raise RuntimeError(f"bag output already exists: {output}")
+    config = output.parent / f"{output.name}_merge.yaml"
+    config.write_text(yaml.safe_dump({"output_bags": [{"uri": str(output), "storage_id": "mcap", "all_topics": True}]}),
+                      encoding="utf-8")
+    try:
+        rosbag2_py.bag_rewrite([rosbag2_py.StorageOptions(uri=str(part)) for part in parts], str(config))
+    finally:
+        config.unlink(missing_ok=True)
+    expected: dict[str, int] = {}
+    for part in parts:
+        for topic, count in bag_message_counts(part / "metadata.yaml").items():
+            expected[topic] = expected.get(topic, 0) + count
+    merged = bag_message_counts(output / "metadata.yaml")
+    if merged != expected:
+        raise RuntimeError(f"merged bag {output} does not hold exactly its parts' messages")
+    return merged
+
+
+def reported_transport_losses(stderr_path: str | None) -> int | None:
+    """A recorder's own count of messages lost on the transport layer (None without its log)."""
+    if not stderr_path:
+        return None
+    try:
+        text = Path(stderr_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return sum(int(count) for count in RECORDER_LOSS.findall(text))
+
+
 def verify_bag(metadata_path: Path, expected_topics: Sequence[str] = RECORD_TOPICS) -> dict[str, Any]:
     """Exact topic set; every topic has messages except the empty-by-contract ones, which must be empty."""
     report = dataset.verify_exact_bag_topics(metadata_path, expected_topics)
@@ -343,6 +410,22 @@ class CorridorRunner(dataset.DatasetRunner):
         self.clock: SimulationClock | None = None
         self.ground_imu: dict[str, Any] | None = None
         self._leg_attempts: dict[str, int] = {}
+        self.tools_rebuilds: list[dict[str, str]] = []
+        self._recordings: dict[str, str] = {}
+        self.recorder_losses: dict[str, int | None] = {}
+
+    def rebuild_tools(self, reason: str) -> None:
+        """Replace the III tools' ROS node and clients; the old node is destroyed, rclpy keeps running."""
+        old = self.tools
+        from iii_drone_mcp.agent_tools import DroneAgentTools
+
+        self.tools = DroneAgentTools(artifact_dir=self.run_dir / "runtime",
+                                     px4_system_address=old._px4_system_address)
+        try:
+            old.node.destroy_node()
+        except Exception:  # noqa: BLE001 - the old node is abandoned either way
+            pass
+        self.tools_rebuilds.append({"at": utc_now(), "reason": reason})
 
     def ensure_ready(self) -> None:
         status = self.tools.simulation("status")
@@ -376,6 +459,10 @@ class CorridorRunner(dataset.DatasetRunner):
     def record_ground_imu(self, ground_dir: Path) -> dict[str, Any]:
         """GROUND_IMU_SEC of IMU and Gazebo IMU, disarmed on the ground; recorded, never fatal."""
         assert self.clock is not None
+        existing = ground_dir / "verification.json"
+        if existing.is_file():
+            # Recorded by an earlier flight process of this run.
+            return json.loads(existing.read_text(encoding="utf-8"))
         try:
             self.ensure_system_started()
             status = self.require(self.tools.px4("status", timeout_sec=20), "read PX4 status")
@@ -384,11 +471,8 @@ class CorridorRunner(dataset.DatasetRunner):
             else:
                 bag_dir = ground_dir / "bag"
                 recording_id = f"ground_imu_{int(time.time())}"
-                self.require(self.tools.rosbag_record(
-                    "start", recording_id=recording_id, output_dir=str(bag_dir), all_topics=False,
-                    topics=list(GROUND_IMU_TOPICS), include_hidden_topics=False, startup_grace_sec=1.5,
-                ), "start ground IMU rosbag")
-                self._recording_id = recording_id
+                self.recorder_losses = {}
+                self.start_recording("ground", bag_dir, recording_id, GROUND_IMU_TOPICS)
                 begin_ns = self.clock.now_ns()
                 self.clock.sleep_until_ns(begin_ns + int(GROUND_IMU_SEC * 1e9))
                 end_ns = self.clock.now_ns()
@@ -399,6 +483,7 @@ class CorridorRunner(dataset.DatasetRunner):
                     "recording_id": recording_id,
                     "source_time_span_ns": [begin_ns, end_ns],
                     "bag_verification": bag,
+                    "recorder_transport_losses": dict(self.recorder_losses),
                 }
         except Exception as exc:  # noqa: BLE001 - the flights do not depend on it
             self.safe_recover()
@@ -406,16 +491,44 @@ class CorridorRunner(dataset.DatasetRunner):
         write_json(ground_dir / "verification.json", {"recorded_at": utc_now(), **result})
         return result
 
-    def start_bag(self, flight_dir: Path, recording_id: str) -> None:
-        bag_dir = flight_dir / "bag"
+    def start_recording(self, part: str, bag_dir: Path, recording_id: str, topics: Sequence[str]) -> None:
         if bag_dir.exists():
             raise RuntimeError(f"bag output already exists: {bag_dir}")
-        result = self.tools.rosbag_record(
+        self.require(self.tools.rosbag_record(
             "start", recording_id=recording_id, output_dir=str(bag_dir), all_topics=False,
-            topics=list(RECORD_TOPICS), include_hidden_topics=False, startup_grace_sec=1.5,
-        )
-        self.require(result, "start exact-topic rosbag")
+            topics=list(topics), include_hidden_topics=False, startup_grace_sec=1.5,
+        ), f"start {part} rosbag")
+        self._recordings[part] = recording_id
         self._recording_id = recording_id
+
+    def start_bag(self, flight_dir: Path, recording_id: str) -> None:
+        """The flight's streams and its camera-resolution images, each with a recorder of its own."""
+        if (flight_dir / "bag").exists():
+            raise RuntimeError(f"bag output already exists: {flight_dir / 'bag'}")
+        self.recorder_losses = {}
+        self.start_recording("streams", flight_dir / "bag_streams", f"{recording_id}_streams", STREAM_TOPICS)
+        self.start_recording("images", flight_dir / "bag_images", f"{recording_id}_images", IMAGE_TOPICS)
+
+    def stop_bag(self) -> None:
+        """Stop every recording; each recorder's reported transport losses go to recorder_losses."""
+        recordings, self._recordings = self._recordings, {}
+        self._recording_id = None
+        failures = []
+        for part, recording_id in recordings.items():
+            result = self.tools.rosbag_record("stop", recording_id=recording_id, timeout_sec=20)
+            if not result.success:
+                failures.append(f"{part}: {result.message}")
+                continue
+            self.recorder_losses[part] = reported_transport_losses((result.data or {}).get("stderr_path"))
+        if failures:
+            raise RuntimeError(f"stop rosbag: {failures}")
+
+    def merge_flight_bag(self, flight_dir: Path) -> None:
+        """Merge the two recordings into the flight's bag; the parts go once it holds all their messages."""
+        parts = [flight_dir / "bag_streams", flight_dir / "bag_images"]
+        merge_bags(parts, flight_dir / "bag")
+        for part in parts:
+            shutil.rmtree(part)
 
     def fly_leg(self, samples: list[dict[str, Any]], leg: dict[str, Any], index: int) -> int:
         """Issue the leg's fly-to command; own the leg for at least duration_s."""
@@ -431,6 +544,7 @@ class CorridorRunner(dataset.DatasetRunner):
             if result.success or not not_ready or attempt == LEG_COMMAND_ATTEMPTS:
                 break
             time.sleep(LEG_COMMAND_RETRY_SEC)
+            self.rebuild_tools(f"fly {leg['name']}: maneuver controller not ready")
         self._leg_attempts[leg["name"]] = attempt
         goal_id = str(self.require(result, f"fly {leg['name']}")["goal_id"])
         deadline = time.monotonic() + 180.0
@@ -483,6 +597,7 @@ class CorridorRunner(dataset.DatasetRunner):
         except Exception:
             self.safe_recover()
             raise
+        self.merge_flight_bag(flight_dir)
         evidence = mission_phase_evidence(direction, plan, begins, end_ns, self.catalog_sha256)
         write_json(flight_dir / "mission_phase_evidence.json", evidence)
         write_json(flight_dir / "trajectory.json", {"samples": samples})
@@ -496,18 +611,26 @@ class CorridorRunner(dataset.DatasetRunner):
             "completed_at": utc_now(),
             "recording_id": recording_id,
             "bag_verification": bag,
+            "recorder_transport_losses": dict(self.recorder_losses),
             "leg_count": len(plan),
             "source_time_span_ns": [begins[0], end_ns],
             "camera_truth_drain": {"covers_last_leg": truth_covered, "required_stamp_ns": end_ns,
                                    "latest_stamps_ns": truth_stamps},
             "leg_command_attempts": dict(self._leg_attempts),
+            "tools_rebuilds": list(self.tools_rebuilds),
         }
         write_json(flight_dir / "verification.json", result)
         return result
 
     def close(self) -> None:
         try:
-            super().close()
+            try:
+                super().close()
+            except RuntimeError as exc:
+                if "timed out" not in str(exc):
+                    raise
+                self.rebuild_tools(f"close: {exc}")
+                self.restore_motion_configuration()
         finally:
             if self.clock is not None:
                 self.clock.close()
@@ -525,7 +648,31 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--keep-running", action="store_true",
                         help="leave the simulation running (run_isolated_powerline_slam_flights.sh otherwise stops it)")
+    parser.add_argument("--append", action="store_true",
+                        help="add the flights to the existing run directory of --run-id")
+    parser.add_argument("--single-process", action="store_true",
+                        help="fly every flight in this process instead of one process per flight")
     return parser
+
+
+def fly_in_child_processes(args: argparse.Namespace, run_dir: Path) -> int:
+    """One process per flight, each appending to the run directory."""
+    status = 0
+    for direction in args.flights:
+        command = [sys.executable, str(Path(__file__).resolve()), "--run-id", args.run_id,
+                   "--output-root", str(args.output_root), "--geometry", str(args.geometry),
+                   "--flights", direction, "--append", "--single-process"]
+        if args.headless:
+            command.append("--headless")
+        if args.keep_running:
+            command.append("--keep-running")
+        status = max(status, subprocess.run(command, check=False).returncode)
+    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    failed = [name for name in args.flights if manifest["flights"].get(name, {}).get("status") != "passed"]
+    manifest["completed_at"] = utc_now()
+    manifest["status"] = "recorded" if not failed else "failed"
+    write_json(run_dir / "run_manifest.json", manifest)
+    return 1 if failed or status else 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -546,20 +693,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     run_dir = args.output_root / args.run_id
-    if run_dir.exists():
-        raise SystemExit(f"run directory already exists: {run_dir}")
-    run_dir.mkdir(parents=True)
-    manifest = {
-        "schema": "iii.powerline-slam-flight-run/v1",
-        "run_id": args.run_id,
-        "created_at": utc_now(),
-        "sim_model": SIM_MODEL,
-        "catalog": {"path": str(CATALOG_PATH), "sha256": sha256_file(CATALOG_PATH)},
-        "record_topics": list(RECORD_TOPICS),
-        "simulation_seed": os.environ.get("III_SIMULATION_SEED"),
-        "flights": {},
-    }
-    write_json(run_dir / "run_manifest.json", manifest)
+    if args.append:
+        manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+        if manifest.get("catalog", {}).get("sha256") != sha256_file(CATALOG_PATH) or manifest.get("sim_model") != SIM_MODEL:
+            raise SystemExit(f"run {run_dir} was recorded with another catalog or model")
+        repeated = [name for name in args.flights if (run_dir / name).exists()]
+        if repeated:
+            raise SystemExit(f"flights already in {run_dir}: {repeated}")
+    else:
+        if run_dir.exists():
+            raise SystemExit(f"run directory already exists: {run_dir}")
+        run_dir.mkdir(parents=True)
+        manifest = {
+            "schema": "iii.powerline-slam-flight-run/v1",
+            "run_id": args.run_id,
+            "created_at": utc_now(),
+            "sim_model": SIM_MODEL,
+            "catalog": {"path": str(CATALOG_PATH), "sha256": sha256_file(CATALOG_PATH)},
+            "record_topics": list(RECORD_TOPICS),
+            "simulation_seed": os.environ.get("III_SIMULATION_SEED"),
+            "flights": {},
+        }
+        write_json(run_dir / "run_manifest.json", manifest)
+    if len(args.flights) > 1 and not args.single_process:
+        return fly_in_child_processes(args, run_dir)
     runner = CorridorRunner(run_dir, args.geometry, catalog, headless=args.headless,
                             keep_running=args.keep_running)
     failures = []
@@ -580,8 +737,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             runner.close()
         except Exception as exc:  # noqa: BLE001 - recorded; the flights stand
-            manifest["close_error"] = str(exc)
+            manifest.setdefault("close_errors", []).append(str(exc))
             print(f"WARNING: closing the runner failed: {exc}", file=sys.stderr)
+        manifest.setdefault("tools_rebuilds", []).extend(runner.tools_rebuilds)
     manifest["completed_at"] = utc_now()
     manifest["status"] = "recorded" if not failures else "failed"
     write_json(run_dir / "run_manifest.json", manifest)

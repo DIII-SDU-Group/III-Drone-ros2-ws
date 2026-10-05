@@ -14,6 +14,7 @@ Reports, from the bag alone:
   truth, both in NED, matched in source time;
 - the clock pairing of PX4's sensor_combined timestamps with the stamps of
   Gazebo's own IMU samples (/simulation/gazebo/imu), when recorded;
+- missing samples on the periodic high-rate streams (gaps in their stamps);
 - with --mission-evidence, whether every image during the legs has its
   camera_info and camera truth (the recorder subscribes to them just after the
   image stream, so the first frames of the pre-roll may lack them).
@@ -55,6 +56,17 @@ CAMERA_TRUTH = "/simulation/ground_truth/cable_camera/frame"
 # Share of PX4 IMU timestamps that must equal a Gazebo IMU sample stamp; the
 # rest fall where the bridge dropped a Gazebo sample.
 CLOCK_PAIRING_MIN_SHARE = 0.99
+# Periodic streams whose stamp gaps reveal samples lost before the bag.
+PERIODIC_TOPICS = ("/clock", "/fmu/out/sensor_combined", GAZEBO_IMU, "/simulation/ground_truth/drone/state")
+
+
+def missing_samples(values: list[int]) -> int:
+    """Samples missing from a periodic stream: gaps beyond 1.5 median periods."""
+    gaps = [b - a for a, b in zip(values, values[1:]) if b > a]
+    if len(gaps) < 10:
+        return 0
+    period = statistics.median(gaps)
+    return sum(max(0, round(gap / period) - 1) for gap in gaps if gap > 1.5 * period)
 
 
 def quaternion_yaw(w: float, x: float, y: float, z: float) -> float:
@@ -92,7 +104,7 @@ def analyze(bag_dir: Path, mission_evidence: Path | None = None) -> dict[str, An
     types = {item.name: item.type for item in reader.get_all_topics_and_types()}
     classes = {name: get_message(kind) for name, kind in types.items()}
     decode = set(PX4_TOPICS) | set(RADAR_TOPICS) | set(CAMERA_TOPICS) | {"/clock", TRUTH_ODOMETRY, CAMERA_TRUTH}
-    decode |= {GAZEBO_IMU} & set(types)
+    decode |= ({GAZEBO_IMU} | set(PERIODIC_TOPICS)) & set(types)
 
     counts: dict[str, int] = defaultdict(int)
     first_receipt: dict[str, int] = {}
@@ -180,6 +192,12 @@ def analyze(bag_dir: Path, mission_evidence: Path | None = None) -> dict[str, An
             nearest = min(candidates, key=lambda i: abs(truth_times[i] - stamp))
             if abs(truth_times[nearest] - stamp) <= HEADING_MATCH_NS:
                 heading_errors.append(wrap(heading - truth_heading[nearest][1]))
+    periodic_stamps = {
+        "/clock": sorted(clock_sim),
+        "/fmu/out/sensor_combined": sorted(px4_imu_stamps),
+        GAZEBO_IMU: sorted(gazebo_imu_stamps),
+        "/simulation/ground_truth/drone/state": sorted(stamps["/simulation/ground_truth/drone/state"]),
+    }
     clock_pairing = None
     if gazebo_imu_stamps:
         gazebo_set = set(gazebo_imu_stamps)
@@ -240,6 +258,7 @@ def analyze(bag_dir: Path, mission_evidence: Path | None = None) -> dict[str, An
         "radar_points_per_scan": {t: summary([float(v) for v in values]) for t, values in radar_points.items()},
         "px4_heading_minus_truth_heading_rad": summary(heading_errors),
         "px4_gazebo_imu_clock_pairing": clock_pairing,
+        "missing_samples": {topic: missing_samples(values) for topic, values in periodic_stamps.items() if values},
         "camera_coverage_during_legs": mission_coverage,
         "camera_info_and_image_stamps_in_common_span": {
             "matching": len(info_span & image_span), "camera_info": len(info_span), "image": len(image_span),
