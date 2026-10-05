@@ -1,7 +1,7 @@
 # Submodule dependency lock file for III-Drone-ros2-ws.
 # Format: <path> <commit-sha>
 # Managed by scripts/git/update_submodule_lock.sh
-PX4-Autopilot 8924acec45c8d79e0362aee31a0a3ca9373044d9
+PX4-Autopilot 9bba79da0940ddff1e09d2e59ff4c188e5403055
 PX4-Autopilot/Tools/simulation/flightgear/flightgear_bridge f47ce7b5fbbb3aa43d33d2be1f6cd3746b13d5bf
 PX4-Autopilot/Tools/simulation/flightgear/flightgear_bridge/models/Rascal cbdb2fc7dd44331da1dcd04a891ed7f8c27b1ef0
 PX4-Autopilot/Tools/simulation/flightgear/flightgear_bridge/models/TF-G1 fdb6dd685f55097230c0eb29aa7e9f5b8d0abf1e
@@ -46,8 +46,8 @@ src/III-Drone-GC d67e016e238dfc6317e467c7f0a699145cdc0be3
 src/III-Drone-Interfaces 43071158bac9f1985ea54aa56002c01dc742f4de
 src/III-Drone-Mission 62ca103f7ede1c09a28f434c8f47118fc475ecc8
 src/III-Drone-Runtime f886dbda403416f067568b70082d77a1744d3d4c
-src/III-Drone-Simulation 2f8907003e3139ebd43ac03d1677fd23f6d47981
-src/III-Drone-Simulation/Gazebo-simulation-assets 6c8f3a58ce0d23eae2c91330b5f59565fa075f2d
+src/III-Drone-Simulation 68ff30c4deefa1fd7225c6ceb63cb32576691dd1
+src/III-Drone-Simulation/Gazebo-simulation-assets 61f3977a7f6cab03e697650fa759310b9167eb99
 src/III-Drone-Supervision 186ac916dfc2c94eef68ea0e0db32140705dca25
 src/Micro-XRCE-DDS-Agent 73622810d984349b80bbac0ef55fc0b694d62222
 src/dynamic_message_introspection 5ad2f03ec713818dafe0926c81225d6351d65268
