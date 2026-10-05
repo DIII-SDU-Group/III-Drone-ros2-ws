@@ -10,3 +10,4 @@
     argv: [/usr/sbin/netplan, apply]
   changed_when: true
   when: not ansible_check_mode
+  listen: Apply III netplan

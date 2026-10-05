@@ -20,3 +20,61 @@
     group: root
     mode: "0600"
   notify: Apply host-owned PX4 Ethernet
+
+# Optional Wi-Fi client, for example the OptiTrack lab network. It lives in its
+# own netplan file, so the PX4 Ethernet link above and the first-boot
+# workstation USB-Ethernet link (/etc/netplan/50-cloud-init.yaml) are untouched.
+# Without --wifi-ssid or --remove-wifi an existing Wi-Fi client stays as it is.
+- name: Validate the optional Wi-Fi client request
+  ansible.builtin.assert:
+    that:
+      - not (iii_wifi_remove | bool) or (iii_wifi_ssid | length) == 0
+      - (iii_wifi_ssid | length) <= 32
+      - iii_wifi_interface is match('^[a-z][a-z0-9]{0,14}$')
+      - (iii_wifi_route_metric | int) > 0
+      - (iii_wifi_regulatory_domain | length) == 0 or iii_wifi_regulatory_domain is match('^[A-Z]{2}$')
+    fail_msg: >-
+      Select either a Wi-Fi SSID (at most 32 characters) or Wi-Fi removal; the
+      interface, route metric, and two-letter regulatory domain must be valid.
+    quiet: true
+
+- name: Validate the Wi-Fi passphrase without logging it
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((iii_wifi_psk | length) >= 8 and (iii_wifi_psk | length) <= 63)
+        or iii_wifi_psk is match('^[0-9A-Fa-f]{64}$')
+    quiet: true
+  no_log: true
+  when: (iii_wifi_ssid | length) > 0
+
+- name: Install the Wi-Fi client tools
+  ansible.builtin.apt:
+    name:
+      - iw
+      - wpasupplicant
+    state: present
+    install_recommends: false
+    update_cache: false
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: (iii_wifi_ssid | length) > 0
+
+# Root-only (0600): the file holds the Wi-Fi secret, which stays on the Pi.
+- name: Install the aircraft Wi-Fi client
+  ansible.builtin.template:
+    src: 85-iii-wifi.yaml.j2
+    dest: /etc/netplan/85-iii-wifi.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Apply III netplan
+  when: (iii_wifi_ssid | length) > 0
+
+- name: Remove the aircraft Wi-Fi client
+  ansible.builtin.file:
+    path: /etc/netplan/85-iii-wifi.yaml
+    state: absent
+  notify: Apply III netplan
+  when: iii_wifi_remove | bool

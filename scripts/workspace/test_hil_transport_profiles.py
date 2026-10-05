@@ -1,4 +1,5 @@
-"""Keep virtual HIL telemetry separate from the physical PX4 transport."""
+"""Keep virtual HIL telemetry separate from the physical PX4 transport, and
+keep every aircraft profile's shell on the provisioned runtime contract."""
 
 from pathlib import Path
 import os
@@ -15,15 +16,62 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 VARS = ROOT / "deployment/ansible/vars/raspberry-pi-5-noble-arm64.yml"
 TEMPLATE = ROOT / "deployment/ansible/roles/runtime_control_plane/templates/runtime.env.j2"
+AIRCRAFT_PROFILES = ("hil", "real", "opti_track")
+# HIL-qualified stack middleware that provisioning writes for every aircraft
+# profile (contract C6); PX4's UXRCE_DDS_DOM_ID must equal ROS_DOMAIN_ID.
+STACK_DDS = {
+    "ROS_DOMAIN_ID": "42",
+    "ROS_LOCALHOST_ONLY": "0",
+    "ROS_AUTOMATIC_DISCOVERY_RANGE": "SUBNET",
+    "RMW_IMPLEMENTATION": "rmw_fastrtps_cpp",
+    "FASTDDS_BUILTIN_TRANSPORTS": "UDPv4",
+}
+SHELL_PROFILES = {"real": "setup/setup_real.bash", "opti_track": "setup/setup_opti_track.bash"}
 
 
-def runtime_environment(profile):
+def render_runtime_environment(profile, **overrides):
     values = yaml.safe_load(VARS.read_text())
     values["iii_profile"] = profile
-    rendered = jinja2.Environment(undefined=jinja2.StrictUndefined).from_string(
+    values.update(overrides)
+    return jinja2.Environment(undefined=jinja2.StrictUndefined).from_string(
         TEMPLATE.read_text()
     ).render(values)
+
+
+def runtime_environment(profile, **overrides):
+    rendered = render_runtime_environment(profile, **overrides)
     return dict(line.split("=", 1) for line in rendered.splitlines() if line and not line.startswith("#"))
+
+
+def aircraft_shell(directory, profile, *, runtime_env=None, extra=None, script=None):
+    """Source an aircraft setup profile hermetically and return its environment.
+
+    A stub ROS prefix stands in for /opt/ros/jazzy; the onboard runtime env and
+    workspace overlay paths are explicit so the host's own files never leak in.
+    """
+    directory = Path(directory)
+    ros = directory / "ros"
+    ros.mkdir(exist_ok=True)
+    (ros / "setup.bash").write_text(":\n", encoding="utf-8")
+    env = {
+        "HOME": str(directory),
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "III_ROS_PREFIX": str(ros),
+        "III_WORKSPACE_INSTALL": str(directory / "absent-install"),
+        "III_ONBOARD_RUNTIME_ENV": str(runtime_env or directory / "absent-runtime.env"),
+        # Stale inherited values the profile must replace or drop.
+        "CYCLONEDDS_URI": "file:///stale/cyclonedds.xml",
+        "III_SYSTEM_DAEMON_SOCKET": "/stale/system_manager.sock",
+    }
+    env.update(extra or {})
+    body = script or (
+        'set -eu; source "$1"; '
+        'python3 -c "import json, os; print(json.dumps(dict(os.environ)))"'
+    )
+    return subprocess.run(
+        ["bash", "--noprofile", "--norc", "-c", body, "bash", str(ROOT / SHELL_PROFILES[profile])],
+        env=env, text=True, capture_output=True, check=False,
+    )
 
 
 class HilTransportProfilesTests(unittest.TestCase):
@@ -44,8 +92,143 @@ class HilTransportProfilesTests(unittest.TestCase):
                 self.assertEqual(env["III_RUNTIME_API_PX4_MAVLINK_ENDPOINT"], "udpin://0.0.0.0:14540")
                 self.assertEqual(env["III_RUNTIME_API_PX4_SYSTEM_ID"], "1")
                 self.assertEqual(env["SIMULATION"], "false")
-                self.assertNotIn("ROS_DOMAIN_ID", env)
-                self.assertNotIn("RMW_IMPLEMENTATION", env)
+
+    def test_every_aircraft_profile_provisions_the_stack_middleware(self):
+        for profile in AIRCRAFT_PROFILES:
+            with self.subTest(profile=profile):
+                env = runtime_environment(profile)
+                self.assertEqual({key: env.get(key) for key in STACK_DDS}, STACK_DDS)
+                self.assertEqual(env["III_SYSTEM_PROFILE"], profile)
+                self.assertNotIn("CYCLONEDDS_URI", env)
+
+    def test_provisioned_ros_domain_override_reaches_the_runtime_env(self):
+        for profile in AIRCRAFT_PROFILES:
+            with self.subTest(profile=profile):
+                # Extra vars arrive as strings from `iii host provision`.
+                env = runtime_environment(profile, iii_ros_domain_id="57")
+                self.assertEqual(env["ROS_DOMAIN_ID"], "57")
+
+    def test_service_middleware_overrides_follow_the_provisioned_domain(self):
+        tasks = yaml.safe_load(
+            (ROOT / "deployment/ansible/roles/runtime_control_plane/tasks/main.yml").read_text()
+        )
+        by_name = {task["name"]: task for task in tasks}
+        install = by_name["Install aircraft Fast DDS middleware overrides"]
+        legacy = by_name["Remove the superseded HIL-only middleware overrides"]
+        # Installed for every aircraft profile; the HIL-only file is retired.
+        self.assertNotIn("when", install)
+        self.assertNotIn("when", legacy)
+        self.assertTrue(install["ansible.builtin.copy"]["dest"].endswith("/30-iii-fastdds.conf"))
+        self.assertTrue(legacy["ansible.builtin.file"]["path"].endswith("/30-hil-fastdds.conf"))
+        self.assertEqual(legacy["ansible.builtin.file"]["state"], "absent")
+        values = yaml.safe_load(VARS.read_text())
+        for domain in (values["iii_ros_domain_id"], "57"):
+            content = jinja2.Environment(undefined=jinja2.StrictUndefined).from_string(
+                install["ansible.builtin.copy"]["content"]
+            ).render({**values, "iii_ros_domain_id": domain})
+            environment = dict(
+                line.removeprefix("Environment=").split("=", 1)
+                for line in content.splitlines()
+                if line.startswith("Environment=")
+            )
+            self.assertEqual(environment, {**STACK_DDS, "ROS_DOMAIN_ID": str(domain)})
+            self.assertIn("UnsetEnvironment=CYCLONEDDS_URI", content)
+
+    def test_onboard_aircraft_shells_adopt_the_provisioned_runtime_contract(self):
+        for profile in SHELL_PROFILES:
+            with self.subTest(profile=profile), tempfile.TemporaryDirectory() as directory:
+                runtime_env = Path(directory, "runtime.env")
+                runtime_env.write_text(
+                    render_runtime_environment(profile, iii_ros_domain_id="57"), encoding="utf-8"
+                )
+                provisioned = runtime_environment(profile, iii_ros_domain_id="57")
+                result = aircraft_shell(directory, profile, runtime_env=runtime_env)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stderr, "")
+                values = json.loads(result.stdout)
+                for key in (
+                    "III_SYSTEM_RUNTIME_DIR",
+                    "III_SYSTEM_DAEMON_SOCKET",
+                    "III_SYSTEM_DAEMON_LOG",
+                    "CONFIG_BASE_DIR",
+                    *STACK_DDS,
+                ):
+                    self.assertEqual(values[key], provisioned[key], key)
+                self.assertEqual(values["III_SYSTEM_DAEMON_SOCKET"], "/run/iii/system_manager.sock")
+                self.assertEqual(values["CONFIG_BASE_DIR"], "/home/iii/.config/iii_drone")
+                self.assertEqual(values["ROS_DOMAIN_ID"], "57")
+                self.assertEqual(values["CLI_CONFIGURATION"], "dev")
+                self.assertEqual(values["III_SYSTEM_PROFILE"], profile)
+                self.assertEqual(values["III_RUNTIME_TARGET"], profile)
+                self.assertEqual(values["SIMULATION"], "false")
+                # Listener settings are not client endpoints, and the runtime
+                # never uses Cyclone DDS.
+                self.assertNotIn("III_RUNTIME_API_HOST", values)
+                self.assertNotIn("CYCLONEDDS_URI", values)
+
+    def test_workstation_aircraft_shells_keep_the_editable_workspace_defaults(self):
+        for profile in SHELL_PROFILES:
+            with self.subTest(profile=profile), tempfile.TemporaryDirectory() as directory:
+                result = aircraft_shell(directory, profile)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                values = json.loads(result.stdout)
+                self.assertEqual(values["III_SYSTEM_DAEMON_SOCKET"], str(ROOT / "runtime/system_manager.sock"))
+                self.assertEqual(values["III_SYSTEM_RUNTIME_DIR"], str(ROOT / "runtime"))
+                self.assertEqual(values["CONFIG_BASE_DIR"], str(ROOT / ".config"))
+                self.assertEqual(values["WORKSPACE_DIR"], str(ROOT))
+                self.assertEqual(values["ROS_DOMAIN_ID"], STACK_DDS["ROS_DOMAIN_ID"])
+                self.assertEqual(values["RMW_IMPLEMENTATION"], STACK_DDS["RMW_IMPLEMENTATION"])
+                self.assertEqual(values["FASTDDS_BUILTIN_TRANSPORTS"], STACK_DDS["FASTDDS_BUILTIN_TRANSPORTS"])
+                self.assertNotIn("CYCLONEDDS_URI", values)
+                self.assertEqual(values["III_SYSTEM_PROFILE"], profile)
+            with tempfile.TemporaryDirectory() as directory:
+                result = aircraft_shell(directory, profile, extra={"III_ROS_DOMAIN_ID": "61"})
+                self.assertEqual(json.loads(result.stdout)["ROS_DOMAIN_ID"], "61")
+
+    def test_aircraft_shells_ignore_a_non_aircraft_runtime_env(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime_env = Path(directory, "runtime.env")
+            runtime_env.write_text(
+                "III_SYSTEM_PROFILE=sim\n"
+                "III_SYSTEM_DAEMON_SOCKET=/run/iii/system_manager.sock\n"
+                "ROS_DOMAIN_ID=7\n",
+                encoding="utf-8",
+            )
+            values = json.loads(aircraft_shell(directory, "opti_track", runtime_env=runtime_env).stdout)
+        self.assertEqual(values["III_SYSTEM_DAEMON_SOCKET"], str(ROOT / "runtime/system_manager.sock"))
+        self.assertEqual(values["ROS_DOMAIN_ID"], "42")
+
+    def test_aircraft_shells_source_repeatedly_and_load_the_workspace_overlay(self):
+        for profile in SHELL_PROFILES:
+            with self.subTest(profile=profile), tempfile.TemporaryDirectory() as directory:
+                overlay = Path(directory, "install")
+                overlay.mkdir()
+                (overlay / "setup.bash").write_text(
+                    'export III_TEST_OVERLAY_SOURCED="$((${III_TEST_OVERLAY_SOURCED:-0} + 1))"\n',
+                    encoding="utf-8",
+                )
+                result = aircraft_shell(
+                    directory,
+                    profile,
+                    extra={"III_WORKSPACE_INSTALL": str(overlay)},
+                    script='set -eu; source "$1"; source "$1"; printf "%s" "$III_TEST_OVERLAY_SOURCED"',
+                )
+                # No readonly variables: a second source is clean.
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stderr, "")
+                self.assertEqual(result.stdout, "2")
+
+    def test_aircraft_shells_fail_without_ros(self):
+        for profile in SHELL_PROFILES:
+            with self.subTest(profile=profile), tempfile.TemporaryDirectory() as directory:
+                result = aircraft_shell(
+                    directory,
+                    profile,
+                    extra={"III_ROS_PREFIX": str(Path(directory, "missing-ros"))},
+                    script='source "$1"; printf "%s|%s" "$?" "${III_SYSTEM_PROFILE:-unset}"',
+                )
+                self.assertEqual(result.stdout, "30|unset")
+                self.assertIn("requires ROS Jazzy", result.stderr)
 
     def test_hil_shell_and_launcher_match_the_provisioned_listener(self):
         env = {k: v for k, v in os.environ.items() if not k.startswith("III_PX4_")}
@@ -145,6 +328,26 @@ class HilTransportProfilesTests(unittest.TestCase):
             result.stdout,
             "dev|/run/iii/system_manager.sock|/home/iii/.config/iii_drone|iii.local|http://iii.local:8765",
         )
+
+    def test_onboard_hil_shell_follows_the_provisioned_stack_domain(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime_env = Path(directory, "runtime.env")
+            runtime_env.write_text(
+                render_runtime_environment("hil", iii_ros_domain_id="57"), encoding="utf-8"
+            )
+            env = {k: v for k, v in os.environ.items() if not k.startswith(("III_", "CYCLONEDDS_", "ROS_"))}
+            env["III_HIL_ONBOARD_RUNTIME_ENV"] = str(runtime_env)
+            script = 'source "$1"; printf "%s|%s" "$ROS_DOMAIN_ID" "${hil_onboard_ros_domain_id-unset}"'
+            onboard = subprocess.run(
+                ["bash", "-c", script, "bash", str(ROOT / "setup/setup_hil.bash")],
+                env=env, text=True, capture_output=True, check=True,
+            )
+            explicit = subprocess.run(
+                ["bash", "-c", script, "bash", str(ROOT / "setup/setup_hil.bash")],
+                env={**env, "III_HIL_ROS_DOMAIN_ID": "58"}, text=True, capture_output=True, check=True,
+            )
+        self.assertEqual(onboard.stdout, "57|unset")
+        self.assertEqual(explicit.stdout, "58|unset")
 
     def test_legacy_hil_host_alias_remains_a_coherent_target_override(self):
         env = {k: v for k, v in os.environ.items() if not k.startswith(("III_", "CYCLONEDDS_", "ROS_"))}

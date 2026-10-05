@@ -27,3 +27,6 @@ inspection is available through `iii px4 inspect`.
 
 The direct Pi--PX4 Ethernet topology and HIL workstation link are kept because
 they are required for communication, not because they are access controls.
+An optional Wi-Fi client (for example the OptiTrack lab network) is provisioned
+only on request; its passphrase stays on the Pi and never enters the repository
+or a command line.

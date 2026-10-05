@@ -30,6 +30,7 @@ source "$SCRIPT_DIR/setup_field.bash"
 # /etc/iii/runtime.env also contains listener settings such as
 # III_RUNTIME_API_HOST=0.0.0.0, which must not replace the selected Pi target.
 III_HIL_ONBOARD_RUNTIME_ENV="${III_HIL_ONBOARD_RUNTIME_ENV:-/etc/iii/runtime.env}"
+hil_onboard_ros_domain_id=""
 if [[ -r "${III_HIL_ONBOARD_RUNTIME_ENV}" ]] &&
    grep -qx 'III_SYSTEM_PROFILE=hil' "${III_HIL_ONBOARD_RUNTIME_ENV}"; then
     while IFS='=' read -r key value; do
@@ -37,6 +38,11 @@ if [[ -r "${III_HIL_ONBOARD_RUNTIME_ENV}" ]] &&
             III_SYSTEM_RUNTIME_DIR|III_SYSTEM_DAEMON_SOCKET|III_SYSTEM_DAEMON_LOG|CONFIG_BASE_DIR)
                 [[ "${value}" == /* ]] || continue
                 export "${key}=${value}"
+                ;;
+            ROS_DOMAIN_ID)
+                # The provisioned stack domain (iii_ros_domain_id).
+                [[ "${value}" =~ ^[0-9]+$ ]] || continue
+                hil_onboard_ros_domain_id="${value}"
                 ;;
         esac
     done <"${III_HIL_ONBOARD_RUNTIME_ENV}"
@@ -67,7 +73,10 @@ export III_PX4_SYSTEM_ADDRESS="${III_PX4_SYSTEM_ADDRESS:-udpin://0.0.0.0:14544}"
 # HIL tools launched directly on the Pi and workstation must use the same
 # middleware as the Pi's PX4 XRCE agent. Mixed Fast DDS/Cyclone DDS discovery
 # across the split-host link can leave BatteryStatus invisible at the payload.
-export ROS_DOMAIN_ID="${III_HIL_ROS_DOMAIN_ID:-42}"
+# Onboard, the provisioned domain is the default; the workstation keeps 42
+# unless III_HIL_ROS_DOMAIN_ID selects the Pi's provisioned domain.
+export ROS_DOMAIN_ID="${III_HIL_ROS_DOMAIN_ID:-${hil_onboard_ros_domain_id:-42}}"
+unset hil_onboard_ros_domain_id
 export RMW_IMPLEMENTATION="rmw_fastrtps_cpp"
 export FASTDDS_BUILTIN_TRANSPORTS="UDPv4"
 unset CYCLONEDDS_URI

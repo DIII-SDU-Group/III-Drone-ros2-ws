@@ -20,6 +20,22 @@ iii_hil_mavlink_udp_port: 14542
 # The physical PX4 HIL baseline above remains separate from workstation SITL.
 iii_hil_sitl_mavlink_udp_port: 14544
 iii_hil_px4_system_id: 8
+# ROS 2 domain of the aircraft stack for every profile (hil, real, opti_track).
+# The flight controller's UXRCE_DDS_DOM_ID must equal it. Override per run with
+# `iii host provision --ros-domain-id N`.
+iii_ros_domain_id: 42
+# Optional Wi-Fi client (for example the OptiTrack lab network). The SSID and
+# passphrase are supplied only at provision time by `iii host provision
+# --wifi-ssid ...` through a private extra-vars file; never set them here.
+iii_wifi_ssid: ""
+iii_wifi_psk: ""
+iii_wifi_regulatory_domain: ""
+iii_wifi_remove: false
+# netplan's networkd backend binds Wi-Fi by interface name (no match: rules).
+iii_wifi_interface: wlan0
+# Below the default DHCP route metric of wired links (100), so Wi-Fi owns the
+# default route while it is associated.
+iii_wifi_route_metric: 50
 iii_hardware_packages:
   - udev
   - usbutils

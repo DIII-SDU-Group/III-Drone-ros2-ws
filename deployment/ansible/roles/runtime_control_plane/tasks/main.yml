@@ -35,7 +35,7 @@
   loop: "{{ ['iii-system-daemon', 'iii-runtime-api'] | product(['20-hil-split-domain.conf', '21-hil-cyclone-peer.conf']) | list }}"
   notify: Reload systemd for III control plane
 
-- name: Create HIL middleware override directories
+- name: Create aircraft middleware override directories
   ansible.builtin.file:
     path: "/etc/systemd/system/{{ item }}.service.d"
     state: directory
@@ -45,17 +45,18 @@
   loop:
     - iii-system-daemon
     - iii-runtime-api
-  when: iii_profile == 'hil'
 
-- name: Install HIL Fast DDS middleware overrides
+# Every aircraft profile (hil, real, opti_track) runs the HIL-qualified Fast
+# DDS stack in the provisioned domain; runtime.env carries the same values.
+- name: Install aircraft Fast DDS middleware overrides
   ansible.builtin.copy:
-    dest: "/etc/systemd/system/{{ item }}.service.d/30-hil-fastdds.conf"
+    dest: "/etc/systemd/system/{{ item }}.service.d/30-iii-fastdds.conf"
     owner: root
     group: root
     mode: "0644"
     content: |
       [Service]
-      Environment=ROS_DOMAIN_ID=42
+      Environment=ROS_DOMAIN_ID={{ iii_ros_domain_id }}
       Environment=ROS_LOCALHOST_ONLY=0
       Environment=ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
       Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
@@ -64,17 +65,15 @@
   loop:
     - iii-system-daemon
     - iii-runtime-api
-  when: iii_profile == 'hil'
   notify: Reload systemd for III control plane
 
-- name: Remove HIL middleware overrides for non-HIL profiles
+- name: Remove the superseded HIL-only middleware overrides
   ansible.builtin.file:
     path: "/etc/systemd/system/{{ item }}.service.d/30-hil-fastdds.conf"
     state: absent
   loop:
     - iii-system-daemon
     - iii-runtime-api
-  when: iii_profile != 'hil'
   notify: Reload systemd for III control plane
 
 - name: Remove receiver and security-gate units
