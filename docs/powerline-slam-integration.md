@@ -162,29 +162,33 @@ IMU, truth state).
 
 ### Acceptance flights (seed 20261002)
 
-With the current variant and tooling (`powerline_slam_live09`):
+With the current variant and tooling (`powerline_slam_live11`, fenced to 12
+cores while a HIL soak shared the host):
 
 | | `a_to_b` | `b_to_a` |
 |---|---|---|
-| Duration / messages | 168.5 s / 228 128 | 179.7 s / 249 251 |
+| Duration / messages | 169.5 s / 227 615 | 183.9 s / 245 128 |
 | Contract topics with messages | 28 of 29 (+ `timesync_status` empty by contract) | 28 of 29 (+ `timesync_status` empty by contract) |
-| Real-time factor | 0.935 | 0.955 |
-| Radar-U / Radar-F scans | 4712 / 4713 | 5136 / 5136 |
-| Camera images; during the legs with `camera_info` and truth | 1557; 1488 of 1488 | 1679; 1628 of 1628 |
-| Radar points per scan, p50 (max) U / F | 9 (19) / 7 (28) | 9 (21) / 7 (22) |
-| PX4 heading − truth, mean (range) | 0.006 rad (0.000…0.040) | 0.001 rad (−0.004…0.006) |
-| PX4 IMU timestamps equal to a Gazebo IMU stamp | 15 564 of 15 564 | 17 107 of 17 107 |
-| Samples missing: `/clock`, Gazebo IMU, truth state; `sensor_combined` | 0, 0, 0; 1 | 0, 0, 0; 1 |
+| Real-time factor | 0.933 | 0.916 |
+| Radar-U / Radar-F scans | 4730 / 4653 (equal in their common span) | 5042 / 5044 |
+| Camera images; during the legs with `camera_info` and truth | 1566; 1493 of 1493 | 1645; 1597 of 1597 |
+| Radar points per scan, p50 (max) U / F | 9 (19) / 7 (29) | 9 (19) / 7 (23) |
+| PX4 heading − truth, mean (range) | −0.002 rad (−0.006…0.004) | −0.002 rad (−0.007…0.003) |
+| PX4 IMU timestamps equal to a Gazebo IMU stamp | 15 510 of 15 510 | 16 805 of 16 805 |
+| Samples missing: `/clock`, Gazebo IMU, truth state; `sensor_combined` | 0, 0, 0; 0 | 0, 0, 0; 3 |
 | Transport losses reported by the streams / images recorder | 0 / 0 | 0 / 0 |
-| Gyro variance in the hover holds (x, y, z; rad²/s²) | 1.9e-5, 1.2e-5, 1.7e-7 | 1.6e-5, 4.0e-5, 1.6e-7 |
+| Gyro variance in the hover holds (x, y, z; rad²/s²) | 5.0e-5, 2.2e-5, 1.8e-7 | 1.2e-5, 3.2e-5, 1.7e-7 |
 | Leg command attempts | 1 per leg | 1 per leg |
 | Bag verification, analysis checks | passed | passed |
 
-The ground segment recorded 60.0 s (42 123 messages) disarmed, without
-transport losses, and passed. The one `sensor_combined` sample missing per
-flight is a 24 ms interval that PX4's publisher skipped (the recorder reports
-no transport loss). The heading range of `a_to_b` comes from the start of the
-flight (finding 1).
+The ground segment recorded 60.0 s (41 145 messages) disarmed, without
+transport losses, and passed. Missing `sensor_combined` samples are intervals
+PX4's publisher skipped (the recorders report no transport loss). Radar-F has
+fewer scans in `a_to_b` only because the recorder subscribed to it 2.5 s
+after Radar-U; in their common span both have 4652 scans and no gap.
+
+`powerline_slam_live09` was the acceptance run before the resting spawn
+(heading 0.000…0.040 rad in `a_to_b`, from the start of the flight).
 
 Earlier runs: `powerline_slam_live02` flew both directions with Gazebo's
 magnetometer before its fix; `live03` and `live03b` with PX4's simulated
@@ -326,19 +330,28 @@ either both in `WO002_SIM_DESIGN_ENU` (the replay convention) or both in
    +0.006 rad (`live07`–`live09`). The evaluation layout's interim fix, PX4's
    simulated magnetometer (`SENS_EN_MAGSIM`), is gone.
 
-   What remains comes from PX4's EKF initialisation, not the magnetometer:
-   PX4 starts while the spawned vehicle is still falling onto the ground (its
-   accelerometer reads free fall, then a 10 g landing spike), and within 0.1 s
-   of the EKF's tilt alignment, 0.6 s after that landing and before GNSS
-   fusion starts, the EKF holds a horizontal accelerometer bias the simulated
-   IMU does not have (0.15 m/s² in `live09`, against Gazebo's 0.0006; the
-   vertical bias starts at the 0.8 m/s² `EKF2_ABL_LIM`). On the ground that
-   bias is indistinguishable from tilt. PX4's attitude is then 0.016 rad off truth at rest, and heading
-   fusion with the field's 70° inclination turns that into a heading error
-   that depends on the heading: up to 0.04 rad at the start of `live09`'s
-   first flight, with heading innovations below 0.005 rad throughout. The bias
-   converges within about three minutes of flight; the second flight starts
-   clean.
+   Until 2026-10-05 a start-up transient remained, from PX4's EKF
+   initialisation rather than the magnetometer: PX4 spawns the vehicle at the
+   world origin, where `hca_full_pylon_setup`'s terrain lies 3.0 cm lower, so
+   the vehicle dropped onto it while PX4 started (its first IMU samples read
+   free fall and a 10 g landing). Within 0.1 s of the EKF's tilt alignment
+   the EKF held a horizontal accelerometer bias the simulated IMU does not
+   have (0.09–0.16 m/s², against Gazebo's 0.0006; the vertical bias at the
+   0.8 m/s² `EKF2_ABL_LIM`), which on the ground is indistinguishable from
+   tilt: PX4's attitude was 0.01–0.016 rad off truth, and heading fusion with
+   the field's 70° inclination turned that into a heading error that depends
+   on the heading, up to 0.04 rad at the start of `live09`'s first flight,
+   until about three minutes into it. In this world the D4S airframes now
+   spawn the vehicle at its resting height (`PX4_GZ_MODEL_POSE` 0,0,−0.028
+   unless set). In standalone boots without rendering the EKF then starts
+   with no bias (≤ 0.004 m/s², against 0.09–0.11 with the drop) and within
+   0.0012 rad of the true attitude (against 0.009–0.011 rad, heading 0.026),
+   and a take-off, hover and landing stays within 0.0015 rad (heading
+   0.003 rad). In the corridor flights of `live11` the EKF's bias was 0.0001
+   m/s² after alignment and 0.005 m/s² at take-off (0.157 and 0.151 in
+   `live09`), and PX4's heading stayed within 0.007 rad of truth throughout
+   both flights, its first leg included (at most 0.0044 rad, against 0.027
+   rad in `live09`).
 2. **Hover motion (fixed in III Core).** In the hover holds of the earlier
    live flights the gyro variance (1.3–1.9e-4, 1.2–2.7e-4 and 0.2–1.8e-6
    rad²/s², x, y, z) equalled the variance of the true angular velocity, so it
@@ -442,15 +455,17 @@ Recommendations, for the research work order to confirm or replace:
 - **Output:** a new topic next to `/perception/pl_mapper/powerline` instead of
   replacing it, with no consumer switched until the estimator is evaluated
   live.
-- **Heading:** fixed for both layouts (finding 1); PX4's heading error stays
-  within the 0.03 rad mission-prior sigma during the legs (at most 0.027 rad,
-  in `live09`'s first leg, which has no prior).
+- **Heading:** fixed for both layouts (finding 1); PX4's heading stays within
+  0.007 rad of truth throughout the flights (`live11`), well inside the
+  0.03 rad mission-prior sigma.
 - **Hardware:** map Radar-U and Radar-F to the physical mounts later.
 
 ## Changes beyond the evaluation layout
 
-These fix III behaviour outside the evaluation layout and could move to
-`deployment-infrastructure-redesign` on their own:
+These fix III behaviour outside the evaluation layout. All but the terminal
+tracking change were merged into `deployment-infrastructure-redesign` on
+2026-10-05 (superproject `d6747aa`, `7c351f9`, `ede109b` and `65d2a0d`); the
+terminal tracking change stays on `powerline-slam`:
 
 - **Simulated magnetometer** (finding 1), one set: PX4-Autopilot `eb14199e4e`
   (ekf2 keeps `EKF2_MAG_DECL`), `3d55fd979d` (`gz_bridge` reads the true field)
@@ -460,6 +475,11 @@ These fix III behaviour outside the evaluation layout and could move to
   `use_earth_frame_ned` false, and the assets airframe must match its PX4 ROMFS
   copy. The ekf2 change only matters when `EKF2_DECL_TYPE` saves without using
   the model's declination, so the default (3) on real vehicles is unaffected.
+- **Resting spawn** (finding 1), one set: PX4-Autopilot `9bba79da09`
+  (airframe 99999's ROMFS copy), Gazebo-simulation-assets `ea7b7c5`
+  (production and paper airframes) and III-Drone-Simulation `a28fb7b` (bump
+  and smoke test). The spawn pose applies only in `hca_full_pylon_setup` and
+  yields to an explicit `PX4_GZ_MODEL_POSE`.
 - **Terminal tracking** (finding 2), III-Drone-Core: changes how closely every
   terminal hold holds its target in real flight (up to 2 cm plus a 1 cm step,
   well inside the 0.10–0.15 m arrival tolerances), verified only in
@@ -470,14 +490,6 @@ These fix III behaviour outside the evaluation layout and could move to
 
 ## Follow-ups outside the SLAM integration
 
-- **PX4 EKF initialisation in SITL:** the spurious horizontal accelerometer
-  bias the EKF starts with (finding 1) tilts PX4's attitude estimate by up to
-  0.016 rad until about three minutes into the first flight; a consumer of
-  PX4's attitude or odometry at the start of a run sees it. It forms when the
-  EKF aligns right after the spawned vehicle's landing impact (GNSS fusion
-  starts later and cleanly, with centimetre innovations). Unverified
-  candidates: spawning the vehicle at rest, or an EKF that aligns only once
-  the vehicle has settled.
 - **Field recordings:** inspection bags on the vehicle do not record the SLAM
   inputs (IMU, forward radar, camera). Which of them to add is open for the
   hardware phase: the recorder costs about 0.4 ms per message on the Pi, and
