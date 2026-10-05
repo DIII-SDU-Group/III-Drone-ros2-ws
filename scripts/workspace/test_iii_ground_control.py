@@ -317,3 +317,45 @@ def test_exact_project_mutations_are_serialized_by_the_gc_lock(tmp_path):
     assert starter.returncode == 0, start_result
     assert stopper.returncode == 0, stop_result
     assert stopped.exists()
+
+
+def _dry_run_with_environment(tmp_path: Path, content: str) -> subprocess.CompletedProcess[str]:
+    env_file = tmp_path / "ground-control.env"
+    env_file.write_text(content, encoding="utf-8")
+    return subprocess.run(
+        [str(SCRIPT), "start", "--dry-run"],
+        cwd=ROOT,
+        env={**os.environ, "HOME": str(tmp_path), "III_GC_ENV_FILE": str(env_file)},
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=10,
+    )
+
+
+def test_aircraft_profiles_require_a_pinned_identity(tmp_path):
+    for profile in ("real", "opti_track"):
+        directory = tmp_path / profile
+        directory.mkdir()
+        unpinned = _dry_run_with_environment(directory, f"III_GC_EXPECTED_PROFILE={profile}\n")
+        assert unpinned.returncode == 2, unpinned.stdout
+        assert (
+            f"{profile} profile requires III_GC_EXPECTED_RUNTIME_ID and III_GC_EXPECTED_SYSTEM_ID"
+            in unpinned.stderr
+        )
+        pinned = _dry_run_with_environment(
+            directory,
+            "III_GC_EXPECTED_RUNTIME_ID=iii-runtime\n"
+            "III_GC_EXPECTED_SYSTEM_ID=iii-drone\n"
+            f"III_GC_EXPECTED_PROFILE={profile}\n",
+        )
+        assert pinned.returncode == 0, pinned.stderr
+        assert "Would start production ground control" in pinned.stdout
+
+
+def test_virtual_profiles_need_no_pinned_identity(tmp_path):
+    for profile in ("hil", "sim"):
+        directory = tmp_path / profile
+        directory.mkdir()
+        result = _dry_run_with_environment(directory, f"III_GC_EXPECTED_PROFILE={profile}\n")
+        assert result.returncode == 0, result.stderr

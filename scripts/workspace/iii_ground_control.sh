@@ -37,9 +37,14 @@ require_tools() {
 }
 
 validate_field_identity() {
-  [[ "${III_GC_EXPECTED_PROFILE:-}" == "real" ]] || return 0
+  # Aircraft profiles (real, opti_track) pin the provisioned runtime and
+  # system identity, as the GC proxy does.
+  case "${III_GC_EXPECTED_PROFILE:-}" in
+    real|opti_track) ;;
+    *) return 0 ;;
+  esac
   if [[ -z "${III_GC_EXPECTED_RUNTIME_ID:-}" || -z "${III_GC_EXPECTED_SYSTEM_ID:-}" ]]; then
-    echo "Ground-control startup failed: real profile requires III_GC_EXPECTED_RUNTIME_ID and III_GC_EXPECTED_SYSTEM_ID." >&2
+    echo "Ground-control startup failed: ${III_GC_EXPECTED_PROFILE} profile requires III_GC_EXPECTED_RUNTIME_ID and III_GC_EXPECTED_SYSTEM_ID." >&2
     exit 2
   fi
 }
