@@ -42,7 +42,7 @@ src/BehaviorTree.ROS2 c72596242684ed6f03796665908d337269afb4b3
 src/III-Drone-Configuration d7616fad1a3d95008bff6b70bc647054d9a60764
 src/III-Drone-Contracts 505e1aa5e01f20f28206528d32c8e7ef6dcf6af0
 src/III-Drone-Core 628f8423be96d0d4d7e039c04448641e1a8b5f5d
-src/III-Drone-GC ae3ad8663183c60b4f6bfca19f135cb03a22c543
+src/III-Drone-GC cee43d9262ace90763d58f70cc6c77ca9255ccdc
 src/III-Drone-Interfaces b67393860ba8b94eb4173d9295d651372608939f
 src/III-Drone-Mission abf4ea2b0024fed0ec93c5463abe2d3b3df274d9
 src/III-Drone-Runtime 7eb85262188f3eeb6d41ec460c206f02ea99668d
