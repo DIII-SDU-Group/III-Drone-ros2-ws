@@ -11,8 +11,10 @@ powerline_slam workflow; the decisions it has to make are listed at the end.
 
 All work is on the `powerline-slam` branch of the workspace and of
 III-Drone-Core, III-Drone-Configuration, III-Drone-Interfaces,
-III-Drone-Runtime, III-Drone-Simulation and Gazebo-simulation-assets. The
-production simulation (`d4s_dc_drone`) is unchanged and stays the default.
+III-Drone-Simulation and Gazebo-simulation-assets (III-Drone-Runtime's branch
+carries no change), merged with `deployment-infrastructure-redesign` up to
+57484c4 (2026-10-05). The production simulation (`d4s_dc_drone`) is unchanged
+and stays the default.
 
 ## Sensor layout `d4s_dc_drone_powerline_eval`
 
@@ -387,6 +389,10 @@ Recommendations, for the research work order to confirm or replace:
   (Gazebo-simulation-assets `1b4c739`, reason not recorded).
 - **Recorder transport losses:** 115–261 messages per flight; the radar and
   camera streams are complete.
+- **Field recordings:** inspection bags on the vehicle do not record the SLAM
+  inputs (IMU, forward radar, camera). Which of them to add is open for the
+  hardware phase: the recorder costs about 0.4 ms per message on the Pi, and
+  upstream drops high-rate streams for that reason.
 
 ## Reproducing
 
