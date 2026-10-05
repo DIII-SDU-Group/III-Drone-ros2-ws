@@ -1,8 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
-# Keep these values byte-for-byte aligned with deployment/targets/v1/
-# raspberry-pi-5-noble-arm64.json. The index digest makes the input stable;
-# Docker resolves the requested platform from that immutable index.
+# The index digests make the inputs stable; Docker resolves the requested
+# platform from each immutable index.
 ARG TARGET_IMAGE=docker.io/library/ros:jazzy-perception@sha256:63407fb78383d0c68849c2913a3b6a5675069d2c2c33c21b3e7c454e028e8b5d
 ARG BUILDER_IMAGE=docker.io/library/ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
 ARG BUILD_TOOLS_IMAGE=docker.io/library/ros:jazzy-ros-base@sha256:2589a8fba5257307857890173c069852c2abf913a0be7970f172478baecb09e4
@@ -18,9 +17,10 @@ ARG USB_CAM_VERSION=0.8.1-1noble.20260614.090116
 ARG RMW_CYCLONEDDS_VERSION=2.2.3-1noble.20260612.091852
 
 # Extend the immutable ROS perception seed only from date-addressed, signed
-# Ubuntu and ROS repositories. The snapshot-builder key is checked both by
-# file hash and primary fingerprint before apt is allowed to consume it.
-COPY deployment/keys/ros-snapshot-builder.asc /tmp/ros-snapshot-builder.asc
+# Ubuntu and ROS repositories. The snapshots.ros.org archive key (public,
+# kept in cc_ws/) is checked both by file hash and primary fingerprint before
+# apt is allowed to consume it.
+COPY cc_ws/ros-snapshot-builder.asc /tmp/ros-snapshot-builder.asc
 RUN echo "${ROS_SNAPSHOT_KEY_SHA256}  /tmp/ros-snapshot-builder.asc" | sha256sum -c - && \
     gpg --show-keys --with-colons /tmp/ros-snapshot-builder.asc | \
       grep -Fqx 'fpr:::::::::4B63CF8FDE49746E98FA01DDAD19BAB3CBF125EA:' && \
@@ -123,22 +123,10 @@ ENV III_TARGET_ID=raspberry-pi-5-noble-arm64 \
     PYTHONPATH=/opt/iii/ros-build-tools:/opt/iii/ros-build-tools/ros:/opt/iii/sysroot/opt/ros/jazzy/lib/python3.12/site-packages:/opt/iii/sysroot/usr/lib/python3/dist-packages \
     LD_LIBRARY_PATH=/opt/iii/ros-build-libs
 
-COPY deployment/targets/probe/abi_probe.c /tmp/abi_probe.c
-RUN /usr/bin/aarch64-linux-gnu-gcc-13 -O2 -Wall -Wextra -Werror \
-      /tmp/abi_probe.c -o /tmp/iii-target-abi-probe && \
-    rm /tmp/abi_probe.c
-
 FROM target-sysroot AS target-runtime
 ENV III_TARGET_ID=raspberry-pi-5-noble-arm64 \
     III_SYSTEM_PROFILE=real \
     ROS_DISTRO=jazzy
-
-FROM target-runtime AS abi-probe
-ARG TARGET_PLATFORM_DIGEST=sha256:cf36a2ca2ce9d3f239ab3df02430d580a7d643d907cd7bf0926b6f18fb7bd769
-COPY --from=toolchain /tmp/iii-target-abi-probe /usr/local/bin/iii-target-abi-probe
-COPY deployment/targets/probe/runtime_probe.py /usr/local/bin/iii-target-runtime-probe
-ENV III_TARGET_IMAGE_PLATFORM_DIGEST=${TARGET_PLATFORM_DIGEST}
-ENTRYPOINT ["/usr/bin/python3", "/usr/local/bin/iii-target-runtime-probe"]
 
 FROM toolchain AS cross-compiler
 ENTRYPOINT ["/entrypoint.sh"]

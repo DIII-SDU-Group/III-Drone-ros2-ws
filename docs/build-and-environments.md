@@ -38,7 +38,13 @@ resulting install tree to `/home/iii/ws/install` and restarts the existing
 supervised runtime. The Pi is never used as a compiler. The cross-build is
 cached in the workspace cache and is incremental on subsequent changes; the
 builder image is `iii-arm64-cross-builder:p1` (override with
-`III_CROSS_BUILDER_IMAGE` when needed).
+`III_CROSS_BUILDER_IMAGE` when needed). Build it from the workspace root when it
+is missing (the ARM64 sysroot stage needs QEMU binfmt support for arm64):
+
+```bash
+docker buildx build -f Dockerfile.cc --target cross-compiler \
+  -t iii-arm64-cross-builder:p1 --load .
+```
 
 Without `--build`, this remains a source/config synchronization only. When
 building, all current source components are included so an intentional dirty

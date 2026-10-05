@@ -75,7 +75,8 @@ command -v docker >/dev/null || {
 }
 docker image inspect "${image}" >/dev/null 2>&1 || {
   echo "cross-builder image is unavailable: ${image}" >&2
-  echo "build Dockerfile.cc with the repository's normal Docker workflow first" >&2
+  echo "build it from the workspace root first:" >&2
+  echo "  docker buildx build -f Dockerfile.cc --target cross-compiler -t ${image} --load ." >&2
   exit 30
 }
 
