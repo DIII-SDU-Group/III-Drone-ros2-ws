@@ -72,7 +72,6 @@ High-value services in operations:
 - `get_configuration_session` (durable baseline/revision/pending/fault status)
 - `get_configuration_journal` (cursor-bound authoritative WAL backfill)
 - `get_parameter_file` (non-destructive arbitrary-set retrieval)
-- `delete_parameter_file` (receipt- or force-confirmed inactive-set deletion)
 
 Batch Apply validates every edit before a durable prepare record, applies and
 reads back all live values, atomically persists the active set, then durably
