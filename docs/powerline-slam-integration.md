@@ -327,10 +327,13 @@ either both in `WO002_SIM_DESIGN_ENU` (the replay convention) or both in
    simulated magnetometer (`SENS_EN_MAGSIM`), is gone.
 
    What remains comes from PX4's EKF initialisation, not the magnetometer:
-   while GNSS fusion starts on the ground, the EKF learns a horizontal
-   accelerometer bias the simulated IMU does not have (0.15 m/s² in `live09`,
-   against Gazebo's 0.0006), which on the ground is indistinguishable from
-   tilt. PX4's attitude is then 0.016 rad off truth at rest, and heading
+   PX4 starts while the spawned vehicle is still falling onto the ground (its
+   accelerometer reads free fall, then a 10 g landing spike), and within 0.1 s
+   of the EKF's tilt alignment, 0.6 s after that landing and before GNSS
+   fusion starts, the EKF holds a horizontal accelerometer bias the simulated
+   IMU does not have (0.15 m/s² in `live09`, against Gazebo's 0.0006; the
+   vertical bias starts at the 0.8 m/s² `EKF2_ABL_LIM`). On the ground that
+   bias is indistinguishable from tilt. PX4's attitude is then 0.016 rad off truth at rest, and heading
    fusion with the field's 70° inclination turns that into a heading error
    that depends on the heading: up to 0.04 rad at the start of `live09`'s
    first flight, with heading innovations below 0.005 rad throughout. The bias
@@ -468,11 +471,13 @@ These fix III behaviour outside the evaluation layout and could move to
 ## Follow-ups outside the SLAM integration
 
 - **PX4 EKF initialisation in SITL:** the spurious horizontal accelerometer
-  bias learned on the ground (finding 1) tilts PX4's attitude estimate by up
-  to 0.016 rad until about three minutes into the first flight. A consumer
-  of PX4's attitude or odometry at the start of a run sees it; why the EKF
-  learns it while GNSS fusion starts (it reset position and velocity to GNSS
-  every second for 10 s in `live09`) is open.
+  bias the EKF starts with (finding 1) tilts PX4's attitude estimate by up to
+  0.016 rad until about three minutes into the first flight; a consumer of
+  PX4's attitude or odometry at the start of a run sees it. It forms when the
+  EKF aligns right after the spawned vehicle's landing impact (GNSS fusion
+  starts later and cleanly, with centimetre innovations). Unverified
+  candidates: spawning the vehicle at rest, or an EKF that aligns only once
+  the vehicle has settled.
 - **Field recordings:** inspection bags on the vehicle do not record the SLAM
   inputs (IMU, forward radar, camera). Which of them to add is open for the
   hardware phase: the recorder costs about 0.4 ms per message on the Pi, and
