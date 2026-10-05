@@ -50,6 +50,10 @@ class _ControlledNode:
         self._jsonl_path = _artifact_dir / "perception_probe.jsonl"
         self._alive_at_finish: bool | None = None
         self._alive_at_destroy: bool | None = None
+        self.poll_hook = lambda: None
+
+    def poll(self) -> None:
+        self.poll_hook()
 
     def flush_closed_buckets(self) -> None:
         pass
@@ -85,8 +89,7 @@ def _install_controlled_ros(
     def ok() -> bool:
         return bool(state["alive"])
 
-    def spin_once(_node, timeout_sec) -> None:
-        assert timeout_sec > 0
+    def poll() -> None:
         state["spin_count"] = int(state["spin_count"]) + 1
         if during_spin is not None:
             during_spin(state)
@@ -98,6 +101,7 @@ def _install_controlled_ros(
     def make_node(artifact_dir: Path, duration_sec: float) -> _ControlledNode:
         nonlocal node
         node = _ControlledNode(artifact_dir, duration_sec)
+        node.poll_hook = poll
         return node
 
     def shutdown() -> None:
@@ -106,7 +110,7 @@ def _install_controlled_ros(
 
     monkeypatch.setattr(PROBE.rclpy, "init", init)
     monkeypatch.setattr(PROBE.rclpy, "ok", ok)
-    monkeypatch.setattr(PROBE.rclpy, "spin_once", spin_once)
+    monkeypatch.setattr(PROBE.rclpy, "spin_once", lambda *_args, **_kwargs: pytest.fail("the probe polls"))
     monkeypatch.setattr(PROBE.rclpy, "shutdown", shutdown)
     monkeypatch.setattr(PROBE, "HilPerceptionProbe", make_node)
     state["node_ref"] = lambda: node
@@ -225,3 +229,38 @@ def test_probe_decodes_the_lossless_compressed_camera_stream(tmp_path) -> None:
     assert frame.shape == (48, 64, 3)
     # Decoded as BGR: the red half has a high third channel.
     assert frame[:, 40:, 2].mean() > 200 and frame[:, :24, 2].mean() < 30
+
+
+def test_probe_takes_queued_messages_without_an_executor(tmp_path) -> None:
+    import time
+
+    rclpy = pytest.importorskip("rclpy")
+    from nav_msgs.msg import Odometry
+
+    rclpy.init(domain_id=88)
+    probe = publisher_node = None
+    try:
+        probe = PROBE.HilPerceptionProbe(tmp_path, 10.0)
+        publisher_node = rclpy.create_node("probe_poll_test_publisher")
+        publisher = publisher_node.create_publisher(Odometry, PROBE.TOPICS["gazebo_odometry"], 10)
+        deadline = time.monotonic() + 5.0
+        while publisher.get_subscription_count() == 0 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        for _ in range(20):
+            publisher.publish(Odometry())
+            time.sleep(0.002)
+        deadline = time.monotonic() + 2.0
+        while probe._totals["gazebo_odometry"] < 20 and time.monotonic() < deadline:
+            probe.poll()
+            time.sleep(PROBE.POLL_PERIOD_SEC)
+
+        # Every queued message reached its callback; nothing spun an executor.
+        assert probe._totals["gazebo_odometry"] == 20
+        assert probe.executor is None
+    finally:
+        if probe is not None:
+            probe.finish("test")
+            probe.destroy_node()
+        if publisher_node is not None:
+            publisher_node.destroy_node()
+        rclpy.shutdown()
