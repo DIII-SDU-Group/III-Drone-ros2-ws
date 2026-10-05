@@ -10,6 +10,7 @@ clock duration and contain the requested number of ordered, complete cycles.
 from __future__ import annotations
 
 import argparse
+import bisect
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -127,6 +128,77 @@ def _sample_evidence(
     }
 
 
+# Tests compare the incremental phase join with a full rebuild per sample.
+INCREMENTAL_PHASE_JOIN = True
+
+
+def insert_source_ordered(observations: list[dict[str, Any]], observation: dict[str, Any]) -> int | None:
+    """Insert by source stamp; return the index, or None for a duplicate stamp.
+
+    Samples nearly always arrive in source order, so search from the end: an
+    in-order sample is appended without scanning the whole history.
+    """
+    source_stamp_ns = observation["source_stamp_ns"]
+    index = len(observations)
+    while index > 0:
+        candidate_stamp_ns = observations[index - 1]["source_stamp_ns"]
+        if candidate_stamp_ns == source_stamp_ns:
+            return None
+        if candidate_stamp_ns < source_stamp_ns:
+            break
+        index -= 1
+    observations.insert(index, observation)
+    return index
+
+
+def _fresh_phase_join_state() -> dict[str, Any]:
+    return {
+        "activity_index": 0,
+        "previous_active": None,
+        "active_generation": None,
+        "last_phase_source_stamp_ns": -1,
+    }
+
+
+def _join_phase_observation(
+    activities: list[dict[str, Any]],
+    state: dict[str, Any],
+    observation: dict[str, Any],
+) -> dict[str, Any]:
+    """Join one phase observation (in source order) to its activation generation."""
+    source_stamp_ns = observation["source_stamp_ns"]
+    while (
+        state["activity_index"] < len(activities)
+        and activities[state["activity_index"]]["source_stamp_ns"] <= source_stamp_ns
+    ):
+        activity = activities[state["activity_index"]]
+        active = activity["value"]["active"]
+        if active:
+            if state["previous_active"] is False:
+                state["active_generation"] = activity
+            elif state["previous_active"] is None:
+                # The initial Inspection prelude may begin with a
+                # fresh active sample. Every later phase is stricter.
+                state["active_generation"] = None
+        # Deactivation does not erase the activation that produced a
+        # terminal result. PX4 may hand control to the successor
+        # before the final SUCCESS status is published. A later
+        # inactive->active edge replaces this generation; periodic
+        # terminal samples cannot manufacture a new one.
+        state["previous_active"] = active
+        state["activity_index"] += 1
+    state["last_phase_source_stamp_ns"] = source_stamp_ns
+    candidate = dict(observation)
+    active_generation = state["active_generation"]
+    if active_generation is not None:
+        candidate["activation_observation"] = active_generation
+        candidate["activation_source_stamp_ns"] = active_generation["source_stamp_ns"]
+    else:
+        candidate["activation_observation"] = None
+        candidate["activation_source_stamp_ns"] = None
+    return candidate
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--artifact-dir", required=True)
@@ -182,6 +254,11 @@ def main() -> int:
     }
     phase_candidates: dict[str, list[dict[str, Any]]] = {
         name: [] for name in latest_modes
+    }
+    # Join state after the last phase observation of each mode, so an
+    # in-order observation extends phase_candidates instead of rebuilding it.
+    phase_join_state: dict[str, dict[str, Any]] = {
+        name: _fresh_phase_join_state() for name in latest_modes
     }
     events: list[dict[str, Any]] = []
     if args.duration_sec <= 0:
@@ -307,76 +384,64 @@ def main() -> int:
             return bool(value.get("tree_finished") and value.get("tree_success"))
         return value.get("active") is True
 
-    def insert_source_ordered(observations: list[dict[str, Any]], observation: dict[str, Any]) -> None:
-        source_stamp_ns = observation["source_stamp_ns"]
-        for index, candidate in enumerate(observations):
-            candidate_stamp_ns = candidate["source_stamp_ns"]
-            if candidate_stamp_ns == source_stamp_ns:
-                return
-            if candidate_stamp_ns > source_stamp_ns:
-                observations.insert(index, observation)
-                return
-        observations.append(observation)
-
-    def cache_mode_activity(name: str, observation: dict[str, Any]) -> None:
+    def cache_mode_activity(name: str, observation: dict[str, Any]) -> int | None:
         """Retain only valid source-stamped activity transitions for edge proof."""
         if not _positive_source_stamp(observation["source_stamp_ns"]):
-            return
+            return None
         if not isinstance(observation["value"].get("active"), bool):
-            return
-        insert_source_ordered(activity_observations[name], observation)
+            return None
+        return insert_source_ordered(activity_observations[name], observation)
 
-    def cache_phase_observation(name: str, observation: dict[str, Any]) -> None:
+    def cache_phase_observation(name: str, observation: dict[str, Any]) -> int | None:
         if _positive_source_stamp(observation["source_stamp_ns"]):
-            insert_source_ordered(phase_observations[name], observation)
+            return insert_source_ordered(phase_observations[name], observation)
+        return None
 
     def rebuild_phase_candidates(name: str) -> None:
         """Join phase evidence to its source-ordered inactive->active generation."""
-        activities = activity_observations[name]
-        activity_index = 0
-        previous_active: bool | None = None
-        active_generation: dict[str, Any] | None = None
-        candidates: list[dict[str, Any]] = []
-        for observation in phase_observations[name]:
-            source_stamp_ns = observation["source_stamp_ns"]
-            while (
-                activity_index < len(activities)
-                and activities[activity_index]["source_stamp_ns"] <= source_stamp_ns
-            ):
-                activity = activities[activity_index]
-                active = activity["value"]["active"]
-                if active:
-                    if previous_active is False:
-                        active_generation = activity
-                    elif previous_active is None:
-                        # The initial Inspection prelude may begin with a
-                        # fresh active sample. Every later phase is stricter.
-                        active_generation = None
-                # Deactivation does not erase the activation that produced a
-                # terminal result. PX4 may hand control to the successor
-                # before the final SUCCESS status is published. A later
-                # inactive->active edge replaces this generation; periodic
-                # terminal samples cannot manufacture a new one.
-                previous_active = active
-                activity_index += 1
-            candidate = dict(observation)
-            if active_generation is not None:
-                candidate["activation_observation"] = active_generation
-                candidate["activation_source_stamp_ns"] = active_generation["source_stamp_ns"]
-            else:
-                candidate["activation_observation"] = None
-                candidate["activation_source_stamp_ns"] = None
-            candidates.append(candidate)
-        phase_candidates[name] = candidates
+        state = _fresh_phase_join_state()
+        phase_candidates[name] = [
+            _join_phase_observation(activity_observations[name], state, observation)
+            for observation in phase_observations[name]
+        ]
+        phase_join_state[name] = state
+
+    def update_phase_candidates(
+        name: str,
+        activity_index: int | None,
+        phase_index: int | None,
+    ) -> None:
+        """Extend the candidates for an in-order observation; rebuild otherwise.
+
+        Rebuilding every candidate on every status sample made each sample cost
+        the length of the run so far (HIL soak runs: the observer's CPU, and the
+        Pi load, grew through every long run).
+        """
+        state = phase_join_state[name]
+        phases = phase_observations[name]
+        late_activity = activity_index is not None and (
+            activity_index < state["activity_index"]
+            or activity_observations[name][activity_index]["source_stamp_ns"]
+            <= state["last_phase_source_stamp_ns"]
+        )
+        late_phase = phase_index is not None and phase_index != len(phases) - 1
+        if late_activity or late_phase or not INCREMENTAL_PHASE_JOIN:
+            rebuild_phase_candidates(name)
+        elif phase_index is not None:
+            phase_candidates[name].append(
+                _join_phase_observation(activity_observations[name], state, phases[phase_index])
+            )
 
     def next_phase_candidate(
         name: str,
         *,
         require_new_activation: bool,
     ) -> dict[str, Any] | None:
-        for candidate in phase_candidates[name]:
-            if candidate["source_stamp_ns"] <= cycle_floor_source_stamp_ns:
-                continue
+        candidates = phase_candidates[name]
+        first = bisect.bisect_right(
+            candidates, cycle_floor_source_stamp_ns, key=lambda candidate: candidate["source_stamp_ns"]
+        )
+        for candidate in candidates[first:]:
             if require_new_activation:
                 activation_source_stamp_ns = candidate["activation_source_stamp_ns"]
                 activation_floor_ns = cycle_floor_source_stamp_ns
@@ -567,10 +632,12 @@ def main() -> int:
                 )
                 return
 
-            cache_mode_activity(name, observation)
-            if phase_is_eligible(name, value):
+            activity_index = cache_mode_activity(name, observation)
+            phase_index = (
                 cache_phase_observation(name, observation)
-            rebuild_phase_candidates(name)
+                if phase_is_eligible(name, value) else None
+            )
+            update_phase_candidates(name, activity_index, phase_index)
             # This is deliberately independent from reporting deduplication:
             # receipt order may be arbitrary while source order, activation
             # edges, and source-stamped phase evidence remain causal.
