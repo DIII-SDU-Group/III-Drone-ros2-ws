@@ -50,8 +50,9 @@ sets it for the lab.
 
 1. On the aircraft, provision the real-profile runtime environment
    (`iii host provision --profile real`) and start the independently
-   supervised `iii-runtime-api.service`. It must reject dev credentials,
-   generic identity, or a non-real profile.
+   supervised `iii-runtime-api.service`. The runtime API is unauthenticated
+   (developer access); the ground-control proxy refuses a runtime whose identity
+   or profile does not match the pinned values.
 2. On the operator laptop, [install the `deploy` ground-computer profile](ground-computer-installation.md),
    provision `~/.config/iii-ground-control.env`, and run
    `~/.local/share/iii/gc/workspace/scripts/workspace/iii_ground_control.sh start`.

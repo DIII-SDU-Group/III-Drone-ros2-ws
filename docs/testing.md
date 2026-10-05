@@ -93,7 +93,7 @@ III_GC_FRONTEND_PORT=5174 scripts/workspace/gui_v2_sim_e2e_smoke.py --start-comp
 ```
 
 The script verifies the frontend/proxy/runtime path, selects the local sim
-runtime, authenticates, reads every operator state domain, and writes artifacts
+runtime, opens a session (any password is accepted), reads every operator state domain, and writes artifacts
 under `log/gui-v2-sim-e2e-smoke/`. Mutating sim-only workflow and flight command
 extensions are documented in
 `src/III-Drone-GC/docs/gui-v2-sim-e2e-smoke.md`.
