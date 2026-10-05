@@ -39,13 +39,13 @@ PX4-Autopilot/src/modules/uxrce_dds_client/Micro-XRCE-DDS-Client 711aef423edd182
 PX4-Autopilot/src/modules/zenoh/zenoh-pico f093aa7955bb24dfa3e626de084583711e3bac5c
 src/BehaviorTree.CPP 3ff6a32ba0497a08519c77a1436e3b81eff1bcd6
 src/BehaviorTree.ROS2 c72596242684ed6f03796665908d337269afb4b3
-src/III-Drone-Configuration d7616fad1a3d95008bff6b70bc647054d9a60764
-src/III-Drone-Contracts 505e1aa5e01f20f28206528d32c8e7ef6dcf6af0
+src/III-Drone-Configuration 24ee1a2bc443f0eb80dac010dd6c777620703da7
+src/III-Drone-Contracts ec9dcc240ba29709335c6d39ac905fd3b8ac2f1c
 src/III-Drone-Core 628f8423be96d0d4d7e039c04448641e1a8b5f5d
 src/III-Drone-GC cee43d9262ace90763d58f70cc6c77ca9255ccdc
-src/III-Drone-Interfaces b67393860ba8b94eb4173d9295d651372608939f
+src/III-Drone-Interfaces 1ad1df22c37f3528cb50b4c3f78e93bf17e6a0da
 src/III-Drone-Mission abf4ea2b0024fed0ec93c5463abe2d3b3df274d9
-src/III-Drone-Runtime 7eb85262188f3eeb6d41ec460c206f02ea99668d
+src/III-Drone-Runtime cc110eb20b3bc23688a41580b25812d6ad59356e
 src/III-Drone-Simulation 8d89060229e1e0fe23fae6b8adf4534a7f2c7b89
 src/III-Drone-Simulation/Gazebo-simulation-assets c017de056105e828016c81ca729bc32b2aec2b43
 src/III-Drone-Supervision 11df283cbcbb336c44074bb43a2a58435791cd33
@@ -56,4 +56,4 @@ src/micro-ROS-Agent 52abdf5a9897637b2539cb1c239e1ec4fa92e01c
 src/micro_ros_msgs e65ab21bd0733ebff2af6317d573cc584efa5893
 src/px4-ros2-interface-lib 42803ac483b767b48a69869520e9907787f125a8
 src/px4_msgs 5e0e33cc6f192c1ad10548ffb25473fb618b9858
-tools/III-Drone-CLI 6424710b751caec1d3287a90ec9c94d8a38066f8
+tools/III-Drone-CLI 36063748dead4c23ad5965ecedf455ed39e3b4b5
