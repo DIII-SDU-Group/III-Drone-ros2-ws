@@ -128,7 +128,12 @@ recorder taking everything overflowed its socket during the image bursts
 (about 50 dropped datagrams per second) and lost 100–300 samples of the other
 streams per flight, while a second recorder subscribed only to `/clock` and
 odometry received every sample. A deeper subscription history does not help:
-the samples never reach the recorder's history.
+the samples never reach the recorder's history. Since 2026-10-05 this host's
+default socket receive buffer is 8 MiB (`net.core.rmem_default`, with
+`net.core.rmem_max` 64 MiB, in `/etc/sysctl.d/60-iii-dds-udp-buffers.conf`),
+and in `powerline_slam_live10` one recorder taking all 29 topics lost nothing
+either (below). The split stays, so recordings do not depend on the host
+setting.
 
 `scripts/workspace/run_isolated_powerline_slam_flights.sh` runs the flights
 isolated from other simulations on the host: its own ROS domain, Gazebo
@@ -191,6 +196,17 @@ hold setpoints, and `live08` the terminal-tracking change, with a deeper
 recorder history that lost more samples instead of fewer. Until `live08` one
 recorder lost 115–314 messages on the transport layer per flight; radar and
 camera header stamps showed no gaps.
+
+`powerline_slam_live10` verified the host's larger UDP buffers: the run, fenced
+to 12 cores while a HIL soak shared the host and GPU, recorded with an extra
+recorder taking all 29 topics with default QoS over UDP, as the flights'
+single recorder did until `live08` (`live07`: 162 and 178 messages lost). Both
+flights passed; that recorder's sockets had 8 MiB buffers, it reported no
+loss, the kernel counted no receive-buffer error during the run, and over the
+flights' source-time span every stamped topic holds exactly the same samples
+in it as in the flights' split bags. The flights' streams recorder reported
+one lost message per flight, which is no gap in any stamped stream (it falls
+at the start of the recording or on `/tf`).
 
 ### Time contract (measured)
 
@@ -461,11 +477,14 @@ These fix III behaviour outside the evaluation layout and could move to
   inputs (IMU, forward radar, camera). Which of them to add is open for the
   hardware phase: the recorder costs about 0.4 ms per message on the Pi, and
   upstream drops high-rate streams for that reason.
-- **Large messages over UDP:** with III's UDP-only graph every subscriber of
-  the raw camera image (0.9 MB) overflows a 212 KB socket buffer during each
-  frame's burst and relies on retransmission (the recorder dropped about 50
-  datagrams per second). Raising `net.core.rmem_max` on the host, or
-  compressed images as III's own consumers already use, would avoid it.
+- **Large messages over UDP:** with III's UDP-only graph and the kernel's
+  default 212 KB socket buffer, every subscriber of the raw camera image
+  (0.9 MB) overflowed its socket during each frame's burst and relied on
+  retransmission (the recorder dropped about 50 datagrams per second). Fast
+  DDS 2.14 keeps the kernel default (`receiveBufferSize` 0), so the default,
+  not only the maximum, has to grow. This workstation now has 8 MiB
+  (`live10`: no drops); other hosts that carry III's raw images over UDP, such
+  as the HIL Pi, still have the kernel default.
 
 ## Reproducing
 
