@@ -1,0 +1,17 @@
+{
+  "schema": "iii.powerline-slam-dependency/v1",
+  "purpose": "Source pin of the powerline SLAM estimator run by src/iii_drone_powerline_slam (simulation profile, passive backend).",
+  "repository": "git@github.com:frnyb/powerline-slam.git",
+  "branch": "codex/full-offline-estimator",
+  "commit": "d1ab3052b365479074021db7079e28e4d5be1499",
+  "checkout": ".cache/powerline_slam_checkout",
+  "estimator_environment": ".cache/powerline_slam_estimator",
+  "v13_derived_runtime": {
+    "directory": ".cache/powerline_slam_estimator/v13_py312_runtime",
+    "binding": "corridor_simulation/provenance/WO-2026-09-25-003/05_V13_RUNTIME_BINDING_v2.json",
+    "binding_sha256": "8dd1c7ca25e6ef1e3b15ad40e428bac204575f659f3e0f0ca4644fed687ac504",
+    "python_aggregate_sha256": "08e40f917ed68ba4747d88225bc129372ad516de92a0df85de6b3cc5eadbf226",
+    "native_build_record": "NATIVE_BUILD.json"
+  },
+  "work_order": "WO-2026-10-05-001"
+}

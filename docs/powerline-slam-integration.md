@@ -1,13 +1,20 @@
 # Powerline SLAM integration readiness
 
-This workspace is prepared for integrating the powerline SLAM estimator
-(`powerline_perception` in the `powerline_slam` repository) into the live III
-simulation. Only the preparation lives here: the sensor layout the estimator was
-developed on, its radar simulator configuration, recording and analysis tools,
-an estimator build for this Python/ROS distribution, and generators for the
-estimator's static inputs. The integration itself (estimator node, runtime
-wiring, acceptance criteria) is defined by a research work order in the
-powerline_slam workflow; the decisions it has to make are listed at the end.
+This workspace integrates the powerline SLAM estimator (`powerline_perception`
+in the `powerline_slam` repository) with the III simulation. It holds:
+
+- the sensor layout the estimator was developed on and its radar simulator
+  configuration;
+- recording and analysis tools;
+- an estimator build for this Python/ROS distribution and generators for the
+  estimator's static inputs;
+- since WO-2026-10-05-001, a passive perception backend: the separate lifecycle
+  node `/perception/powerline_slam/powerline_slam`, selectable at boot instead
+  of the legacy perception stack (next section).
+
+The acceptance criteria are defined by research work orders in the
+powerline_slam workflow. The preparation's recommendations are listed under
+"Decisions for the integration work order".
 
 All work is on the `powerline-slam` branch of the workspace and of
 III-Drone-Core, III-Drone-Configuration, III-Drone-Interfaces,
@@ -17,6 +24,103 @@ III-Drone-Simulation, Gazebo-simulation-assets and PX4-Autopilot
 production simulation (`d4s_dc_drone`) stays the default; it shares the
 magnetometer fix (finding 1). The changes that are not specific to the
 evaluation layout are listed at the end.
+
+## Powerline SLAM perception backend (passive)
+
+WO-2026-10-05-001 adds the estimator to the canonical III system as a
+perception backend. Its output is passive: no mission, maneuver or overview
+consumer reads it.
+
+### Selector
+
+The constant parameter `/perception/processing_stack` (`legacy` or
+`powerline_slam`, default `legacy`) selects the perception stack. Supervision
+reads it from the active parameter set before it builds the launch graph and
+latches it for the booted session; there is no hot switching.
+
+- `legacy`: the graph is unchanged (regression-locked against Supervision
+  `186ac916`).
+- `powerline_slam`:
+  - replaces `hough_transformer`, `pl_dir_computer` and `pl_mapper` with the
+    entity `powerline_slam`;
+  - is legal only in the `sim` profile with `/tf/sim/sensor_layout:
+    d4s_dc_drone_powerline_eval`; other combinations fail before anything
+    launches;
+  - the node active-depends on `tf` and `sim_assets`, and nothing depends on it.
+
+`/perception/powerline_slam/runtime_config` names the node's runtime
+configuration (`iii.powerline-slam-runtime-config/v1`). It lists:
+
+- the calibration set;
+- the map and mission priors;
+- the gyro covariance;
+- the estimator contracts;
+- the pylon checkpoint;
+- an optional `node` section: worker processes, output directory, ledger and
+  timeouts.
+
+The tracked defaults keep `legacy` and `none`. An integration test selects a
+living parameter set of this clone instead. For example, the snapshot holds a
+copy of the active set with the stack, the layout and the configuration path
+changed:
+
+```bash
+printf 'version: 1\nactive_parameter_set: snapshots/powerline_slam_integration_a_to_b.yaml\n' > .config/iii_drone/profiles/sim.yaml
+iii system boot
+iii system start --select-nodes powerline_slam --include-dependencies   # tf, sim_assets and powerline_slam only
+```
+
+### Node
+
+Package `src/iii_drone_powerline_slam` (see its README) has two processes:
+
+- **ROS process:** raw subscriptions to the six runtime inputs, `camera_info`
+  (a calibration check) and `timesync_status` (must stay silent), and an
+  unbounded, order-preserving forwarder.
+- **Estimator host process:** runs the pinned powerline_slam checkout's
+  incremental pipeline, the same code as the offline III replay.
+
+Keeping the estimator out of the ROS interpreter is required. When it ran in a
+thread of the ROS process it held the interpreter lock, and about 90 % of the
+best-effort PX4 samples were lost in a 1.0x bag playback.
+
+Outputs, under `/perception/powerline_slam`:
+
+| Topic | Content |
+|---|---|
+| `powerline` | `iii_drone_interfaces/Powerline`: confirmed conductors in `drone`, source-time stamps, generation/epoch-scoped stable ids; no lines while fail-closed |
+| `diagnostics` | `StringStamped` JSON per frame (v13 health, runner/global state, anchors, local-frame generation, continuity guard, bridge, fail-closed reason), and a runtime record once per second (counters, queues, latency) |
+| `state` | `Idle`, `Waiting`, `Running` or `FailClosed` |
+
+Service `flush_and_finalize` closes the input and runs the post-traversal
+finalization. It is for development and evaluation only.
+
+### Estimator environment and pin
+
+`deps/powerline-slam.json` pins the powerline_slam commit and its v13-derived
+runtime. Set the environment up in two steps:
+
+1. On the host, run `scripts/workspace/sync_powerline_slam_checkout.sh`. It
+   checks out the pin, stages the Git-ignored GTSAM fixed-lag sources and
+   materializes the runtime against its binding.
+2. In the devcontainer, run
+   `scripts/workspace/setup_powerline_slam_estimator_env.sh --v13-runtime`. It
+   builds the native modules.
+
+The package is excluded from the ARM64 cross-build, and Supervision's dependency
+on it is limited to the sim profile.
+
+### Evidence (WO-2026-10-05-001)
+
+The evidence is in the powerline_slam provenance root
+`corridor_simulation/provenance/WO-2026-10-05-001/`:
+
+- the III-native contracts and their amendments A1–A4;
+- the offline replay of the immutable `powerline_slam_live11` flights
+  (Backlog 03);
+- the node, adapter and selector evidence (Backlogs 04–06);
+- the bag-playback online/offline parity (Backlog 07);
+- the regression and resource summary (Backlog 08).
 
 ## Sensor layout `d4s_dc_drone_powerline_eval`
 

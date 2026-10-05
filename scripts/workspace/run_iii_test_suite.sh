@@ -63,6 +63,7 @@ packages=(
   iii_drone_mission
   iii_drone_runtime
   iii_drone_simulation
+  iii_drone_powerline_slam
   iii_drone_supervision
   iii_drone_gc
 )

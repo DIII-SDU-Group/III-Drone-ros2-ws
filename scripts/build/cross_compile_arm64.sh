@@ -85,7 +85,7 @@ colcon_args=(
   --log-base /out/log
   build
   --base-paths src
-  --packages-skip iii_drone_simulation micro_ros_agent microxrcedds_agent micro_ros_msgs btcpp_ros2_samples
+  --packages-skip iii_drone_simulation iii_drone_powerline_slam micro_ros_agent microxrcedds_agent micro_ros_msgs btcpp_ros2_samples
   --packages-skip-regex '^example_.*$'
   --build-base /out/build
   --install-base /home/iii/ws/install

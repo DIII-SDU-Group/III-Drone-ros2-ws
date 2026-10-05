@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# The powerline_slam lifecycle node runs inside this workspace's powerline SLAM estimator environment: the
+# v13-derived Python 3.12 runtime, the GTSAM fixed-lag build, CPU torch and the pinned powerline_slam checkout
+# (scripts/workspace/setup_powerline_slam_estimator_env.sh, deps/powerline-slam.json).
+set -eo pipefail
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+workspace="${WORKSPACE_DIR:-$(cd "${script_dir}/../../../.." && pwd)}"
+env_file="${III_POWERLINE_SLAM_ENV:-${workspace}/.cache/powerline_slam_estimator/env.sh}"
+if [[ ! -f "${env_file}" ]]; then
+  echo "powerline_slam_node: estimator environment ${env_file} is missing; run" \
+       "scripts/workspace/setup_powerline_slam_estimator_env.sh" >&2
+  exit 78
+fi
+# shellcheck source=/dev/null
+source "${env_file}"
+exec python -m iii_drone_powerline_slam.node "$@"
