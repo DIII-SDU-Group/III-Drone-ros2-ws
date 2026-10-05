@@ -42,10 +42,10 @@ src/BehaviorTree.ROS2 c72596242684ed6f03796665908d337269afb4b3
 src/III-Drone-Configuration 7909eb36dd3f1be14affb750f68649b49e5e60eb
 src/III-Drone-Contracts ec9dcc240ba29709335c6d39ac905fd3b8ac2f1c
 src/III-Drone-Core 628f8423be96d0d4d7e039c04448641e1a8b5f5d
-src/III-Drone-GC 06f8cb783f99ee188e07bd9e1c2c838ed201280b
+src/III-Drone-GC 9af0a12951541ef5d7edfa6b3ac421d493596fae
 src/III-Drone-Interfaces 9564ac178e6c08f598890d9147aafe3513f6747e
 src/III-Drone-Mission abf4ea2b0024fed0ec93c5463abe2d3b3df274d9
-src/III-Drone-Runtime 4e226d4f099ffe3d6e02b5ac26508de0325a7ca7
+src/III-Drone-Runtime 5c455a85fc95a983d9a1457a5ffab3311a8858da
 src/III-Drone-Simulation 8d89060229e1e0fe23fae6b8adf4534a7f2c7b89
 src/III-Drone-Simulation/Gazebo-simulation-assets c017de056105e828016c81ca729bc32b2aec2b43
 src/III-Drone-Supervision a42c40eac588d5b863cfb5c87e68af6a7504bbac
@@ -56,4 +56,4 @@ src/micro-ROS-Agent 52abdf5a9897637b2539cb1c239e1ec4fa92e01c
 src/micro_ros_msgs e65ab21bd0733ebff2af6317d573cc584efa5893
 src/px4-ros2-interface-lib 42803ac483b767b48a69869520e9907787f125a8
 src/px4_msgs 5e0e33cc6f192c1ad10548ffb25473fb618b9858
-tools/III-Drone-CLI 36063748dead4c23ad5965ecedf455ed39e3b4b5
+tools/III-Drone-CLI 6ae12a647aac46d6e8f0867b7e23d108b090f3ee
