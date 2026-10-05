@@ -21,14 +21,16 @@ from typing import Any
 import numpy as np
 
 TOPICS = ("vehicle_status", "vehicle_land_detected", "vehicle_thrust_setpoint",
-          "trajectory_setpoint", "vehicle_local_position", "hover_thrust_estimate")
+          "trajectory_setpoint", "vehicle_local_position", "hover_thrust_estimate",
+          "vehicle_local_position_groundtruth")
 
 # Pass criteria.
 MIN_PUSH_THRUST_OVER_HOVER = 1.05   # the push carries the vehicle with margin
 MAX_PUSH_THRUST = 0.98              # below PX4's thrust limit: not saturated
-# Stays pressed against the cable. The estimated altitude of a vehicle held
-# still drifts by 1-2 cm (EKF vertical velocity bias ~0.05 m/s); a release
-# jump shows as 0.6-0.9 m/s.
+# Stays pressed against the cable; a release jump shows as 0.6-0.9 m/s. Judged
+# on the simulator's ground truth when the log has it: the estimated altitude
+# of a vehicle held still drifts, usually 1-2 cm but 6.3 cm once (HIL
+# 2026-10-05, ground truth still within 1 mm). Real flights use the estimate.
 MAX_PRESSED_EXCURSION_M = 0.05
 MAX_PRESSED_SPEED_M_S = 0.10
 MAX_TAKEOFF_SAG_M = 0.05            # below CableTakeoff's reference
@@ -146,9 +148,18 @@ def analyze(topics: dict[str, dict[str, np.ndarray]]) -> dict[str, Any] | None:
     position = topics["vehicle_local_position"]
     tp = seconds(position["timestamp"])
     pressed_p = (tp >= t_established) & (tp < t_takeoff)
+    pressed_source, pressed_z, pressed_vz = "estimate", position["z"], position["vz"]
+    truth = topics.get("vehicle_local_position_groundtruth")
+    if truth is not None and len(truth.get("timestamp", ())):
+        t_truth = seconds(truth["timestamp"])
+        pressed_truth = (t_truth >= t_established) & (t_truth < t_takeoff)
+        if pressed_truth.any():
+            pressed_source, pressed_z, pressed_vz = "groundtruth", truth["z"], truth["vz"]
+            pressed_p = pressed_truth
     if pressed_p.any():
-        excursion = float(np.ptp(position["z"][pressed_p]))
-        speed = float(np.abs(position["vz"][pressed_p]).max())
+        excursion = float(np.ptp(pressed_z[pressed_p]))
+        speed = float(np.abs(pressed_vz[pressed_p]).max())
+        result["pressed_source"] = pressed_source
         result["pressed_excursion_m"] = round(excursion, 4)
         result["pressed_max_speed_m_s"] = round(speed, 3)
         if excursion > MAX_PRESSED_EXCURSION_M or speed > MAX_PRESSED_SPEED_M_S:
