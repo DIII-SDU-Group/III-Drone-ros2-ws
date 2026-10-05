@@ -84,12 +84,22 @@
       Environment=ROS_LOCALHOST_ONLY=0
       Environment=ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
       Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-      Environment=FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      Environment=FASTDDS_BUILTIN_TRANSPORTS=DEFAULT
       UnsetEnvironment=CYCLONEDDS_URI
   loop:
     - iii-system-daemon
     - iii-runtime-api
   when: iii_profile == 'hil'
+  notify: Reload systemd for III control plane
+
+- name: Remove the shared-memory trial override
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/iii-system-daemon.service.d/40-shm-trial.conf
+    - /etc/systemd/system/iii-runtime-api.service.d/40-shm-trial.conf
+    - /etc/iii/shm-trial.env
   notify: Reload systemd for III control plane
 
 - name: Remove HIL middleware overrides for non-HIL profiles
