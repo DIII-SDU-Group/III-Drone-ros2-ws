@@ -92,3 +92,19 @@ def test_usb_ethernet_is_owned_once_by_first_boot_networking() -> None:
     assert "addresses: [10.42.0.15/24]" in first_boot
     assert "dhcp4: true" in first_boot
     assert "workstation-ethernet" not in px4_network
+
+
+def test_runtime_user_keeps_its_shared_memory_across_logouts() -> None:
+    # Fast DDS shared-memory transport (the REAL profile's default) breaks when
+    # logind removes the runtime user's POSIX shared memory after an SSH logout.
+    tasks = _read("deployment/ansible/roles/runtime_control_plane/tasks/main.yml")
+    handlers = _read("deployment/ansible/roles/runtime_control_plane/handlers/main.yml")
+    assert "dest: /etc/systemd/logind.conf.d/50-iii-keep-ipc.conf" in tasks
+    assert "RemoveIPC=no" in tasks
+    assert "notify: Restart systemd-logind" in tasks
+    assert "name: Restart systemd-logind" in handlers
+    # Every profile: the real aircraft runs shared memory too.
+    task = tasks.split("- name: Keep the runtime user's shared memory across logouts", 1)[1]
+    task = task.split("\n- name:", 1)[0]
+    assert "when:" not in task
+

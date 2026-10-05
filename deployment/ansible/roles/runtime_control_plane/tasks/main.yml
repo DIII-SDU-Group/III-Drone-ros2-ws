@@ -15,6 +15,31 @@
     group: "{{ iii_runtime_group_effective }}"
     mode: "0644"
 
+- name: Create logind drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/logind.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Keep the runtime user's shared memory across logouts
+  ansible.builtin.copy:
+    dest: /etc/systemd/logind.conf.d/50-iii-keep-ipc.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Login]
+      # The III services run as a regular user. With RemoveIPC=yes (the
+      # default) logind deletes that user's POSIX shared memory about 10 s
+      # after its last login session ends, e.g. an SSH logout. Fast DDS opens
+      # its peers' shared-memory segments by name, so every participant
+      # created afterwards (a respawned node, a mission's bag recorder) loses
+      # shared-memory delivery from the running ones (found 2026-10-05).
+      RemoveIPC=no
+  notify: Restart systemd-logind
+
 - name: Install direct workspace runtime units
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../systemd/{{ item }}"
