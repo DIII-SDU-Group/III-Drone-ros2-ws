@@ -56,7 +56,7 @@ sets it for the lab.
 2. On the operator laptop, [install the `deploy` ground-computer profile](ground-computer-installation.md),
    provision `~/.config/iii-ground-control.env`, and run
    `~/.local/share/iii/gc/workspace/scripts/workspace/iii_ground_control.sh start`.
-   Confirm the pinned aircraft, runtime, and profile before login.
+   Confirm the pinned aircraft, runtime, and profile before connecting.
 3. From Mission, use **Start aircraft system** for the canonical supervised
    boot/start path and confirm every readiness stage. The flight controller must
    be powered and connected first: the runtime API refuses runtime lifecycle

@@ -24,7 +24,6 @@ test "$III_SYSTEM_PROFILE" = real
 test "$III_ENVIRONMENT_PROFILE" = field
 test "$III_DEFAULT_TARGET" = real
 test "$III_RUNTIME_API_URL" = http://iii.local:8765
-test -z "${III_RUNTIME_API_TOKEN_FILE:-}"  # Runtime API is intentionally unauthenticated
 test -z "${GZ_IP:-}"
 test "$(command -v iii)" = "$PWD/tools/III-Drone-CLI/bin/iii"
 # The shell owns import paths; interpreter packages (pydantic v2) belong to
@@ -104,7 +103,6 @@ test -z "$III_HIL_PI_ADDRESS"
 test "$III_RUNTIME_API_HOST" = iii.local
 test "$III_SSH_HOST" = iii.local
 test "$III_RUNTIME_API_URL" = http://iii.local:8765
-test -z "${III_RUNTIME_API_TOKEN_FILE:-}"
 test -z "${GZ_IP:-}"
 # The resolved peer pins the DDS/PX4 transport route but never replaces the
 # aircraft hostname used for runtime controls.
@@ -155,21 +153,16 @@ test -z "${III_HIL_RESOLVED_PI_ADDRESS:-}"
     )
 
 
-def test_remote_runtime_binding_preserves_explicit_url_and_drops_stale_token(
-    tmp_path: Path,
-) -> None:
+def test_remote_runtime_binding_preserves_explicit_url(tmp_path: Path) -> None:
     environment = {
         "HOME": str(tmp_path),
         "PATH": "/usr/local/bin:/usr/bin:/bin",
         "III_RUNTIME_API_URL": "https://runtime.example.test",
-        "III_RUNTIME_API_TOKEN_FILE": str(tmp_path / "explicit.token"),
     }
     command = """
 set -eu
 source setup/setup_field.bash
 test "$III_RUNTIME_API_URL" = https://runtime.example.test
-# A stale token-file setting must not turn commands into credential lookups.
-test -z "${III_RUNTIME_API_TOKEN_FILE:-}"
 """
     result = subprocess.run(
         ["bash", "--noprofile", "--norc", "-c", command],

@@ -54,8 +54,8 @@ def test_runtime_environment_does_not_require_credentials_or_immutable_release()
     environment = _read(
         "deployment/ansible/roles/runtime_control_plane/templates/runtime.env.j2"
     )
-    assert "III_RUNTIME_API_REQUIRE_SECRETS=0" in environment
     assert "/home/iii/.config/iii_drone" in environment
+    assert "REQUIRE_SECRETS" not in environment
     assert "CREDENTIALS_PATH" not in environment
     assert "/opt/iii" not in environment
 

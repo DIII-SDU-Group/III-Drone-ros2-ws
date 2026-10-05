@@ -109,24 +109,6 @@ def test_request_ids_do_not_replay_between_runs():
     assert first != second
 
 
-def test_browser_password_falls_back_to_runtime_token_file(monkeypatch, tmp_path):
-    token_file = tmp_path / "runtime-token"
-    token_file.write_text("provisioned-secret\n", encoding="ascii")
-    monkeypatch.delenv("III_RUNTIME_API_BROWSER_PASSWORD", raising=False)
-    monkeypatch.setenv("III_RUNTIME_API_TOKEN_FILE", str(token_file))
-
-    assert smoke.default_browser_password() == "provisioned-secret"
-
-
-def test_explicit_browser_password_takes_precedence(monkeypatch, tmp_path):
-    token_file = tmp_path / "runtime-token"
-    token_file.write_text("runtime-token\n", encoding="ascii")
-    monkeypatch.setenv("III_RUNTIME_API_TOKEN_FILE", str(token_file))
-    monkeypatch.setenv("III_RUNTIME_API_BROWSER_PASSWORD", "operator-secret")
-
-    assert smoke.default_browser_password() == "operator-secret"
-
-
 def test_configuration_revision_requires_integer_revision():
     assert smoke.configuration_revision(
         {"latest": {"manifest": {"status": {"tuning_revision": 17}}}}

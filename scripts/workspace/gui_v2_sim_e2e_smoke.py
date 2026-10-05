@@ -299,7 +299,7 @@ class SmokeRunner:
             login = self.http_json(
                 "POST",
                 f"{self.args.proxy_url}/proxy/session/login",
-                {"password": self.args.password, "client_label": "gui-v2-sim-e2e-smoke"},
+                {"client_label": "gui-v2-sim-e2e-smoke"},
                 step_name="session-login",
             )
             token = login["session_token"]
@@ -1561,21 +1561,6 @@ class SmokeRunner:
             pass
 
 
-def default_browser_password() -> str:
-    explicit = os.environ.get("III_RUNTIME_API_BROWSER_PASSWORD")
-    if explicit:
-        return explicit
-    token_file = os.environ.get("III_RUNTIME_API_TOKEN_FILE")
-    if token_file:
-        try:
-            token = Path(token_file).read_text(encoding="ascii").strip()
-        except OSError:
-            token = ""
-        if token:
-            return token
-    return "dev-password"
-
-
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     workspace = Path(__file__).resolve().parents[2]
@@ -1595,7 +1580,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             f"http://127.0.0.1:{os.environ.get('III_GC_FRONTEND_PORT', '15174')}",
         ),
     )
-    parser.add_argument("--password", default=default_browser_password())
     parser.add_argument(
         "--expected-profile",
         choices=("sim", "hil"),

@@ -195,7 +195,7 @@ start_unlocked() {
     return 3
   fi
   echo "Ground control ready: http://127.0.0.1:$frontend_port"
-  echo "Select and positively confirm the expected aircraft before login."
+  echo "Select and positively confirm the expected aircraft before connecting."
 }
 
 start() {
