@@ -30,6 +30,7 @@ from cv_bridge import CvBridge
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
 from px4_msgs.msg import VehicleOdometry
+from rclpy.exceptions import InvalidHandle
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -41,6 +42,14 @@ from iii_drone_interfaces.msg import Powerline
 
 MAX_DURATION_SEC = 3600.0
 IMAGE_SAVE_PERIOD_SEC = 1.0
+# Queued messages are taken directly every POLL_PERIOD_SEC. Spinning an rclpy
+# executor instead cost a Python wait-set rebuild per message (2.3 ms on the
+# Pi: 42 % of a core at 168 messages/s, the callbacks themselves ~5 %).
+POLL_PERIOD_SEC = 0.05
+# Each queue holds well over one poll period of its topic (100 Hz odometry is
+# 5 messages per poll); large camera and point cloud messages arrive slower.
+QUEUE_DEPTH = 50
+LARGE_MESSAGE_QUEUE_DEPTH = 10
 TOPICS = {
     # The simulated camera crosses the HIL link as lossless PNG (see
     # iii_drone_simulation sim_assets.launch.py); raw frames stay on the workstation.
@@ -98,6 +107,16 @@ def _json_float(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def _take(subscription: Any) -> Any | None:
+    """The oldest queued message of a subscription no executor waits on."""
+    try:
+        with subscription.handle:
+            taken = subscription.handle.take_message(subscription.msg_type, subscription.raw)
+    except InvalidHandle:
+        return None
+    return None if taken is None else taken[0]
+
+
 def _header_metadata(message: Any) -> dict[str, Any]:
     header = getattr(message, "header", None)
     if header is None:
@@ -127,24 +146,28 @@ class HilPerceptionProbe(Node):
         self._jsonl_path = artifact_dir / "perception_probe.jsonl"
         self._jsonl = self._jsonl_path.open("x", encoding="utf-8", buffering=1)
 
-        qos = QoSProfile(
-            history=HistoryPolicy.KEEP_LAST,
-            depth=10,
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.VOLATILE,
-        )
+        def qos(depth: int) -> QoSProfile:
+            return QoSProfile(
+                history=HistoryPolicy.KEEP_LAST,
+                depth=depth,
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                durability=DurabilityPolicy.VOLATILE,
+            )
+
+        small, large = qos(QUEUE_DEPTH), qos(LARGE_MESSAGE_QUEUE_DEPTH)
+        # Never added to an executor: poll() takes the queued messages.
         self._subscriptions = [
-            self.create_subscription(CompressedImage, TOPICS["camera_image"], self._on_image, qos),
-            self.create_subscription(PointCloud2, TOPICS["mmwave_points"], self._on_mmwave, qos),
-            self.create_subscription(Float32, TOPICS["hough_yaw"], self._on_hough_yaw, qos),
-            self.create_subscription(PoseStamped, TOPICS["direction_pose"], self._on_direction_pose, qos),
+            self.create_subscription(CompressedImage, TOPICS["camera_image"], self._on_image, large),
+            self.create_subscription(PointCloud2, TOPICS["mmwave_points"], self._on_mmwave, large),
+            self.create_subscription(Float32, TOPICS["hough_yaw"], self._on_hough_yaw, small),
+            self.create_subscription(PoseStamped, TOPICS["direction_pose"], self._on_direction_pose, small),
             self.create_subscription(
-                PointCloud2, TOPICS["transformed_points"], self._on_transformed_points, qos
+                PointCloud2, TOPICS["transformed_points"], self._on_transformed_points, large
             ),
-            self.create_subscription(Powerline, TOPICS["powerline"], self._on_powerline, qos),
-            self.create_subscription(Odometry, TOPICS["gazebo_odometry"], self._on_gazebo_odometry, qos),
+            self.create_subscription(Powerline, TOPICS["powerline"], self._on_powerline, small),
+            self.create_subscription(Odometry, TOPICS["gazebo_odometry"], self._on_gazebo_odometry, small),
             self.create_subscription(
-                VehicleOdometry, TOPICS["px4_odometry"], self._on_px4_odometry, qos
+                VehicleOdometry, TOPICS["px4_odometry"], self._on_px4_odometry, small
             ),
         ]
         self.get_logger().info(
@@ -153,6 +176,15 @@ class HilPerceptionProbe(Node):
 
     def _elapsed(self) -> float:
         return time.monotonic() - self._start_monotonic
+
+    def poll(self) -> None:
+        """Hand every queued message to its callback, without an executor."""
+        for subscription in self._subscriptions:
+            for _ in range(subscription.qos_profile.depth):
+                message = _take(subscription)
+                if message is None:
+                    break
+                subscription.callback(message)
 
     def _bucket(self, index: int) -> dict[str, Any]:
         return self._buckets.setdefault(
@@ -352,11 +384,12 @@ def main(argv: list[str] | None = None) -> int:
             remaining = deadline - time.monotonic()
             if remaining <= 0.0:
                 break
-            rclpy.spin_once(node, timeout_sec=min(0.2, remaining))
+            node.poll()
             if interrupted:
                 reason = "interrupted"
                 break
             node.flush_closed_buckets()
+            time.sleep(min(POLL_PERIOD_SEC, remaining))
         if interrupted:
             reason = "interrupted"
         elif time.monotonic() < deadline and not rclpy.ok():
