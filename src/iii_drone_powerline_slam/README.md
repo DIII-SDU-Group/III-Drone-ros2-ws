@@ -219,6 +219,37 @@ Nothing is resumed. Recovery is a deactivate/activate cycle (a fresh epoch) or
 a process restart. If the node had to fail closed on its own because the host
 did not read its input, the host process is replaced at the next activation.
 
+**Measured configuration.** WO-2026-10-06-001 measured this `node` section on a
+16-core, 32-thread workstation with one RTX 2070 SUPER, in a container limited
+to CPUs 12–15 and 20–31:
+
+```json
+{
+  "pipeline": "rt", "intake": "waitset", "evidence": false,
+  "detector_workers": 4, "radar_workers": 1, "doppler_workers": 2,
+  "mask_workers": 1, "mask_fallback_workers": 4,
+  "mask_device": "cuda", "mask_guard": 0.0001,
+  "cuda_torch": "/home/iii/ws/.cache/powerline_slam_estimator/torch-cuda",
+  "affinity": {
+    "node": [13], "host": [12, 28],
+    "detector_workers": [20, 21, 24, 25], "mask_worker": [22],
+    "radar_workers": [23], "doppler_workers": [26, 27],
+    "mask_fallback_workers": [14, 15, 30, 31]
+  },
+  "overload": {
+    "contract": "REALTIME_OVERLOAD_v1", "live_age_budget_s": 2.0,
+    "startup_timeout_s": 10.0, "max_unprocessed_events": 5000,
+    "max_node_queue": 1000
+  }
+}
+```
+
+The estimator host has both hardware threads of one physical core. With this
+section both `powerline_slam_live11` flights run at playback rate 1.0 with a
+receipt-to-frame latency of at most 0.7 s (p95) and 1.03 s (maximum) after
+start-up. The CPU-only path (`mask_device: cpu`) is exact as well, but on this
+workstation it processes only 0.63–0.66 source seconds per wall second.
+
 ## Tests
 
 `colcon test --packages-select iii_drone_powerline_slam` runs the message and
@@ -228,3 +259,10 @@ checks are in the powerline_slam provenance of WO-2026-10-05-001:
 
 - controlled-replay determinism;
 - online/offline parity on the immutable `powerline_slam_live11` bags.
+
+The real-time checks are in the provenance of WO-2026-10-06-001:
+
+- CPU/CUDA pylon-mask equivalence on every camera frame of both flights;
+- the closure at playback rate 1.0 on both flights, after a reactivation and
+  after a process restart, with outputs identical to the reference;
+- the `REALTIME_OVERLOAD_v1` fixture.

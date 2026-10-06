@@ -100,7 +100,7 @@ finalization. It is for development and evaluation only.
 The reference configuration is lossless and unbounded, and on this workstation
 it processes about 0.55 source seconds per wall second. The package README
 describes the settings for live operation (`node` section of the runtime
-configuration):
+configuration) and gives the measured configuration as an example:
 
 - **`pipeline: rt`**: the same estimator with split camera workers, compact
   worker results, a Radar-U frontend worker and incremental bookkeeping.
@@ -145,6 +145,36 @@ The evidence is in the powerline_slam provenance root
 - the node, adapter and selector evidence (Backlogs 04–06);
 - the bag-playback online/offline parity (Backlog 07);
 - the regression and resource summary (Backlog 08).
+
+### Evidence (WO-2026-10-06-001)
+
+Real-time operation was measured on the office workstation (RTX 2070 SUPER)
+while the HIL soak ran on the same host. The evidence is in the powerline_slam
+provenance root `corridor_simulation/provenance/WO-2026-10-06-001/`:
+
+- the resource and coexistence baseline (Backlog 01);
+- the CPU baseline of the reference node (Backlog 02);
+- the CPU/CUDA equivalence freeze and the GPU camera path (Backlog 03);
+- the camera IPC reduction and the main serial path (Backlogs 04–05);
+- `REALTIME_OVERLOAD_v1`, its addendum and its test results (Backlog 06);
+- the frozen 1.0× closure, its addendum and its results (Backlog 07);
+- the regression and freeze (Backlog 08).
+
+Both `powerline_slam_live11` flights were played at rate 1.0 through the
+canonical system in the frozen live configuration, after a
+deactivate/reactivate cycle and after a process kill and respawn:
+
+| | A→B | B→A |
+|---|---|---|
+| Receipt-to-frame latency after start-up, p95 | 625–638 ms | 676–687 ms |
+| Receipt-to-frame latency after start-up, max | 853–880 ms | 985–1028 ms |
+| Overload triggers | none | none |
+| Published messages against the reference | identical | identical |
+| Pylon masks against the CPU reference | identical | identical |
+
+The bags deliver 0.92–0.94 source seconds per wall second at rate 1.0. Played
+at rate 1.25, the node sustains 1.14–1.16 source seconds per wall second with
+identical outputs.
 
 ## Sensor layout `d4s_dc_drone_powerline_eval`
 
