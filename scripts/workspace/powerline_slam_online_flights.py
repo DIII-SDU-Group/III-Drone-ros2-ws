@@ -110,8 +110,8 @@ class OnlineRunner(flights.CorridorRunner):
         if not system.success or "booted: false" in str((system.data or {}).get("stdout", "")).lower():
             self.require(self.tools.system("boot", timeout_sec=180), "boot canonical system")
         for entity in SCOPED_ENTITIES:
-            if entity == "powerline_slam" and self.skip_backend:      # simulation-only baseline: the backend stays down
-                continue
+            if entity == "powerline_slam" and self.skip_backend:      # simulation-only baseline: the backend stays down,
+                entity = "sim_assets"                                 # its sensor bridges (and /clock) still run
             self.require(self.tools.system("start", entity_id=entity, include_dependencies=True, timeout_sec=300),
                          f"start {entity} with its dependencies")
         state = self.require(self.tools.px4("status", timeout_sec=20), "read PX4 status")
