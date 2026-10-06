@@ -16,6 +16,12 @@ Differences from the recording driver:
   maneuver controller accepted it, and ``end`` names the source time at which the exercise ends.  These are the backend's live nominal mission prior
   (it carries the command only: target pose in the Gazebo world ENU design frame and the source time of issuing it).
 
+With ``--traversal-epochs`` (TRAVERSAL_EPOCH_v1 of the backend) every flight is one traversal instance: ``--flights``
+may repeat a direction, instance ``NN_<direction>`` has its own directory, and after the flight's post-roll -- its last
+prescribed maneuver has completed and the aircraft holds -- a ``traversal_complete`` event is published on the command
+topic (its source time is the simulation time of publication; it names nothing but the instance).  The next flight
+starts when the harness names the instance in ``--between-flights-file``; this driver never reads the backend.
+
 Per flight the run directory holds ``flight_plan.json``, ``mission_phase_evidence.json``, ``trajectory.json``,
 ``command_events.json`` and ``verification.json``.
 """
@@ -92,6 +98,8 @@ class OnlineRunner(flights.CorridorRunner):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self.skip_backend = bool(kwargs.pop("skip_backend", False))
+        self.traversal_epochs = bool(kwargs.pop("traversal_epochs", False))
+        self.backend_first_s = float(kwargs.pop("backend_first_s", 0.0))
         super().__init__(*args, **kwargs)
         self.commands: CommandPublisher | None = None
 
@@ -109,7 +117,14 @@ class OnlineRunner(flights.CorridorRunner):
         system = self.tools.system("status")
         if not system.success or "booted: false" in str((system.data or {}).get("stdout", "")).lower():
             self.require(self.tools.system("boot", timeout_sec=180), "boot canonical system")
-        for entity in SCOPED_ENTITIES:
+        order = list(SCOPED_ENTITIES)
+        if self.backend_first_s > 0:
+            # start-up test: the backend is activated before the PX4 bridge and the flight path exist, and has this long
+            # on its own (the accepted behaviour is to fail closed: STARTUP_TIMEOUT)
+            order = ["configuration_server", "powerline_slam", "custom_operation"]
+        for entity in order:
+            if entity == "custom_operation" and self.backend_first_s > 0:
+                time.sleep(self.backend_first_s)
             if entity == "powerline_slam" and self.skip_backend:      # simulation-only baseline: the backend stays down,
                 entity = "sim_assets"                                 # its sensor bridges (and /clock) still run
             self.require(self.tools.system("start", entity_id=entity, include_dependencies=True, timeout_sec=300),
@@ -166,7 +181,7 @@ class OnlineRunner(flights.CorridorRunner):
             self.commands.publish(command_event(kind, begin_ns, leg))
         return begin_ns
 
-    def run_flight(self, direction: str, flight_dir: Path) -> dict[str, Any]:
+    def run_flight(self, direction: str, flight_dir: Path, instance: str | None = None) -> dict[str, Any]:
         assert self.clock is not None and self.commands is not None
         started_at = flights.utc_now()
         staging = self.resolve_waypoint(dataset.Waypoint(flights.STAGING_FIXTURE, "staging", hold_sec=1.0))
@@ -192,6 +207,9 @@ class OnlineRunner(flights.CorridorRunner):
             end_ns = self.clock.now_ns() + COMMAND_LEAD_NS
             self.commands.publish(command_event("end", end_ns))
             self.clock.sleep_until_ns(end_ns + int(flights.POST_ROLL_SEC * 1e9))
+            if self.traversal_epochs:                   # the last prescribed maneuver has completed: the traversal is over
+                self.commands.publish({"kind": "traversal_complete", "leg": None, "source_time_ns": self.clock.now_ns(),
+                                       "traversal": instance or direction})
         except Exception:
             try:                                    # the exercise ended here: no prior stays in force
                 self.commands.publish(command_event("end", self.clock.now_ns() + COMMAND_LEAD_NS))
@@ -206,7 +224,9 @@ class OnlineRunner(flights.CorridorRunner):
         result = {"status": "passed", "direction": direction, "sim_model": flights.SIM_MODEL, "started_at": started_at,
                   "completed_at": flights.utc_now(), "leg_count": len(plan), "source_time_span_ns": [begins[0], end_ns],
                   "leg_command_attempts": dict(self._leg_attempts), "tools_rebuilds": list(self.tools_rebuilds),
-                  "scoped_entities": list(SCOPED_ENTITIES), "recorded": False}
+                  "scoped_entities": list(SCOPED_ENTITIES), "recorded": False, "instance": instance,
+                  "traversal_complete_source_time_ns": next((e["source_time_ns"] for e in reversed(self.commands.events)
+                                                             if e["kind"] == "traversal_complete"), None) if self.traversal_epochs else None}
         flights.write_json(flight_dir / "verification.json", result)
         return result
 
@@ -228,6 +248,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--keep-running", action="store_true")
     parser.add_argument("--skip-backend", action="store_true",
                         help="do not start powerline_slam: the same exercise as a simulation-only baseline")
+    parser.add_argument("--backend-first-s", type=float, default=0.0,
+                        help="start-up test: start powerline_slam before the flight path and wait this long before starting it")
+    parser.add_argument("--traversal-epochs", action="store_true",
+                        help="one traversal instance per flight (directions may repeat); publish traversal_complete after each")
     parser.add_argument("--between-flights-file", type=Path, default=None,
                         help="after each flight, wait until this file names the flight (a harness scores it first)")
     args = parser.parse_args(argv)
@@ -235,6 +259,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     unknown = [name for name in args.flights if name not in catalog["flights"]]
     if unknown:
         raise SystemExit(f"unknown flights: {unknown}; known: {sorted(catalog['flights'])}")
+    # traversal instances: NN_<direction>, so a direction may be flown repeatedly in one run
+    instances = [(f"{i + 1:02d}_{d}" if args.traversal_epochs else d, d) for i, d in enumerate(args.flights)]
     run_dir = args.output_root / args.run_id
     if run_dir.exists():
         raise SystemExit(f"run directory already exists: {run_dir}")
@@ -242,28 +268,31 @@ def main(argv: Sequence[str] | None = None) -> int:
     manifest: dict[str, Any] = {"schema": "iii.powerline-slam-online-flight-run/v1", "run_id": args.run_id,
                                 "created_at": flights.utc_now(), "sim_model": flights.SIM_MODEL,
                                 "catalog": {"path": str(flights.CATALOG_PATH), "sha256": flights.sha256_file(flights.CATALOG_PATH)},
-                                "command_topic": COMMAND_TOPIC, "scoped_entities": list(SCOPED_ENTITIES), "flights": {}}
+                                "command_topic": COMMAND_TOPIC, "scoped_entities": list(SCOPED_ENTITIES),
+                                "traversal_epochs": bool(args.traversal_epochs), "instances": [name for name, _ in instances],
+                                "flights": {}}
     flights.write_json(run_dir / "run_manifest.json", manifest)
     runner = OnlineRunner(run_dir, args.geometry, catalog, headless=args.headless, keep_running=args.keep_running,
-                          skip_backend=args.skip_backend)
+                          skip_backend=args.skip_backend, traversal_epochs=args.traversal_epochs,
+                          backend_first_s=args.backend_first_s)
     failures = []
     try:
         runner.ensure_ready()
         flights.write_json(run_dir / "ready.json", {"ready_at": flights.utc_now()})
-        for direction in args.flights:
-            flight_dir = run_dir / direction
+        for name, direction in instances:
+            flight_dir = run_dir / name
             try:
-                manifest["flights"][direction] = runner.run_flight(direction, flight_dir)
+                manifest["flights"][name] = runner.run_flight(direction, flight_dir, name)
             except Exception as exc:  # noqa: BLE001 - recorded per flight, the run continues
-                manifest["flights"][direction] = {"status": "failed", "error": str(exc)}
+                manifest["flights"][name] = {"status": "failed", "direction": direction, "error": str(exc)}
                 flights.write_json(flight_dir / "failure.json", {"failed_at": flights.utc_now(), "error": str(exc)})
-                failures.append(f"{direction}: {exc}")
+                failures.append(f"{name}: {exc}")
             flights.write_json(run_dir / "run_manifest.json", manifest)
-            flights.write_json(run_dir / f"{direction}.done", {"at": flights.utc_now()})
+            flights.write_json(run_dir / f"{name}.done", {"at": flights.utc_now()})
             if args.between_flights_file is not None:
                 deadline = time.monotonic() + 900.0
                 while time.monotonic() < deadline:
-                    if args.between_flights_file.exists() and direction in args.between_flights_file.read_text().split():
+                    if args.between_flights_file.exists() and name in args.between_flights_file.read_text().split():
                         break
                     time.sleep(0.5)
     finally:

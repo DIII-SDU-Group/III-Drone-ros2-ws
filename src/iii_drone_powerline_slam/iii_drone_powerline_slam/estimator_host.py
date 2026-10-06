@@ -23,12 +23,15 @@ Protocol (pickled tuples over two one-way pipes).  Node -> host: ``("start_epoch
 ``("msgs", [(key, raw, index, received_monotonic), ...])``, ``("flush",)``, ``("end_epoch",)``, ``("exit",)``.
 Host -> node: ``("ready", error)``, ``("epoch_started", error)``, ``("frame", t, powerline, diagnostics)``,
 ``("state", value)``, ``("runtime", record)``, ``("flushed", success, summary)``, ``("epoch_ended", counts)``,
-``("log", level, text)``, ``("overload", record)``.  With ``overload`` configured a frame carries the node-clock receipt
+``("log", level, text)``, ``("overload", record)``, and with ``rollover`` configured (TRAVERSAL_EPOCH_v1, see ``realtime``)
+``("rollover_begin", event)`` when the ``traversal_complete`` command event is met in arrival order, followed by
+``("traversal_flushed", success, summary)`` once that traversal is finalized.  With ``overload`` configured a frame carries the node-clock receipt
 time of its triggering message as a fifth element, so the node can bound the age of what it publishes.
 """
 from __future__ import annotations
 
 from collections import Counter, deque
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -81,6 +84,9 @@ class Epoch:
         if self.affinity is not None and started_from:
             self.affinity["workers_started_from"] = started_from
         self.overload = realtime.OverloadMonitor(node["overload"]) if node.get("overload") else None
+        self.rollover = node.get("rollover")       # TRAVERSAL_EPOCH_v1: this epoch ends with its traversal
+        self.first_source_ns: int | None = None    # source time of the epoch's first runtime input
+        self.traversal: dict | None = None         # the traversal_complete event that closed this epoch
         converter = host.rt_pipeline.realtime_frame_converter(fr.FrameConverter) if self.realtime else fr.FrameConverter
         self.converter = converter(self.pipe)
         self.pipe.core.on_frame = self.on_frame
@@ -130,7 +136,8 @@ class Epoch:
         self.affinity = realtime.pin_workers(self.pipe, node.get("affinity") or {})
 
     # ------------------------------------------------------------------ intake
-    def ingest(self, key: str, raw: bytes, index: int, received: float) -> None:
+    def ingest(self, key: str, raw: bytes, index: int, received: float) -> bool:
+        """Take one forwarded message.  True: it was the traversal_complete event that closes this epoch."""
         _, _, _, src = self.host.modules
         self.counters[f"received_{key}"] += 1
         arrivals = self.arrivals
@@ -141,10 +148,10 @@ class Epoch:
             self.arrivals_max = len(arrivals)
         if self.finalized:
             self.counters[f"ignored_after_finalize_{key}"] += 1
-            return
+            return False
         if self.fail_closed_reason is not None:
             self.counters[f"ignored_after_fail_closed_{key}"] += 1
-            return
+            return False
         try:
             message = self.host.deserialize(raw, self.host.types[key])
             if key == "timesync":
@@ -152,15 +159,22 @@ class Epoch:
             elif key == "camera_info":
                 self.pipe.verify_camera_info(message)
             elif key == "command":                          # the exercise's command event: prior bookkeeping only
-                row = self.pipe.command(json.loads(message.data))
+                document = json.loads(message.data)
+                if document.get("kind") == realtime.ROLLOVER_EVENT:
+                    return self.traversal_complete(document)
+                row = self.pipe.command(document)
                 self.counters["command_refused" if "refused" in row else "command_applied"] += 1
             else:
                 if key in ("camera", "radar_u"):
                     self.receipt[src.header_ns(message)] = received
                 self.arrival[key] = received
                 self.arrival_now = received if self.arrival_now is None else max(self.arrival_now, received)
-                if self.overload is not None:
-                    self.overload.received(key, src.source_time_ns(key, message, self.pipe.clock), received)
+                if self.overload is not None or self.first_source_ns is None:
+                    source_time = src.source_time_ns(key, message, self.pipe.clock)
+                    if self.first_source_ns is None:
+                        self.first_source_ns = int(source_time)
+                    if self.overload is not None:
+                        self.overload.received(key, source_time, received)
                 if self.realtime and key in ("camera", "radar_u"):
                     self.pipe.push(key, message, index, raw)        # the workers take the serialized message
                 else:
@@ -168,6 +182,20 @@ class Epoch:
         except Exception as exc:
             self.counters[f"refused_{key}"] += 1
             self.fail(f"INPUT_CONTRACT: {key}: {type(exc).__name__}: {exc}")
+        return False
+
+    def traversal_complete(self, document: dict) -> bool:
+        """TRAVERSAL_EPOCH_v1: accept the boundary event of this epoch's own traversal (see ``realtime``)."""
+        if self.rollover is None:
+            self.counters["traversal_complete_without_rollover_contract"] += 1
+            return False
+        source_time = int(document.get("source_time_ns", -1))
+        if self.first_source_ns is None or source_time < self.first_source_ns:
+            self.counters["traversal_complete_stale"] += 1   # a latched event of an earlier traversal
+            return False
+        self.traversal = document
+        self.counters["traversal_complete"] += 1
+        return True
 
     def fail(self, reason: str) -> None:
         if self.fail_closed_reason is None:
@@ -315,7 +343,9 @@ class Epoch:
                 "accounting": {"received": dict(pipe.received), "rejected": dict(pipe.rejected)},
                 "prefetch": pipe.prefetch_summary(),
                 "live_mission_prior": None if self.host.ol_pipeline is None else self._prior_status(),
-                "pipeline": "rt" if self.realtime else "r1", "affinity": self.affinity,
+                "pipeline": "rt" if self.realtime else "r1", "affinity": self.affinity, "pid": os.getpid(),
+                "traversal": None if self.rollover is None else {"contract": realtime.ROLLOVER_CONTRACT, "first_source_ns": self.first_source_ns,
+                                                               "complete": self.traversal},
                 "overload": None if self.overload is None else self.overload.status()}
 
     # ------------------------------------------------------------------ flush and end
@@ -334,6 +364,8 @@ class Epoch:
             summary = {"status": report["status"], "frames": report["measured_frame_count"],
                        "failures": report["contract_failures"],
                        "reconstruction": (report.get("final_smoothed_reconstruction") or {}).get("status")}
+            if self.rollover is not None and self.rollover.get("record_dir"):
+                summary["product"] = self._write_product(report)
             if self.run_dir is not None:
                 sections, sidecars = pl.layer_report(self.pipe.L, streams_info=report["iii"]["streams_summary"])
                 if self.ledger is not None:
@@ -347,8 +379,24 @@ class Epoch:
         self.host.send(("runtime", self.runtime()))
         return self.final_result
 
+    def _write_product(self, report: dict) -> dict:
+        """The traversal's final engineering product: the post-traversal reconstruction, one file per generation."""
+        directory = Path(self.rollover["record_dir"]).expanduser() / f"generation_{self.number:04d}"
+        directory.mkdir(parents=True, exist_ok=True)
+        reconstruction = report.get("final_smoothed_reconstruction") or {}
+        document = {"schema": "iii.powerline-slam-traversal-product/v1", "generation": self.number, "traversal": self.traversal,
+                    "status": report["status"], "measured_frame_count": report["measured_frame_count"],
+                    "contract_failures": report["contract_failures"], "first_source_ns": self.first_source_ns,
+                    "processed_through_ns": self.pipe.processed_through, "final_smoothed_reconstruction": reconstruction}
+        data = json.dumps(document, default=str).encode()
+        path = directory / "traversal_product.json"
+        path.write_bytes(data)
+        return {"path": str(path), "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+                "reconstruction_status": reconstruction.get("status"), "conductors": len(reconstruction.get("conductors") or [])}
+
     def end(self) -> dict:
         counts = Counter({"discarded_inbox_messages_at_epoch_end": len(self.host.pending)})
+        counts.update({name: value for name, value in self.counters.items() if name.startswith("ignored_after_")})
         for key, count in self.pipe.backlog().items():
             if count:
                 counts[f"discarded_buffered_{key}_at_epoch_end"] += count
@@ -373,6 +421,8 @@ class Host:
     def setup(self) -> None:
         if self.tools not in sys.path:
             sys.path.insert(0, self.tools)
+        early = dict(json.loads(self.config_path.read_text()).get("node") or {})
+        os.environ.update({str(k): str(v) for k, v in (early.get("environment") or {}).items()})
         import iii_r1_runtime as rt
         rt.activate()
         import iii_r1_frames as fr
@@ -421,8 +471,16 @@ class Host:
                 self.pending.clear()
                 continue
             while self.pending:
-                self.epoch.ingest(*self.pending.popleft())
+                if self.epoch.ingest(*self.pending.popleft()):
+                    self.complete_traversal()
+                    break
             self.epoch.step()
+
+    def complete_traversal(self) -> None:
+        """TRAVERSAL_EPOCH_v1: every message that arrived before the event is in; finalize this traversal."""
+        self.send(("rollover_begin", self.epoch.traversal))
+        success, summary = self.epoch.finish()
+        self.send(("traversal_flushed", success, summary))
 
     def start_epoch(self, number: int, run_name: str) -> None:
         if self.epoch is not None:
@@ -455,6 +513,10 @@ class Host:
 
 
 def main(conn_in, conn_out, config_path: str, tools: str) -> None:
+    try:
+        os.setpgid(0, 0)        # a process group of its own: the worker processes share it, so the node can end them all
+    except OSError:
+        pass
     host = Host(conn_in, conn_out, config_path, tools)
     try:
         host.setup()
