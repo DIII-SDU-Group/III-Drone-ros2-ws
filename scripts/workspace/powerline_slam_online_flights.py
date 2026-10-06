@@ -91,6 +91,7 @@ class OnlineRunner(flights.CorridorRunner):
     """The corridor exercise for a system running the powerline_slam backend: commands announced, nothing recorded."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self.skip_backend = bool(kwargs.pop("skip_backend", False))
         super().__init__(*args, **kwargs)
         self.commands: CommandPublisher | None = None
 
@@ -109,6 +110,8 @@ class OnlineRunner(flights.CorridorRunner):
         if not system.success or "booted: false" in str((system.data or {}).get("stdout", "")).lower():
             self.require(self.tools.system("boot", timeout_sec=180), "boot canonical system")
         for entity in SCOPED_ENTITIES:
+            if entity == "powerline_slam" and self.skip_backend:      # simulation-only baseline: the backend stays down
+                continue
             self.require(self.tools.system("start", entity_id=entity, include_dependencies=True, timeout_sec=300),
                          f"start {entity} with its dependencies")
         state = self.require(self.tools.px4("status", timeout_sec=20), "read PX4 status")
@@ -143,8 +146,11 @@ class OnlineRunner(flights.CorridorRunner):
         """The legacy mapper is not part of the powerline_slam processing stack."""
 
     def sample(self, samples: list[dict[str, Any]], *, phase: str, target_index: int | None) -> None:
-        pose = self.tools._lookup_world_drone_pose(timeout_sec=2.0)
         assert self.clock is not None
+        try:                                        # the trajectory log is evidence only: never fatal to the exercise
+            pose = self.tools._lookup_world_drone_pose(timeout_sec=2.0)
+        except Exception as exc:  # noqa: BLE001
+            pose = {"pose_error": str(exc)[:200]}
         samples.append({"t": time.time(), "source_time_ns": self.clock.now_ns(), "phase": phase,
                         "target_index": target_index, **pose})
 
@@ -220,6 +226,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--geometry", type=Path, default=dataset.DEFAULT_GEOMETRY_PATH)
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--keep-running", action="store_true")
+    parser.add_argument("--skip-backend", action="store_true",
+                        help="do not start powerline_slam: the same exercise as a simulation-only baseline")
     parser.add_argument("--between-flights-file", type=Path, default=None,
                         help="after each flight, wait until this file names the flight (a harness scores it first)")
     args = parser.parse_args(argv)
@@ -236,7 +244,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                                 "catalog": {"path": str(flights.CATALOG_PATH), "sha256": flights.sha256_file(flights.CATALOG_PATH)},
                                 "command_topic": COMMAND_TOPIC, "scoped_entities": list(SCOPED_ENTITIES), "flights": {}}
     flights.write_json(run_dir / "run_manifest.json", manifest)
-    runner = OnlineRunner(run_dir, args.geometry, catalog, headless=args.headless, keep_running=args.keep_running)
+    runner = OnlineRunner(run_dir, args.geometry, catalog, headless=args.headless, keep_running=args.keep_running,
+                          skip_backend=args.skip_backend)
     failures = []
     try:
         runner.ensure_ready()
