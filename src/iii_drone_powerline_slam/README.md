@@ -250,6 +250,74 @@ receipt-to-frame latency of at most 0.7 s (p95) and 1.03 s (maximum) after
 start-up. The CPU-only path (`mask_device: cpu`) is exact as well, but on this
 workstation it processes only 0.63–0.66 source seconds per wall second.
 
+## Traversal epochs (`TRAVERSAL_EPOCH_v1`)
+
+Enabled by a `rollover` block in the configuration's `node` block (needs `mission_prior: live`):
+
+```json
+"rollover": {"contract": "TRAVERSAL_EPOCH_v1", "timeout_s": 240.0, "record_dir": "/path/or/null"}
+```
+
+One completed corridor traversal is one estimator epoch (generation). The accumulated state of a traversal exists for
+its single post-traversal finalization; it is never carried into the next traversal.
+
+- **Boundary.** The flight exercise publishes a `traversal_complete` event on the command topic
+  (`nominal_command`) once its last prescribed maneuver has completed. The estimator host meets the event in arrival
+  order: every message that arrived before it belongs to the old epoch. An event whose source time lies before the
+  epoch's first input (a latched event of an earlier traversal) is counted and ignored. An epoch that failed closed is
+  never finalized.
+- **Transaction.**
+  1. the event is received;
+  2. nothing more enters the old epoch (later arrivals are counted per stream as the rollover gap);
+  3. the traversal is flushed and finalized;
+  4. the final record is published (`diagnostics`, kind `traversal_epoch`, phase `finalized`) and written with the
+     traversal's product (`record_dir/generation_NNNN/`);
+  5. the estimator host process and all its workers are destroyed;
+  6. the generation is incremented and a new host starts a fresh pipeline;
+  7. `traversal_epoch` / `ready` is published.
+- **What keeps running.** The node process, the simulation, PX4 and every other node.
+- **Failure.** Any failure, or a transaction longer than `timeout_s`, fails the node closed
+  (`TRAVERSAL_EPOCH_v1:ROLLOVER_FAILED` or `ROLLOVER_TIMEOUT`).
+- **Identifiers.** Published line identifiers are unique within one generation; every runtime record names its
+  generation and the boundary records delimit the stream.
+
+`scripts/workspace/powerline_slam_online_flights.py --traversal-epochs` flies repeatable traversal instances and
+publishes the event after each post-roll. The exercise never reads the backend: a harness releases the next traversal
+when it has seen the `ready` record.
+
+## Bounded recovery (`BOUNDED_RECOVERY_v1`)
+
+Enabled by a `recovery` block:
+
+```json
+"recovery": {"contract": "BOUNDED_RECOVERY_v1", "max_attempts": 3, "window_s": 900.0, "cooldown_s": 5.0,
+             "backoff": 2.0, "state_file": "/path/recovery_state.json"}
+```
+
+The fail-closed contracts are unchanged: a trigger suppresses every valid output at once. This is only what happens
+next.
+
+- **When an attempt is permitted.** The epoch failed closed with a recoverable reason (an overload code, a rollover
+  failure or time-out, a pipeline exception such as a lost worker), or this process was respawned after it ended
+  while active. Input-contract violations (for example active PX4 time synchronization) are never retried.
+- **Budget.** At most `max_attempts` within any `window_s` seconds, counted in `state_file` so that process respawns
+  count too.
+- **Cool-down and back-off.** Attempt n starts `cooldown_s * backoff^(n-1)` seconds after the failure.
+- **Epoch reset.** An attempt never resumes anything: the host process and its workers are destroyed and a new host
+  starts a new epoch (generation + 1) from nothing.
+- **Exhausted.** When the budget is used up the node stays failed closed (`BOUNDED_RECOVERY_v1:EXHAUSTED`), repeats
+  that record once per second and attempts nothing more, also after a respawn, until an operator calls
+  `reset_recovery` (`std_srvs/Trigger`) and re-activates the node.
+- **Observability.** Every attempt and outcome is a `diagnostics` record of kind `recovery` (`scheduled`, `recovered`,
+  `failed`, `not_attempted`, `exhausted`), and every runtime record carries the ledger's status.
+
+The estimator host leads a process group of its own. Whenever the node stops, kills or loses a host it ends what is
+left of that group, and at configuration it ends what an earlier process of the node left behind, so no worker process
+outlives its host.
+
+`node.environment` (a map of strings) is applied to the host's process environment before the runtime is imported, for
+example `{"CUDA_VISIBLE_DEVICES": ""}` to run without a GPU.
+
 ## Tests
 
 `colcon test --packages-select iii_drone_powerline_slam` runs the message and

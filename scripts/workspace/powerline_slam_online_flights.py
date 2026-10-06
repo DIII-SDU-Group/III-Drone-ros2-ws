@@ -102,6 +102,8 @@ class OnlineRunner(flights.CorridorRunner):
         self.backend_first_s = float(kwargs.pop("backend_first_s", 0.0))
         super().__init__(*args, **kwargs)
         self.commands: CommandPublisher | None = None
+        self._tf: tuple | None = None               # (tools node, buffer, listener) of the trajectory log
+        self._leaked_tf_listeners_released = 0
 
     def ensure_ready(self) -> None:
         status = self.tools.simulation("status")
@@ -160,10 +162,47 @@ class OnlineRunner(flights.CorridorRunner):
     def start_pl_mapper_with_retries(self, context: str) -> None:
         """The legacy mapper is not part of the powerline_slam processing stack."""
 
+    def _world_drone_pose(self) -> dict[str, Any]:
+        """The world->drone transform from one transform listener kept for the whole run.
+
+        The tools' own lookup creates a new listener on every call and never releases it; over a run of several
+        traversals the accumulated /tf subscriptions slow this process, the transform broadcasters and with them the
+        whole simulation.  This lookup only reads; it does not change what is flown."""
+        import rclpy
+        from rclpy.time import Time
+        from tf2_ros import Buffer, TransformException, TransformListener
+        node = self.tools.node
+        if self._tf is None or self._tf[0] is not node:          # first use, or the tools were rebuilt on a new node
+            buffer = Buffer()
+            self._tf = (node, buffer, TransformListener(buffer, node, spin_thread=False))
+        buffer = self._tf[1]
+        error: Exception | None = None
+        for _ in range(40):                                       # take what has arrived, then read the newest transform
+            rclpy.spin_once(node, timeout_sec=0.0)
+        for _ in range(20):
+            try:
+                transform = buffer.lookup_transform("world", "drone", Time())
+                t, r = transform.transform.translation, transform.transform.rotation
+                yaw = math.atan2(2.0 * (r.w * r.z + r.x * r.y), 1.0 - 2.0 * (r.y * r.y + r.z * r.z))
+                return {"x": t.x, "y": t.y, "z": t.z, "yaw": yaw}
+            except TransformException as exc:
+                error = exc
+                rclpy.spin_once(node, timeout_sec=0.1)
+        raise TimeoutError(f"no world->drone transform: {error}")
+
+    def _release_leaked_tf_listeners(self) -> int:
+        """Destroy the /tf subscriptions that the tools' own lookups left on their node (all but this run's listener)."""
+        node = self.tools.node
+        mine = set() if self._tf is None or self._tf[0] is not node else {self._tf[2].tf_sub, self._tf[2].tf_static_sub}
+        leaked = [sub for sub in list(node.subscriptions) if sub.topic_name in ("/tf", "/tf_static") and sub not in mine]
+        for sub in leaked:
+            node.destroy_subscription(sub)
+        return len(leaked)
+
     def sample(self, samples: list[dict[str, Any]], *, phase: str, target_index: int | None) -> None:
         assert self.clock is not None
         try:                                        # the trajectory log is evidence only: never fatal to the exercise
-            pose = self.tools._lookup_world_drone_pose(timeout_sec=2.0)
+            pose = self._world_drone_pose()
         except Exception as exc:  # noqa: BLE001
             pose = {"pose_error": str(exc)[:200]}
         samples.append({"t": time.time(), "source_time_ns": self.clock.now_ns(), "phase": phase,
@@ -174,6 +213,10 @@ class OnlineRunner(flights.CorridorRunner):
         when the simulation reaches it, so the announcement arrives before any sensor data of that instant."""
         assert self.commands is not None and self.clock is not None
         if kind == "intent":
+            try:
+                self._leaked_tf_listeners_released += self._release_leaked_tf_listeners()
+            except Exception:  # noqa: BLE001 - housekeeping only
+                pass
             begin_ns = self.clock.now_ns() + COMMAND_LEAD_NS
             self.commands.publish(command_event(kind, begin_ns, leg))
             self.clock.sleep_until_ns(begin_ns)
@@ -225,6 +268,7 @@ class OnlineRunner(flights.CorridorRunner):
                   "completed_at": flights.utc_now(), "leg_count": len(plan), "source_time_span_ns": [begins[0], end_ns],
                   "leg_command_attempts": dict(self._leg_attempts), "tools_rebuilds": list(self.tools_rebuilds),
                   "scoped_entities": list(SCOPED_ENTITIES), "recorded": False, "instance": instance,
+                  "leaked_tf_listeners_released": self._leaked_tf_listeners_released,
                   "traversal_complete_source_time_ns": next((e["source_time_ns"] for e in reversed(self.commands.events)
                                                              if e["kind"] == "traversal_complete"), None) if self.traversal_epochs else None}
         flights.write_json(flight_dir / "verification.json", result)
