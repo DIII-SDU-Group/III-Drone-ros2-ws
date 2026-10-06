@@ -12,8 +12,8 @@ Differences from the recording driver:
   them has a lifecycle or data dependency on the backend, and the legacy mapper they would read is not instantiated;
 * no legacy mapper is started or sampled, no ground segment and no bag;
 * every leg command is announced on ``/perception/powerline_slam/nominal_command`` (``StringStamped`` JSON, latched):
-  ``intent`` with the simulation source time right before the command is sent, ``accepted`` once the maneuver
-  controller accepted it, and ``end`` when the exercise ends.  These are the backend's live nominal mission prior
+  ``intent`` names the source time, 0.5 s ahead, at which the command will be sent, ``accepted`` follows once the
+  maneuver controller accepted it, and ``end`` names the source time at which the exercise ends.  These are the backend's live nominal mission prior
   (it carries the command only: target pose in the Gazebo world ENU design frame and the source time of issuing it).
 
 Per flight the run directory holds ``flight_plan.json``, ``mission_phase_evidence.json``, ``trajectory.json``,
@@ -40,6 +40,7 @@ R_ENU_FROM_NED = ((0.0, 1.0, 0.0), (1.0, 0.0, 0.0), (0.0, 0.0, -1.0))
 R_FLU_FROM_FRD = ((1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, -1.0))
 # The flight path first (PX4 bridge, maneuver controller, mission executor, external flight mode), then the backend,
 # so the backend activates when every runtime input is already flowing.
+COMMAND_LEAD_NS = 500_000_000      # an intent or end event names a source time this far ahead of its publication
 SCOPED_ENTITIES = ("configuration_server", "custom_operation", "powerline_slam")
 DEFAULT_OUTPUT_ROOT = flights.WORKSPACE_ROOT / "runtime" / "powerline_slam_online"
 
@@ -147,9 +148,17 @@ class OnlineRunner(flights.CorridorRunner):
         samples.append({"t": time.time(), "source_time_ns": self.clock.now_ns(), "phase": phase,
                         "target_index": target_index, **pose})
 
-    def on_leg_command(self, kind: str, leg: dict[str, Any], begin_ns: int) -> None:
-        assert self.commands is not None
-        self.commands.publish(command_event(kind, begin_ns, leg))
+    def on_leg_command(self, kind: str, leg: dict[str, Any], begin_ns: int) -> int:
+        """Announce the leg command.  The intent names a source time COMMAND_LEAD_NS ahead and the command is sent
+        when the simulation reaches it, so the announcement arrives before any sensor data of that instant."""
+        assert self.commands is not None and self.clock is not None
+        if kind == "intent":
+            begin_ns = self.clock.now_ns() + COMMAND_LEAD_NS
+            self.commands.publish(command_event(kind, begin_ns, leg))
+            self.clock.sleep_until_ns(begin_ns)
+        else:
+            self.commands.publish(command_event(kind, begin_ns, leg))
+        return begin_ns
 
     def run_flight(self, direction: str, flight_dir: Path) -> dict[str, Any]:
         assert self.clock is not None and self.commands is not None
@@ -174,7 +183,7 @@ class OnlineRunner(flights.CorridorRunner):
             self.clock.sleep_until_ns(self.clock.now_ns() + int(flights.PRE_ROLL_SEC * 1e9))
             for index, leg in enumerate(plan):
                 begins.append(self.fly_leg(samples, leg, index))
-            end_ns = self.clock.now_ns()
+            end_ns = self.clock.now_ns() + COMMAND_LEAD_NS
             self.commands.publish(command_event("end", end_ns))
             self.clock.sleep_until_ns(end_ns + int(flights.POST_ROLL_SEC * 1e9))
         except Exception:

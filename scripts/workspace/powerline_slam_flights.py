@@ -530,16 +530,18 @@ class CorridorRunner(dataset.DatasetRunner):
         for part in parts:
             shutil.rmtree(part)
 
-    def on_leg_command(self, kind: str, leg: dict[str, Any], begin_ns: int) -> None:
-        """Hook around a leg's fly-to command: "intent" before it is sent, "accepted" once it was accepted."""
+    def on_leg_command(self, kind: str, leg: dict[str, Any], begin_ns: int) -> int:
+        """Hook around a leg's fly-to command: "intent" before it is sent, "accepted" once it was accepted.
+
+        Returns the source time at which the leg begins (the "intent" hook may move it; the command is sent then)."""
+        return begin_ns
 
     def fly_leg(self, samples: list[dict[str, Any]], leg: dict[str, Any], index: int) -> int:
         """Issue the leg's fly-to command; own the leg for at least duration_s."""
         assert self.clock is not None
         for attempt in range(1, LEG_COMMAND_ATTEMPTS + 1):
             # The leg begins with the command that is accepted.
-            begin_ns = self.clock.now_ns()
-            self.on_leg_command("intent", leg, begin_ns)
+            begin_ns = self.on_leg_command("intent", leg, self.clock.now_ns())
             result = self.tools.start_operation(
                 "fly_to_position", **{key: leg["live_target"][key] for key in ("frame_id", "x", "y", "z", "yaw")},
                 cancel_existing=True, clear_queue=False, send_timeout_sec=20, maneuver_ready_timeout_sec=60,
