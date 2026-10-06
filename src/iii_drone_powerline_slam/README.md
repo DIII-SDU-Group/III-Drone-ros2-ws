@@ -50,14 +50,34 @@ The runtime configuration names:
 - the pylon checkpoint;
 - the estimator epoch and the torch thread count.
 
-Its optional `node` section holds development settings:
+Its optional `node` section holds process settings. None of them is an
+estimator input.
 
-- `prefetch_workers`: camera detector / pylon-mask worker processes, default 0;
+- `prefetch_workers`: camera detector / pylon-mask worker processes of the
+  reference pipeline, default 0;
 - `doppler_workers`: Radar-F window-solve worker processes, default 0;
 - `output_dir`: where `flush_and_finalize` writes the replay report layout;
 - `ledger`: whether the per-frame parity ledger is kept;
 - `stall_timeout_s`: the stream-absence timeout, default 2 s;
 - `flush_timeout_s`.
+
+Real-time operation (see [Real-time operation](#real-time-operation)):
+
+- `pipeline`: `r1` (default, the reference `IncrementalPipeline`) or `rt`
+  (`iii_rt_pipeline.RealtimePipeline`);
+- `detector_workers`, `radar_workers`, `mask_workers`: worker processes of the
+  `rt` pipeline, defaults 3, 1 and 1;
+- `mask_fallback_workers`: CPU mask workers that recompute GPU frames inside
+  the guard, default 0 (the GPU worker recomputes them itself);
+- `mask_device`: `cpu` (default) or `cuda`; `cuda_torch`: the directory of the
+  CUDA torch build; `mask_guard`: the probability guard distance of the GPU
+  path;
+- `evidence`: whether the evaluation records of the final report are kept,
+  default true;
+- `intake`: `executor` (default) or `waitset`;
+- `affinity`: CPU lists per process role;
+- `overload`: the `REALTIME_OVERLOAD_v1` limits. Without it the node is
+  lossless and unbounded.
 
 ## Interfaces
 
@@ -92,7 +112,7 @@ Publications (lifecycle publishers, under the node namespace):
 | Topic | Type | Content |
 |---|---|---|
 | `powerline` | `iii_drone_interfaces/Powerline` | Per processed frame, stamped with the frame's source time. Contains confirmed conductors only, with stable ids, in the `drone` frame. When the estimator is fail-closed, the message has no lines. |
-| `diagnostics` | `iii_drone_interfaces/StringStamped` | Per frame, a compact JSON with: local health/authority, corridor/global state, pylon anchors, local-frame generation, continuity guard, bridge, accounting and the fail-closed reason. Once per second, a `runtime` record with: counters, inbox/backlog high-water marks, latency percentiles and prefetch statistics. |
+| `diagnostics` | `iii_drone_interfaces/StringStamped` | Per frame, a compact JSON with: local health/authority, corridor/global state, pylon anchors, local-frame generation, continuity guard, bridge, accounting and the fail-closed reason. Once per second, a `runtime` record with: counters, inbox/backlog high-water marks, latency percentiles, worker statistics and the overload status. After an overload, an `overload` record. |
 | `state` | `iii_drone_interfaces/StringStamped` | `Idle`, `Waiting`, `Running` or `FailClosed`. |
 
 Service `flush_and_finalize` (`std_srvs/Trigger`, development/evaluation) does
@@ -131,6 +151,73 @@ arrival order. Source-time watermarks, not arrival order or call boundaries,
 decide when a camera/Radar-U event is processed. Receipt time is used only for
 the latency diagnostics and for stream-absence detection (amendment A4, measured
 on the arrival clock of the ingested input).
+
+## Real-time operation
+
+The reference configuration (`pipeline: r1`, no `overload`) is lossless: it
+buffers without bound and is what the evaluation and parity replays use. Live
+operation uses the settings below. They change scheduling, process layout and
+bookkeeping only. The estimator, its inputs, their order and every threshold
+are those of the reference path, and parity with the reference is exact.
+
+**Pipeline `rt`.** `iii_rt_pipeline.RealtimePipeline` is the reference
+pipeline with these parts replaced:
+
+- Camera work is split over CPU detector workers and one pylon-mask worker.
+  Workers receive the serialized camera message and return only what the
+  estimator consumes: the conductor observations and the pylon mask. The
+  detector's debug images (about 8 MB per frame) stay in the worker.
+- The frozen radar frontend of each Radar-U scan runs ahead in a worker.
+- Bookkeeping whose cost grew with flight time is incremental: the continuity
+  guard's Radar-F view, the inertial source's interval lookup and the frame
+  converter's anchor set.
+- With `evidence: false` the request/output digests of the final report are
+  not computed. `flush_and_finalize` then still writes a report, without them.
+
+**GPU pylon mask.** With `mask_device: cuda` the mask worker runs the frozen
+`CompactPylonMaskNetV1` on the GPU, from the CUDA build of the estimator
+environment's torch release installed by
+`scripts/workspace/setup_powerline_slam_cuda_torch.sh` (`cuda_torch`). The
+pre- and post-processing and the weights are the frozen ones. A frame is taken
+from the GPU only when no pixel's probability lies within `mask_guard` of the
+frozen threshold. Otherwise, and on any GPU error, the frame is recomputed with
+the frozen CPU inference, by the same worker or by a CPU mask worker
+(`mask_fallback_workers`). The runtime record carries a digest over every
+frame's mask (`prefetch.mask_sequence`), which a replay checks against the CPU
+reference. If CUDA is unavailable the worker
+runs on the CPU and says so in the runtime record (`prefetch.mask_worker`).
+
+**Intake `waitset`.** The runtime inputs are read by one thread with a wait
+set of its own, every available message per wake-up, instead of one executor
+callback per message. The subscriptions are unchanged: same node, topics,
+types and QoS. The executor keeps the lifecycle, parameter and flush services.
+
+**Affinity.** `affinity` lists CPUs for `node`, `host`, `detector_workers`,
+`mask_worker`, `mask_fallback_workers`, `radar_workers` and `doppler_workers`
+(`prefetch_workers` for the reference pipeline). The node pins itself at configure, the host at start
+and the workers at activation. A plan must name every role, because a child
+process inherits its parent's CPUs.
+
+**Overload (`REALTIME_OVERLOAD_v1`).** The contract and its triggers are
+described in `iii_drone_powerline_slam/realtime.py`:
+
+| Limit | Meaning |
+|---|---|
+| `live_age_budget_s` | Oldest frame that may be published, measured from the node's receipt of the frame's triggering message. |
+| `startup_timeout_s` | Time after the first input within which the first in-budget frame must appear. |
+| `max_unprocessed_events` | Most events received but unprocessed in the host. |
+| `max_node_queue` | Most messages waiting to be forwarded to the host. |
+
+When a limit is exceeded the processing epoch ends fail-closed:
+
+- the host processes nothing more and later inputs are counted and dropped;
+- no further frame is published;
+- the node publishes state `FailClosed`, an empty `Powerline` and a
+  diagnostics record of kind `overload`, repeated once per second.
+
+Nothing is resumed. Recovery is a deactivate/activate cycle (a fresh epoch) or
+a process restart. If the node had to fail closed on its own because the host
+did not read its input, the host process is replaced at the next activation.
 
 ## Tests
 

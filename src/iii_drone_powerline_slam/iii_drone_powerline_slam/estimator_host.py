@@ -12,11 +12,19 @@ the sensor rates however long a processing step takes.  This process runs the pi
 * ``flush`` closes the input, processes every buffered event, runs the single finalization and writes the replay layout;
 * ``end_epoch`` discards and counts buffered events and releases the pipeline (the next epoch starts from nothing).
 
+Node configuration (``node`` block of the runtime configuration; every key is optional and none is an estimator input):
+``pipeline`` selects ``r1`` (default: the accepted reference path, ``iii_r1_pipeline.IncrementalPipeline``) or ``rt``
+(``iii_rt_pipeline.RealtimePipeline``: the same estimator with the real-time camera workers and bookkeeping);
+``evidence`` (default true) keeps the evaluation records of the final report; ``affinity`` pins the processes;
+``overload`` enables REALTIME_OVERLOAD_v1 (``realtime.OverloadMonitor``).  Without ``overload`` the host is lossless
+and unbounded, which is what the evaluation and parity replays use.
+
 Protocol (pickled tuples over two one-way pipes).  Node -> host: ``("start_epoch", number, run_name)``,
 ``("msgs", [(key, raw, index, received_monotonic), ...])``, ``("flush",)``, ``("end_epoch",)``, ``("exit",)``.
 Host -> node: ``("ready", error)``, ``("epoch_started", error)``, ``("frame", t, powerline, diagnostics)``,
 ``("state", value)``, ``("runtime", record)``, ``("flushed", success, summary)``, ``("epoch_ended", counts)``,
-``("log", level, text)``.
+``("log", level, text)``, ``("overload", record)``.  With ``overload`` configured a frame carries the node-clock receipt
+time of its triggering message as a fifth element, so the node can bound the age of what it publishes.
 """
 from __future__ import annotations
 
@@ -28,9 +36,13 @@ import sys
 import time
 import traceback
 
+from . import realtime
+
 ADVANCE_CHUNK = 8                 # groups between intake checks (scheduling only; IncrementalPipeline.advance(max_groups))
 STATUS_PERIOD_S = 1.0
 LATENCY_WINDOW = 2000
+WORKER_START_TIMEOUT_S = 240.0    # worker processes: runtime activation, model load, GPU set-up
+ARRIVAL_WINDOW_S = 2.0            # arrival-burst statistic: most messages received within any window of this length
 
 
 def _percentiles(values) -> dict:
@@ -51,17 +63,38 @@ class Epoch:
         self.number = number
         self.run_dir = None if not output else Path(output).expanduser() / run_name
         streams = (self.run_dir / "streams") if self.run_dir else Path(f"/tmp/powerline_slam_streams_{os.getpid()}_{run_name}")
-        self.pipe = pl.IncrementalPipeline(pl.PipelineConfig.load(host.config_path), clock=src.IIIClockContract(),
-                                           streams_dir=streams,
-                                           prefetch_workers=int(host.node_config.get("prefetch_workers", 0)),
-                                           doppler_workers=int(host.node_config.get("doppler_workers", 0)))
-        self.converter = fr.FrameConverter(self.pipe)
+        node = host.node_config
+        self.realtime = host.rt_pipeline is not None
+        self.workers_info = None
+        if self.realtime:
+            rtp = host.rt_pipeline
+            self.pipe = rtp.RealtimePipeline(pl.PipelineConfig.load(host.config_path), clock=src.IIIClockContract(),
+                                             streams_dir=streams, camera=rtp.CameraOptions.from_node_config(node),
+                                             doppler_workers=int(node.get("doppler_workers", 0)),
+                                             evidence=bool(node.get("evidence", True)))
+            # activation completes only when every worker is ready: no model load or GPU set-up on the first frame
+            self.workers_info = self.pipe.wait_ready(float(node.get("worker_start_timeout_s", WORKER_START_TIMEOUT_S)))
+        else:
+            self.pipe = pl.IncrementalPipeline(pl.PipelineConfig.load(host.config_path), clock=src.IIIClockContract(),
+                                               streams_dir=streams,
+                                               prefetch_workers=int(node.get("prefetch_workers", 0)),
+                                               doppler_workers=int(node.get("doppler_workers", 0)))
+        self.affinity = realtime.pin_workers(self.pipe, node.get("affinity") or {})
+        self.overload = realtime.OverloadMonitor(node["overload"]) if node.get("overload") else None
+        converter = host.rt_pipeline.realtime_frame_converter(fr.FrameConverter) if self.realtime else fr.FrameConverter
+        self.converter = converter(self.pipe)
         self.pipe.core.on_frame = self.on_frame
         self.ledger = [] if host.node_config.get("ledger", False) else None
         self.counters: Counter = Counter()
         self.receipt: dict[int, float] = {}
         self.latency: deque = deque(maxlen=LATENCY_WINDOW)
         self.latency_epoch: list[float] = []
+        self.latency_armed: list[float] = []       # frames since the overload contract armed (after start-up)
+        self.arrivals: deque = deque()             # receipt times within the last ARRIVAL_WINDOW_S
+        self.arrivals_max = 0
+        self.last_advance: float | None = None     # when the processed watermark last moved / the last frame was made
+        self.last_frame: float | None = None
+        self.last_through = -1
         self.backlog_high_water = 0
         self.arrival: dict[str, float] = {}        # last arrival (node clock) per runtime key
         self.arrival_now = None                    # newest arrival among ingested messages: the node's arrival clock
@@ -77,6 +110,12 @@ class Epoch:
     def ingest(self, key: str, raw: bytes, index: int, received: float) -> None:
         _, _, _, src = self.host.modules
         self.counters[f"received_{key}"] += 1
+        arrivals = self.arrivals
+        arrivals.append(received)
+        while arrivals[0] < received - ARRIVAL_WINDOW_S:
+            arrivals.popleft()
+        if len(arrivals) > self.arrivals_max:
+            self.arrivals_max = len(arrivals)
         if self.finalized:
             self.counters[f"ignored_after_finalize_{key}"] += 1
             return
@@ -94,7 +133,12 @@ class Epoch:
                     self.receipt[src.header_ns(message)] = received
                 self.arrival[key] = received
                 self.arrival_now = received if self.arrival_now is None else max(self.arrival_now, received)
-                self.pipe.push(key, message, index)
+                if self.overload is not None:
+                    self.overload.received(key, src.source_time_ns(key, message, self.pipe.clock), received)
+                if self.realtime and key in ("camera", "radar_u"):
+                    self.pipe.push(key, message, index, raw)        # the workers take the serialized message
+                else:
+                    self.pipe.push(key, message, index)
         except Exception as exc:
             self.counters[f"refused_{key}"] += 1
             self.fail(f"INPUT_CONTRACT: {key}: {type(exc).__name__}: {exc}")
@@ -105,15 +149,40 @@ class Epoch:
             self.host.send(("log", "error", f"powerline_slam failed closed: {reason}"))
         self.set_state("FailClosed")
 
+    def check_overload(self) -> None:
+        """REALTIME_OVERLOAD_v1: fail closed when an input-age or queue bound is exceeded (see ``realtime``)."""
+        monitor = self.overload
+        if monitor is None or self.finalized or self.fail_closed_reason is not None:
+            return
+        monitor.processed(self.pipe.processed_through)
+        head = monitor.head()
+        ready = head is not None and self.pipe.core.built and self.pipe._ready(head[0])
+        unprocessed = len(self.host.pending) + sum(len(queue) for queue in self.pipe.main.values())
+        code = monitor.check(time.monotonic(), head_ready=ready, unprocessed_events=unprocessed)
+        if code is not None:
+            self.overloaded(code)
+
+    def overloaded(self, code: str) -> None:
+        """Latch the overload: nothing is processed or published as valid any more in this epoch."""
+        record = self.overload.record(code)
+        self.fail(record["fail_closed_reason"])
+        self.host.send(("overload", record))
+
     # ------------------------------------------------------------------ processing
     def step(self) -> None:
         self.more = False
         if self.fail_closed_reason is None and not self.finalized:
             try:
                 self.more = self.pipe.advance(max_groups=ADVANCE_CHUNK) == ADVANCE_CHUNK
+            except realtime.Overloaded:
+                pass                                       # latched in on_frame: nothing more is processed
             except Exception as exc:
                 self.fail(f"PIPELINE_EXCEPTION: {type(exc).__name__}: {exc}")
             self.backlog_high_water = max(self.backlog_high_water, sum(self.pipe.backlog().values()))
+            if self.pipe.processed_through != self.last_through:
+                self.last_through = self.pipe.processed_through
+                self.last_advance = time.monotonic()
+            self.check_overload()
         now = time.monotonic()
         if now - self.last_status >= STATUS_PERIOD_S:
             self.last_status = now
@@ -154,16 +223,34 @@ class Epoch:
     def on_frame(self, result, step, record) -> None:
         frame = self.converter.frame_record(result, step, record)
         t = frame["t"]
+        self.last_frame = time.monotonic()
         received = self.receipt.pop(t, None)
         if received is not None:
             latency = (time.monotonic() - received) * 1000.0
             self.latency.append(latency)
             self.latency_epoch.append(latency)
-        for stale in [k for k in self.receipt if k < t]:
-            self.receipt.pop(stale, None)
+        if self.realtime:
+            # receipts are kept in arrival order; one whose group produced no frame is dropped once it leads
+            while self.receipt and next(iter(self.receipt)) < t:
+                del self.receipt[next(iter(self.receipt))]
+        else:
+            for stale in [k for k in self.receipt if k < t]:
+                self.receipt.pop(stale, None)
+        if self.overload is not None and not self.finalized:
+            # a frame older than the live-age budget is never published as valid output
+            code = self.overload.frame(None if received is None else time.monotonic() - received,
+                                       has_lines=bool(frame["powerline"]["lines"]))
+            if code is not None:
+                self.overloaded(code)
+                raise realtime.Overloaded(code)
+            if self.overload.armed and received is not None:
+                self.latency_armed.append(latency)
         if self.ledger is not None:
             self.ledger.append(frame)
-        self.host.send(("frame", t, frame["powerline"], frame["diagnostics"]))
+        if self.overload is not None:
+            self.host.send(("frame", t, frame["powerline"], frame["diagnostics"], received))
+        else:
+            self.host.send(("frame", t, frame["powerline"], frame["diagnostics"]))
         self.counters["frames"] += 1
         reason = frame["diagnostics"]["fail_closed_reason"]
         self.set_state("Running" if reason in (None, "NO_CONFIRMED_CONDUCTOR") else
@@ -174,20 +261,36 @@ class Epoch:
             self.state = value
             self.host.send(("state", value))
 
+    def drain(self) -> dict | None:
+        """How long processing continued after the newest input arrived (meaningful once the input has stopped)."""
+        if self.arrival_now is None:
+            return None
+        after = lambda moment: None if moment is None else round(moment - self.arrival_now, 3)  # noqa: E731
+        return {"since_last_arrival_s": round(time.monotonic() - self.arrival_now, 3),
+                "last_advance_after_last_arrival_s": after(self.last_advance),
+                "last_frame_after_last_arrival_s": after(self.last_frame)}
+
     def runtime(self) -> dict:
         pipe = self.pipe
         return {"kind": "runtime", "epoch": self.number, "state": self.state, "fail_closed_reason": self.fail_closed_reason,
                 "counters": dict(self.counters), "inbox": len(self.host.pending), "inbox_high_water": self.host.pending_high_water,
                 "backlog": pipe.backlog(), "backlog_high_water": self.backlog_high_water,
                 "latency_ms": _percentiles(self.latency), "latency_ms_epoch": _percentiles(self.latency_epoch),
+                "latency_ms_armed": _percentiles(self.latency_armed) if self.overload is not None else None,
+                "arrivals_max_per_window": {"window_s": ARRIVAL_WINDOW_S, "messages": self.arrivals_max},
+                "drain": self.drain(),
                 "processed_through_ns": pipe.processed_through,
                 "accounting": {"received": dict(pipe.received), "rejected": dict(pipe.rejected)},
-                "prefetch": pipe.prefetch_summary()}
+                "prefetch": pipe.prefetch_summary(),
+                "pipeline": "rt" if self.realtime else "r1", "affinity": self.affinity,
+                "overload": None if self.overload is None else self.overload.status()}
 
     # ------------------------------------------------------------------ flush and end
     def finish(self) -> tuple[bool, dict]:
         if self.final_result is not None:
             return self.final_result
+        if self.overload is not None and self.overload.code is not None:      # a dead epoch is never finalized
+            return False, {"error": self.fail_closed_reason, "overload": self.overload.record(self.overload.code)}
         _, pl, _, _ = self.host.modules
         self.finalized = True
         try:
@@ -228,6 +331,7 @@ class Host:
         self.pending: deque = deque()
         self.pending_high_water = 0
         self.epoch: Epoch | None = None
+        self.rt_pipeline = None
 
     def send(self, item) -> None:
         self.conn_out.send(item)
@@ -245,6 +349,11 @@ class Host:
         self.modules = (rt, pl, fr, src)
         self.deserialize = deserialize_message
         self.node_config = dict(json.loads(self.config_path.read_text()).get("node") or {})
+        realtime.validate_node_config(self.node_config)
+        realtime.pin_process(os.getpid(), (self.node_config.get("affinity") or {}).get("host"))
+        if self.node_config.get("pipeline", "r1") == "rt":
+            import iii_rt_pipeline
+            self.rt_pipeline = iii_rt_pipeline
         pl.PipelineConfig.load(self.config_path)              # validates every path before any data flows
         self.types = {key: get_message(src.TYPES[key]) for key in src.TOPICS}
         self.types["camera_info"] = get_message("sensor_msgs/msg/CameraInfo")

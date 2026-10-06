@@ -95,6 +95,30 @@ Outputs, under `/perception/powerline_slam`:
 Service `flush_and_finalize` closes the input and runs the post-traversal
 finalization. It is for development and evaluation only.
 
+### Real-time operation
+
+The reference configuration is lossless and unbounded, and on this workstation
+it processes about 0.55 source seconds per wall second. The package README
+describes the settings for live operation (`node` section of the runtime
+configuration):
+
+- **`pipeline: rt`**: the same estimator with split camera workers, compact
+  worker results, a Radar-U frontend worker and incremental bookkeeping.
+- **`mask_device: cuda`**: the frozen pylon-mask network on the GPU, with the
+  frozen CPU inference recomputing every frame that is not decided by a clear
+  margin. Install the CUDA build with
+  `scripts/workspace/setup_powerline_slam_cuda_torch.sh` (`download` on the
+  host, `install` in the devcontainer). The wheel set is pinned by hash in
+  `deps/powerline-slam-cuda-torch.txt`.
+- **`intake: waitset`**: the inputs are read outside the rclpy executor.
+- **`affinity`**: CPU lists per process role.
+- **`overload`**: `REALTIME_OVERLOAD_v1`. When the output would be older than
+  the live-age budget, or a queue bound is exceeded, the node fails closed
+  and publishes an empty `Powerline`. Recovery is a deactivate/activate cycle.
+
+None of these settings is an estimator input. Parity with the reference path
+is exact.
+
 ### Estimator environment and pin
 
 `deps/powerline-slam.json` pins the powerline_slam commit and its v13-derived

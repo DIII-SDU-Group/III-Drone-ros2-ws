@@ -38,9 +38,12 @@ class IIIClockContract:
     contract_id = "stand-in"
 def header_ns(message):
     return int(message.header.stamp.sec) * 1_000_000_000 + int(message.header.stamp.nanosec)
+def source_time_ns(key, message, clock):
+    return header_ns(message) if key == "camera" else 0
 ''',
     "iii_r1_pipeline": '''
 import json
+import time
 from collections import Counter
 from pathlib import Path
 RUNTIME_KEYS = ("radar_u", "radar_f", "camera", "imu", "odometry", "local_position")
@@ -53,15 +56,20 @@ class PipelineConfig:
         return document
 class _Core:
     on_frame = None
+    built = True
 class IncrementalPipeline:
     def __init__(self, cfg, *, clock, streams_dir, prefetch_workers=0, doppler_workers=0):
         if cfg.get("fail_epoch"):
             raise RuntimeError("stand-in epoch failure")
-        self.core, self.absent, self.L = _Core(), set(), None
+        self.core, self.absent, self.L, self.clock = _Core(), set(), None, clock
         self.received, self.rejected = Counter(), Counter()
         self.last = {key: None for key in RUNTIME_KEYS}
         self.pushed, self.pending = [], []
+        self.main = {"camera": self.pending}
+        self.slow_s = float(cfg.get("slow_s", 0.0))
         self.processed_through, self.closed = -1, False
+    def _ready(self, t):
+        return True
     def push(self, key, message, index):
         self.received[key] += 1
         self.pushed.append([key, index])
@@ -74,6 +82,7 @@ class IncrementalPipeline:
     def advance(self, max_groups=None):
         done = 0
         while self.pending and (max_groups is None or done < max_groups):
+            time.sleep(self.slow_s)
             t = self.pending.pop(0)
             self.processed_through = t
             self.core.on_frame({"t": t}, None, None)
@@ -127,11 +136,16 @@ def checkout(tmp_path, monkeypatch):
     return tools
 
 
-def _config(tmp_path, **extra):
+def _config(tmp_path, node=None, **extra):
     config = tmp_path / f"runtime_config_{len(list(tmp_path.glob('runtime_config_*.json')))}.json"
     config.write_text(json.dumps({"schema": "stand-in/v1", **extra,
-                                  "node": {"output_dir": str(tmp_path / "out"), "ledger": True, "flush_timeout_s": 60}}))
+                                  "node": {"output_dir": str(tmp_path / "out"), "ledger": True, "flush_timeout_s": 60,
+                                           **(node or {})}}))
     return config
+
+
+OVERLOAD = {"contract": "REALTIME_OVERLOAD_v1", "live_age_budget_s": 0.2, "startup_timeout_s": 5.0,
+            "max_unprocessed_events": 100, "max_node_queue": 3}
 
 
 @pytest.fixture
@@ -293,3 +307,78 @@ def test_cleanup_and_shutdown_stop_the_host(node):
     host = node._host
     assert node.trigger_shutdown() == TransitionCallbackReturn.SUCCESS
     assert node._host is None and not host.is_alive() and node._inputs == []
+
+
+# ------------------------------------------------------------------------------------------- real-time operation
+def test_waitset_intake_reads_the_same_subscriptions_without_the_executor(node, tmp_path):
+    from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+    node.set_parameters([Parameter(RUNTIME_CONFIG_PARAMETER, value=str(_config(tmp_path, node={"intake": "waitset"})))])
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+    assert node._inputs == [] and list(node.subscriptions) == [] and len(node._intake_entities) == 8
+    assert node.count_subscribers("/sensor/cable_camera/image_raw") == 1        # the same graph entry as before
+    talker = rclpy.create_node("stand_in_camera")
+    qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.VOLATILE,
+                     history=HistoryPolicy.KEEP_LAST, depth=10)
+    publisher = talker.create_publisher(Image, "/sensor/cable_camera/image_raw", qos)
+    try:
+        assert _wait(lambda: publisher.get_subscription_count() == 1)
+        for sec in (1, 2, 3):
+            message = Image()
+            message.header.stamp.sec = sec
+            publisher.publish(message)
+        assert _wait(lambda: _counter(node, "frames") == 3)                    # nothing spins this node's executor
+        success, summary = _flush(node)
+        report = json.loads((next((tmp_path / "out").glob("epoch001_*/replay")) / "raw_replay_measurements.json").read_text())
+        assert success and report["pushed"] == [["camera", 0], ["camera", 1], ["camera", 2]]
+    finally:
+        talker.destroy_node()
+    assert node.trigger_deactivate() == TransitionCallbackReturn.SUCCESS
+    assert node._intake_thread is None and node._intake_entities == []
+    assert node.count_subscribers("/sensor/cable_camera/image_raw") == 0
+
+
+def test_a_stale_frame_fails_closed_and_only_a_new_epoch_recovers(node, tmp_path):
+    node.set_parameters([Parameter(RUNTIME_CONFIG_PARAMETER,
+                                   value=str(_config(tmp_path, node={"overload": OVERLOAD}, slow_s=0.5)))])
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+    node._enqueue("camera", _image(3))                                         # a frame with lines, 0.5 s in processing
+    assert _wait(lambda: node._overload is not None)
+    assert node._overload["fail_closed_reason"] == "REALTIME_OVERLOAD_v1:OUTPUT_AGE"
+    assert node._overload["trigger"]["has_lines"] and not node._overload_by_node and node._state == "FailClosed"
+    node._enqueue("camera", _image(4))                                         # the epoch is dead: counted, not forwarded
+    assert node._overload_counters["messages_dropped_after_overload"] == 1
+    assert _wait(lambda: (node._last_runtime or {}).get("fail_closed_reason") == "REALTIME_OVERLOAD_v1:OUTPUT_AGE")
+    assert _counter(node, "frames") == 0 and node._last_runtime["overload"]["code"] == "OUTPUT_AGE"
+    success, message = _flush(node)
+    assert not success and message["fail_closed_reason"] == "REALTIME_OVERLOAD_v1:OUTPUT_AGE"
+    assert node.trigger_deactivate() == TransitionCallbackReturn.SUCCESS
+    assert node._host.is_alive()                                               # the host answered: it is kept
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+    assert node._overload is None and node._state == "Waiting"
+    node._enqueue("camera", _image(1))                                         # an empty start-up frame may be late
+    assert _wait(lambda: (node._last_runtime or {}).get("epoch") == 2 and _counter(node, "frames") == 1)
+    assert node._overload is None and node._last_runtime["overload"]["frames"]["startup_stale_empty"] == 1
+
+
+def test_a_host_that_does_not_read_trips_the_node_queue_bound_and_is_replaced(node, tmp_path):
+    node.set_parameters([Parameter(RUNTIME_CONFIG_PARAMETER, value=str(_config(tmp_path, node={"overload": OVERLOAD})))])
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+    stuck = node._host
+    with node._send_lock:                                                      # the pipe to the host is blocked
+        node._enqueue("camera", _image(1))
+        assert _wait(lambda: not node._outbox)                                 # the forwarder holds it and waits to send
+        for sec in (2, 3, 4, 5):
+            node._enqueue("camera", _image(sec))
+        assert node._overload is not None and node._overload_by_node
+        assert node._overload["fail_closed_reason"] == "REALTIME_OVERLOAD_v1:NODE_QUEUE"
+        assert node._overload["trigger"]["node_queue"] == 4 and node._state == "FailClosed"
+        assert not node._outbox and node._overload_counters["messages_discarded_at_overload"] == 4
+    assert node.trigger_deactivate() == TransitionCallbackReturn.SUCCESS
+    assert node._host is None and not stuck.is_alive()                         # no state of that host is reused
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+    assert node._host is not None and node._host is not stuck and node._overload is None
+    node._enqueue("camera", _image(1))
+    assert _wait(lambda: _counter(node, "frames") == 1)
