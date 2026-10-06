@@ -7,8 +7,9 @@ and nothing reads the backend's output: this driver only moves the simulated air
 
 Differences from the recording driver:
 
-* scoped start: only ``powerline_slam`` and ``maneuver_controller`` with their dependencies are started, so the
-  mission executor and the overview providers stay inactive;
+* start order: ``custom_operation`` with its dependencies (the PX4 bridge, the maneuver controller and the mission
+  executor, which fly the commanded legs), then ``powerline_slam``.  On the powerline_slam processing stack none of
+  them has a lifecycle or data dependency on the backend, and the legacy mapper they would read is not instantiated;
 * no legacy mapper is started or sampled, no ground segment and no bag;
 * every leg command is announced on ``/perception/powerline_slam/nominal_command`` (``StringStamped`` JSON, latched):
   ``intent`` with the simulation source time right before the command is sent, ``accepted`` once the maneuver
@@ -37,7 +38,9 @@ COMMAND_TOPIC = "/perception/powerline_slam/nominal_command"
 MAP_FRAME = "WO002_SIM_DESIGN_ENU"
 R_ENU_FROM_NED = ((0.0, 1.0, 0.0), (1.0, 0.0, 0.0), (0.0, 0.0, -1.0))
 R_FLU_FROM_FRD = ((1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, -1.0))
-SCOPED_ENTITIES = ("powerline_slam", "maneuver_controller")
+# The flight path first (PX4 bridge, maneuver controller, mission executor, external flight mode), then the backend,
+# so the backend activates when every runtime input is already flowing.
+SCOPED_ENTITIES = ("custom_operation", "powerline_slam")
 DEFAULT_OUTPUT_ROOT = flights.WORKSPACE_ROOT / "runtime" / "powerline_slam_online"
 
 
@@ -104,7 +107,7 @@ class OnlineRunner(flights.CorridorRunner):
         system = self.tools.system("status")
         if not system.success or "booted: false" in str((system.data or {}).get("stdout", "")).lower():
             self.require(self.tools.system("boot", timeout_sec=180), "boot canonical system")
-        for entity in SCOPED_ENTITIES:              # the mission executor and overview providers stay inactive
+        for entity in SCOPED_ENTITIES:
             self.require(self.tools.system("start", entity_id=entity, include_dependencies=True, timeout_sec=300),
                          f"start {entity} with its dependencies")
         state = self.require(self.tools.px4("status", timeout_sec=20), "read PX4 status")
