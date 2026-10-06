@@ -60,6 +60,10 @@ def validate_node_config(node: dict) -> None:
     """Refuse a node configuration this version cannot honour (before any process or worker starts)."""
     if node.get("pipeline", "r1") not in ("r1", "rt"):
         raise ValueError(f"node.pipeline must be 'r1' or 'rt', not {node.get('pipeline')!r}")
+    if node.get("mission_prior", "sidecar") not in ("sidecar", "live"):
+        raise ValueError(f"node.mission_prior must be 'sidecar' or 'live', not {node.get('mission_prior')!r}")
+    if node.get("mission_prior", "sidecar") == "live" and node.get("pipeline", "r1") != "rt":
+        raise ValueError("node.mission_prior 'live' needs node.pipeline 'rt'")
     if node.get("intake", "executor") not in ("executor", "waitset"):
         raise ValueError(f"node.intake must be 'executor' or 'waitset', not {node.get('intake')!r}")
     if node.get("mask_device", "cpu") not in ("cpu", "cuda"):

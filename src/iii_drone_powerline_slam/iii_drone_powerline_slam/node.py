@@ -68,6 +68,11 @@ INPUT_TOPICS = {
     "camera_info": ("/sensor/cable_camera/camera_info", "sensor_msgs/msg/CameraInfo", SENSOR_QOS),
     "timesync": ("/fmu/out/timesync_status", "px4_msgs/msg/TimesyncStatus", PX4_QOS),
 }
+# live nominal mission prior (node.mission_prior: live): the flight exercise's command events, in the node's namespace.
+# Latched, so a node activated during a leg learns that leg's command.  Never an estimator measurement.
+COMMAND_QOS = QoSProfile(reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                         history=HistoryPolicy.KEEP_LAST, depth=8)
+COMMAND_TOPIC = ("nominal_command", "iii_drone_interfaces/msg/StringStamped", COMMAND_QOS)
 HOST_START_TIMEOUT_S = 300.0       # runtime activation, native-module and configuration checks
 EPOCH_START_TIMEOUT_S = 300.0      # pipeline construction and worker start-up
 EXIT_HOST_LOST = 71                # the estimator host died: exit so supervision respawns a clean node
@@ -372,12 +377,18 @@ class PowerlineSlamNode(Node):
                 self._publish_overload()
 
     # ------------------------------------------------------------------ inputs
+    def _input_topics(self) -> dict:
+        """The runtime inputs, plus the command events of the flight exercise when the mission prior is live."""
+        if self._node_config.get("mission_prior", "sidecar") != "live":
+            return INPUT_TOPICS
+        return {**INPUT_TOPICS, "command": COMMAND_TOPIC}
+
     def _create_subscriptions(self) -> None:
         from rosidl_runtime_py.utilities import get_message
         if self._node_config.get("intake", "executor") == "waitset":
             self._start_intake()
             return
-        for key, (topic, type_name, qos) in INPUT_TOPICS.items():
+        for key, (topic, type_name, qos) in self._input_topics().items():
             self._inputs.append(self.create_subscription(
                 get_message(type_name), topic, lambda raw, key=key: self._enqueue(key, raw), qos,
                 callback_group=self._group, raw=True))
@@ -394,7 +405,7 @@ class PowerlineSlamNode(Node):
         from rclpy.type_support import check_is_valid_msg_type
         from rosidl_runtime_py.utilities import get_message
         with self.handle:
-            for key, (topic, type_name, qos) in INPUT_TOPICS.items():
+            for key, (topic, type_name, qos) in self._input_topics().items():
                 message_type = get_message(type_name)
                 check_is_valid_msg_type(message_type)
                 handle = _rclpy.Subscription(self.handle, message_type, topic, qos.get_c_qos_profile(), None)

@@ -20,6 +20,9 @@ from px4_msgs.msg import SensorCombined, TimesyncStatus
 from sensor_msgs.msg import Image
 from std_srvs.srv import Trigger
 
+import rclpy.executors
+
+from iii_drone_powerline_slam import realtime
 from iii_drone_powerline_slam.node import RUNTIME_CONFIG_PARAMETER, PowerlineSlamNode
 
 FAKE_MODULES = {
@@ -127,6 +130,40 @@ class FrameConverter:
                 "diagnostics": {"t": t, "fail_closed_reason": reason}}
 ''',
 }
+
+
+# stand-ins of the real-time pipeline and of its live-prior variant (node.mission_prior: live)
+FAKE_MODULES["iii_rt_pipeline"] = '''
+import iii_r1_pipeline as pl
+class CameraOptions:
+    @classmethod
+    def from_node_config(cls, node):
+        return cls()
+class RealtimePipeline(pl.IncrementalPipeline):
+    def __init__(self, cfg, *, clock, streams_dir, camera=None, doppler_workers=0, evidence=True):
+        super().__init__(cfg, clock=clock, streams_dir=streams_dir)
+    def wait_ready(self, timeout=None):
+        return {}
+    def push(self, key, message, index, raw=None):
+        super().push(key, message, index)
+def realtime_frame_converter(cls):
+    return cls
+'''
+FAKE_MODULES["iii_ol_pipeline"] = '''
+import iii_rt_pipeline as rtp
+class OnlinePipeline(rtp.RealtimePipeline):
+    def __init__(self, cfg, **kwargs):
+        super().__init__(cfg, **kwargs)
+        self.live_priors = [] if cfg.get("mission_sidecar") == "live-contract" else None
+        self.commands = []
+    def command(self, document):
+        if document.get("kind") not in ("intent", "accepted", "end"):
+            return {"refused": "unknown kind"}
+        self.commands.append(document)
+        return {"kind": document["kind"]}
+    def prior_summary(self):
+        return {"commands": {"applied": len(self.commands)}, "causality": {}, "priors": [], "log": []}
+'''
 
 
 @pytest.fixture
@@ -400,3 +437,47 @@ def test_frames_finished_by_the_flush_are_not_bound_by_the_live_age_budget(node,
     assert success and summary["frames"] == 1
     assert _wait(lambda: _counter(node, "frames") == 1)
     assert node._overload is None and node._state == "Running"
+
+
+def test_live_mission_prior_commands_reach_the_pipeline_in_arrival_order(node, tmp_path):
+    from iii_drone_interfaces.msg import StringStamped
+    from iii_drone_powerline_slam.node import COMMAND_QOS
+    config = _config(tmp_path, node={"pipeline": "rt", "mission_prior": "live"}, mission_sidecar="live-contract")
+    node.set_parameters([Parameter(RUNTIME_CONFIG_PARAMETER, value=str(config))])
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+    talker = rclpy.create_node("stand_in_exercise")
+    topic = node.resolve_topic_name("nominal_command")          # in the node's namespace, like its outputs
+    publisher = talker.create_publisher(StringStamped, topic, COMMAND_QOS)
+    executor = rclpy.executors.SingleThreadedExecutor()
+    executor.add_node(node)
+    try:
+        for kind in ("intent", "accepted"):                       # latched before the node activates
+            publisher.publish(StringStamped(data=json.dumps({"kind": kind, "source_time_ns": 5})))
+        assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+        assert node.count_subscribers(topic) == 1
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline and _counter(node, "command_applied") < 2:
+            executor.spin_once(timeout_sec=0.05)
+        assert _counter(node, "command_applied") == 2             # the latched leg command reached the new epoch
+        publisher.publish(StringStamped(data=json.dumps({"kind": "truth", "source_time_ns": 6})))
+        while time.monotonic() < deadline and _counter(node, "command_refused") < 1:
+            executor.spin_once(timeout_sec=0.05)
+        assert _counter(node, "command_refused") == 1
+        assert node._last_runtime["live_mission_prior"]["commands"] == {"applied": 2}
+        assert node._last_runtime["fail_closed_reason"] is None
+    finally:
+        executor.remove_node(node)
+        talker.destroy_node()
+    assert node.trigger_deactivate() == TransitionCallbackReturn.SUCCESS
+    assert node.count_subscribers(topic) == 0
+
+
+def test_live_mission_prior_needs_its_contract_and_the_real_time_pipeline(node, tmp_path):
+    config = _config(tmp_path, node={"pipeline": "rt", "mission_prior": "live"}, mission_sidecar="a-replay-sidecar")
+    node.set_parameters([Parameter(RUNTIME_CONFIG_PARAMETER, value=str(config))])
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+    assert node.trigger_activate() == TransitionCallbackReturn.FAILURE       # not a live mission prior contract
+    with pytest.raises(ValueError):
+        realtime.validate_node_config({"mission_prior": "live"})            # the reference pipeline has no live prior
+    with pytest.raises(ValueError):
+        realtime.validate_node_config({"pipeline": "rt", "mission_prior": "future"})

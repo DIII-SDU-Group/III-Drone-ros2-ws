@@ -68,7 +68,9 @@ class Epoch:
         self.workers_info = None
         if self.realtime:
             rtp = host.rt_pipeline
-            self.pipe = rtp.RealtimePipeline(pl.PipelineConfig.load(host.config_path), clock=src.IIIClockContract(),
+            # live mission prior: the same pipeline, its nominal prior built from the exercise's command events
+            pipeline_cls = rtp.RealtimePipeline if host.ol_pipeline is None else host.ol_pipeline.OnlinePipeline
+            self.pipe = pipeline_cls(pl.PipelineConfig.load(host.config_path), clock=src.IIIClockContract(),
                                              streams_dir=streams, camera=rtp.CameraOptions.from_node_config(node),
                                              doppler_workers=int(node.get("doppler_workers", 0)),
                                              evidence=bool(node.get("evidence", True)))
@@ -79,6 +81,8 @@ class Epoch:
                                                streams_dir=streams,
                                                prefetch_workers=int(node.get("prefetch_workers", 0)),
                                                doppler_workers=int(node.get("doppler_workers", 0)))
+        if host.ol_pipeline is not None and self.pipe.live_priors is None:
+            raise ValueError("node.mission_prior is 'live' but mission_sidecar is not a live mission prior contract")
         self.affinity = realtime.pin_workers(self.pipe, node.get("affinity") or {})
         self.overload = realtime.OverloadMonitor(node["overload"]) if node.get("overload") else None
         converter = host.rt_pipeline.realtime_frame_converter(fr.FrameConverter) if self.realtime else fr.FrameConverter
@@ -128,6 +132,9 @@ class Epoch:
                 self.fail("UXRCE_DDS_TIMESYNC_ACTIVE: timesync_status must stay silent (UXRCE_DDS_SYNCT=0)")
             elif key == "camera_info":
                 self.pipe.verify_camera_info(message)
+            elif key == "command":                          # the exercise's command event: prior bookkeeping only
+                row = self.pipe.command(json.loads(message.data))
+                self.counters["command_refused" if "refused" in row else "command_applied"] += 1
             else:
                 if key in ("camera", "radar_u"):
                     self.receipt[src.header_ns(message)] = received
@@ -270,6 +277,12 @@ class Epoch:
                 "last_advance_after_last_arrival_s": after(self.last_advance),
                 "last_frame_after_last_arrival_s": after(self.last_frame)}
 
+    def _prior_status(self) -> dict:
+        summary = self.pipe.prior_summary()
+        return {"commands": summary["commands"], "causality": summary["causality"], "priors": len(summary["priors"]),
+                "latest": summary["priors"][-1] if summary["priors"] else None,
+                "refused": [row for row in summary["log"] if "refused" in row][-5:]}
+
     def runtime(self) -> dict:
         pipe = self.pipe
         return {"kind": "runtime", "epoch": self.number, "state": self.state, "fail_closed_reason": self.fail_closed_reason,
@@ -282,6 +295,7 @@ class Epoch:
                 "processed_through_ns": pipe.processed_through,
                 "accounting": {"received": dict(pipe.received), "rejected": dict(pipe.rejected)},
                 "prefetch": pipe.prefetch_summary(),
+                "live_mission_prior": None if self.host.ol_pipeline is None else self._prior_status(),
                 "pipeline": "rt" if self.realtime else "r1", "affinity": self.affinity,
                 "overload": None if self.overload is None else self.overload.status()}
 
@@ -332,6 +346,7 @@ class Host:
         self.pending_high_water = 0
         self.epoch: Epoch | None = None
         self.rt_pipeline = None
+        self.ol_pipeline = None
 
     def send(self, item) -> None:
         self.conn_out.send(item)
@@ -354,10 +369,14 @@ class Host:
         if self.node_config.get("pipeline", "r1") == "rt":
             import iii_rt_pipeline
             self.rt_pipeline = iii_rt_pipeline
+            if self.node_config.get("mission_prior", "sidecar") == "live":
+                import iii_ol_pipeline
+                self.ol_pipeline = iii_ol_pipeline
         pl.PipelineConfig.load(self.config_path)              # validates every path before any data flows
         self.types = {key: get_message(src.TYPES[key]) for key in src.TOPICS}
         self.types["camera_info"] = get_message("sensor_msgs/msg/CameraInfo")
         self.types["timesync"] = get_message("px4_msgs/msg/TimesyncStatus")
+        self.types["command"] = get_message("iii_drone_interfaces/msg/StringStamped")
 
     def run(self) -> None:
         while True:
