@@ -481,3 +481,12 @@ def test_live_mission_prior_needs_its_contract_and_the_real_time_pipeline(node, 
         realtime.validate_node_config({"mission_prior": "live"})            # the reference pipeline has no live prior
     with pytest.raises(ValueError):
         realtime.validate_node_config({"pipeline": "rt", "mission_prior": "future"})
+
+
+def test_worker_cpus_exclude_the_node_and_host_cores():
+    """Workers are started from the union of the worker roles' CPUs: never from the host's or the node's core."""
+    from iii_drone_powerline_slam import realtime
+
+    plan = {"node": [13], "host": [12, 28], "detector_workers": [20, 21], "mask_worker": [21, 22], "doppler_workers": [27]}
+    assert realtime.worker_cpus(plan) == [20, 21, 22, 27]
+    assert realtime.worker_cpus({"node": [13], "host": [12, 28]}) == []

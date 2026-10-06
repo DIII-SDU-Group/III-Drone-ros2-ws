@@ -66,24 +66,20 @@ class Epoch:
         node = host.node_config
         self.realtime = host.rt_pipeline is not None
         self.workers_info = None
-        if self.realtime:
-            rtp = host.rt_pipeline
-            # live mission prior: the same pipeline, its nominal prior built from the exercise's command events
-            pipeline_cls = rtp.RealtimePipeline if host.ol_pipeline is None else host.ol_pipeline.OnlinePipeline
-            self.pipe = pipeline_cls(pl.PipelineConfig.load(host.config_path), clock=src.IIIClockContract(),
-                                             streams_dir=streams, camera=rtp.CameraOptions.from_node_config(node),
-                                             doppler_workers=int(node.get("doppler_workers", 0)),
-                                             evidence=bool(node.get("evidence", True)))
-            # activation completes only when every worker is ready: no model load or GPU set-up on the first frame
-            self.workers_info = self.pipe.wait_ready(float(node.get("worker_start_timeout_s", WORKER_START_TIMEOUT_S)))
-        else:
-            self.pipe = pl.IncrementalPipeline(pl.PipelineConfig.load(host.config_path), clock=src.IIIClockContract(),
-                                               streams_dir=streams,
-                                               prefetch_workers=int(node.get("prefetch_workers", 0)),
-                                               doppler_workers=int(node.get("doppler_workers", 0)))
-        if host.ol_pipeline is not None and self.pipe.live_priors is None:
-            raise ValueError("node.mission_prior is 'live' but mission_sidecar is not a live mission prior contract")
-        self.affinity = realtime.pin_workers(self.pipe, node.get("affinity") or {})
+        # A worker process inherits the CPUs of the thread that starts it.  With a host pinned to a core of its own the
+        # workers are therefore started from the workers' CPUs, never from the host's: they do not run on the host's
+        # core even while they load.  The host returns to its own CPUs once every worker is pinned by role.
+        plan = node.get("affinity") or {}
+        started_from = realtime.worker_cpus(plan) if plan.get("host") else []
+        if started_from:
+            realtime.pin_process(os.getpid(), started_from)
+        try:
+            self._build(host, node, streams)
+        finally:
+            if started_from:
+                realtime.pin_process(os.getpid(), plan["host"])
+        if self.affinity is not None and started_from:
+            self.affinity["workers_started_from"] = started_from
         self.overload = realtime.OverloadMonitor(node["overload"]) if node.get("overload") else None
         converter = host.rt_pipeline.realtime_frame_converter(fr.FrameConverter) if self.realtime else fr.FrameConverter
         self.converter = converter(self.pipe)
@@ -109,6 +105,29 @@ class Epoch:
         self.state = "Waiting"
         self.more = False
         self.last_status = 0.0
+
+    def _build(self, host, node: dict, streams: Path) -> None:
+        """The epoch's pipeline with its worker processes, every worker ready and pinned by role."""
+        _, pl, _, src = host.modules
+        self.affinity = None
+        if self.realtime:
+            rtp = host.rt_pipeline
+            # live mission prior: the same pipeline, its nominal prior built from the exercise's command events
+            pipeline_cls = rtp.RealtimePipeline if host.ol_pipeline is None else host.ol_pipeline.OnlinePipeline
+            self.pipe = pipeline_cls(pl.PipelineConfig.load(host.config_path), clock=src.IIIClockContract(),
+                                             streams_dir=streams, camera=rtp.CameraOptions.from_node_config(node),
+                                             doppler_workers=int(node.get("doppler_workers", 0)),
+                                             evidence=bool(node.get("evidence", True)))
+            # activation completes only when every worker is ready: no model load or GPU set-up on the first frame
+            self.workers_info = self.pipe.wait_ready(float(node.get("worker_start_timeout_s", WORKER_START_TIMEOUT_S)))
+        else:
+            self.pipe = pl.IncrementalPipeline(pl.PipelineConfig.load(host.config_path), clock=src.IIIClockContract(),
+                                               streams_dir=streams,
+                                               prefetch_workers=int(node.get("prefetch_workers", 0)),
+                                               doppler_workers=int(node.get("doppler_workers", 0)))
+        if host.ol_pipeline is not None and self.pipe.live_priors is None:
+            raise ValueError("node.mission_prior is 'live' but mission_sidecar is not a live mission prior contract")
+        self.affinity = realtime.pin_workers(self.pipe, node.get("affinity") or {})
 
     # ------------------------------------------------------------------ intake
     def ingest(self, key: str, raw: bytes, index: int, received: float) -> None:

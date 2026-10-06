@@ -112,6 +112,15 @@ def pin_process(pid: int, cpus) -> list[int] | None:
     return sorted(cpus)
 
 
+def worker_cpus(affinity: dict) -> list[int]:
+    """Every CPU a worker role of the plan may use: where worker processes are started (see ``estimator_host.Epoch``)."""
+    cpus: set[int] = set()
+    for role in AFFINITY_ROLES:
+        if role not in ("node", "host"):
+            cpus.update(affinity.get(role) or [])
+    return sorted(cpus)
+
+
 def pin_workers(pipe, affinity: dict) -> dict:
     """Pin the pipeline's worker processes by role; returns what was pinned (recorded in the runtime record)."""
     camera = getattr(pipe, "prefetcher", None)
