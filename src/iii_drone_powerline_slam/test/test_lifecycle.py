@@ -67,9 +67,10 @@ class IncrementalPipeline:
         self.pushed, self.pending = [], []
         self.main = {"camera": self.pending}
         self.slow_s = float(cfg.get("slow_s", 0.0))
+        self.hold_until_close = bool(cfg.get("hold_until_close"))
         self.processed_through, self.closed = -1, False
     def _ready(self, t):
-        return True
+        return not self.hold_until_close
     def push(self, key, message, index):
         self.received[key] += 1
         self.pushed.append([key, index])
@@ -81,6 +82,8 @@ class IncrementalPipeline:
         pass
     def advance(self, max_groups=None):
         done = 0
+        if self.hold_until_close and not self.closed:
+            return 0
         while self.pending and (max_groups is None or done < max_groups):
             time.sleep(self.slow_s)
             t = self.pending.pop(0)
@@ -382,3 +385,18 @@ def test_a_host_that_does_not_read_trips_the_node_queue_bound_and_is_replaced(no
     assert node._host is not None and node._host is not stuck and node._overload is None
     node._enqueue("camera", _image(1))
     assert _wait(lambda: _counter(node, "frames") == 1)
+
+
+def test_frames_finished_by_the_flush_are_not_bound_by_the_live_age_budget(node, tmp_path):
+    node.set_parameters([Parameter(RUNTIME_CONFIG_PARAMETER,
+                                   value=str(_config(tmp_path, node={"overload": OVERLOAD}, hold_until_close=True)))])
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+    node._enqueue("camera", _image(3))                                         # waits for input that never comes
+    assert _wait(lambda: _counter(node, "received_camera") == 1)
+    time.sleep(3 * OVERLOAD["live_age_budget_s"])
+    assert node._overload is None and _counter(node, "frames") == 0            # starved, not overloaded
+    success, summary = _flush(node)                                            # the explicit post-traversal step finishes it
+    assert success and summary["frames"] == 1
+    assert _wait(lambda: _counter(node, "frames") == 1)
+    assert node._overload is None and node._state == "Running"

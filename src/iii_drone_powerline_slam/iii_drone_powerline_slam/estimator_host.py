@@ -247,9 +247,9 @@ class Epoch:
                 self.latency_armed.append(latency)
         if self.ledger is not None:
             self.ledger.append(frame)
-        if self.overload is not None:
+        if self.overload is not None and not self.finalized:
             self.host.send(("frame", t, frame["powerline"], frame["diagnostics"], received))
-        else:
+        else:                                               # no age bound: unbounded mode, or a frame finished by the flush
             self.host.send(("frame", t, frame["powerline"], frame["diagnostics"]))
         self.counters["frames"] += 1
         reason = frame["diagnostics"]["fail_closed_reason"]
