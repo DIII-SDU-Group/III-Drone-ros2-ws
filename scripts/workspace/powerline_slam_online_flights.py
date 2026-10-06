@@ -120,7 +120,15 @@ class OnlineRunner(flights.CorridorRunner):
         self.px4_with_retries("hold", "stabilize PX4 in HOLD", timeout_sec=20)
         time.sleep(2.0)
         self.activate_custom_operation_with_recovery()
-        current = self.require(self.tools.configuration("get_yaml", timeout_sec=10), "snapshot configuration")
+        for attempt in range(3):                    # the tools' node may not have discovered the server yet
+            try:
+                current = self.require(self.tools.configuration("get_yaml", timeout_sec=20), "snapshot configuration")
+                break
+            except RuntimeError as exc:
+                if attempt == 2:
+                    raise
+                self.rebuild_tools(f"snapshot configuration: {exc}")
+                time.sleep(3.0)
         parsed = self.yaml.safe_load(str(current.get("yaml", ""))) or {}
         for parameter_name in dataset.MOTION_PARAMETER_NAMES.values():
             value = dataset._nested_parameter_value(parsed, parameter_name)
