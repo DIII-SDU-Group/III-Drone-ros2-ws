@@ -194,7 +194,7 @@ class OnlineRunner(flights.CorridorRunner):
             self.clock.sleep_until_ns(end_ns + int(flights.POST_ROLL_SEC * 1e9))
         except Exception:
             try:                                    # the exercise ended here: no prior stays in force
-                self.commands.publish(command_event("end", self.clock.now_ns()))
+                self.commands.publish(command_event("end", self.clock.now_ns() + COMMAND_LEAD_NS))
             finally:
                 self.safe_recover()
             raise
