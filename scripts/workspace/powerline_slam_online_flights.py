@@ -40,7 +40,7 @@ R_ENU_FROM_NED = ((0.0, 1.0, 0.0), (1.0, 0.0, 0.0), (0.0, 0.0, -1.0))
 R_FLU_FROM_FRD = ((1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, -1.0))
 # The flight path first (PX4 bridge, maneuver controller, mission executor, external flight mode), then the backend,
 # so the backend activates when every runtime input is already flowing.
-SCOPED_ENTITIES = ("custom_operation", "powerline_slam")
+SCOPED_ENTITIES = ("configuration_server", "custom_operation", "powerline_slam")
 DEFAULT_OUTPUT_ROOT = flights.WORKSPACE_ROOT / "runtime" / "powerline_slam_online"
 
 
