@@ -9,7 +9,7 @@ Core runtime documentation remains in the package and subsystem guides:
   `iii px4 param-baseline`, and the check before every system boot and start.
 - `opti-track-lab-readiness.md` for the OptiTrack lab facts, the motion-capture
   data flow, one-time commissioning (lab Wi-Fi, stack ROS domain, PX4 baseline
-  `deployment/px4/opti-track.nsh`), and the acceptance boundary of the
+  `deployment/px4/parameters/opti_track.params`), and the acceptance boundary of the
   `opti_track` profile.
 - `opti-track-lab-session-checklist.md` for the per-session OptiTrack lab flight
   procedure, the mission ladder, and the motion-capture outage response.

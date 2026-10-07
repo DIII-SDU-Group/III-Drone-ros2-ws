@@ -41,10 +41,12 @@ per payload configuration: the OptiTrack lab flies with and without the payload.
 `iii host provision` writes the stack's ROS 2 domain for every aircraft profile
 (`--ros-domain-id`, default 42) into `/etc/iii/runtime.env`. Set the flight
 controller's `UXRCE_DDS_DOM_ID` to the same value (PX4's default is 0) and
-reboot it; otherwise no PX4 topic reaches the stack. `iii px4 inspect --host
-<pi>` proves it with a `/fmu/out/vehicle_status_v1` sample in that domain. The
-OptiTrack baseline [`deployment/px4/opti-track.nsh`](../deployment/px4/opti-track.nsh)
-sets it for the lab.
+reboot it; otherwise no PX4 topic reaches the stack. `iii px4 param-baseline
+--profile real --host <pi>` sets it together with the rest of the
+[real PX4 baseline](px4-parameter-baselines.md), and the Pi refuses to boot or
+start the system while the flight controller differs from that baseline. `iii
+px4 inspect --host <pi>` proves the domain with a `/fmu/out/vehicle_status_v1`
+sample in it.
 
 ## Preparation And Start
 

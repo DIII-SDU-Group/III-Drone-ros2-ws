@@ -34,19 +34,15 @@ iii px4 param-baseline --profile hil --host <pi>
 
 It shows the parameters that differ, writes them after confirmation, reboots
 the flight controller and verifies the result; see
-[PX4 parameter baselines](px4-parameter-baselines.md). The same baseline can
-be applied by hand: copy
-[`deployment/px4/hil-ethernet.nsh`](../deployment/px4/hil-ethernet.nsh)
-to the PX4 SD card or open it from a PX4 NSH console, then run:
+[PX4 parameter baselines](px4-parameter-baselines.md). The parameters are in
+[`deployment/px4/parameters/hil.params`](../deployment/px4/parameters/hil.params),
+which QGroundControl can also load by hand (Parameters, Tools, Load from
+file), followed by a reboot of the flight controller.
 
-```nsh
-source /fs/microsd/hil-ethernet.nsh
-```
-
-This explicitly changes the PX4 parameter store, saves it, and reboots the
-flight controller. It does not arm the vehicle. The script selects Ethernet
-for the uXRCE-DDS client, directs it to the Pi agent on UDP `8889`, and creates
-an Ethernet MAVLink instance broadcasting to UDP `14542`.
+This explicitly changes the PX4 parameter store and reboots the flight
+controller. It does not arm the vehicle. The baseline selects Ethernet for the
+uXRCE-DDS client, directs it to the Pi agent on UDP `8889`, and creates an
+Ethernet MAVLink instance broadcasting to UDP `14542`.
 
 ## Verify after reboot
 

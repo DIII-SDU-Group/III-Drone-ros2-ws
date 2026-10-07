@@ -3,7 +3,7 @@
 #
 # Runs the `opti_track` runtime profile against PX4 SITL and Gazebo:
 #   - PX4 SITL with a vision-only estimator (the lab's PX4 baseline, see
-#     deployment/px4/opti-track.nsh): no GPS, no magnetometer;
+#     deployment/px4/parameters/opti_track.params): no GPS, no magnetometer;
 #   - the Gazebo bridges for the clock and the ground-truth odometry;
 #   - the simulated lab gateway, which republishes the ground truth as the
 #     lab's rigid-body pose topic;
@@ -19,7 +19,7 @@ ADAPTER_SESSION="iii_opti_track_rehearsal"
 RIGID_BODY_ID="${III_OPTI_TRACK_REHEARSAL_RIGID_BODY_ID:-1}"
 API_ENV_FILE="${WORKSPACE_ROOT}/.config/iii-runtime-api.env"
 API_ENV_BACKUP="${API_ENV_FILE}.before-opti-track-rehearsal"
-# deployment/px4/opti-track.nsh, without its transport and battery lines.
+# deployment/px4/parameters/opti_track.params, without its transport and battery lines.
 PX4_VISION_ENV="PX4_PARAM_EKF2_EV_CTRL=11 PX4_PARAM_EKF2_HGT_REF=3 PX4_PARAM_EKF2_GPS_CTRL=0 PX4_PARAM_EKF2_BARO_CTRL=1 PX4_PARAM_EKF2_MAG_TYPE=5 PX4_PARAM_SYS_HAS_MAG=0 PX4_PARAM_SYS_HAS_GPS=0 PX4_PARAM_SENS_EN_GPSSIM=0 PX4_PARAM_SENS_EN_MAGSIM=0 PX4_PARAM_EKF2_EV_NOISE_MD=0 PX4_PARAM_EKF2_EVP_NOISE=0.05 PX4_PARAM_EKF2_EVA_NOISE=0.05 PX4_PARAM_EKF2_EV_QMIN=0 PX4_PARAM_EKF2_EV_DELAY=30 PX4_PARAM_EKF2_NOAID_TOUT=1000000 PX4_PARAM_COM_POSCTL_NAVL=0 PX4_PARAM_COM_POS_FS_EPH=1.0 PX4_PARAM_MIS_TAKEOFF_ALT=1.2"
 
 # The ROS setup files read unset variables.

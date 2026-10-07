@@ -40,12 +40,12 @@ PX4-Autopilot/src/modules/zenoh/zenoh-pico f093aa7955bb24dfa3e626de084583711e3ba
 src/BehaviorTree.CPP 3ff6a32ba0497a08519c77a1436e3b81eff1bcd6
 src/BehaviorTree.ROS2 c72596242684ed6f03796665908d337269afb4b3
 src/III-Drone-Configuration bec8dbae89006223bc2f38c6e76549479fc0652c
-src/III-Drone-Contracts 6d7fe2bdf2645c90d797eae0aa998b88860c13cc
+src/III-Drone-Contracts f939d44ca45683e94668338ad3ad7cac1bf40f7e
 src/III-Drone-Core 8457ec80e7170c30cabc4a280d7bfd4c16ccba14
 src/III-Drone-GC 0c33417ce6805364ed0a8cf29f9aa065fe003d17
 src/III-Drone-Interfaces 9564ac178e6c08f598890d9147aafe3513f6747e
 src/III-Drone-Mission ab821a5952c4ab56a623ae80fb285771a3ef498a
-src/III-Drone-Runtime e0f9ffbf6c6ea168bd9844fd9aad7c8a90b58309
+src/III-Drone-Runtime 74e2106e11666b36fd4c69ab3e242dd750f9898d
 src/III-Drone-Simulation 4ae5e03ae1304098fdf799e18cbdf83d56fb1a9b
 src/III-Drone-Simulation/Gazebo-simulation-assets 1c4f14b2cfebbccd5d5ada18ed0f7e8edab5a636
 src/III-Drone-Supervision 6ef3e467b023456c1f3db91ac8386597234d04b0
@@ -56,4 +56,4 @@ src/micro-ROS-Agent 52abdf5a9897637b2539cb1c239e1ec4fa92e01c
 src/micro_ros_msgs e65ab21bd0733ebff2af6317d573cc584efa5893
 src/px4-ros2-interface-lib 809e422bfd088a6f5a30105eb36eb2e4cf52c02a
 src/px4_msgs 5e0e33cc6f192c1ad10548ffb25473fb618b9858
-tools/III-Drone-CLI 6aa80b4b22c05ca3b2ead1e280fa49f3a2f9a27b
+tools/III-Drone-CLI 6a5bf4cb92c46ed3bc569b3d3130bde94e7c8d74

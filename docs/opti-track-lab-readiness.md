@@ -220,7 +220,7 @@ and verifies them. The first time it goes over USB, because the flight
 controller does not yet talk MAVLink to the Pi on the `opti_track` port; later
 runs go through the Pi. See [PX4 parameter baselines](px4-parameter-baselines.md).
 
-The baseline is [`deployment/px4/opti-track.nsh`](../deployment/px4/opti-track.nsh).
+The baseline is [`deployment/px4/parameters/opti_track.params`](../deployment/px4/parameters/opti_track.params).
 It sets the uXRCE-DDS client to Ethernet (agent `10.41.10.1`, UDP 8888, the
 Pi's stack domain, no time sync), MAVLink instance 2 to Ethernet UDP 14540 (the
 telemetry radio's instance stays untouched), vision-only EKF2 with the
@@ -228,8 +228,8 @@ barometer as backup, and the lab failsafes (RC loss: Land; position loss in
 Position mode: Altitude; low battery: Land; 6S battery; takeoff altitude
 1.2 m). The geofence lines stay commented until the cage is measured, and
 `MPC_THR_HOVER` is set per payload configuration from a measured hover, never
-by the baseline. The script can still be run by hand in a PX4 NSH console
-(`source /fs/microsd/opti-track.nsh`).
+by the baseline. QGroundControl can also load the file by hand (Parameters,
+Tools, Load from file), followed by a reboot of the flight controller.
 
 From now on the Pi compares the flight controller with this baseline before
 every system boot and start, and refuses with the differing parameters when it

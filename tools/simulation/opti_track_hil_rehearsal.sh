@@ -29,7 +29,7 @@ LAUNCHER="${ROOT}/tools/simulation/launch_hil_workstation.sh"
 DROP_IN="60-opti-track-rehearsal.conf"
 PI_ENV="/etc/iii/opti-track-rehearsal.env"
 SSH=(ssh -o BatchMode=yes -o ConnectTimeout=10 "iii@${PI}")
-# deployment/px4/opti-track.nsh, without its transport and battery lines.
+# deployment/px4/parameters/opti_track.params, without its transport and battery lines.
 PX4_VISION_ENV="PX4_PARAM_EKF2_EV_CTRL=11 PX4_PARAM_EKF2_HGT_REF=3 PX4_PARAM_EKF2_GPS_CTRL=0 PX4_PARAM_EKF2_BARO_CTRL=1 PX4_PARAM_EKF2_MAG_TYPE=5 PX4_PARAM_SYS_HAS_MAG=0 PX4_PARAM_SYS_HAS_GPS=0 PX4_PARAM_SENS_EN_GPSSIM=0 PX4_PARAM_SENS_EN_MAGSIM=0 PX4_PARAM_EKF2_EV_NOISE_MD=0 PX4_PARAM_EKF2_EVP_NOISE=0.05 PX4_PARAM_EKF2_EVA_NOISE=0.05 PX4_PARAM_EKF2_EV_QMIN=0 PX4_PARAM_EKF2_EV_DELAY=30 PX4_PARAM_EKF2_NOAID_TOUT=1000000 PX4_PARAM_COM_POSCTL_NAVL=0 PX4_PARAM_COM_POS_FS_EPH=1.0 PX4_PARAM_MIS_TAKEOFF_ALT=1.2"
 
 container() {

@@ -1,22 +1,38 @@
 # PX4 Parameter Baselines
 
-Each aircraft profile relies on a small set of PX4 parameters: the baseline of
-that profile. Its single source is an NSH script in `deployment/px4`, a plain
-list of `param set` lines that can also be run by hand in a PX4 console.
+Each aircraft profile relies on a set of PX4 parameters: the baseline of that
+profile. Each baseline lives standalone in its own parameter file under
+`deployment/px4/parameters`; nothing that applies or checks parameters holds
+values of its own.
 
-| Profile | Script | What it sets |
+| Profile | File | What it holds |
 | --- | --- | --- |
-| `hil` | [`hil-ethernet.nsh`](../deployment/px4/hil-ethernet.nsh) | Ethernet transport to the Pi on the HIL ports (DDS UDP 8889, MAVLink UDP 14542). The physical flight controller does not fly in HIL. |
-| `opti_track` | [`opti-track.nsh`](../deployment/px4/opti-track.nsh) | Ethernet transport on the aircraft ports (DDS UDP 8888, MAVLink UDP 14540, stack DDS domain), the vision-only estimator and the lab failsafes. |
-| `real` | [`real.nsh`](../deployment/px4/real.nsh) | The Ethernet transport on the aircraft ports only. |
+| `hil` | [`hil.params`](../deployment/px4/parameters/hil.params) | Ethernet transport to the Pi on the HIL ports (DDS UDP 8889, MAVLink UDP 14542). The physical flight controller does not fly in HIL. |
+| `opti_track` | [`opti_track.params`](../deployment/px4/parameters/opti_track.params) | Ethernet transport on the aircraft ports (DDS UDP 8888, MAVLink UDP 14540, stack DDS domain), the vision-only estimator and the lab failsafes. |
+| `real` | [`real.params`](../deployment/px4/parameters/real.params) | The same transport, the two RTK GNSS receivers, the GNSS/magnetometer/barometer estimator and the outdoor failsafes. |
 
-The `real` baseline does not touch the estimator, the failsafes or the tuning;
-those are set in the field. It therefore does not undo the `opti_track`
-estimator and failsafe settings: after a lab session, restore the real
-aircraft's own estimator and failsafe parameters before flying outdoors.
+The files are QGroundControl parameter files: tab-separated `MAV ID`,
+`COMPONENT ID`, `PARAM NAME`, `VALUE`, `TYPE` rows (type 6 is INT32, 9 is
+REAL32) and `#` comment lines that explain each group. QGroundControl can load
+them too (Parameters, Tools, Load from file), followed by a reboot of the
+flight controller.
+
+The `real` baseline holds every parameter the `opti_track` baseline changes,
+so applying it after a lab session restores the outdoor estimator and
+failsafes. Its values other than the transport are the commissioned flight
+controller's own: the parameter snapshot of 2026-09-04, which the flight
+controller still held unchanged on 2026-10-07. In that configuration the two
+receivers work as moving base and rover (`GPS_UBX_MODE 1`) and are blended for
+position, while the heading comes from the magnetometer: `EKF2_GPS_CTRL` is 7,
+so the GNSS heading is not fused.
+
+Deliberately outside every baseline: sensor calibration, tuning,
+`MPC_THR_HOVER`, the geofence and the RC input source. A parameter in a
+baseline is held to its exact value at boot, so a baseline holds configuration,
+not values tuned in the field. To track more parameters, add rows to the file.
 
 `UXRCE_DDS_DOM_ID` is held to the stack ROS domain provisioned on the Pi
-(`ROS_DOMAIN_ID` in `/etc/iii/runtime.env`), not to the value in the script.
+(`ROS_DOMAIN_ID` in `/etc/iii/runtime.env`), not to the value in the file.
 
 ## Apply a baseline
 
@@ -47,7 +63,7 @@ It reaches the flight controller in one of two ways:
    flight controller's USB port to the ground computer; the device is found
    under `/dev/serial/by-id/*PX4*` (`--usb-device` overrides it), and
    QGroundControl must not hold the port. On this path the stack domain comes
-   from the Pi when it is reachable and otherwise from the script;
+   from the Pi when it is reachable and otherwise from the file;
    `--ros-domain-id` overrides it.
 
 With neither path the command fails and names both reasons. `iii deploy dev`
