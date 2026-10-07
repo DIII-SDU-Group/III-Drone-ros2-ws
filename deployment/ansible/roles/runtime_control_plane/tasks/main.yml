@@ -151,3 +151,20 @@
     - iii-runtime-api.service
     - iii.target
   when: not ansible_check_mode
+
+# The profile, domain and units above take effect only in freshly started
+# services. `iii host provision` has already checked that the aircraft is
+# disarmed and landed. A Pi without a deployed workspace skips the units'
+# start conditions, so this is harmless before the first deployment.
+- name: Apply control-plane unit changes before the restart
+  ansible.builtin.meta: flush_handlers
+
+- name: Restart the system daemon and the Runtime API
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: restarted
+    daemon_reload: true
+  loop:
+    - iii-system-daemon.service
+    - iii-runtime-api.service
+  when: not ansible_check_mode

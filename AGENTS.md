@@ -234,6 +234,11 @@ When implementing changes:
 - A dirty editable workspace is expected during field and HIL development.
 - Preserve unrelated dirty files and the physical safety boundary: deployment
   never arms the vehicle or writes PX4 firmware/parameters.
+- `iii deploy dev` and `iii host provision` always restart the system daemon and
+  the Runtime API and are refused unless the aircraft is provably disarmed and
+  landed (`--force` only when that state cannot be read). PX4 parameters change
+  only through the explicit `iii px4 param-baseline --profile <profile>`; see
+  [`docs/px4-parameter-baselines.md`](docs/px4-parameter-baselines.md).
 
 ## 8) Validation Checklist
 

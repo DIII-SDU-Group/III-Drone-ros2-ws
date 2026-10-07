@@ -17,8 +17,12 @@ here arms the aircraft or authorizes a flight on its own.
   propulsion battery connected. Flights need a safety pilot on RC and follow the
   session checklist.
 - III deployment and provisioning never arm the vehicle and never write PX4
-  firmware or parameters. The PX4 baseline below is an explicit manual NSH
-  operation.
+  firmware or parameters. The PX4 baseline below is its own explicit command,
+  `iii px4 param-baseline`, which refuses unless PX4 reports disarmed and
+  landed.
+- Provisioning and deployment restart the Pi's runtime services and are refused
+  unless the aircraft is provably disarmed and landed
+  ([vehicle gate](host-provisioning.md#vehicle-gate)).
 - Lab rules: change nothing in Motive or on the lab gateway except your own
   rigid body. Motive must stay on, and be returned to, its default
   configuration. Only the lab maintainer calibrates the system.
@@ -150,7 +154,20 @@ All steps run with the aircraft disarmed and no propulsion battery. The
 workstation reaches the Pi over the USB-Ethernet link (`10.42.0.15`), so a Wi-Fi
 change cannot cut the provisioning session.
 
-### 1. Provision the Pi for `opti_track` with the lab Wi-Fi
+Keep this order. While the Pi is on `opti_track` and the flight controller
+still carries another profile's transport, the Pi cannot read the vehicle
+state, so a deployment in between is refused unless forced.
+
+### 1. Deploy
+
+```bash
+iii deploy dev --host 10.42.0.15 --build
+```
+
+The deployed revision must contain the package changes listed above. Every
+deployment restarts the system daemon and the Runtime API.
+
+### 2. Provision the Pi for `opti_track` with the lab Wi-Fi
 
 Prerequisites: an editable Pi as in [host provisioning](host-provisioning.md),
 and the lab Wi-Fi passphrase in an owner-only file outside the checkout (for
@@ -165,24 +182,21 @@ iii host provision --host 10.42.0.15 --profile opti_track \
 
 Then run the same command without `--dry-run`. It writes `/etc/iii/runtime.env`
 with `III_SYSTEM_PROFILE=opti_track` and `ROS_DOMAIN_ID=42`, installs the Fast
-DDS service overrides for that domain, and adds the root-only netplan file
-`/etc/netplan/85-iii-wifi.yaml`. Omit the Wi-Fi options to leave an existing
-Wi-Fi client unchanged; `--remove-wifi` removes it. Without
-`--wifi-psk-file` the command prompts for the passphrase.
+DDS service overrides for that domain, stores the Wi-Fi client as the
+`opti_track` slot (`/etc/iii/wifi/opti_track.yaml`, root-only), activates it as
+`/etc/netplan/85-iii-wifi.yaml`, and restarts the system daemon and the Runtime
+API. Without `--wifi-psk-file` the command prompts for the passphrase.
+
+`opti_track` requires a Wi-Fi client. The Wi-Fi options are needed only the
+first time: later `iii host provision --profile opti_track` runs activate the
+stored client again, also after the Pi was provisioned for `hil` or `real` in
+between.
 
 Evidence (the Wi-Fi associates only within range of the lab network; it never
 delays boot elsewhere): `iii host inspect --host 10.42.0.15` lists `wlan0` with
 a `192.168.10.x` address. On the Pi, `ip route show default` names `wlan0` (via
 `192.168.10.1`) and `grep ROS_DOMAIN_ID /etc/iii/runtime.env` prints the
 provisioned domain.
-
-### 2. Deploy
-
-```bash
-iii deploy dev --host 10.42.0.15 --build --restart
-```
-
-The deployed revision must contain the package changes listed above.
 
 The Pi takes its time from NTP over the lab network's internet. As a fallback
 for an unsettled onboard clock, `iii host clock sync` can make the ground
@@ -192,29 +206,38 @@ computer the Pi's time source; that needs chrony on the ground computer with
 
 ### 3. Apply the PX4 OptiTrack baseline
 
-Copy [`deployment/px4/opti-track.nsh`](../deployment/px4/opti-track.nsh) to the
-PX4 SD card or open it from a PX4 NSH console, then run:
+Connect the flight controller's USB port to the ground computer and run, from
+the workspace:
 
-```nsh
-source /fs/microsd/opti-track.nsh
+```bash
+iii px4 param-baseline --profile opti_track --host 10.42.0.15 --dry-run
+iii px4 param-baseline --profile opti_track --host 10.42.0.15
 ```
 
-It sets the uXRCE-DDS client to Ethernet (agent `10.41.10.1`, UDP 8888, domain
-42, no time sync), MAVLink instance 2 to Ethernet UDP 14540 (the telemetry
-radio's instance stays untouched), vision-only EKF2 with the barometer as
-backup, and the lab failsafes (RC loss: Land; position loss in Position mode:
-Altitude; low battery: Land; 6S battery; takeoff altitude 1.2 m). It saves and
-reboots the flight controller. The geofence lines stay commented until the
-cage is measured, and `MPC_THR_HOVER` is set per payload configuration from a
-measured hover, never by the script. If you change `iii_ros_domain_id`, change
-`UXRCE_DDS_DOM_ID` to match.
+The first command only shows what differs. The second shows it again, asks for
+confirmation, writes the differing parameters, reboots the flight controller
+and verifies them. The first time it goes over USB, because the flight
+controller does not yet talk MAVLink to the Pi on the `opti_track` port; later
+runs go through the Pi. See [PX4 parameter baselines](px4-parameter-baselines.md).
 
-After reboot, on PX4 NSH: `param show UXRCE_DDS_DOM_ID`,
-`param show EKF2_EV_CTRL`, `uxrce_dds_client status`, `mavlink status`.
+The baseline is [`deployment/px4/opti-track.nsh`](../deployment/px4/opti-track.nsh).
+It sets the uXRCE-DDS client to Ethernet (agent `10.41.10.1`, UDP 8888, the
+Pi's stack domain, no time sync), MAVLink instance 2 to Ethernet UDP 14540 (the
+telemetry radio's instance stays untouched), vision-only EKF2 with the
+barometer as backup, and the lab failsafes (RC loss: Land; position loss in
+Position mode: Altitude; low battery: Land; 6S battery; takeoff altitude
+1.2 m). The geofence lines stay commented until the cage is measured, and
+`MPC_THR_HOVER` is set per payload configuration from a measured hover, never
+by the baseline. The script can still be run by hand in a PX4 NSH console
+(`source /fs/microsd/opti-track.nsh`).
 
-The HIL baseline uses UDP 8889 and 14542 on the same flight controller. Rerun
-[`hil-ethernet.nsh`](../deployment/px4/hil-ethernet.nsh) before HIL work: the
-HIL physical-PX4 disarm monitor listens on 14542.
+From now on the Pi compares the flight controller with this baseline before
+every system boot and start, and refuses with the differing parameters when it
+does not match.
+
+The HIL baseline uses UDP 8889 and 14542 on the same flight controller. Before
+HIL work, provision the Pi for `hil` and run `iii px4 param-baseline --profile
+hil`: the HIL physical-PX4 disarm monitor listens on 14542.
 
 ### 4. Inspect the link
 
@@ -242,6 +265,7 @@ and heading follow Motive. Record the captured facts above.
 - If the pose stream stops, the relay stops publishing, PX4 loses vision after
   at most 1 s, and its failsafes act; the pilot takes over. Never restart
   services on the lab gateway; its watchdog recovers the stream.
-- To undo the Wi-Fi client: `iii host provision --host 10.42.0.15 --profile
-  opti_track --remove-wifi`. To restore the HIL transport: rerun
-  `hil-ethernet.nsh`. Do not reset all PX4 parameters.
+- To return to HIL: `iii host provision --host 10.42.0.15 --profile hil`, then
+  `iii px4 param-baseline --profile hil`. The `opti_track` Wi-Fi client stays
+  stored for the next lab session; `--remove-wifi` on the `hil` profile removes
+  the active client. Do not reset all PX4 parameters.

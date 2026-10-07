@@ -54,15 +54,12 @@ def test_wifi_client_is_optional_and_carries_no_committed_secret():
     assert values["iii_wifi_ssid"] == ""
     assert values["iii_wifi_psk"] == ""
     assert values["iii_wifi_remove"] is False
-    # Every task that mentions the secret refuses to log it, and every task
-    # that writes or validates it only runs for an explicit Wi-Fi request.
+    # Every task that mentions the secret, or copies a file holding it,
+    # refuses to log it.
     for task in _tasks():
-        if "iii_wifi_psk" in yaml.safe_dump(task):
+        text = yaml.safe_dump(task)
+        if "iii_wifi_psk" in text or "85-iii-wifi.yaml" in text and "state: absent" not in text:
             assert task.get("no_log") is True, task["name"]
-    wifi_tasks = [task for task in _tasks() if "Wi-Fi" in task["name"] and "Validate the optional" not in task["name"]]
-    assert wifi_tasks
-    for task in wifi_tasks:
-        assert "when" in task, task["name"]
 
 
 def test_wifi_client_round_trips_ssid_and_passphrase_safely():
@@ -92,18 +89,63 @@ def test_wifi_regulatory_domain_is_rendered_only_when_selected():
 
 def test_wifi_client_file_is_root_only_and_applied_through_netplan():
     tasks = {task["name"]: task for task in _tasks()}
-    install = tasks["Install the aircraft Wi-Fi client"]
+    install = tasks["Install the active Wi-Fi client"]
     template = install["ansible.builtin.template"]
     assert template["dest"] == "/etc/netplan/85-iii-wifi.yaml"
     assert template["mode"] == "0600"
     assert install["no_log"] is True
     assert install["notify"] == "Apply III netplan"
-    remove = tasks["Remove the aircraft Wi-Fi client"]
+    remove = tasks["Remove the active Wi-Fi client"]
     assert remove["ansible.builtin.file"] == {"path": "/etc/netplan/85-iii-wifi.yaml", "state": "absent"}
     assert remove["when"] == "iii_wifi_remove | bool"
     handlers = yaml.safe_load((NETWORK_ROLE / "handlers/main.yml").read_text(encoding="utf-8"))
     apply = next(handler for handler in handlers if handler.get("listen") == "Apply III netplan")
     assert apply["ansible.builtin.command"]["argv"] == ["/usr/sbin/netplan", "apply"]
+
+
+def test_real_and_opti_track_each_keep_a_required_wifi_slot():
+    values = yaml.safe_load(VARS.read_text(encoding="utf-8"))
+    assert values["iii_wifi_slot_profiles"] == ["real", "opti_track"]
+    slot = "{{ iii_wifi_slot_directory }}/{{ iii_profile }}.yaml"
+    in_slot_profile = "iii_profile in iii_wifi_slot_profiles"
+    tasks = {task["name"]: task for task in _tasks()}
+
+    store = tasks["Store the Wi-Fi client in this profile's slot"]
+    assert store["ansible.builtin.template"]["dest"] == slot
+    assert store["ansible.builtin.template"]["mode"] == "0600"
+    assert store["when"] == [in_slot_profile, "(iii_wifi_ssid | length) > 0"]
+
+    # A profile without a stored client and without --wifi-ssid is refused.
+    require = tasks["Require a Wi-Fi client for this profile"]
+    assert require["ansible.builtin.assert"]["that"] == ["iii_wifi_slot.stat.exists"]
+    assert in_slot_profile in require["when"]
+
+    # Provisioning a slot profile always activates that profile's own client.
+    activate = tasks["Activate this profile's Wi-Fi client"]
+    assert activate["ansible.builtin.copy"]["src"] == slot
+    assert activate["ansible.builtin.copy"]["dest"] == "/etc/netplan/85-iii-wifi.yaml"
+    assert activate["ansible.builtin.copy"]["mode"] == "0600"
+    assert activate["notify"] == "Apply III netplan"
+    assert in_slot_profile in activate["when"]
+
+    # hil sets the active client directly and may remove it; slot profiles may not.
+    assert tasks["Install the active Wi-Fi client"]["when"][0] == "iii_profile not in iii_wifi_slot_profiles"
+    validate = tasks["Validate the Wi-Fi client request"]["ansible.builtin.assert"]["that"]
+    assert "not (iii_wifi_remove | bool) or iii_profile not in iii_wifi_slot_profiles" in validate
+
+    names = list(tasks)
+    assert names.index("Store the Wi-Fi client in this profile's slot") < names.index(
+        "Require a Wi-Fi client for this profile"
+    ) < names.index("Activate this profile's Wi-Fi client")
+
+
+def test_provisioning_ends_by_restarting_the_daemon_and_the_runtime_api():
+    tasks = yaml.safe_load(
+        (ANSIBLE / "roles/runtime_control_plane/tasks/main.yml").read_text(encoding="utf-8")
+    )
+    restart = tasks[-1]
+    assert restart["ansible.builtin.systemd_service"]["state"] == "restarted"
+    assert restart["loop"] == ["iii-system-daemon.service", "iii-runtime-api.service"]
 
 
 @pytest.mark.skipif(shutil.which("netplan") is None, reason="netplan is not installed")

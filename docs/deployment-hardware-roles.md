@@ -15,10 +15,11 @@ direct workstation link and is a DHCP client when attached to a router or a
 computer providing DHCP. A workstation configured only as a DHCP client does
 not provide an address; use `10.42.0.1/24` locally in that direct-link case.
 
-The PX4's Ethernet transport is a separate, one-time PX4 parameter baseline;
-follow [PX4 HIL Ethernet Baseline](px4-hil-ethernet-baseline.md) for HIL or
-[`deployment/px4/opti-track.nsh`](../deployment/px4/opti-track.nsh) for the
-OptiTrack lab before expecting any DDS or MAVLink packet from the PX4.
+The PX4's Ethernet transport belongs to the profile's PX4 parameter baseline;
+apply it with `iii px4 param-baseline --profile <profile>`
+([PX4 parameter baselines](px4-parameter-baselines.md)) before expecting any
+DDS or MAVLink packet from the PX4. On `real` and `opti_track` the Pi checks
+the baseline before every system boot and start.
 
 ## Stack ROS domain
 
@@ -28,14 +29,21 @@ Provisioning writes one ROS 2 domain for the aircraft stack into
 The flight controller's `UXRCE_DDS_DOM_ID` must equal it; otherwise the agent
 creates PX4's topics in a domain the stack does not see.
 
-## Optional Wi-Fi client
+## Wi-Fi client
 
-`iii host provision --wifi-ssid <ssid>` adds a Wi-Fi client on `wlan0` in its own
-root-only netplan file (`/etc/netplan/85-iii-wifi.yaml`). It does not change the
-PX4 Ethernet link or the workstation USB-Ethernet link. While associated, the
+`iii host provision` manages one Wi-Fi client on `wlan0` in its own root-only
+netplan file (`/etc/netplan/85-iii-wifi.yaml`). It does not change the PX4
+Ethernet link or the workstation USB-Ethernet link. While associated, the
 Wi-Fi owns the default route (route metric 50 against 100 for wired DHCP); out
 of range it never delays boot. The passphrase comes from an owner-only file
 outside the checkout or a prompt and is stored only on the Pi.
+
+`real` and `opti_track` require a Wi-Fi client and each keep their own in a
+root-only slot (`/etc/iii/wifi/<profile>.yaml`): the OptiTrack lab network for
+`opti_track`, the ground station's network for `real`. Provisioning a profile
+activates its slot, so switching profiles switches networks; `--wifi-ssid`
+replaces the slot of the profile being provisioned. For `hil` the client is
+optional (`--wifi-ssid` sets it, `--remove-wifi` removes it).
 
 ## OptiTrack lab data flow
 

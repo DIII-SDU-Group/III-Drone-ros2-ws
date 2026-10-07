@@ -31,6 +31,9 @@ iii_wifi_ssid: ""
 iii_wifi_psk: ""
 iii_wifi_regulatory_domain: ""
 iii_wifi_remove: false
+# real and opti_track require a Wi-Fi client and each keep their own here.
+iii_wifi_slot_profiles: [real, opti_track]
+iii_wifi_slot_directory: /etc/iii/wifi
 # netplan's networkd backend binds Wi-Fi by interface name (no match: rules).
 iii_wifi_interface: wlan0
 # Below the default DHCP route metric of wired links (100), so Wi-Fi owns the

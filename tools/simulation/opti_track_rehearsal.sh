@@ -59,7 +59,8 @@ start() {
         cp -p "${API_ENV_FILE}" "${API_ENV_BACKUP}"
     fi
     mkdir -p "$(dirname "${API_ENV_FILE}")"
-    printf 'III_RUNTIME_API_PROFILE=opti_track\n' >"${API_ENV_FILE}"
+    # The PX4 is SITL, not the flight controller the opti_track baseline is for.
+    printf 'III_RUNTIME_API_PROFILE=opti_track\nIII_PX4_SIMULATED=1\n' >"${API_ENV_FILE}"
     sudo systemctl restart iii-runtime-api.service
 
     python3 "${REHEARSAL_PARAMETERS}" prepare "${RIGID_BODY_ID}"

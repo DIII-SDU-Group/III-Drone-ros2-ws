@@ -5,6 +5,8 @@ Core runtime documentation remains in the package and subsystem guides:
 - `runtime-launch-and-node-graph.md` for the supervised ROS graph.
 - `simulation-and-px4-integration.md` for SITL, PX4, and HIL topology.
 - `px4-hil-ethernet-baseline.md` for the one-time physical-PX4 HIL transport baseline.
+- `px4-parameter-baselines.md` for the per-profile PX4 parameter baselines,
+  `iii px4 param-baseline`, and the check before every system boot and start.
 - `opti-track-lab-readiness.md` for the OptiTrack lab facts, the motion-capture
   data flow, one-time commissioning (lab Wi-Fi, stack ROS domain, PX4 baseline
   `deployment/px4/opti-track.nsh`), and the acceptance boundary of the

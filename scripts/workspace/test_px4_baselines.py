@@ -35,6 +35,7 @@ def _parameters(name: str) -> dict[str, str]:
     [
         ("hil-ethernet.nsh", VARS["iii_hil_uxrce_dds_udp_port"], VARS["iii_hil_mavlink_udp_port"]),
         ("opti-track.nsh", VARS["iii_px4_uxrce_dds_udp_port"], VARS["iii_px4_mavlink_udp_port"]),
+        ("real.nsh", VARS["iii_px4_uxrce_dds_udp_port"], VARS["iii_px4_mavlink_udp_port"]),
     ],
 )
 def test_px4_baseline_targets_the_provisioned_pi_endpoints(name, dds_port, mavlink_port):
@@ -71,3 +72,24 @@ def test_opti_track_baseline_matches_the_stack_domain_and_vision_contract():
     assert "MPC_THR_HOVER" not in parameters
     # The geofence stays commented until the cage is measured.
     assert not any(key.startswith("GF_") for key in parameters)
+
+
+def test_real_baseline_is_the_transport_only():
+    parameters = _parameters("real.nsh")
+    assert int(parameters["UXRCE_DDS_DOM_ID"]) == VARS["iii_ros_domain_id"]
+    assert parameters["UXRCE_DDS_SYNCT"] == "0"
+    # The real aircraft's estimator, failsafes and tuning are set in the field.
+    assert all(key.startswith(("UXRCE_DDS_", "MAV_2_")) for key in parameters)
+
+
+def test_every_profile_baseline_is_readable_by_the_parameter_check():
+    import sys
+
+    sys.path.insert(0, str(ROOT / "src/III-Drone-Contracts"))
+    from iii_drone_contracts.px4_parameters import BASELINE_FILES, load_baseline
+
+    for profile, name in BASELINE_FILES.items():
+        loaded = load_baseline(profile, ROOT / "deployment/px4")
+        assert {key: float(value) for key, value in loaded.items()} == {
+            key: float(value) for key, value in _parameters(name).items()
+        }

@@ -24,9 +24,19 @@ and one DDS `vehicle_local_position_setpoint` message. The HIL profile's
 inspection waits up to five seconds for that final message; it is deliberately
 not a listener-only check.
 
-## Apply once through PX4 NSH
+## Apply
 
-Copy [`deployment/px4/hil-ethernet.nsh`](../deployment/px4/hil-ethernet.nsh)
+With the flight controller's USB port connected to the ground computer:
+
+```bash
+iii px4 param-baseline --profile hil --host <pi>
+```
+
+It shows the parameters that differ, writes them after confirmation, reboots
+the flight controller and verifies the result; see
+[PX4 parameter baselines](px4-parameter-baselines.md). The same baseline can
+be applied by hand: copy
+[`deployment/px4/hil-ethernet.nsh`](../deployment/px4/hil-ethernet.nsh)
 to the PX4 SD card or open it from a PX4 NSH console, then run:
 
 ```nsh

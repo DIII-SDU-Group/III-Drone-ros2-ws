@@ -8,7 +8,9 @@
 #   - Pi: a removable systemd drop-in switches the daemon and Runtime API to
 #     profile opti_track while keeping the HIL transport (agent port, MAVLink
 #     endpoint, stack domain). The relay subscribes the pose in domain 0 over
-#     the Pi-workstation link, as it does over the lab Wi-Fi.
+#     the Pi-workstation link, as it does over the lab Wi-Fi. III_PX4_SIMULATED
+#     tells the runtime that the PX4 is not the flight controller, so its
+#     transport parameters are not held to the opti_track PX4 baseline.
 #
 # The physical flight controller is not involved and must stay disarmed.
 # `stop` restores the Pi to its provisioned HIL profile.
@@ -46,6 +48,7 @@ III_SYSTEM_PROFILE=opti_track
 III_RUNTIME_API_PROFILE=opti_track
 SIMULATION=false
 III_MICRO_ROS_AGENT_UDP_PORT=8890
+III_PX4_SIMULATED=1
 ENV
 for unit in iii-system-daemon iii-runtime-api; do
   sudo mkdir -p /etc/systemd/system/\${unit}.service.d

@@ -68,6 +68,10 @@ stack domain (42); prefix lab-topic commands with `ROS_DOMAIN_ID=0`.
       before boot that state comes from MAVSDK over the PX4 MAVLink link (UDP
       14540). The CLI, on the Pi or routed from the ground computer, talks to
       the system daemon directly and is not gated.
+- [ ] Boot and start are refused, from the GUI and the CLI alike, when the
+      flight controller's parameters differ from the `opti_track` PX4
+      baseline; the message lists them. Run `iii px4 param-baseline --profile
+      opti_track --host <pi>` and try again.
 - [ ] Boot and start the profile, from the GUI (**Start aircraft system**) or
       from the ground computer:
 

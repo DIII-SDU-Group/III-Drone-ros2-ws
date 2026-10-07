@@ -55,9 +55,46 @@ enrollment file, runtime token, immutable release, or finalization pass.
 
 For every profile it also writes the stack's ROS 2 domain (`--ros-domain-id`,
 default 42) and Fast DDS settings into `/etc/iii/runtime.env`; the flight
-controller's `UXRCE_DDS_DOM_ID` must equal that domain. `--wifi-ssid` adds an
-optional Wi-Fi client, for example for the OptiTrack lab; see
+controller's `UXRCE_DDS_DOM_ID` must equal that domain.
+
+## Switching profiles
+
+`iii host provision --host <pi> --profile hil|opti_track|real` is how the Pi
+changes profile. It ends by restarting the system daemon and the Runtime API,
+so the new profile is live when it returns; no deployment is needed unless the
+code changed. Afterwards bring the flight controller to the same profile with
+`iii px4 param-baseline --profile <profile>`
+(see [PX4 parameter baselines](px4-parameter-baselines.md)).
+
+`real` and `opti_track` require a Wi-Fi client, and each keeps its own on the
+Pi. Give the network once:
+
+```bash
+iii host provision --host <pi> --profile opti_track \
+  --wifi-ssid OptiTrack_5G --wifi-psk-file ~/.config/iii/optitrack-wifi.psk --wifi-country DK
+```
+
+Later runs of `iii host provision --profile opti_track` need no Wi-Fi options:
+they activate that profile's stored client again. `--wifi-ssid` replaces the
+stored client of the profile being provisioned. Provisioning one of these
+profiles without a stored client and without `--wifi-ssid` is refused. For
+`hil` the Wi-Fi client is optional: `--wifi-ssid` sets it, `--remove-wifi`
+removes it, and without either the active client stays as it is. See
 [Pi, PX4, and HIL links](deployment-hardware-roles.md).
+
+## Vehicle gate
+
+`iii host provision` and `iii deploy dev` restart the system daemon and the
+Runtime API, which stops a running aircraft system. Both are therefore allowed
+only while the aircraft is provably disarmed and landed:
+
+- A Pi without a provisioned profile, and a Pi on `hil` (which flies the
+  simulated PX4), pass.
+- A Pi on `real` or `opti_track` must report a fresh disarmed and landed
+  vehicle state through its Runtime API.
+- `--force` proceeds when that state cannot be read, for example with the
+  flight controller unpowered on the bench. It never overrides an aircraft
+  reported armed or in flight.
 
 The cross-deployed Pi runtime intentionally skips the desktop-only
 `iii_drone_simulation` package and build-only sample packages. HIL sensor and
@@ -65,12 +102,15 @@ transform peers are workstation-owned, so installing Gazebo on the aircraft
 would add a large, unused dependency without improving HIL coverage.
 
 `iii deploy dev --dry-run` shows the exact SSH and rsync commands.  Use
-`--mirror` only when deliberately removing remote files absent locally.
+`--mirror` only when deliberately removing remote files absent locally. Every
+deployment ends by restarting the system daemon and the Runtime API (`--restart`
+is accepted and no longer needed).
 
-The deployment path never arms the vehicle or writes PX4 firmware.
+The deployment path never arms the vehicle or writes PX4 firmware or parameters.
 It never powers off the Pi. Rebooting is allowed when required; normal edits,
 builds, and runtime restarts happen online.
 
 Before the first physical-PX4 HIL validation, apply the explicit
-[PX4 HIL Ethernet Baseline](px4-hil-ethernet-baseline.md). This is a separate
-PX4 operation and is not performed by provisioning or developer deployment.
+[PX4 HIL Ethernet Baseline](px4-hil-ethernet-baseline.md) with
+`iii px4 param-baseline --profile hil`. This is a separate PX4 operation and
+is not performed by provisioning or developer deployment.

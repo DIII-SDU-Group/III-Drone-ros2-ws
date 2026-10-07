@@ -21,21 +21,29 @@
     mode: "0600"
   notify: Apply host-owned PX4 Ethernet
 
-# Optional Wi-Fi client, for example the OptiTrack lab network. It lives in its
-# own netplan file, so the PX4 Ethernet link above and the first-boot
-# workstation USB-Ethernet link (/etc/netplan/50-cloud-init.yaml) are untouched.
-# Without --wifi-ssid or --remove-wifi an existing Wi-Fi client stays as it is.
-- name: Validate the optional Wi-Fi client request
+# Wi-Fi client. It lives in its own netplan file, so the PX4 Ethernet link above
+# and the first-boot workstation USB-Ethernet link
+# (/etc/netplan/50-cloud-init.yaml) are untouched.
+#
+# real and opti_track require a Wi-Fi client and each keep their own in a
+# root-only slot file on the Pi; provisioning activates the slot of the
+# provisioned profile, so switching profiles switches networks. --wifi-ssid
+# replaces the profile's slot. For hil the client is optional: --wifi-ssid
+# sets the active client, --remove-wifi removes it, and without either it stays
+# as it is.
+- name: Validate the Wi-Fi client request
   ansible.builtin.assert:
     that:
       - not (iii_wifi_remove | bool) or (iii_wifi_ssid | length) == 0
+      - not (iii_wifi_remove | bool) or iii_profile not in iii_wifi_slot_profiles
       - (iii_wifi_ssid | length) <= 32
       - iii_wifi_interface is match('^[a-z][a-z0-9]{0,14}$')
       - (iii_wifi_route_metric | int) > 0
       - (iii_wifi_regulatory_domain | length) == 0 or iii_wifi_regulatory_domain is match('^[A-Z]{2}$')
     fail_msg: >-
-      Select either a Wi-Fi SSID (at most 32 characters) or Wi-Fi removal; the
-      interface, route metric, and two-letter regulatory domain must be valid.
+      Select either a Wi-Fi SSID (at most 32 characters) or Wi-Fi removal
+      (hil only); the interface, route metric, and two-letter regulatory domain
+      must be valid.
     quiet: true
 
 - name: Validate the Wi-Fi passphrase without logging it
@@ -58,10 +66,91 @@
     update_cache: false
   environment:
     DEBIAN_FRONTEND: noninteractive
-  when: (iii_wifi_ssid | length) > 0
+  when: (iii_wifi_ssid | length) > 0 or iii_profile in iii_wifi_slot_profiles
 
-# Root-only (0600): the file holds the Wi-Fi secret, which stays on the Pi.
-- name: Install the aircraft Wi-Fi client
+- name: Create the Wi-Fi slot directory
+  ansible.builtin.file:
+    path: "{{ iii_wifi_slot_directory }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: iii_profile in iii_wifi_slot_profiles
+
+# This role runs before runtime.env is rewritten, so the file still names the
+# profile the Pi was provisioned for until now.
+- name: Read the previously provisioned profile
+  ansible.builtin.command:
+    argv: [sed, -n, "s/^III_SYSTEM_PROFILE=//p", /etc/iii/runtime.env]
+  register: iii_wifi_previous_profile
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: iii_profile in iii_wifi_slot_profiles
+
+# A client provisioned for this profile before slots existed is the active file.
+- name: Adopt the active Wi-Fi client as this profile's slot
+  ansible.builtin.copy:
+    remote_src: true
+    src: /etc/netplan/85-iii-wifi.yaml
+    dest: "{{ iii_wifi_slot_directory }}/{{ iii_profile }}.yaml"
+    force: false
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  failed_when: false
+  when:
+    - iii_profile in iii_wifi_slot_profiles
+    - (iii_wifi_ssid | length) == 0
+    - (iii_wifi_previous_profile.stdout | default('') | trim) == iii_profile
+
+# Root-only (0600): the files hold the Wi-Fi secret, which stays on the Pi.
+- name: Store the Wi-Fi client in this profile's slot
+  ansible.builtin.template:
+    src: 85-iii-wifi.yaml.j2
+    dest: "{{ iii_wifi_slot_directory }}/{{ iii_profile }}.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when:
+    - iii_profile in iii_wifi_slot_profiles
+    - (iii_wifi_ssid | length) > 0
+
+- name: Look up this profile's Wi-Fi slot
+  ansible.builtin.stat:
+    path: "{{ iii_wifi_slot_directory }}/{{ iii_profile }}.yaml"
+  register: iii_wifi_slot
+  when: iii_profile in iii_wifi_slot_profiles
+
+- name: Require a Wi-Fi client for this profile
+  ansible.builtin.assert:
+    that:
+      - iii_wifi_slot.stat.exists
+    fail_msg: >-
+      Profile {{ iii_profile }} needs a Wi-Fi client and the Pi has none stored
+      for it; pass --wifi-ssid once.
+    quiet: true
+  when:
+    - iii_profile in iii_wifi_slot_profiles
+    - not ansible_check_mode
+
+- name: Activate this profile's Wi-Fi client
+  ansible.builtin.copy:
+    remote_src: true
+    src: "{{ iii_wifi_slot_directory }}/{{ iii_profile }}.yaml"
+    dest: /etc/netplan/85-iii-wifi.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Apply III netplan
+  when:
+    - iii_profile in iii_wifi_slot_profiles
+    - not ansible_check_mode
+
+- name: Install the active Wi-Fi client
   ansible.builtin.template:
     src: 85-iii-wifi.yaml.j2
     dest: /etc/netplan/85-iii-wifi.yaml
@@ -70,9 +159,11 @@
     mode: "0600"
   no_log: true
   notify: Apply III netplan
-  when: (iii_wifi_ssid | length) > 0
+  when:
+    - iii_profile not in iii_wifi_slot_profiles
+    - (iii_wifi_ssid | length) > 0
 
-- name: Remove the aircraft Wi-Fi client
+- name: Remove the active Wi-Fi client
   ansible.builtin.file:
     path: /etc/netplan/85-iii-wifi.yaml
     state: absent
