@@ -285,6 +285,31 @@ its single post-traversal finalization; it is never carried into the next traver
 publishes the event after each post-roll. The exercise never reads the backend: a harness releases the next traversal
 when it has seen the `ready` record.
 
+## 30 Hz fusion (`FUSION30_v1`)
+
+`node.fusion` selects how estimator updates are scheduled (needs `pipeline: rt`):
+
+- `exact` (default): one update per distinct camera / Radar-U source stamp, the accepted path;
+- `fusion30`: one update per closed bin of an exact rational 30 Hz source-time grid. The bin's camera
+  frame and Radar-U scan keep their source stamps and are transported to the tick's fusion time (the
+  first IMU sample at or after the bin end) with the event-time motion model; the motion uncertainty
+  enters their covariance. Radar-F keeps its role; its Doppler velocity is progressed to the fusion
+  time. The contract, its amendments and the tests are in the powerline_slam checkout
+  (`powerline_perception/corridor/fusion30.py`, `corridor_simulation/tools/iii_f30_pipeline.py`,
+  `corridor_simulation/provenance/WO-2026-10-07-001/02_FUSION30_CONTRACT*.json`).
+
+The runtime record carries `fusion` and, for `fusion30`, the tick counters (`fusion30`).
+
+## Fast traversal epochs (`FAST_TRAVERSAL_EPOCH_v2`)
+
+`rollover.contract: FAST_TRAVERSAL_EPOCH_v2` keeps the estimator host and its worker processes across
+traversals (see `realtime.py`). At `traversal_complete` the host builds the next generation at once
+and reports `traversal_epoch` / `ready` with `epoch_ready_s`; runtime messages are routed by source
+time across the boundary (nothing is dropped, nothing enters both generations); the old generation is
+sealed when every stream has passed the boundary and finalized by a forked process, which reports
+`traversal_epoch` / `finalized` with the traversal's one product. `TRAVERSAL_EPOCH_v1` (a new host
+process per traversal) remains available.
+
 ## Bounded recovery (`BOUNDED_RECOVERY_v1`)
 
 Enabled by a `recovery` block:

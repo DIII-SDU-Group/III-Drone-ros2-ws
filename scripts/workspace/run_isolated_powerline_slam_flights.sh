@@ -68,15 +68,20 @@ export ROS_LOG_DIR="${ISOLATION_ROOT}/logs"
 export III_SIM_TOOLS_SESSION="${III_POWERLINE_SIM_SESSION:-iii_sim_tools_powerline_slam}"
 export III_SIM_TOOLS_USER="${III_POWERLINE_USER:-iii}"
 export III_SIM_TOOLS_PX4_INSTANCE="${III_POWERLINE_PX4_INSTANCE:-0}"
-export III_SIM_TOOLS_PX4_SIM_MODEL=gz_d4s_dc_drone_powerline_eval
+# III_POWERLINE_SIM_MODEL: the evaluation model or one of its sensor timing profiles
+# (d4s_dc_drone_powerline_eval_<profile>; same sensor layout, different sampling phases).
+POWERLINE_SIM_MODEL="${III_POWERLINE_SIM_MODEL:-d4s_dc_drone_powerline_eval}"
+[[ "${POWERLINE_SIM_MODEL}" == d4s_dc_drone_powerline_eval* ]] || { echo "III_POWERLINE_SIM_MODEL must be a d4s_dc_drone_powerline_eval model" >&2; exit 2; }
+export III_POWERLINE_SIM_MODEL="${POWERLINE_SIM_MODEL}"
+export III_SIM_TOOLS_PX4_SIM_MODEL="gz_${POWERLINE_SIM_MODEL}"
 export III_SIM_TOOLS_GZ_IP=127.0.0.1
 export III_SIM_TOOLS_ENSURE_ASSETS_WITH_CUSTOM_COMMAND=1
-export III_GAZEBO_DRONE_MODEL="d4s_dc_drone_powerline_eval_${III_SIM_TOOLS_PX4_INSTANCE}"
+export III_GAZEBO_DRONE_MODEL="${POWERLINE_SIM_MODEL}_${III_SIM_TOOLS_PX4_INSTANCE}"
 PX4_BUILD="${WORKSPACE_ROOT}/PX4-Autopilot/build/px4_sitl_default"
 # The tmux server may predate this environment, so the PX4 pane gets the
 # isolation variables explicitly. The Gazebo server and the sensor plugins
 # inherit them (III_SIMULATION_SEED seeds the radar and noise streams).
-export III_SIM_TOOLS_PX4_COMMAND="source ${WORKSPACE_ROOT}/setup/setup_dev.bash && cd ${PX4_BUILD}/rootfs && exec env HEADLESS=1 ROS_DOMAIN_ID=${ROS_DOMAIN_ID} ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY} ROS_AUTOMATIC_DISCOVERY_RANGE=${ROS_AUTOMATIC_DISCOVERY_RANGE} GZ_PARTITION=${GZ_PARTITION} GZ_IP=127.0.0.1 III_SIMULATION_SEED=${III_SIMULATION_SEED} PX4_SIM_MODEL=gz_d4s_dc_drone_powerline_eval PX4_UXRCE_DDS_PORT=${III_MICRO_ROS_AGENT_UDP_PORT} PX4_PARAM_UXRCE_DDS_SYNCT=0 ${PX4_BUILD}/bin/px4 -i ${III_SIM_TOOLS_PX4_INSTANCE}"
+export III_SIM_TOOLS_PX4_COMMAND="source ${WORKSPACE_ROOT}/setup/setup_dev.bash && cd ${PX4_BUILD}/rootfs && exec env HEADLESS=1 ROS_DOMAIN_ID=${ROS_DOMAIN_ID} ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY} ROS_AUTOMATIC_DISCOVERY_RANGE=${ROS_AUTOMATIC_DISCOVERY_RANGE} GZ_PARTITION=${GZ_PARTITION} GZ_IP=127.0.0.1 III_SIMULATION_SEED=${III_SIMULATION_SEED} PX4_SIM_MODEL=gz_${POWERLINE_SIM_MODEL} PX4_UXRCE_DDS_PORT=${III_MICRO_ROS_AGENT_UDP_PORT} PX4_PARAM_UXRCE_DDS_SYNCT=0 ${PX4_BUILD}/bin/px4 -i ${III_SIM_TOOLS_PX4_INSTANCE}"
 export PYTHONPATH="${WORKSPACE_ROOT}/tools/III-Drone-MCP:${PYTHONPATH:-}"
 
 mkdir -p "${ISOLATION_ROOT}" "${ROS_LOG_DIR}"
@@ -122,6 +127,7 @@ if ! systemctl is-active --quiet "${III_SYSTEMD_DAEMON_SERVICE}"; then
     --setenv="III_DATASET_XRCE_PORT=${III_MICRO_ROS_AGENT_UDP_PORT}" \
     --setenv="III_DATASET_SYSTEMD_SERVICE=${III_SYSTEMD_DAEMON_SERVICE}" \
     --setenv="III_DATASET_SYSTEM_SESSION=${III_SYSTEM_TMUX_SESSION}" \
+    --setenv="III_GAZEBO_DRONE_MODEL=${III_GAZEBO_DRONE_MODEL}" \
     "${WORKSPACE_ROOT}/scripts/workspace/run_isolated_perception_daemon.sh" >/dev/null
 fi
 cd "${WORKSPACE_ROOT}"

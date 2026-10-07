@@ -15,6 +15,9 @@ the sensor rates however long a processing step takes.  This process runs the pi
 Node configuration (``node`` block of the runtime configuration; every key is optional and none is an estimator input):
 ``pipeline`` selects ``r1`` (default: the accepted reference path, ``iii_r1_pipeline.IncrementalPipeline``) or ``rt``
 (``iii_rt_pipeline.RealtimePipeline``: the same estimator with the real-time camera workers and bookkeeping);
+``fusion`` selects ``exact`` (default: one estimator update per distinct camera / Radar-U source stamp, the accepted
+path) or ``fusion30`` (``iii_f30_pipeline``: FUSION30_v1, one update per closed 30 Hz source-time bin with the bin's
+measurements transported to the fusion time; needs ``pipeline: rt``);
 ``evidence`` (default true) keeps the evaluation records of the final report; ``affinity`` pins the processes;
 ``overload`` enables REALTIME_OVERLOAD_v1 (``realtime.OverloadMonitor``).  Without ``overload`` the host is lossless
 and unbounded, which is what the evaluation and parity replays use.
@@ -27,6 +30,12 @@ Host -> node: ``("ready", error)``, ``("epoch_started", error)``, ``("frame", t,
 ``("rollover_begin", event)`` when the ``traversal_complete`` command event is met in arrival order, followed by
 ``("traversal_flushed", success, summary)`` once that traversal is finalized.  With ``overload`` configured a frame carries the node-clock receipt
 time of its triggering message as a fifth element, so the node can bound the age of what it publishes.
+
+With ``rollover.contract`` FAST_TRAVERSAL_EPOCH_v2 (see ``realtime``) the host keeps one warm runtime
+(``iii_f30_warm.WarmRuntime``) and runs traversal generations on it.  At the boundary event it sends
+``("rollover_begin", event)``, builds the next generation and sends ``("epoch_ready", generation, info)``; both
+generations are stepped until the old one is sealed; a forked finalizer finishes it and the host then sends
+``("traversal_final", generation, success, summary)``.  The node keeps forwarding throughout.
 """
 from __future__ import annotations
 
@@ -73,7 +82,8 @@ class Epoch:
         # workers are therefore started from the workers' CPUs, never from the host's: they do not run on the host's
         # core even while they load.  The host returns to its own CPUs once every worker is pinned by role.
         plan = node.get("affinity") or {}
-        started_from = realtime.worker_cpus(plan) if plan.get("host") else []
+        # (a generation on an existing warm runtime starts no process: the host stays on its core)
+        started_from = realtime.worker_cpus(plan) if plan.get("host") and host.warm is None else []
         if started_from:
             realtime.pin_process(os.getpid(), started_from)
         try:
@@ -111,6 +121,13 @@ class Epoch:
         self.state = "Waiting"
         self.more = False
         self.last_status = 0.0
+        # FAST_TRAVERSAL_EPOCH_v2: set once this generation met its boundary event and a successor exists
+        self.boundary_ns: int | None = None
+        self.boundary_since: float | None = None
+        self.boundary_event_received: float | None = None
+        self.passed: set[str] = set()              # runtime streams that have delivered past the boundary
+        self.index_base: dict[str, int] = {}       # the node's per-topic sequence number of this generation's first message
+        self.event_received: float | None = None
 
     def _build(self, host, node: dict, streams: Path) -> None:
         """The epoch's pipeline with its worker processes, every worker ready and pinned by role."""
@@ -120,25 +137,47 @@ class Epoch:
             rtp = host.rt_pipeline
             # live mission prior: the same pipeline, its nominal prior built from the exercise's command events
             pipeline_cls = rtp.RealtimePipeline if host.ol_pipeline is None else host.ol_pipeline.OnlinePipeline
-            self.pipe = pipeline_cls(pl.PipelineConfig.load(host.config_path), clock=src.IIIClockContract(),
-                                             streams_dir=streams, camera=rtp.CameraOptions.from_node_config(node),
-                                             doppler_workers=int(node.get("doppler_workers", 0)),
-                                             evidence=bool(node.get("evidence", True)))
-            # activation completes only when every worker is ready: no model load or GPU set-up on the first frame
-            self.workers_info = self.pipe.wait_ready(float(node.get("worker_start_timeout_s", WORKER_START_TIMEOUT_S)))
+            if host.f30_pipeline is not None:               # FUSION30_v1: the same pipeline with the 30 Hz tick scheduler
+                pipeline_cls = (host.f30_pipeline.Fusion30Realtime if host.ol_pipeline is None
+                                else host.f30_pipeline.Fusion30Online)
+            timeout = float(node.get("worker_start_timeout_s", WORKER_START_TIMEOUT_S))
+            if host.fast_rollover:
+                # FAST_TRAVERSAL_EPOCH_v2: the worker processes and the static inputs belong to the host's warm runtime,
+                # started once; a generation is a fresh pipeline on them
+                if host.warm is None:
+                    host.warm = host.warm_module.WarmRuntime(pl.PipelineConfig.load(host.config_path),
+                                                             rtp.CameraOptions.from_node_config(node),
+                                                             int(node.get("doppler_workers", 0)))
+                    host.warm.wait_ready(timeout)
+                self.pipe = host.warm.pipeline(pipeline_cls, clock=src.IIIClockContract(), streams_dir=streams,
+                                               evidence=bool(node.get("evidence", True)))
+                self.workers_info = dict(host.warm.workers.info or {}, warm_runtime=True, generation=self.pipe.f30_generation,
+                                         construction_s=round(host.warm.construction_s[-1], 3))
+            else:
+                self.pipe = pipeline_cls(pl.PipelineConfig.load(host.config_path), clock=src.IIIClockContract(),
+                                         streams_dir=streams, camera=rtp.CameraOptions.from_node_config(node),
+                                         doppler_workers=int(node.get("doppler_workers", 0)),
+                                         evidence=bool(node.get("evidence", True)))
+                # activation completes only when every worker is ready: no model load or GPU set-up on the first frame
+                self.workers_info = self.pipe.wait_ready(timeout)
         else:
             self.pipe = pl.IncrementalPipeline(pl.PipelineConfig.load(host.config_path), clock=src.IIIClockContract(),
                                                streams_dir=streams,
                                                prefetch_workers=int(node.get("prefetch_workers", 0)),
                                                doppler_workers=int(node.get("doppler_workers", 0)))
+        if host.f30_pipeline is not None:
+            self.pipe.f30_keep_records = bool(node.get("evidence", True))    # transport records are evaluation records
         if host.ol_pipeline is not None and self.pipe.live_priors is None:
             raise ValueError("node.mission_prior is 'live' but mission_sidecar is not a live mission prior contract")
         self.affinity = realtime.pin_workers(self.pipe, node.get("affinity") or {})
 
     # ------------------------------------------------------------------ intake
-    def ingest(self, key: str, raw: bytes, index: int, received: float) -> bool:
-        """Take one forwarded message.  True: it was the traversal_complete event that closes this epoch."""
+    def ingest(self, key: str, raw: bytes, index: int, received: float, message=None) -> bool:
+        """Take one forwarded message.  True: it was the traversal_complete event that closes this epoch.
+
+        ``message`` is the deserialized message when the host already decoded it to route it across a boundary."""
         _, _, _, src = self.host.modules
+        index -= self.index_base.setdefault(key, index)        # stream indices count from zero in every generation
         self.counters[f"received_{key}"] += 1
         arrivals = self.arrivals
         arrivals.append(received)
@@ -153,7 +192,8 @@ class Epoch:
             self.counters[f"ignored_after_fail_closed_{key}"] += 1
             return False
         try:
-            message = self.host.deserialize(raw, self.host.types[key])
+            if message is None:
+                message = self.host.deserialize(raw, self.host.types[key])
             if key == "timesync":
                 self.fail("UXRCE_DDS_TIMESYNC_ACTIVE: timesync_status must stay silent (UXRCE_DDS_SYNCT=0)")
             elif key == "camera_info":
@@ -161,6 +201,7 @@ class Epoch:
             elif key == "command":                          # the exercise's command event: prior bookkeeping only
                 document = json.loads(message.data)
                 if document.get("kind") == realtime.ROLLOVER_EVENT:
+                    self.event_received = received
                     return self.traversal_complete(document)
                 row = self.pipe.command(document)
                 self.counters["command_refused" if "refused" in row else "command_applied"] += 1
@@ -236,9 +277,10 @@ class Epoch:
             if self.pipe.processed_through != self.last_through:
                 self.last_through = self.pipe.processed_through
                 self.last_advance = time.monotonic()
-            self.check_overload()
+            if self.boundary_ns is None:
+                self.check_overload()
         now = time.monotonic()
-        if now - self.last_status >= STATUS_PERIOD_S:
+        if self.boundary_ns is None and now - self.last_status >= STATUS_PERIOD_S:
             self.last_status = now
             self.update_stream_absence()
             self.host.send(("runtime", self.runtime()))
@@ -313,7 +355,8 @@ class Epoch:
     def set_state(self, value: str) -> None:
         if value != self.state:
             self.state = value
-            self.host.send(("state", value))
+            if self.boundary_ns is None:               # a closing generation no longer speaks for the node's state
+                self.host.send(("state", value))
 
     def drain(self) -> dict | None:
         """How long processing continued after the newest input arrived (meaningful once the input has stopped)."""
@@ -344,7 +387,10 @@ class Epoch:
                 "prefetch": pipe.prefetch_summary(),
                 "live_mission_prior": None if self.host.ol_pipeline is None else self._prior_status(),
                 "pipeline": "rt" if self.realtime else "r1", "affinity": self.affinity, "pid": os.getpid(),
-                "traversal": None if self.rollover is None else {"contract": realtime.ROLLOVER_CONTRACT, "first_source_ns": self.first_source_ns,
+                "warm_runtime": None if self.host.warm is None else self.host.warm_status(),
+                "fusion": "exact" if self.host.f30_pipeline is None else "fusion30",
+                "fusion30": None if self.host.f30_pipeline is None else pipe.fusion_status(),
+                "traversal": None if self.rollover is None else {"contract": self.rollover["contract"], "first_source_ns": self.first_source_ns,
                                                                "complete": self.traversal},
                 "overload": None if self.overload is None else self.overload.status()}
 
@@ -414,6 +460,13 @@ class Host:
         self.epoch: Epoch | None = None
         self.rt_pipeline = None
         self.ol_pipeline = None
+        self.f30_pipeline = None
+        self.fast_rollover = False                 # FAST_TRAVERSAL_EPOCH_v2
+        self.warm_module = None
+        self.warm = None                           # the warm runtime (worker pools, static inputs)
+        self.closing: Epoch | None = None          # the old generation between its boundary event and its seal
+        self.finalizers: list[dict] = []           # forked finalizer processes of sealed generations
+        self.rollovers = 0
 
     def send(self, item) -> None:
         self.conn_out.send(item)
@@ -441,6 +494,13 @@ class Host:
             if self.node_config.get("mission_prior", "sidecar") == "live":
                 import iii_ol_pipeline
                 self.ol_pipeline = iii_ol_pipeline
+            if self.node_config.get("fusion", "exact") == "fusion30":
+                import iii_f30_pipeline
+                self.f30_pipeline = iii_f30_pipeline
+            if (self.node_config.get("rollover") or {}).get("contract") == realtime.FAST_ROLLOVER_CONTRACT:
+                import iii_f30_warm
+                self.warm_module = iii_f30_warm
+                self.fast_rollover = True
         pl.PipelineConfig.load(self.config_path)              # validates every path before any data flows
         self.types = {key: get_message(src.TYPES[key]) for key in src.TOPICS}
         self.types["camera_info"] = get_message("sensor_msgs/msg/CameraInfo")
@@ -449,8 +509,8 @@ class Host:
 
     def run(self) -> None:
         while True:
-            busy = self.epoch is not None and (self.pending or self.epoch.more)
-            if self.conn_in.poll(0 if busy else 0.2):
+            busy = self.epoch is not None and (self.pending or self.epoch.more or self.closing is not None)
+            if self.conn_in.poll(0 if busy else 0.02 if self.finalizers else 0.2):
                 item = self.conn_in.recv()
                 kind = item[0]
                 if kind == "msgs":
@@ -469,12 +529,172 @@ class Host:
                 continue                                   # drain every queued command/batch before processing
             if self.epoch is None:
                 self.pending.clear()
+                self.poll_finalizers()
                 continue
             while self.pending:
-                if self.epoch.ingest(*self.pending.popleft()):
-                    self.complete_traversal()
-                    break
+                item = self.pending.popleft()
+                if self.closing is not None:
+                    target, message = self.route(item)
+                    self.activate(target)
+                    target.ingest(*item, message=message)
+                    continue
+                self.activate(self.epoch)
+                if self.epoch.ingest(*item):
+                    if self.fast_rollover:
+                        self.begin_boundary()
+                    else:
+                        self.complete_traversal()
+                        break
+            if self.closing is not None:
+                self.activate(self.closing)
+                self.closing.step()
+                self.maybe_seal()
+            self.activate(self.epoch)
             self.epoch.step()
+            if self.finalizers:
+                self.poll_finalizers()
+
+    # ------------------------------------------------------------------ FAST_TRAVERSAL_EPOCH_v2
+    def activate(self, epoch: "Epoch") -> None:
+        """The r22-r26 layers dispatch to one pipeline per process: point them at the generation about to run."""
+        if self.warm is not None:
+            self.warm.make_current(epoch.pipe)
+
+    def warm_status(self) -> dict:
+        return {"generations_built": self.warm.generations, "construction_s": [round(v, 3) for v in self.warm.construction_s[-5:]],
+                "worker_pids": self.warm.worker_pids(), "closing_generation": None if self.closing is None else self.closing.number,
+                "finalizers_running": [f["generation"] for f in self.finalizers], "rollovers": self.rollovers}
+
+    def begin_boundary(self) -> None:
+        """The current generation met its traversal_complete event: fix the routing boundary and start the successor."""
+        old = self.epoch
+        event = dict(old.traversal or {})
+        began = time.monotonic()
+        newest = max((v for v in old.pipe.last.values() if v is not None), default=-1)
+        boundary = max(int(event.get("source_time_ns", -1)), int(newest))
+        event["boundary_source_time_ns"] = boundary
+        self.send(("rollover_begin", event))
+        if old.fail_closed_reason is not None or self.closing is not None:
+            # a dead generation is never finalized, and one boundary at a time: fail closed, recovery decides
+            old.fail(f"{realtime.FAST_ROLLOVER_CONTRACT}:ROLLOVER_FAILED: " + (
+                "the previous generation is still closing" if self.closing is not None else "the traversal's generation had failed closed"))
+            return
+        try:
+            run = f"epoch{old.number + 1:03d}_{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}"
+            successor = Epoch(self, old.number + 1, run)
+        except Exception as exc:  # noqa: BLE001 - no successor: the node fails closed and recovery decides
+            self.activate(old)
+            old.fail(f"{realtime.FAST_ROLLOVER_CONTRACT}:ROLLOVER_FAILED: {type(exc).__name__}: {exc}"[:400])
+            return
+        old.boundary_ns, old.boundary_since, old.boundary_event_received = boundary, time.monotonic(), old.event_received
+        self.closing, self.epoch = old, successor
+        self.rollovers += 1
+        self.send(("epoch_ready", successor.number, {
+            "previous_generation": old.number, "run": run, "event": event, "boundary_source_time_ns": boundary,
+            "event_received": old.event_received, "construction_s": round(time.monotonic() - began, 4),
+            "host_pid": os.getpid(), "worker_pids": self.warm.worker_pids(), "rollovers": self.rollovers}))
+
+    def route(self, item) -> tuple["Epoch", object]:
+        """While a generation is closing: a runtime message goes to it when its source time is at or before the
+        boundary, otherwise (and every command, camera_info and timesync message) to the new generation."""
+        key, raw = item[0], item[1]
+        _, pl, _, src = self.modules
+        if key not in pl.RUNTIME_KEYS:
+            return self.epoch, None
+        try:
+            message = self.deserialize(raw, self.types[key])
+            source_time = src.source_time_ns(key, message, self.epoch.pipe.clock)
+        except Exception:  # noqa: BLE001 - the receiving generation refuses and accounts it
+            return self.epoch, None
+        closing = self.closing
+        if source_time <= closing.boundary_ns:
+            closing.counters["routed_at_or_before_boundary"] += 1
+            return closing, message
+        closing.passed.add(key)
+        self.epoch.counters["routed_after_boundary_while_closing"] += 1
+        return self.epoch, message
+
+    def maybe_seal(self) -> None:
+        """Seal the closing generation once every stream has delivered past the boundary (or the grace time passed):
+        close its input, hand the finalization to a forked process and drop it here."""
+        closing = self.closing
+        _, pl, _, _ = self.modules
+        config = closing.rollover
+        waited = time.monotonic() - closing.boundary_since
+        streams = [k for k in pl.RUNTIME_KEYS if k not in closing.absent and closing.pipe.last.get(k) is not None]
+        if not all(k in closing.passed for k in streams) and waited < float(config.get("seal_grace_s", realtime.FAST_ROLLOVER_DEFAULTS["seal_grace_s"])):
+            return
+        record = {"generation": closing.number, "boundary_source_time_ns": closing.boundary_ns, "sealed_after_boundary_event_s": round(waited, 4),
+                  "streams_past_boundary": sorted(closing.passed), "streams_expected": streams,
+                  "event_received": closing.boundary_event_received, "counters": dict(closing.counters)}
+        self.closing = None
+        if closing.fail_closed_reason is not None:
+            record["error"] = f"the generation failed closed before its seal: {closing.fail_closed_reason}"
+            closing.end()
+            self.send(("traversal_final", closing.number, False, record))
+            return
+        began = time.monotonic()
+        try:
+            closing.pipe.close_input()                      # the synchronous seal: the generation's last ticks
+        except Exception as exc:  # noqa: BLE001
+            record["error"] = f"seal: {type(exc).__name__}: {exc}"[:400]
+            closing.end()
+            self.send(("traversal_final", closing.number, False, record))
+            return
+        record["seal_s"] = round(time.monotonic() - began, 4)
+        directory = Path(config["record_dir"]).expanduser() / f"generation_{closing.number:04d}" if config.get("record_dir") else Path(
+            f"/tmp/powerline_slam_final_{os.getpid()}_{closing.number:04d}")
+        directory.mkdir(parents=True, exist_ok=True)
+        result = directory / "finalizer_result.json"
+        began = time.monotonic()
+        pid = os.fork()
+        if pid == 0:                                        # the finalizer: an immutable copy of the sealed generation
+            code = 1
+            try:
+                self.send = lambda item: None               # nothing of the copy reaches the node
+                self.activate(closing)
+                started = time.monotonic()
+                success, summary = closing.finish()
+                summary = dict(summary, finalize_s=round(time.monotonic() - started, 3))
+                result.write_text(json.dumps({"success": bool(success), "summary": summary}, default=str))
+                code = 0
+            except BaseException as exc:  # noqa: BLE001
+                try:
+                    result.write_text(json.dumps({"success": False, "summary": {"error": f"{type(exc).__name__}: {exc}"[:400]}}))
+                except OSError:
+                    pass
+            finally:
+                os._exit(code)
+        record["fork_s"] = round(time.monotonic() - began, 4)
+        record["end_counts"] = closing.end()                # the host's own copy goes; the workers stay
+        self.finalizers.append({"pid": pid, "generation": closing.number, "result": result, "forked": time.monotonic(), "record": record,
+                                "deadline": time.monotonic() + float(config.get("final_timeout_s", realtime.FAST_ROLLOVER_DEFAULTS["final_timeout_s"]))})
+
+    def poll_finalizers(self, wait: bool = False) -> None:
+        for entry in list(self.finalizers):
+            try:
+                done, status = os.waitpid(entry["pid"], 0 if wait else os.WNOHANG)
+            except ChildProcessError:
+                done, status = entry["pid"], 0
+            if done == 0:
+                if time.monotonic() < entry["deadline"]:
+                    continue
+                try:
+                    os.kill(entry["pid"], 9)
+                    os.waitpid(entry["pid"], 0)
+                except OSError:
+                    pass
+                self.finalizers.remove(entry)
+                self.send(("traversal_final", entry["generation"], False, dict(entry["record"], error="the finalizer exceeded final_timeout_s")))
+                continue
+            self.finalizers.remove(entry)
+            record = dict(entry["record"], final_after_seal_s=round(time.monotonic() - entry["forked"], 3), finalizer_pid=entry["pid"],
+                          finalizer_exit=os.waitstatus_to_exitcode(status) if status else 0)
+            try:
+                outcome = json.loads(entry["result"].read_text())
+            except (OSError, ValueError) as exc:
+                outcome = {"success": False, "summary": {"error": f"no finalizer result: {exc}"}}
+            self.send(("traversal_final", entry["generation"], bool(outcome["success"]), dict(record, final=outcome["summary"])))
 
     def complete_traversal(self) -> None:
         """TRAVERSAL_EPOCH_v1: every message that arrived before the event is in; finalize this traversal."""
@@ -499,14 +719,26 @@ class Host:
             self.send(("flushed", False, {"error": "not active"}))
             return
         while self.pending:
-            self.epoch.ingest(*self.pending.popleft())
+            item = self.pending.popleft()
+            target, message = self.route(item) if self.closing is not None else (self.epoch, None)
+            self.activate(target)
+            target.ingest(*item, message=message)
+        if self.closing is not None:                        # the flush also seals a generation that is still closing
+            self.closing.boundary_since = float("-inf")
+            self.maybe_seal()
+        self.activate(self.epoch)
         success, summary = self.epoch.finish()
+        self.poll_finalizers(wait=True)
         self.send(("flushed", success, summary))
 
     def end_epoch(self) -> None:
         counts = {}
+        if self.closing is not None:                        # a generation still closing ends unfinalized, and is counted
+            closing, self.closing = self.closing, None
+            counts["closing_generation_ended_unsealed"] = closing.number
+            closing.end()
         if self.epoch is not None:
-            counts = self.epoch.end()
+            counts.update(self.epoch.end())
             self.epoch = None
         self.pending.clear()
         self.send(("epoch_ended", counts))
@@ -531,3 +763,5 @@ def main(conn_in, conn_out, config_path: str, tools: str) -> None:
     finally:
         if host.epoch is not None:
             host.epoch.pipe.release()
+        if host.warm is not None:
+            host.warm.shutdown()

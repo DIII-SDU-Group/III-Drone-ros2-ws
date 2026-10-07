@@ -140,6 +140,7 @@ class PowerlineSlamNode(Node):
         self._overload_counters: Counter = Counter()
         self._rollover_config: dict | None = None   # TRAVERSAL_EPOCH_v1 settings of the configuration, or None
         self._rolling = False                       # a rollover is in progress: arrivals are counted, not forwarded
+        self._rolling_event = None                  # FAST_TRAVERSAL_EPOCH_v2: the boundary event the host is acting on
         self._rollover_thread: threading.Thread | None = None
         self._rollover_abort = False
         self._rollover_gap: Counter = Counter()
@@ -409,7 +410,7 @@ class PowerlineSlamNode(Node):
             if self._recovery is not None:
                 record["recovery"] = dict(self._recovery.status(), recovered=self._recoveries)
             if self._rollover_config is not None:
-                record["rollover"] = {"contract": realtime.ROLLOVER_CONTRACT, "generation": self._epoch_count,
+                record["rollover"] = {"contract": self._rollover_config["contract"], "generation": self._epoch_count,
                                       "rolling": self._rolling, "completed": self._rollovers}
             if self._overload_limits is not None:
                 latched = None if self._overload is None else self._overload["fail_closed_reason"]
@@ -427,7 +428,14 @@ class PowerlineSlamNode(Node):
             if self._diagnostics_pub is not None:
                 self._diagnostics_pub.publish(string_stamped(max(record.get("processed_through_ns") or 0, 0), record))
         elif kind == "rollover_begin":
-            self._begin_rollover(item[1])
+            if self._rollover_config.get("contract") == realtime.FAST_ROLLOVER_CONTRACT:
+                self._rolling_event = (item[1], time.monotonic())     # the host builds the next generation itself
+            else:
+                self._begin_rollover(item[1])
+        elif kind == "epoch_ready":
+            self._on_epoch_ready(item[1], item[2])
+        elif kind == "traversal_final":
+            self._on_traversal_final(item[1], item[2], item[3])
         elif kind == "log":
             self._log(item[1], item[2])
         elif kind in self._replies:
@@ -621,6 +629,43 @@ class PowerlineSlamNode(Node):
                 self._overload_counters = Counter()
         self._start_forwarder()
         return run
+
+    # ------------------------------------------------------------------ FAST_TRAVERSAL_EPOCH_v2
+    def _on_epoch_ready(self, generation: int, info: dict) -> None:
+        """The host built the next generation on its warm runtime: forwarding never stopped, nothing was dropped."""
+        now = time.monotonic()
+        received = info.get("event_received")
+        with self._outbox_ready:
+            previous = self._epoch_count
+            self._epoch_count = int(generation)
+            self._publish_age_max = 0.0
+        self._rollovers += 1
+        ready = {"kind": "traversal_epoch", "contract": realtime.FAST_ROLLOVER_CONTRACT, "phase": "ready", "generation": int(generation),
+                 "previous_generation": previous, "run": info.get("run"), "event": info.get("event"),
+                 "boundary_source_time_ns": info.get("boundary_source_time_ns"),
+                 "epoch_ready_s": None if received is None else round(now - float(received), 4),
+                 "construction_s": info.get("construction_s"), "host_pid": {"previous": info.get("host_pid"), "new": info.get("host_pid")},
+                 "worker_pids": info.get("worker_pids"), "rollover_gap_messages": {}, "rollovers_completed": self._rollovers,
+                 "forwarder_queue_at_ready": len(self._outbox)}
+        self._last_rollover = ready
+        self._emit_rollover(ready)
+        self.get_logger().info(f"powerline_slam traversal epoch {previous} -> {generation}: ready "
+                               f"{ready['epoch_ready_s']} s after the event (construction {info.get('construction_s')} s)")
+
+    def _on_traversal_final(self, generation: int, success: bool, summary: dict) -> None:
+        """The detached finalizer of a sealed generation is done (or failed): the traversal's one final record."""
+        received = summary.get("event_received")
+        record = {"kind": "traversal_epoch", "contract": realtime.FAST_ROLLOVER_CONTRACT, "phase": "finalized", "generation": int(generation),
+                  "final": {"success": bool(success), "summary": summary.get("final")},
+                  "seal": {key: summary.get(key) for key in ("boundary_source_time_ns", "sealed_after_boundary_event_s", "seal_s", "fork_s",
+                                                             "streams_past_boundary", "streams_expected", "end_counts", "counters")},
+                  "final_after_seal_s": summary.get("final_after_seal_s"),
+                  "final_after_event_s": None if received is None else round(time.monotonic() - float(received), 3),
+                  "error": summary.get("error")}
+        self._emit_rollover(record)
+        if not success:
+            self.get_logger().error(f"powerline_slam traversal {generation}: finalization failed: "
+                                    f"{json.dumps(summary.get('error') or summary.get('final'), default=str)[:300]}")
 
     # ------------------------------------------------------------------ TRAVERSAL_EPOCH_v1
     def _begin_rollover(self, event: dict) -> None:

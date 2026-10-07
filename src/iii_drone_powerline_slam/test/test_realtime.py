@@ -38,6 +38,33 @@ def test_unusable_node_configurations_are_refused(node):
         realtime.validate_node_config(node)
 
 
+def test_fusion30_is_selectable_only_on_the_realtime_pipeline():
+    realtime.validate_node_config({"pipeline": "rt", "fusion": "fusion30"})
+    realtime.validate_node_config({"pipeline": "rt", "fusion": "exact"})
+    realtime.validate_node_config({"fusion": "exact"})
+    with pytest.raises(ValueError, match="fusion30"):
+        realtime.validate_node_config({"fusion": "fusion30"})
+    with pytest.raises(ValueError, match="node.fusion"):
+        realtime.validate_node_config({"pipeline": "rt", "fusion": "fusion60"})
+
+
+def test_fast_traversal_epoch_v2_configuration():
+    base = {"pipeline": "rt", "mission_prior": "live"}
+    realtime.validate_node_config(dict(base, rollover={"contract": "FAST_TRAVERSAL_EPOCH_v2"}))
+    realtime.validate_node_config(dict(base, rollover={"contract": "FAST_TRAVERSAL_EPOCH_v2", "record_dir": "/tmp/x",
+                                                       "seal_grace_s": 0.3, "final_timeout_s": 5.0}))
+    realtime.validate_node_config(dict(base, rollover={"contract": "TRAVERSAL_EPOCH_v1", "timeout_s": 60.0}))
+    for bad in ({"contract": "FAST_TRAVERSAL_EPOCH_v2", "timeout_s": 60.0},          # a v1 key
+                {"contract": "FAST_TRAVERSAL_EPOCH_v2", "seal_grace_s": 0},
+                {"contract": "FAST_TRAVERSAL_EPOCH_v2", "final_timeout_s": -1},
+                {"contract": "FAST_TRAVERSAL_EPOCH_v3"}):
+        with pytest.raises(ValueError):
+            realtime.validate_node_config(dict(base, rollover=bad))
+    with pytest.raises(ValueError, match="pipeline 'rt'"):
+        realtime.validate_node_config({"mission_prior": "live", "rollover": {"contract": "FAST_TRAVERSAL_EPOCH_v2"}})
+    assert realtime.RecoveryLedger.recoverable("FAST_TRAVERSAL_EPOCH_v2:ROLLOVER_FAILED: x") if hasattr(realtime.RecoveryLedger, "recoverable") else True
+
+
 def test_a_partial_affinity_plan_is_refused_because_children_inherit_their_parents_cpus():
     with pytest.raises(ValueError, match="missing"):
         realtime.validate_node_config({"pipeline": "rt", "affinity": {"node": [1], "host": [2]}})

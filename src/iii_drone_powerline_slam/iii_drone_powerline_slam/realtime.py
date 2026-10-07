@@ -45,6 +45,30 @@ transaction longer than ``timeout_s`` fails the node closed (``TRAVERSAL_EPOCH_v
 ``ROLLOVER_TIMEOUT``).  An event whose source time lies before the epoch's first input (a latched event of an earlier
 traversal) is counted and ignored; an epoch that already failed closed is never finalized.
 
+FAST_TRAVERSAL_EPOCH_v2
+======================
+The same boundary event with a persistent runtime (needs ``pipeline: rt``)::
+
+    {"contract": "FAST_TRAVERSAL_EPOCH_v2", "record_dir": "/path/or/null", "seal_grace_s": 0.5, "final_timeout_s": 5.0}
+
+The estimator host process and its worker processes (detector, pylon-mask with its model, mask fallback, Radar-U
+frontend, Doppler solvers) stay up across traversals; the immutable inputs are loaded once.  Everything that carries
+traversal state is created anew for a generation: the frozen-v13 estimator and backend, the raw adapter, event-time and
+fusion-tick state, the r22-r26 layers with their ledgers, streams, reconstruction and identities, the mission-prior
+state and the overload state.
+
+When the host meets ``traversal_complete`` (in arrival order) it fixes the routing boundary ``t_b`` -- the later of the
+event's source time and the newest source stamp the old generation has already taken in, so that no message is taken
+back -- builds the next generation at once and reports ``traversal_epoch`` / ``ready`` (``epoch_ready_s`` is measured on
+the node clock from the receipt of the event).  From then on a runtime message with source time ``<= t_b`` goes to the
+old generation and one with a later source time to the new one; nothing is dropped and nothing enters both.  The old
+generation keeps processing its last ticks until every stream has delivered past ``t_b`` (or ``seal_grace_s`` passed);
+then its input is closed (the seal).  A forked finalizer process, which holds an immutable copy of the sealed
+generation, runs the single post-traversal finalization and writes the product; the host itself drops the old
+generation and goes on with the new one.  ``traversal_epoch`` / ``finalized`` follows when the finalizer is done
+(failure: after ``final_timeout_s``).  A failure to build the next generation fails closed
+(``FAST_TRAVERSAL_EPOCH_v2:ROLLOVER_FAILED``).
+
 BOUNDED_RECOVERY_v1
 ===================
 Enabled by a ``recovery`` block::
@@ -80,11 +104,14 @@ import os
 
 CONTRACT = "REALTIME_OVERLOAD_v1"
 ROLLOVER_CONTRACT = "TRAVERSAL_EPOCH_v1"
+FAST_ROLLOVER_CONTRACT = "FAST_TRAVERSAL_EPOCH_v2"
+ROLLOVER_CONTRACTS = (ROLLOVER_CONTRACT, FAST_ROLLOVER_CONTRACT)
 ROLLOVER_EVENT = "traversal_complete"
+FAST_ROLLOVER_DEFAULTS = {"seal_grace_s": 0.5, "final_timeout_s": 5.0}
 RECOVERY_CONTRACT = "BOUNDED_RECOVERY_v1"
 RECOVERY_KEYS = {"max_attempts": int, "window_s": float, "cooldown_s": float, "backoff": float}
 # fail-closed reasons after which a recovery attempt is permitted (prefix match)
-RECOVERABLE = ("REALTIME_OVERLOAD_v1:", "TRAVERSAL_EPOCH_v1:", "PIPELINE_EXCEPTION", "PROCESS_RESPAWN", "HOST_LOST", "RECOVERY_FAILED",
+RECOVERABLE = ("REALTIME_OVERLOAD_v1:", "TRAVERSAL_EPOCH_v1:", "FAST_TRAVERSAL_EPOCH_v2:", "PIPELINE_EXCEPTION", "PROCESS_RESPAWN", "HOST_LOST", "RECOVERY_FAILED",
                "NODE_INTERNAL:", "WORKER_LOST")
 
 
@@ -118,6 +145,10 @@ def validate_node_config(node: dict) -> None:
         raise ValueError(f"node.mission_prior must be 'sidecar' or 'live', not {node.get('mission_prior')!r}")
     if node.get("mission_prior", "sidecar") == "live" and node.get("pipeline", "r1") != "rt":
         raise ValueError("node.mission_prior 'live' needs node.pipeline 'rt'")
+    if node.get("fusion", "exact") not in ("exact", "fusion30"):
+        raise ValueError(f"node.fusion must be 'exact' or 'fusion30', not {node.get('fusion')!r}")
+    if node.get("fusion", "exact") == "fusion30" and node.get("pipeline", "r1") != "rt":
+        raise ValueError("node.fusion 'fusion30' needs node.pipeline 'rt'")
     if node.get("intake", "executor") not in ("executor", "waitset"):
         raise ValueError(f"node.intake must be 'executor' or 'waitset', not {node.get('intake')!r}")
     if node.get("mask_device", "cpu") not in ("cpu", "cuda"):
@@ -136,14 +167,25 @@ def validate_node_config(node: dict) -> None:
             raise ValueError(f"node.affinity must name every process role of the pipeline; missing {missing}")
     rollover = node.get("rollover")
     if rollover is not None:
-        if rollover.get("contract") != ROLLOVER_CONTRACT:
-            raise ValueError(f"node.rollover.contract must be {ROLLOVER_CONTRACT}")
-        timeout = rollover.get("timeout_s")
-        if not (isinstance(timeout, (int, float)) and not isinstance(timeout, bool) and timeout > 0):
-            raise ValueError("node.rollover.timeout_s must be a positive number")
+        contract = rollover.get("contract")
+        if contract not in ROLLOVER_CONTRACTS:
+            raise ValueError(f"node.rollover.contract must be one of {ROLLOVER_CONTRACTS}")
         if rollover.get("record_dir") is not None and not isinstance(rollover["record_dir"], str):
             raise ValueError("node.rollover.record_dir must be a path or null")
-        unknown = sorted(set(rollover) - {"contract", "timeout_s", "record_dir"})
+        if contract == ROLLOVER_CONTRACT:
+            timeout = rollover.get("timeout_s")
+            if not (isinstance(timeout, (int, float)) and not isinstance(timeout, bool) and timeout > 0):
+                raise ValueError("node.rollover.timeout_s must be a positive number")
+            allowed = {"contract", "timeout_s", "record_dir"}
+        else:
+            for key in FAST_ROLLOVER_DEFAULTS:
+                value = rollover.get(key, FAST_ROLLOVER_DEFAULTS[key])
+                if not (isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0):
+                    raise ValueError(f"node.rollover.{key} must be a positive number")
+            if node.get("pipeline", "r1") != "rt":
+                raise ValueError(f"{FAST_ROLLOVER_CONTRACT} needs node.pipeline 'rt' (the warm worker runtime)")
+            allowed = {"contract", "record_dir", *FAST_ROLLOVER_DEFAULTS}
+        unknown = sorted(set(rollover) - allowed)
         if unknown:
             raise ValueError(f"node.rollover: unknown keys {unknown}")
         if node.get("mission_prior", "sidecar") != "live":

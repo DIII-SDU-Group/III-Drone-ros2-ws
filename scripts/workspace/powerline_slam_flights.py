@@ -52,7 +52,8 @@ import perception_dataset_flights as dataset  # noqa: E402
 
 CATALOG_PATH = Path(__file__).resolve().with_name("powerline_slam_corridor_flights.json")
 DEFAULT_OUTPUT_ROOT = WORKSPACE_ROOT / "datasets/powerline_slam"
-SIM_MODEL = "gz_d4s_dc_drone_powerline_eval"
+# the evaluation model or one of its sensor timing profiles (same sensor layout; run_isolated_powerline_slam_online.sh)
+SIM_MODEL = "gz_" + os.environ.get("III_POWERLINE_SIM_MODEL", "d4s_dc_drone_powerline_eval")
 STAGING_FIXTURE = "mid_corridor_taken_off_conductors_visible"
 PRE_ROLL_SEC = 3.0
 POST_ROLL_SEC = 3.0
