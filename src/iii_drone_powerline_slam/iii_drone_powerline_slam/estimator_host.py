@@ -652,6 +652,9 @@ class Host:
             code = 1
             try:
                 self.send = lambda item: None               # nothing of the copy reaches the node
+                cpus = realtime.worker_cpus(self.node_config.get("affinity") or {})
+                if cpus:                                    # off the estimator's core: the next generation is running there
+                    os.sched_setaffinity(0, cpus)
                 self.activate(closing)
                 started = time.monotonic()
                 success, summary = closing.finish()
