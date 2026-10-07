@@ -56,6 +56,9 @@ export GZ_IP=127.0.0.1
 export III_SIMULATION_SEED="${III_SIMULATION_SEED:-20261002}"
 
 export CONFIG_BASE_DIR="${ISOLATION_ROOT}/config"
+# The configuration server re-reads its whole tuning journal on every transaction; the workspace-wide journal grows
+# with every isolated run until a set call exceeds the client timeout.  Each isolated run keeps its own.
+export III_TUNING_STATE_ROOT="${ISOLATION_ROOT}/tuning"
 export III_SYSTEM_RUNTIME_DIR="${ISOLATION_ROOT}/system"
 export III_SYSTEM_DAEMON_SOCKET="${III_SYSTEM_RUNTIME_DIR}/system_manager.sock"
 export III_SYSTEM_DAEMON_LOG="${III_SYSTEM_RUNTIME_DIR}/system_manager.log"
@@ -128,6 +131,7 @@ if ! systemctl is-active --quiet "${III_SYSTEMD_DAEMON_SERVICE}"; then
     --setenv="III_DATASET_SYSTEMD_SERVICE=${III_SYSTEMD_DAEMON_SERVICE}" \
     --setenv="III_DATASET_SYSTEM_SESSION=${III_SYSTEM_TMUX_SESSION}" \
     --setenv="III_GAZEBO_DRONE_MODEL=${III_GAZEBO_DRONE_MODEL}" \
+    --setenv="III_TUNING_STATE_ROOT=${III_TUNING_STATE_ROOT}" \
     "${WORKSPACE_ROOT}/scripts/workspace/run_isolated_perception_daemon.sh" >/dev/null
 fi
 cd "${WORKSPACE_ROOT}"
