@@ -109,7 +109,18 @@ PX4_GZ_MODEL_DIR="${PX4_SIM_MODEL_NAME#gz_}"
 # clock jumps; PX4 then resets its timesync filter and publishes samples with a
 # zero offset (boot-relative stamps between wall-clock stamps), which Core
 # correctly fences as a position-source epoch change.
-DEFAULT_PX4_COMMAND="source ${WORKSPACE_ROOT}/setup/setup_dev.bash && cd ${PX4_ROOT} && make px4_sitl_default && cd ${PX4_BUILD_DIR}/rootfs && exec env HEADLESS=1 PX4_SIM_MODEL=${PX4_SIM_MODEL_NAME} GZ_IP=\$GZ_IP PX4_PARAM_UXRCE_DDS_SYNCT=0 ${PX4_BUILD_DIR}/bin/px4 -i ${PX4_INSTANCE}"
+# III_SIM_TOOLS_PX4_EXTRA_ENV adds NAME=VALUE pairs (space separated) to the
+# PX4 environment of a new session, e.g. PX4_PARAM_<NAME>=<value> overrides
+# for a vision-only estimator (the OptiTrack rehearsal).
+PX4_EXTRA_ENV="${III_SIM_TOOLS_PX4_EXTRA_ENV:-}"
+for px4_extra_pair in ${PX4_EXTRA_ENV}; do
+    if [[ ! "${px4_extra_pair}" =~ ^[A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_.:-]+$ ]]; then
+        echo "Invalid III_SIM_TOOLS_PX4_EXTRA_ENV entry '${px4_extra_pair}'; expected NAME=VALUE." >&2
+        exit 2
+    fi
+done
+unset px4_extra_pair
+DEFAULT_PX4_COMMAND="source ${WORKSPACE_ROOT}/setup/setup_dev.bash && cd ${PX4_ROOT} && make px4_sitl_default && cd ${PX4_BUILD_DIR}/rootfs && exec env HEADLESS=1 PX4_SIM_MODEL=${PX4_SIM_MODEL_NAME} GZ_IP=\$GZ_IP PX4_PARAM_UXRCE_DDS_SYNCT=0${PX4_EXTRA_ENV:+ ${PX4_EXTRA_ENV}} ${PX4_BUILD_DIR}/bin/px4 -i ${PX4_INSTANCE}"
 PX4_COMMAND="${III_SIM_TOOLS_PX4_COMMAND:-${DEFAULT_PX4_COMMAND}}"
 
 if ((STATUS && STOP)); then

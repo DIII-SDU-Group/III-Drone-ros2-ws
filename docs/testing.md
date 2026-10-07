@@ -201,6 +201,41 @@ python3 scripts/workspace/run_inspection_endurance.py --target sim --fresh-start
 
 Phases: `inspection_demo`, `reach_cable`, `leave_cable`.
 
+### OptiTrack rehearsal (SIM)
+
+The OptiTrack lab profile is rehearsed in the SIM devcontainer before a lab
+session. The rehearsal runs the `opti_track` runtime profile against PX4 SITL
+with a vision-only estimator and the simulated lab gateway, which republishes
+Gazebo's ground truth as the lab's rigid-body pose. Stop the SIM stack first
+(`./iii-dev stack stop`); the devcontainer needs `chrony` installed, because
+the profile gates on a settled clock as on the aircraft.
+
+```bash
+scripts/workspace/run_opti_track_rehearsal.py
+```
+
+It starts the environment (`tools/simulation/opti_track_rehearsal.sh start`),
+runs the scenarios below in order, stops the environment, and writes
+`runtime/rehearsal/sim-<UTC>/report.json`. The exit status is 0 only when
+every scenario passed, the aircraft ended landed and disarmed, and the node
+logs hold no WARN, ERROR or FATAL line other than the designed ones (the
+EXPERIMENTAL-mission notice and the relay reporting the injected outage).
+Samples the recorder lost are reported separately.
+
+| Scenario | What it proves |
+| --- | --- |
+| Profile restrictions | the canonical mission and cable intents are refused |
+| Motion-capture readiness gate | an 8 s pose outage on the ground refuses a mission start and never arms; readiness returns by itself |
+| M3 cycle with Proceed | ground start (the mission arms), takeoff, Proceed, shuttle, landing, disarm |
+| M3 cycle without Proceed | the 60 s Proceed timeout lands the aircraft |
+| M1 hover, M2 maneuvers | takeover from a pilot hover and handback to PX4 Hold |
+| M4 mode loop | ground start and two rounds of the four-mode loop, ended by the operator's Hold |
+
+The rehearsal uses the `real` parameter family that `opti_track` flies and the
+missions' placeholder geometry. It does not replace the lab acceptance in
+[the session checklist](opti-track-lab-session-checklist.md): axes, the
+rigid-body ID, the cage geometry and hover thrust are only known at the lab.
+
 ### Qualification campaign (SIM, then deploy, then HIL)
 
 A change is qualified when one commit passes the strict SIM run, is deployed,
