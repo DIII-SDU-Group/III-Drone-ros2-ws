@@ -71,6 +71,17 @@ MAVLINK_PARAMETER_LOCAL_PORT="${III_HIL_MAVLINK_PARAMETER_LOCAL_PORT:-14583}"
 MAVLINK_QGC_REMOTE_PORT="${III_HIL_MAVLINK_QGC_REMOTE_PORT:-14550}"
 MAVLINK_QGC_LOCAL_PORT="${III_HIL_MAVLINK_QGC_LOCAL_PORT:-14584}"
 ROS_DOMAIN_ID="${III_HIL_ROS_DOMAIN_ID:-42}"
+# III_HIL_PX4_EXTRA_ENV adds NAME=VALUE pairs (space separated) to the PX4
+# environment, e.g. PX4_PARAM_<NAME>=<value> overrides for a vision-only
+# estimator (the OptiTrack rehearsal).
+PX4_EXTRA_ENV="${III_HIL_PX4_EXTRA_ENV:-}"
+for px4_extra_pair in ${PX4_EXTRA_ENV}; do
+    if [[ ! "${px4_extra_pair}" =~ ^[A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_.:-]+$ ]]; then
+        echo "Invalid III_HIL_PX4_EXTRA_ENV entry '${px4_extra_pair}'; expected NAME=VALUE." >&2
+        exit 2
+    fi
+done
+unset px4_extra_pair
 # Resolve on the host checkout, then carry exactly this identity into its
 # devcontainer. Different checkouts must never discover each other's worlds.
 GZ_OWNER_HELPER="${SCRIPT_WORKSPACE_ROOT}/scripts/workspace/hil_gazebo_owner.py"
@@ -1190,7 +1201,7 @@ px4_command() {
     # This is HIL-only; the physical PX4 path keeps the detector unchanged.
     local agent_address_u32
     agent_address_u32="$(px4_agent_address_u32)" || return 1
-    printf '%s' "source '${WORKSPACE_ROOT}/setup/setup_dev.bash' && exec env HEADLESS=1 GZ_IP=127.0.0.1 GZ_PARTITION='${GZ_PARTITION}' PX4_SIM_MODEL=gz_d4s_dc_drone ROS_DOMAIN_ID='${ROS_DOMAIN_ID}' PX4_UXRCE_DDS_PORT='${XRCE_PORT}' PX4_PARAM_UXRCE_DDS_AG_IP='${agent_address_u32}' PX4_PARAM_UXRCE_DDS_KEY='${PX4_DDS_CLIENT_KEY}' PX4_PARAM_UXRCE_DDS_SYNCT=0 PX4_PARAM_COM_DL_LOSS_T=300 PX4_PARAM_COM_LOW_BAT_ACT=0 PX4_PARAM_FD_ESCS_EN=0 '${PX4_BUILD_DIR}/bin/px4' -s '${PX4_STARTUP_SCRIPT}' -i '${PX4_INSTANCE}' -w '${PX4_BUILD_DIR}/rootfs' '${PX4_BUILD_DIR}/etc'"
+    printf '%s' "source '${WORKSPACE_ROOT}/setup/setup_dev.bash' && exec env HEADLESS=1 GZ_IP=127.0.0.1 GZ_PARTITION='${GZ_PARTITION}' PX4_SIM_MODEL=gz_d4s_dc_drone ROS_DOMAIN_ID='${ROS_DOMAIN_ID}' PX4_UXRCE_DDS_PORT='${XRCE_PORT}' PX4_PARAM_UXRCE_DDS_AG_IP='${agent_address_u32}' PX4_PARAM_UXRCE_DDS_KEY='${PX4_DDS_CLIENT_KEY}' PX4_PARAM_UXRCE_DDS_SYNCT=0 PX4_PARAM_COM_DL_LOSS_T=300 PX4_PARAM_COM_LOW_BAT_ACT=0 PX4_PARAM_FD_ESCS_EN=0${PX4_EXTRA_ENV:+ ${PX4_EXTRA_ENV}} '${PX4_BUILD_DIR}/bin/px4' -s '${PX4_STARTUP_SCRIPT}' -i '${PX4_INSTANCE}' -w '${PX4_BUILD_DIR}/rootfs' '${PX4_BUILD_DIR}/etc'"
 }
 
 prepare_px4_startup_script() {

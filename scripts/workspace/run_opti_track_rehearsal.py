@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Run and judge the OptiTrack rehearsal in SIM.
+"""Run and judge the OptiTrack rehearsal in SIM or HIL.
 
 The rehearsal flies the `opti_track` runtime profile against PX4 SITL with a
-vision-only estimator and the simulated lab gateway (see
-tools/simulation/opti_track_rehearsal.sh). It exercises what the lab session
-relies on: profile restrictions, the motion-capture readiness gate, and the
-four OptiTrack missions, each to a landed and disarmed aircraft.
+vision-only estimator and the simulated lab gateway. In SIM everything runs in
+the devcontainer (tools/simulation/opti_track_rehearsal.sh); in HIL the Pi runs
+the profile and receives the poses over its link to the workstation
+(tools/simulation/opti_track_hil_rehearsal.sh). It exercises what the lab
+session relies on: profile restrictions, the motion-capture readiness gate,
+and the four OptiTrack missions, each to a landed and disarmed aircraft.
 
 Usage (on the host, from the workspace root):
-    scripts/workspace/run_opti_track_rehearsal.py [--keep-running] [--no-start]
+    scripts/workspace/run_opti_track_rehearsal.py [--target sim|hil] [--host PI]
+        [--keep-running] [--no-start]
 
 The verdict is written to runtime/rehearsal/<run>/report.json; the exit status
 is 0 only when every scenario passed and the node logs hold no unexpected
@@ -34,11 +37,17 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTAINER_WS = "/home/iii/ws"
 API = "http://127.0.0.1:8765"
 ENVIRONMENT = f"{CONTAINER_WS}/tools/simulation/opti_track_rehearsal.sh"
+HIL_ENVIRONMENT = ROOT / "tools" / "simulation" / "opti_track_hil_rehearsal.sh"
+PI_LOG_ROOT = "/home/iii/ws/runtime_logs/opti_track"
 # Designed warnings: selecting a mission that is not field-qualified yet, and
-# the relay reporting the pose outage this rehearsal injects.
+# the relay reporting the pose outage this rehearsal injects. On the Pi, rcl
+# also notes at every node start that the provisioned ROS_LOCALHOST_ONLY=0 is
+# superseded by the discovery range the Pi sets as well.
 EXPECTED_WARNINGS = (
     re.compile(r"EXPERIMENTAL mission catalog entry selected"),
     re.compile(r"OptiTrackPoseRelayNode::onHealthTimer\(\): pose stale"),
+    re.compile(r"\[rcl\]: ROS_LOCALHOST_ONLY is deprecated"),
+    re.compile(r"\[rcl\]: 'localhost_only' is disabled"),
 )
 # Samples the recorder loses on best-effort streams are a recording-completeness
 # metric, reported separately (as in run_inspection_endurance.py).
@@ -201,13 +210,13 @@ def restrictions() -> dict[str, Any]:
     }
 
 
-def motion_capture_gate(container: str) -> dict[str, Any]:
+def motion_capture_gate(container: str, setup: str) -> dict[str, Any]:
     """A pose outage on the ground closes the readiness gate; it reopens by itself."""
     select("opti-track-cycle", "ot_cycle_takeoff")
     result = in_container(
         container,
-        f"source {CONTAINER_WS}/setup/setup_dev.bash && "
-        "ros2 param set /simulated_lab_mocap_gateway one_shot_dropout_s 8.0",
+        f"source {CONTAINER_WS}/setup/{setup} && "
+        "ros2 param set --no-daemon --spin-time 5 /simulated_lab_mocap_gateway one_shot_dropout_s 8.0",
         timeout=60,
     )
     if result.returncode != 0:
@@ -278,10 +287,11 @@ def mode_loop(loops: int) -> dict[str, Any]:
 
 # --- judging -------------------------------------------------------------------
 
-def log_findings(container: str, since_epoch: float) -> tuple[list[dict[str, Any]], int]:
+def log_findings(container: str, since_epoch: float, pi_host: str | None) -> tuple[list[dict[str, Any]], int]:
+    log_root = PI_LOG_ROOT if pi_host else f"{CONTAINER_WS}/runtime_logs/opti_track"
     script = (
         "import json,os,re,sys\n"
-        f"root='{CONTAINER_WS}/runtime_logs/opti_track'; since={since_epoch}\n"
+        f"root='{log_root}'; since={since_epoch}\n"
         "level=re.compile(r'\\[(WARN|ERROR|FATAL)\\] \\[(\\d+\\.\\d+)\\]'); out=[]; seen=set()\n"
         "for d,_,fs in os.walk(root):\n"
         "  for f in fs:\n"
@@ -294,7 +304,13 @@ def log_findings(container: str, since_epoch: float) -> tuple[list[dict[str, Any
         "      out.append({'node':os.path.basename(d),'level':m.group(1),'line':line.strip()[:400]})\n"
         "print(json.dumps(out))\n"
     )
-    result = in_container(container, "python3 -", timeout=120, stdin=script)
+    if pi_host:
+        result = subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", f"iii@{pi_host}", "python3 -"],
+            text=True, capture_output=True, timeout=120, check=False, input=script,
+        )
+    else:
+        result = in_container(container, "python3 -", timeout=120, stdin=script)
     if result.returncode != 0:
         raise RehearsalError(f"could not read the node logs: {result.stderr.strip()}")
     findings = []
@@ -310,20 +326,36 @@ def log_findings(container: str, since_epoch: float) -> tuple[list[dict[str, Any
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--target", choices=("sim", "hil"), default="sim")
+    parser.add_argument("--host", help="HIL Pi hostname or address (required for --target hil)")
     parser.add_argument("--no-start", action="store_true", help="use the rehearsal environment that is already running")
     parser.add_argument("--keep-running", action="store_true", help="leave the environment up afterwards")
     parser.add_argument("--loops", type=int, default=2, help="mode-loop rounds to observe (default 2)")
     args = parser.parse_args(argv)
 
-    run_dir = ROOT / "runtime" / "rehearsal" / datetime.now(timezone.utc).strftime("sim-%Y%m%dT%H%M%SZ")
+    if args.target == "hil" and not args.host:
+        parser.error("--target hil needs --host")
+    global API
+    pi_host = args.host if args.target == "hil" else None
+    if pi_host:
+        API = f"http://{pi_host}:8765"
+    setup = "setup_hil.bash" if pi_host else "setup_dev.bash"
+    run_dir = ROOT / "runtime" / "rehearsal" / datetime.now(timezone.utc).strftime(f"{args.target}-%Y%m%dT%H%M%SZ")
     run_dir.mkdir(parents=True)
     container = container_id()
+
+    def environment(action: str) -> subprocess.CompletedProcess[str]:
+        if pi_host:
+            return subprocess.run([str(HIL_ENVIRONMENT), action, "--host", pi_host],
+                                  text=True, capture_output=True, timeout=1200, check=False)
+        return in_container(container, f"{ENVIRONMENT} {action}", timeout=900)
+
     started = time.time()
-    report: dict[str, Any] = {"run": run_dir.name, "scenarios": [], "accepted": False}
+    report: dict[str, Any] = {"run": run_dir.name, "target": args.target, "scenarios": [], "accepted": False}
 
     scenarios: list[tuple[str, Callable[[], dict[str, Any]]]] = [
         ("profile restrictions", restrictions),
-        ("motion-capture readiness gate", lambda: motion_capture_gate(container)),
+        ("motion-capture readiness gate", lambda: motion_capture_gate(container, setup)),
         ("M3 cycle with Proceed", lambda: cycle(True)),
         ("M3 cycle without Proceed", lambda: cycle(False)),
         ("M1 hover from a pilot hover", lambda: pilot_handover("opti-track-hover", "ot_hover", 120)),
@@ -333,7 +365,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if not args.no_start:
             print("[rehearsal] starting the environment", flush=True)
-            result = in_container(container, f"{ENVIRONMENT} start", timeout=900)
+            result = environment("start")
             (run_dir / "environment_start.log").write_text(result.stdout + result.stderr)
             if result.returncode != 0:
                 raise RehearsalError(f"environment start failed; see {run_dir / 'environment_start.log'}")
@@ -358,13 +390,13 @@ def main(argv: list[str] | None = None) -> int:
             finally:
                 entry["duration_s"] = round(time.monotonic() - begun, 1)
         report["final_vehicle"] = {key: vehicle().get(key) for key in ("armed", "in_air", "nav_state", "freshness")}
-        report["log_findings"], report["recording_lost_messages"] = log_findings(container, started)
+        report["log_findings"], report["recording_lost_messages"] = log_findings(container, started, pi_host)
     except Exception as exc:
         report["error"] = f"{type(exc).__name__}: {exc}"
         print(f"[rehearsal] error: {report['error']}", flush=True)
     finally:
         if not args.keep_running and not args.no_start:
-            in_container(container, f"{ENVIRONMENT} stop", timeout=300)
+            environment("stop")
 
     final = report.get("final_vehicle") or {}
     report["accepted"] = bool(

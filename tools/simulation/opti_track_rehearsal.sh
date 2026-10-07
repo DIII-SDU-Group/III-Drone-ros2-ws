@@ -28,25 +28,7 @@ set +u
 source "${WORKSPACE_ROOT}/setup/setup_dev.bash"
 set -u
 
-set_rigid_body_id() {
-    # The relay's rigid-body ID is a boot-time constant of the opti_track
-    # parameter set; the lab sets it from the GUI before the system starts.
-    python3 - "$1" <<'PY'
-import sys
-from pathlib import Path
-
-import yaml
-
-from iii_drone_configuration.schema_utils import resolve_active_parameter_file, seed_runtime_configuration
-
-seed_runtime_configuration("opti_track")
-path = Path(resolve_active_parameter_file("opti_track"))
-document = yaml.safe_load(path.read_text())
-document["/**"]["ros__parameters"]["/opti_track/pose_relay/rigid_body_id"] = int(sys.argv[1])
-path.write_text(yaml.safe_dump(document, sort_keys=False))
-print(f"rigid_body_id {sys.argv[1]} in {path}")
-PY
-}
+REHEARSAL_PARAMETERS="${WORKSPACE_ROOT}/tools/simulation/opti_track_rehearsal_parameters.py"
 
 ensure_clock_tracking() {
     # The opti_track runtime gates on a settled chrony clock, as on the
@@ -80,7 +62,7 @@ start() {
     printf 'III_RUNTIME_API_PROFILE=opti_track\n' >"${API_ENV_FILE}"
     sudo systemctl restart iii-runtime-api.service
 
-    set_rigid_body_id "${RIGID_BODY_ID}"
+    python3 "${REHEARSAL_PARAMETERS}" prepare "${RIGID_BODY_ID}"
     iii system boot --profile opti_track --confirm --non-interactive
     iii system start --confirm --non-interactive
 }
@@ -89,6 +71,7 @@ stop() {
     iii system shutdown --confirm --non-interactive >/dev/null 2>&1 || true
     tmux kill-session -t "${ADAPTER_SESSION}" 2>/dev/null || true
     "${SIM_TOOLS}" --stop || true
+    python3 "${REHEARSAL_PARAMETERS}" restore
     if [[ -f "${API_ENV_BACKUP}" ]]; then
         mv -f "${API_ENV_BACKUP}" "${API_ENV_FILE}"
     else

@@ -39,7 +39,7 @@ PX4-Autopilot/src/modules/uxrce_dds_client/Micro-XRCE-DDS-Client 711aef423edd182
 PX4-Autopilot/src/modules/zenoh/zenoh-pico f093aa7955bb24dfa3e626de084583711e3bac5c
 src/BehaviorTree.CPP 3ff6a32ba0497a08519c77a1436e3b81eff1bcd6
 src/BehaviorTree.ROS2 c72596242684ed6f03796665908d337269afb4b3
-src/III-Drone-Configuration e0c44846ceb3aa79a814bfbd4dfbf30938e009c9
+src/III-Drone-Configuration bec8dbae89006223bc2f38c6e76549479fc0652c
 src/III-Drone-Contracts ec9dcc240ba29709335c6d39ac905fd3b8ac2f1c
 src/III-Drone-Core 8457ec80e7170c30cabc4a280d7bfd4c16ccba14
 src/III-Drone-GC 0c33417ce6805364ed0a8cf29f9aa065fe003d17

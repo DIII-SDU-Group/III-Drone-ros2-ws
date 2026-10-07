@@ -231,10 +231,32 @@ Samples the recorder lost are reported separately.
 | M1 hover, M2 maneuvers | takeover from a pilot hover and handback to PX4 Hold |
 | M4 mode loop | ground start and two rounds of the four-mode loop, ended by the operator's Hold |
 
-The rehearsal uses the `real` parameter family that `opti_track` flies and the
-missions' placeholder geometry. It does not replace the lab acceptance in
+The rehearsal flies the installed tracked default of the `real` parameter
+family, which `opti_track` uses, and the missions' placeholder geometry. For
+the run it sets the host's own living `opti_track` parameters aside and puts
+them back when the environment stops. It does not replace the lab acceptance in
 [the session checklist](opti-track-lab-session-checklist.md): axes, the
 rigid-body ID, the cage geometry and hover thrust are only known at the lab.
+
+### OptiTrack rehearsal (HIL)
+
+The same scenarios run with the Pi in the `opti_track` profile against the
+workstation's PX4 SITL. Deploy first (`iii deploy dev --host HOST --build
+--restart`) and stop any running HIL session (`./iii-dev hil stop`).
+
+```bash
+scripts/workspace/run_opti_track_rehearsal.py --target hil --host 192.168.1.251
+```
+
+`tools/simulation/opti_track_hil_rehearsal.sh start --host HOST` starts the HIL
+workstation simulation with the vision-only estimator and the simulated lab
+gateway, whose pose publisher is in lab ROS domain 0, as the lab's gateway is.
+On the Pi it adds a systemd drop-in that switches the daemon and the Runtime
+API to `opti_track` while keeping the HIL transport. `stop` removes the
+drop-in and returns the Pi to its provisioned HIL profile. The report is
+`runtime/rehearsal/hil-<UTC>/report.json`, judged as in SIM from the Pi's node
+logs; rcl's start-up notice about the Pi's provisioned `ROS_LOCALHOST_ONLY=0`
+is also a designed line there. The physical flight controller is not involved and stays disarmed.
 
 ### Qualification campaign (SIM, then deploy, then HIL)
 
