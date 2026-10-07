@@ -84,7 +84,8 @@ ROLLOVER_EVENT = "traversal_complete"
 RECOVERY_CONTRACT = "BOUNDED_RECOVERY_v1"
 RECOVERY_KEYS = {"max_attempts": int, "window_s": float, "cooldown_s": float, "backoff": float}
 # fail-closed reasons after which a recovery attempt is permitted (prefix match)
-RECOVERABLE = ("REALTIME_OVERLOAD_v1:", "TRAVERSAL_EPOCH_v1:", "PIPELINE_EXCEPTION", "PROCESS_RESPAWN", "HOST_LOST", "RECOVERY_FAILED")
+RECOVERABLE = ("REALTIME_OVERLOAD_v1:", "TRAVERSAL_EPOCH_v1:", "PIPELINE_EXCEPTION", "PROCESS_RESPAWN", "HOST_LOST", "RECOVERY_FAILED",
+               "NODE_INTERNAL:")
 MAIN_KEYS = ("camera", "radar_u", "odometry")       # the keys whose events form the estimator's source-time groups
 OVERLOAD_KEYS = {"contract": str, "live_age_budget_s": float, "startup_timeout_s": float, "max_unprocessed_events": int,
                  "max_node_queue": int}

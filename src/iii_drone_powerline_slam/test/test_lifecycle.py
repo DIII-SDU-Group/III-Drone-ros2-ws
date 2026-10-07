@@ -714,3 +714,25 @@ def test_no_worker_outlives_a_killed_host(tmp_path):
     assert os.path.exists(f"/proc/{worker}")                                 # its worker is an orphan now
     assert worker in realtime.kill_process_group(host.pid, ticks)
     assert _wait(lambda: not os.path.exists(f"/proc/{worker}") or open(f"/proc/{worker}/stat").read().split(")")[1].split()[0] == "Z", 10.0)
+
+
+def test_host_log_lines_of_different_severity_do_not_stop_the_receiver(node, tmp_path):
+    """rclpy refuses one logging call site with changing severity; the receiver thread must survive any host log."""
+    node.set_parameters([Parameter(RUNTIME_CONFIG_PARAMETER, value=str(_config(tmp_path)))])
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+    for level in ("error", "warning", "info", "error", "warning"):
+        node._handle(("log", level, f"stand-in {level}"))
+    node._enqueue("camera", _image(3))
+    assert _wait(lambda: _counter(node, "frames") == 1) and node._receiver.is_alive()
+
+
+def test_an_internal_error_in_the_receiver_fails_closed_instead_of_going_silent(node, tmp_path):
+    node.set_parameters([Parameter(RUNTIME_CONFIG_PARAMETER, value=str(_config(tmp_path)))])
+    assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
+    assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
+    node._publish_frame = lambda *args: (_ for _ in ()).throw(RuntimeError("stand-in publish failure"))
+    node._enqueue("camera", _image(3))
+    assert _wait(lambda: node._overload is not None)
+    assert node._overload["fail_closed_reason"] == "NODE_INTERNAL:RECEIVER_EXCEPTION" and node._state == "FailClosed"
+    assert node._receiver.is_alive()

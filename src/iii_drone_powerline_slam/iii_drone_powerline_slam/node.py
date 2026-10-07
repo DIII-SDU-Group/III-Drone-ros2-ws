@@ -368,44 +368,72 @@ class PowerlineSlamNode(Node):
                         realtime.kill_process_group(*self._host_group)
                     os._exit(EXIT_HOST_LOST)
                 return
-            kind = item[0]
-            if kind == "frame":
-                self._publish_frame(*item[1:])
-            elif kind == "overload":
-                self._latch_overload(item[1], by_node=False)
-            elif kind == "state":
-                if self._overload is None:          # after an overload the state stays FailClosed for the epoch
-                    self._set_state(item[1])
-            elif kind == "runtime":
-                record = dict(item[1], forwarder_queue=len(self._outbox), forwarder_high_water=self._outbox_high_water)
-                if self._recovery is not None:
-                    record["recovery"] = dict(self._recovery.status(), recovered=self._recoveries)
-                if self._rollover_config is not None:
-                    record["rollover"] = {"contract": realtime.ROLLOVER_CONTRACT, "generation": self._epoch_count,
-                                          "rolling": self._rolling, "completed": self._rollovers}
-                if self._overload_limits is not None:
-                    latched = None if self._overload is None else self._overload["fail_closed_reason"]
-                    record["node_overload"] = {"latched": latched, "by_node": self._overload_by_node,
-                                               "counters": dict(self._overload_counters),
-                                               "publish_age_max_s": round(self._publish_age_max, 3)}
-                self._last_runtime = record
-                reason = record.get("fail_closed_reason")
-                if reason and self._overload is None and self._recovery is not None and not self._rolling:
-                    # the host failed closed on its own (no overload trigger): latched here too, so recovery can judge it
-                    self._latch_overload({"kind": "overload", "contract": "HOST_FAIL_CLOSED", "fail_closed_reason": str(reason),
-                                          "trigger": {"code": "HOST_FAIL_CLOSED"}, "limits": {}, "status": None,
-                                          "recovery": "see BOUNDED_RECOVERY_v1"}, by_node=False)
-                self._publish_state()
-                if self._diagnostics_pub is not None:
-                    self._diagnostics_pub.publish(string_stamped(max(record.get("processed_through_ns") or 0, 0), record))
-            elif kind == "rollover_begin":
-                self._begin_rollover(item[1])
-            elif kind == "log":
-                getattr(self.get_logger(), item[1])(item[2])
-            elif kind in self._replies:
-                with self._reply_ready:
-                    self._replies[kind].append(item[1] if len(item) == 2 else tuple(item[1:]))
-                    self._reply_ready.notify_all()
+            try:
+                self._handle(item)
+            except Exception as exc:  # noqa: BLE001 - this thread must never die silently: nothing would be published any more
+                self._receiver_failed(exc)
+
+    def _log(self, level: str, text: str) -> None:
+        """One call site per severity: rclpy refuses a logging call whose severity changes between calls."""
+        logger = self.get_logger()
+        if level == "error":
+            logger.error(text)
+        elif level == "warning":
+            logger.warning(text)
+        elif level == "fatal":
+            logger.fatal(text)
+        else:
+            logger.info(text)
+
+    def _receiver_failed(self, exc: Exception) -> None:
+        """An internal error while handling what the host returned: fail closed visibly instead of going silent."""
+        record = {"kind": "overload", "contract": "NODE_INTERNAL", "fail_closed_reason": "NODE_INTERNAL:RECEIVER_EXCEPTION",
+                  "trigger": {"code": "RECEIVER_EXCEPTION", "error": f"{type(exc).__name__}: {exc}"[:400]}, "limits": {}, "status": None,
+                  "recovery": "deactivate and activate (fresh processing epoch) or restart the process"}
+        try:
+            self._latch_overload(record, by_node=True)
+        except Exception:  # noqa: BLE001
+            os._exit(EXIT_HOST_LOST)
+
+    def _handle(self, item) -> None:
+        kind = item[0]
+        if kind == "frame":
+            self._publish_frame(*item[1:])
+        elif kind == "overload":
+            self._latch_overload(item[1], by_node=False)
+        elif kind == "state":
+            if self._overload is None:          # after an overload the state stays FailClosed for the epoch
+                self._set_state(item[1])
+        elif kind == "runtime":
+            record = dict(item[1], forwarder_queue=len(self._outbox), forwarder_high_water=self._outbox_high_water)
+            if self._recovery is not None:
+                record["recovery"] = dict(self._recovery.status(), recovered=self._recoveries)
+            if self._rollover_config is not None:
+                record["rollover"] = {"contract": realtime.ROLLOVER_CONTRACT, "generation": self._epoch_count,
+                                      "rolling": self._rolling, "completed": self._rollovers}
+            if self._overload_limits is not None:
+                latched = None if self._overload is None else self._overload["fail_closed_reason"]
+                record["node_overload"] = {"latched": latched, "by_node": self._overload_by_node,
+                                           "counters": dict(self._overload_counters),
+                                           "publish_age_max_s": round(self._publish_age_max, 3)}
+            self._last_runtime = record
+            reason = record.get("fail_closed_reason")
+            if reason and self._overload is None and self._recovery is not None and not self._rolling:
+                # the host failed closed on its own (no overload trigger): latched here too, so recovery can judge it
+                self._latch_overload({"kind": "overload", "contract": "HOST_FAIL_CLOSED", "fail_closed_reason": str(reason),
+                                      "trigger": {"code": "HOST_FAIL_CLOSED"}, "limits": {}, "status": None,
+                                      "recovery": "see BOUNDED_RECOVERY_v1"}, by_node=False)
+            self._publish_state()
+            if self._diagnostics_pub is not None:
+                self._diagnostics_pub.publish(string_stamped(max(record.get("processed_through_ns") or 0, 0), record))
+        elif kind == "rollover_begin":
+            self._begin_rollover(item[1])
+        elif kind == "log":
+            self._log(item[1], item[2])
+        elif kind in self._replies:
+            with self._reply_ready:
+                self._replies[kind].append(item[1] if len(item) == 2 else tuple(item[1:]))
+                self._reply_ready.notify_all()
 
     def _publish_frame(self, t, powerline, diagnostics, received=None) -> None:
         """One processed frame.  ``received`` (overload contract) is the node receipt time of its triggering message."""
