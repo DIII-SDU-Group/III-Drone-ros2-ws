@@ -40,12 +40,16 @@ ENVIRONMENT = f"{CONTAINER_WS}/tools/simulation/opti_track_rehearsal.sh"
 HIL_ENVIRONMENT = ROOT / "tools" / "simulation" / "opti_track_hil_rehearsal.sh"
 PI_LOG_ROOT = "/home/iii/ws/runtime_logs/opti_track"
 # Designed warnings: selecting a mission that is not field-qualified yet, and
-# the relay reporting the pose outage this rehearsal injects. On the Pi, rcl
+# the relay reporting the pose outage this rehearsal injects. While the relay
+# is still discovering the gateway in the lab domain at boot, it may also say
+# once that no pose has arrived yet; a stream that never arrives fails the
+# system start instead. On the Pi, rcl
 # also notes at every node start that the provisioned ROS_LOCALHOST_ONLY=0 is
 # superseded by the discovery range the Pi sets as well.
 EXPECTED_WARNINGS = (
     re.compile(r"EXPERIMENTAL mission catalog entry selected"),
     re.compile(r"OptiTrackPoseRelayNode::onHealthTimer\(\): pose stale"),
+    re.compile(r"OptiTrackPoseRelayNode::onHealthTimer\(\): no pose received yet"),
     re.compile(r"\[rcl\]: ROS_LOCALHOST_ONLY is deprecated"),
     re.compile(r"\[rcl\]: 'localhost_only' is disabled"),
 )

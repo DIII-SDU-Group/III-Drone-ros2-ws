@@ -219,7 +219,8 @@ runs the scenarios below in order, stops the environment, and writes
 `runtime/rehearsal/sim-<UTC>/report.json`. The exit status is 0 only when
 every scenario passed, the aircraft ended landed and disarmed, and the node
 logs hold no WARN, ERROR or FATAL line other than the designed ones (the
-EXPERIMENTAL-mission notice and the relay reporting the injected outage).
+EXPERIMENTAL-mission notice, the relay reporting the injected outage, and the
+relay noting at boot that no pose has arrived yet).
 Samples the recorder lost are reported separately.
 
 | Scenario | What it proves |
