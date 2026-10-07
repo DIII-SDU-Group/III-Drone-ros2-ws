@@ -2243,6 +2243,10 @@ class MissionDeployWorkflow:
 
     def _current_gazebo_drone_pose(self, tools: DroneAgentTools) -> dict[str, float]:
         local_gazebo_error = ""
+        model_name = DEFAULT_GAZEBO_DRONE_MODEL
+        resolve_model = getattr(tools, "_gazebo_drone_model", None)
+        if resolve_model is not None:
+            model_name = resolve_model()
         try:
             result = tools.gazebo(
                 "topic_once",
@@ -2251,10 +2255,10 @@ class MissionDeployWorkflow:
                 filename="gz_dynamic_pose_for_target_mapping.txt",
             )
             stdout = ((result.data or {}).get("stdout") if isinstance(result.data, dict) else "") or ""
-            pose = self._parse_gazebo_named_pose(stdout, DEFAULT_GAZEBO_DRONE_MODEL)
+            pose = self._parse_gazebo_named_pose(stdout, model_name)
             if pose is not None:
                 return pose
-            local_gazebo_error = result.message or f"Gazebo pose for model {DEFAULT_GAZEBO_DRONE_MODEL!r} not found"
+            local_gazebo_error = result.message or f"Gazebo pose for model {model_name!r} not found"
         except Exception as exc:
             local_gazebo_error = str(exc)
 
@@ -2268,10 +2272,10 @@ class MissionDeployWorkflow:
                 return fallback(timeout_sec=5.0)
             except Exception as exc:
                 raise RuntimeError(
-                    f"Gazebo pose for model {DEFAULT_GAZEBO_DRONE_MODEL!r} unavailable; "
+                    f"Gazebo pose for model {model_name!r} unavailable; "
                     f"local query failed: {local_gazebo_error}; bridged ground-truth fallback failed: {exc}"
                 ) from exc
-        raise RuntimeError(local_gazebo_error or f"Gazebo pose for model {DEFAULT_GAZEBO_DRONE_MODEL!r} not found")
+        raise RuntimeError(local_gazebo_error or f"Gazebo pose for model {model_name!r} not found")
 
     def _parse_gazebo_named_pose(self, stdout: str, model_name: str) -> dict[str, float] | None:
         for block in re.findall(r"pose\s*\{(.*?)(?=\npose\s*\{|\Z)", stdout, flags=re.S):

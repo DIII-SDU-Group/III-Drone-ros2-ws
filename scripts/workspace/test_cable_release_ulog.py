@@ -84,3 +84,27 @@ def test_hover_thrust_falls_back_to_steady_flight_when_the_estimate_is_not_logge
     assert result["hover_thrust"] == HOVER
     assert result["failures"] == []
 
+
+def _with_truth(log: dict, truth_rise: float) -> dict:
+    """The simulator's ground truth: still while pressed except truth_rise."""
+    local = log["vehicle_local_position"]
+    t = (local["timestamp"] - local["timestamp"][0]) / 1e6
+    z = np.where(t < 6.0, -4.0, local["z"])
+    z = np.where((t > 4.0) & (t < 5.0), z - truth_rise, z)
+    log["vehicle_local_position_groundtruth"] = {"timestamp": local["timestamp"], "z": z,
+                                                 "vz": np.gradient(z, t)}
+    return log
+
+
+def test_estimate_drift_while_pressed_is_judged_on_ground_truth() -> None:
+    # HIL 2026-10-05: the estimated altitude moved 6.3 cm while the simulator's
+    # ground truth stayed within 1 mm.
+    result = release.analyze(_with_truth(_log(pressed_rise=0.063), truth_rise=0.0))
+    assert result["pressed_source"] == "groundtruth"
+    assert not any("moved while pressed" in f for f in result["failures"])
+
+
+def test_real_motion_while_pressed_still_fails_on_ground_truth() -> None:
+    result = release.analyze(_with_truth(_log(), truth_rise=0.08))
+    assert any("moved while pressed" in f for f in result["failures"])
+

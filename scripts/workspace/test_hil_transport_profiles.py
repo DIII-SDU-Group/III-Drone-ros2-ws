@@ -82,7 +82,9 @@ class HilTransportProfilesTests(unittest.TestCase):
         self.assertEqual(env["III_RUNTIME_API_PX4_MAVLINK_ENDPOINT"], "udpin://0.0.0.0:14544")
         self.assertEqual(env["ROS_DOMAIN_ID"], "42")
         self.assertEqual(env["RMW_IMPLEMENTATION"], "rmw_fastrtps_cpp")
-        self.assertEqual(env["FASTDDS_BUILTIN_TRANSPORTS"], "UDPv4")
+        # Shared memory on the Pi like the REAL default; the workstation
+        # shell stays UDPv4 (cross-host).
+        self.assertEqual(env["FASTDDS_BUILTIN_TRANSPORTS"], "DEFAULT")
         self.assertNotEqual(values["iii_hil_sitl_mavlink_udp_port"], values["iii_hil_mavlink_udp_port"])
 
     def test_real_and_opti_track_keep_their_physical_endpoint(self):

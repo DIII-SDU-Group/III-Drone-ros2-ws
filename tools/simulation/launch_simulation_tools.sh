@@ -11,13 +11,10 @@ PX4_INSTANCE="${III_SIM_TOOLS_PX4_INSTANCE:-0}"
 RESET_PX4_PARAMS_ON_RECREATE="${III_SIM_TOOLS_RESET_PX4_PARAMS_ON_RECREATE:-1}"
 GZ_WORLD="${III_SIM_TOOLS_GZ_WORLD:-hca_full_pylon_setup}"
 SIM_ASSET_INSTALLER="${III_SIM_TOOLS_ASSET_INSTALLER:-${WORKSPACE_ROOT}/src/III-Drone-Simulation/scripts/install_gazebo_simulation_assets.sh}"
-# UXRCE_DDS_SYNCT=0 keeps PX4 DDS timestamps in the lockstep simulation-time
-# domain (as in HIL). With synchronization enabled, host stalls look like agent
-# clock jumps; PX4 then resets its timesync filter and publishes samples with a
-# zero offset (boot-relative stamps between wall-clock stamps), which Core
-# correctly fences as a position-source epoch change.
-DEFAULT_PX4_COMMAND="source ${WORKSPACE_ROOT}/setup/setup_dev.bash && cd ${PX4_ROOT} && make px4_sitl_default && cd ${PX4_BUILD_DIR}/rootfs && exec env HEADLESS=1 PX4_SIM_MODEL=gz_d4s_dc_drone GZ_IP=\$GZ_IP PX4_PARAM_UXRCE_DDS_SYNCT=0 ${PX4_BUILD_DIR}/bin/px4 -i ${PX4_INSTANCE}"
-PX4_COMMAND="${III_SIM_TOOLS_PX4_COMMAND:-${DEFAULT_PX4_COMMAND}}"
+# PX4 SITL model: gz_<model> spawns Gazebo model <model> and selects the
+# <N>_gz_<model> airframe, e.g. gz_d4s_dc_drone_powerline_eval for the powerline
+# SLAM evaluation variant.
+PX4_SIM_MODEL_NAME="${III_SIM_TOOLS_PX4_SIM_MODEL:-gz_d4s_dc_drone}"
 DEFAULT_GZ_GUI_COMMAND="source ${WORKSPACE_ROOT}/setup/setup_dev.bash && ready=0; for attempt in {1..60}; do if gz service -i --service /world/${GZ_WORLD}/scene/info 2>&1 | grep -q 'Service providers'; then ready=1; break; fi; sleep 1; done; if [ \"\${ready}\" != 1 ]; then echo 'Timed out waiting for Gazebo world ${GZ_WORLD}' >&2; exit 1; fi; exec gz sim -g"
 GZ_GUI_COMMAND="${III_SIM_TOOLS_GZ_GUI_COMMAND:-${DEFAULT_GZ_GUI_COMMAND}}"
 GZ_GUI_READY_TIMEOUT_SECONDS="${III_SIM_TOOLS_GZ_GUI_READY_TIMEOUT_SECONDS:-75}"
@@ -59,6 +56,14 @@ while (($# > 0)); do
         --recreate)
             RECREATE=1
             ;;
+        --sim-model)
+            if (($# < 2)); then
+                echo "--sim-model needs a value." >&2
+                exit 1
+            fi
+            PX4_SIM_MODEL_NAME="$2"
+            shift
+            ;;
         --status)
             STATUS=1
             ATTACH=0
@@ -69,10 +74,13 @@ while (($# > 0)); do
             ;;
         --help|-h)
             cat <<EOF
-Usage: $(basename "$0") [--headless|--rendered] [--no-attach] [--attach] [--recreate] [--status] [--stop]
+Usage: $(basename "$0") [--headless|--rendered] [--sim-model gz_<model>] [--no-attach] [--attach] [--recreate] [--status] [--stop]
 
 Options:
   --headless   Start only the PX4/Gazebo backend pane; skip the Gazebo GUI.
+  --sim-model  PX4_SIM_MODEL for a new session (default gz_d4s_dc_drone, or
+               III_SIM_TOOLS_PX4_SIM_MODEL). A running session keeps its model;
+               use --recreate to switch.
   --rendered   Ensure the Gazebo GUI pane is present for this session.
   --no-attach  Start or recreate the tmux session without attaching.
   --attach     Attach to an existing simulation session without creating one.
@@ -89,6 +97,20 @@ EOF
     esac
     shift
 done
+
+if [[ ! "${PX4_SIM_MODEL_NAME}" =~ ^gz_[A-Za-z0-9_]+$ ]]; then
+    echo "Invalid PX4 simulation model '${PX4_SIM_MODEL_NAME}'; expected gz_<model>." >&2
+    exit 1
+fi
+PX4_GZ_MODEL_DIR="${PX4_SIM_MODEL_NAME#gz_}"
+
+# UXRCE_DDS_SYNCT=0 keeps PX4 DDS timestamps in the lockstep simulation-time
+# domain (as in HIL). With synchronization enabled, host stalls look like agent
+# clock jumps; PX4 then resets its timesync filter and publishes samples with a
+# zero offset (boot-relative stamps between wall-clock stamps), which Core
+# correctly fences as a position-source epoch change.
+DEFAULT_PX4_COMMAND="source ${WORKSPACE_ROOT}/setup/setup_dev.bash && cd ${PX4_ROOT} && make px4_sitl_default && cd ${PX4_BUILD_DIR}/rootfs && exec env HEADLESS=1 PX4_SIM_MODEL=${PX4_SIM_MODEL_NAME} GZ_IP=\$GZ_IP PX4_PARAM_UXRCE_DDS_SYNCT=0 ${PX4_BUILD_DIR}/bin/px4 -i ${PX4_INSTANCE}"
+PX4_COMMAND="${III_SIM_TOOLS_PX4_COMMAND:-${DEFAULT_PX4_COMMAND}}"
 
 if ((STATUS && STOP)); then
     echo "--status and --stop are mutually exclusive." >&2
@@ -412,36 +434,40 @@ reset_px4_persistent_sim_params() {
         "${rootfs}/${PX4_INSTANCE}/parameters_backup.bson"
 }
 
+sim_assets_root() {
+    echo "$(cd "$(dirname "${SIM_ASSET_INSTALLER}")/.." && pwd)/Gazebo-simulation-assets"
+}
+
 px4_assets_installed() {
-    [[ -d "${PX4_ROOT}/Tools/simulation/gz/models/d4s_dc_drone" ]] &&
-    [[ -f "${PX4_ROOT}/ROMFS/px4fmu_common/init.d-posix/airframes/99999_gz_d4s_dc_drone" ]] &&
-    grep -q "99999_gz_d4s_dc_drone" "${PX4_ROOT}/ROMFS/px4fmu_common/init.d-posix/airframes/CMakeLists.txt"
+    local assets airframe
+    assets="$(sim_assets_root)"
+    # The selected model must be installed when it is one of the III assets;
+    # PX4's own models (e.g. gz_x500) need no III installation.
+    if [[ -d "${assets}/models/${PX4_GZ_MODEL_DIR}" ]]; then
+        [[ -d "${PX4_ROOT}/Tools/simulation/gz/models/${PX4_GZ_MODEL_DIR}" ]] || return 1
+    fi
+    for airframe in "${assets}"/init.d-posix_airframes/*; do
+        [[ -f "${PX4_ROOT}/ROMFS/px4fmu_common/init.d-posix/airframes/$(basename "${airframe}")" ]] &&
+        grep -q "$(basename "${airframe}")" "${PX4_ROOT}/ROMFS/px4fmu_common/init.d-posix/airframes/CMakeLists.txt" || return 1
+    done
 }
 
+# Every III vehicle model, world model (pylon and conductor collisions,
+# conductors.yaml, radar scene), world and airframe is installed into PX4; a
+# stale copy of any of them would fly an old asset.
 px4_assets_current() {
-    local asset_root
-    asset_root="$(cd "$(dirname "${SIM_ASSET_INSTALLER}")/.." && pwd)"
+    local assets entry
+    assets="$(sim_assets_root)"
 
-    px4_assets_installed &&
-    cmp -s \
-        "${asset_root}/Gazebo-simulation-assets/models/d4s_dc_drone/model.sdf" \
-        "${PX4_ROOT}/Tools/simulation/gz/models/d4s_dc_drone/model.sdf" &&
-    cmp -s \
-        "${asset_root}/Gazebo-simulation-assets/worlds/hca_full_pylon_setup.sdf" \
-        "${PX4_ROOT}/Tools/simulation/gz/worlds/hca_full_pylon_setup.sdf" &&
-    cmp -s \
-        "${asset_root}/Gazebo-simulation-assets/init.d-posix_airframes/99999_gz_d4s_dc_drone" \
-        "${PX4_ROOT}/ROMFS/px4fmu_common/init.d-posix/airframes/99999_gz_d4s_dc_drone" &&
-    px4_world_models_current "${asset_root}/Gazebo-simulation-assets/world_models"
-}
-
-# World models (the pylon and conductor collisions, conductors.yaml) are
-# installed next to the vehicle models; a stale copy would fly the old world.
-px4_world_models_current() {
-    local world_models="$1"
-    local model
-    for model in "${world_models}"/*/; do
-        diff -rq "${model}" "${PX4_ROOT}/Tools/simulation/gz/models/$(basename "${model}")" >/dev/null || return 1
+    px4_assets_installed || return 1
+    for entry in "${assets}"/models/*/ "${assets}"/world_models/*/; do
+        diff -rq "${entry}" "${PX4_ROOT}/Tools/simulation/gz/models/$(basename "${entry}")" >/dev/null || return 1
+    done
+    for entry in "${assets}"/worlds/*; do
+        cmp -s "${entry}" "${PX4_ROOT}/Tools/simulation/gz/worlds/$(basename "${entry}")" || return 1
+    done
+    for entry in "${assets}"/init.d-posix_airframes/*; do
+        cmp -s "${entry}" "${PX4_ROOT}/ROMFS/px4fmu_common/init.d-posix/airframes/$(basename "${entry}")" || return 1
     done
 }
 
@@ -452,13 +478,19 @@ ensure_px4_build_airframes_current() {
     if [[ -z "${III_SIM_TOOLS_PX4_COMMAND:-}" || "${III_SIM_TOOLS_ENSURE_ASSETS_WITH_CUSTOM_COMMAND:-0}" != "1" ]]; then
         return
     fi
-    if cmp -s \
-        "${PX4_ROOT}/ROMFS/px4fmu_common/init.d-posix/airframes/99999_gz_d4s_dc_drone" \
-        "${PX4_BUILD_DIR}/etc/init.d-posix/airframes/99999_gz_d4s_dc_drone"; then
+    local airframe stale=0
+    for airframe in "$(sim_assets_root)"/init.d-posix_airframes/*; do
+        cmp -s \
+            "${PX4_ROOT}/ROMFS/px4fmu_common/init.d-posix/airframes/$(basename "${airframe}")" \
+            "${PX4_BUILD_DIR}/etc/init.d-posix/airframes/$(basename "${airframe}")" || stale=1
+    done
+    if ((stale == 0)); then
         return
     fi
     echo "Rebuilding PX4 SITL: the build tree holds a stale D4S airframe." >&2
     (
+        # The ROS setup scripts read unset variables.
+        set +u
         source "${WORKSPACE_ROOT}/setup/setup_dev.bash" &&
         cd "${PX4_ROOT}" &&
         make px4_sitl_default
@@ -533,9 +565,26 @@ EOF
     fi
 }
 
+# PX4_SIM_MODEL of this invocation's running PX4 instance, or "none".
+running_px4_sim_model() {
+    local pid pgid comm args model
+    ${PS_LIST_COMMAND} | while read -r pid pgid comm args; do
+        [[ "${comm}" == "px4" ]] || continue
+        case "${args}" in
+            *"${PX4_BUILD_DIR}/bin/px4"*" -i ${PX4_INSTANCE}"*)
+                if [[ -r "${PX4_PROC_ROOT}/${pid}/environ" ]] && ! px4_owned_by_other_partition "${pid}"; then
+                    model="$(tr '\0' '\n' <"${PX4_PROC_ROOT}/${pid}/environ" | sed -n 's/^PX4_SIM_MODEL=//p' | head -n1)"
+                    printf '%s\n' "${model:-unknown}"
+                fi
+                ;;
+        esac
+    done | head -n1
+}
+
 print_simulation_status() {
-    local process_groups
+    local process_groups running_model
     process_groups="$(px4_simulation_process_groups || true)"
+    running_model="$(running_px4_sim_model || true)"
 
     if session_exists; then
         echo "tmux_session: running"
@@ -545,6 +594,8 @@ print_simulation_status() {
     fi
 
     echo "gazebo_gui: $(gazebo_gui_state)"
+    echo "px4_sim_model_requested: ${PX4_SIM_MODEL_NAME}"
+    echo "px4_sim_model_running: ${running_model:-none}"
 
     if [[ -n "${process_groups}" ]]; then
         echo "simulation_process_groups: ${process_groups//$'\n'/ }"
