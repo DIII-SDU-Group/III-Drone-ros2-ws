@@ -158,3 +158,35 @@ def test_the_record_names_limits_trigger_and_recovery():
     assert record["trigger"]["input_age_s"] == 3.0 and record["trigger"]["head_source_time_ns"] == 3_000
     assert record["status"]["arming_frame_age_s"] == 0.3
     assert "fresh processing epoch" in record["recovery"]
+
+
+def test_host_gc_policy_runs_full_collections_only_when_asked():
+    """HOST_GC_AT_SEAL_v1: after begin() no automatic full collection, cyclic garbage goes at the chosen collection."""
+    import gc
+
+    from iii_drone_powerline_slam import estimator_host
+
+    before = gc.get_threshold()
+    policy = estimator_host.HostGc()
+    try:
+        policy.begin()
+        assert gc.get_threshold()[:2] == before[:2] and gc.get_threshold()[2] >= 1 << 30
+        assert policy.status["frozen"] > 0
+
+        class Node:
+            pass
+
+        keep = []
+        for _ in range(200_000):                            # far past every automatic threshold
+            a, b = Node(), Node()
+            a.other, b.other = b, a
+            keep.append(a)
+        assert policy.status["automatic_full_collections"] == 0
+        del keep, a, b
+        policy.collect()
+        assert policy.status["full_collections"] == 1 and policy.status["collected"] >= 400_000
+        assert policy.status["automatic_full_collections"] == 0 and policy.status["last_s"] is not None
+    finally:
+        gc.callbacks.remove(policy._callback)
+        gc.unfreeze()
+        gc.set_threshold(*before)

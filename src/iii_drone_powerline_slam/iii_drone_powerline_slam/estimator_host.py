@@ -40,6 +40,7 @@ generations are stepped until the old one is sealed; a forked finalizer finishes
 from __future__ import annotations
 
 from collections import Counter, deque
+import gc
 import hashlib
 import json
 import os
@@ -54,7 +55,52 @@ ADVANCE_CHUNK = 8                 # groups between intake checks (scheduling onl
 STATUS_PERIOD_S = 1.0
 LATENCY_WINDOW = 2000
 WORKER_START_TIMEOUT_S = 240.0    # worker processes: runtime activation, model load, GPU set-up
+HOST_GC_POLICY = "HOST_GC_AT_SEAL_v1"   # execution only: no automatic full collection inside a generation (see HostGc)
 ARRIVAL_WINDOW_S = 2.0            # arrival-burst statistic: most messages received within any window of this length
+
+
+class HostGc:
+    """HOST_GC_AT_SEAL_v1 (execution only).  CPython's automatic full collection walks every tracked object of this
+    process in one uninterrupted pass; a generation's records grow to millions of objects, and the pass then holds the
+    estimator loop for about a second, once or twice per traversal, at a moment nothing chooses.  Under this policy
+    the objects alive after start-up are frozen (never walked again), the young collections stay automatic, and the
+    full collection runs only where the host chooses: right after a sealed generation's copy is dropped, when little
+    else is alive.  Reference counting frees everything else as before; cyclic garbage that outlives the young
+    collections waits for the next seal."""
+
+    def __init__(self) -> None:
+        self.status = {"policy": HOST_GC_POLICY, "full_collections": 0, "last_s": None, "max_s": None, "collected": 0, "frozen": 0,
+                       "automatic_full_collections": 0}
+        self._callback = None
+        self._explicit = False
+
+    def begin(self) -> None:
+        gc.collect()
+        gc.freeze()
+        young, middle, _ = gc.get_threshold()
+        gc.set_threshold(young, middle, 1 << 30)
+        self.status["frozen"] = gc.get_freeze_count()
+
+        def seen(phase, info):                              # proof that no full collection runs on its own
+            if phase == "stop" and info.get("generation") == 2 and not self._explicit:
+                self.status["automatic_full_collections"] += 1
+        self._callback = seen
+        gc.callbacks.append(seen)
+
+    def collect(self) -> float:
+        began = time.perf_counter()
+        self._explicit = True
+        try:
+            found = gc.collect()
+        finally:
+            self._explicit = False
+        spent = time.perf_counter() - began
+        s = self.status
+        s["full_collections"] += 1
+        s["collected"] += int(found)
+        s["last_s"] = round(spent, 4)
+        s["max_s"] = s["last_s"] if s["max_s"] is None else max(s["max_s"], s["last_s"])
+        return spent
 
 
 def _percentiles(values) -> dict:
@@ -385,7 +431,7 @@ class Epoch:
                 "mask_authority": self.host.mask_authority_status(pipe),
                 "live_mission_prior": None if self.host.ol_pipeline is None else self._prior_status(),
                 "pipeline": "rt" if self.realtime else "r1", "affinity": self.affinity, "pid": os.getpid(),
-                "warm_runtime": None if self.host.warm is None else self.host.warm_status(),
+                "warm_runtime": None if self.host.warm is None else self.host.warm_status(), "host_gc": dict(self.host.gc.status),
                 "fusion": self.host.node_config.get("fusion", "exact"),
                 "fusion30": None if self.host.f30_pipeline is None else pipe.fusion_status(),
                 "traversal": None if self.rollover is None else {"contract": self.rollover["contract"], "first_source_ns": self.first_source_ns,
@@ -466,6 +512,7 @@ class Host:
         self.closing: Epoch | None = None          # the old generation between its boundary event and its seal
         self.finalizers: list[dict] = []           # forked finalizer processes of sealed generations
         self.rollovers = 0
+        self.gc = HostGc()
 
     def send(self, item) -> None:
         self.conn_out.send(item)
@@ -529,6 +576,7 @@ class Host:
         self.types["camera_info"] = get_message("sensor_msgs/msg/CameraInfo")
         self.types["timesync"] = get_message("px4_msgs/msg/TimesyncStatus")
         self.types["command"] = get_message("iii_drone_interfaces/msg/StringStamped")
+        self.gc.begin()
 
     def run(self) -> None:
         while True:
@@ -695,6 +743,8 @@ class Host:
         record["end_counts"] = closing.end()                # the host's own copy goes; the workers stay
         self.finalizers.append({"pid": pid, "generation": closing.number, "result": result, "forked": time.monotonic(), "record": record,
                                 "deadline": time.monotonic() + float(config.get("final_timeout_s", realtime.FAST_ROLLOVER_DEFAULTS["final_timeout_s"]))})
+        del closing
+        record["host_gc_s"] = round(self.gc.collect(), 4)   # HOST_GC_AT_SEAL_v1: the one chosen full collection
 
     def poll_finalizers(self, wait: bool = False) -> None:
         for entry in list(self.finalizers):
@@ -731,6 +781,7 @@ class Host:
     def start_epoch(self, number: int, run_name: str) -> None:
         if self.epoch is not None:
             self.end_epoch()
+            self.gc.collect()                               # between epochs: nothing is being estimated
         self.pending.clear()
         self.pending_high_water = 0
         try:
