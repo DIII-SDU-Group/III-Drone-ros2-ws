@@ -100,6 +100,7 @@ class OnlineRunner(flights.CorridorRunner):
         self.skip_backend = bool(kwargs.pop("skip_backend", False))
         self.traversal_epochs = bool(kwargs.pop("traversal_epochs", False))
         self.backend_first_s = float(kwargs.pop("backend_first_s", 0.0))
+        self.boundary_at_staging = bool(kwargs.pop("boundary_at_staging", False))
         super().__init__(*args, **kwargs)
         self.commands: CommandPublisher | None = None
         self._tf: tuple | None = None               # (tools node, buffer, listener) of the trajectory log
@@ -251,6 +252,9 @@ class OnlineRunner(flights.CorridorRunner):
             self.commands.publish(command_event("end", end_ns))
             self.clock.sleep_until_ns(end_ns + int(flights.POST_ROLL_SEC * 1e9))
             if self.traversal_epochs:                   # the last prescribed maneuver has completed: the traversal is over
+                if self.boundary_at_staging:            # ... and the aircraft is back at the staging point, holding
+                    self.reposition({**staging, "z": plan[0]["live_target"]["z"]})
+                    self.clock.sleep_until_ns(self.clock.now_ns() + int(flights.PRE_ROLL_SEC * 1e9))
                 self.commands.publish({"kind": "traversal_complete", "leg": None, "source_time_ns": self.clock.now_ns(),
                                        "traversal": instance or direction})
         except Exception:
@@ -296,6 +300,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="start-up test: start powerline_slam before the flight path and wait this long before starting it")
     parser.add_argument("--traversal-epochs", action="store_true",
                         help="one traversal instance per flight (directions may repeat); publish traversal_complete after each")
+    parser.add_argument("--boundary-at-staging", action="store_true",
+                        help="with --traversal-epochs: fly back to the staging point and hold before publishing traversal_complete, "
+                             "so that the next estimator generation starts with the aircraft holding (as a standalone flight does) "
+                             "instead of during the transit to the staging point")
     parser.add_argument("--between-flights-file", type=Path, default=None,
                         help="after each flight, wait until this file names the flight (a harness scores it first)")
     args = parser.parse_args(argv)
@@ -318,7 +326,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     flights.write_json(run_dir / "run_manifest.json", manifest)
     runner = OnlineRunner(run_dir, args.geometry, catalog, headless=args.headless, keep_running=args.keep_running,
                           skip_backend=args.skip_backend, traversal_epochs=args.traversal_epochs,
-                          backend_first_s=args.backend_first_s)
+                          backend_first_s=args.backend_first_s, boundary_at_staging=args.boundary_at_staging)
     failures = []
     try:
         runner.ensure_ready()
