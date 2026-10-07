@@ -181,7 +181,7 @@ class Epoch:
                     self.pipe.push(key, message, index)
         except Exception as exc:
             self.counters[f"refused_{key}"] += 1
-            self.fail(f"INPUT_CONTRACT: {key}: {type(exc).__name__}: {exc}")
+            self.fail(realtime.intake_failure_reason(key, exc))
         return False
 
     def traversal_complete(self, document: dict) -> bool:

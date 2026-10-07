@@ -736,3 +736,11 @@ def test_an_internal_error_in_the_receiver_fails_closed_instead_of_going_silent(
     assert _wait(lambda: node._overload is not None)
     assert node._overload["fail_closed_reason"] == "NODE_INTERNAL:RECEIVER_EXCEPTION" and node._state == "FailClosed"
     assert node._receiver.is_alive()
+
+
+def test_a_lost_worker_is_named_as_such_and_may_be_recovered():
+    from concurrent.futures.process import BrokenProcessPool
+    lost = realtime.intake_failure_reason("camera", BrokenProcessPool("A child process terminated abruptly"))
+    assert lost.startswith("WORKER_LOST: camera: BrokenProcessPool") and realtime.RecoveryLedger.recoverable(lost)
+    contract = realtime.intake_failure_reason("camera", ValueError("unexpected encoding"))
+    assert contract.startswith("INPUT_CONTRACT: camera: ValueError") and not realtime.RecoveryLedger.recoverable(contract)

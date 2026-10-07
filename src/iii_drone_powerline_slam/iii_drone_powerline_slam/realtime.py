@@ -56,7 +56,7 @@ The fail-closed contracts above stay as they are: a trigger immediately suppress
 bounded outer policy for what happens next.
 
 * Health condition for an attempt: the epoch failed closed with a *recoverable* reason (``RECOVERABLE``: the overload
-  codes, a rollover failure or time-out, a pipeline exception such as a lost worker) or the node process was respawned
+  codes, a rollover failure or time-out, a pipeline exception, a lost worker process) or the node process was respawned
   after it ended while active.  Input-contract violations (e.g. PX4 time synchronization active) are not recoverable.
 * Budget: at most ``max_attempts`` attempts within any ``window_s`` seconds, counted in ``state_file`` so that process
   respawns count too.
@@ -85,7 +85,15 @@ RECOVERY_CONTRACT = "BOUNDED_RECOVERY_v1"
 RECOVERY_KEYS = {"max_attempts": int, "window_s": float, "cooldown_s": float, "backoff": float}
 # fail-closed reasons after which a recovery attempt is permitted (prefix match)
 RECOVERABLE = ("REALTIME_OVERLOAD_v1:", "TRAVERSAL_EPOCH_v1:", "PIPELINE_EXCEPTION", "PROCESS_RESPAWN", "HOST_LOST", "RECOVERY_FAILED",
-               "NODE_INTERNAL:")
+               "NODE_INTERNAL:", "WORKER_LOST")
+
+
+def intake_failure_reason(key: str, exc: Exception) -> str:
+    """Why taking one input failed.  A broken worker pool (a worker process died) is a loss of the epoch's processes,
+    not a violation of the input contract by the message: it is named WORKER_LOST, which recovery may retry."""
+    kinds = {cls.__name__ for cls in type(exc).__mro__}
+    prefix = "WORKER_LOST" if kinds & {"BrokenProcessPool", "BrokenExecutor"} else "INPUT_CONTRACT"
+    return f"{prefix}: {key}: {type(exc).__name__}: {exc}"
 MAIN_KEYS = ("camera", "radar_u", "odometry")       # the keys whose events form the estimator's source-time groups
 OVERLOAD_KEYS = {"contract": str, "live_age_budget_s": float, "startup_timeout_s": float, "max_unprocessed_events": int,
                  "max_node_queue": int}

@@ -298,7 +298,7 @@ The fail-closed contracts are unchanged: a trigger suppresses every valid output
 next.
 
 - **When an attempt is permitted.** The epoch failed closed with a recoverable reason (an overload code, a rollover
-  failure or time-out, a pipeline exception such as a lost worker), or this process was respawned after it ended
+  failure or time-out, a pipeline exception, a lost worker process), or this process was respawned after it ended
   while active. Input-contract violations (for example active PX4 time synchronization) are never retried.
 - **Budget.** At most `max_attempts` within any `window_s` seconds, counted in `state_file` so that process respawns
   count too.
