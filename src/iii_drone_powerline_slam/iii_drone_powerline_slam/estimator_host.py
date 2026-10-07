@@ -152,6 +152,10 @@ class Epoch:
         self.ledger = [] if host.node_config.get("ledger", False) else None
         self.counters: Counter = Counter()
         self.receipt: dict[int, float] = {}
+        # cycle fusion labels a frame with its keyframe time (an IMU sample, no sensor stamp): its age is measured from
+        # the arrival of the cycle's Radar-U anchor scan, which the pipeline names per frame
+        self.anchor_of: dict | None = getattr(self.pipe, "frame_anchor_source_ns", None)
+        self.receipt_anchor: dict[int, float] = {}
         self.latency: deque = deque(maxlen=LATENCY_WINDOW)
         self.latency_epoch: list[float] = []
         self.latency_armed: list[float] = []       # frames since the overload contract armed (after start-up)
@@ -254,6 +258,8 @@ class Epoch:
             else:
                 if key in ("camera", "radar_u"):
                     self.receipt[src.header_ns(message)] = received
+                if key == "radar_u" and self.anchor_of is not None:
+                    self.receipt_anchor[int(src.source_time_ns(key, message, self.pipe.clock))] = received
                 self.arrival[key] = received
                 self.arrival_now = received if self.arrival_now is None else max(self.arrival_now, received)
                 if self.overload is not None or self.first_source_ns is None:
@@ -366,7 +372,15 @@ class Epoch:
         frame = self.converter.frame_record(result, step, record)
         t = frame["t"]
         self.last_frame = time.monotonic()
-        received = self.receipt.pop(t, None)
+        if self.anchor_of is not None:
+            anchor = self.anchor_of.pop(t, None)
+            received = None if anchor is None else self.receipt_anchor.pop(anchor, None)
+            if anchor is not None:
+                while self.receipt_anchor and next(iter(self.receipt_anchor)) < anchor:
+                    del self.receipt_anchor[next(iter(self.receipt_anchor))]
+            self.receipt.clear()
+        else:
+            received = self.receipt.pop(t, None)
         if received is not None:
             latency = (time.monotonic() - received) * 1000.0
             self.latency.append(latency)
