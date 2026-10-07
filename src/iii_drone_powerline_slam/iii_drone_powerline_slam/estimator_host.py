@@ -146,7 +146,7 @@ class Epoch:
                 # started once; a generation is a fresh pipeline on them
                 if host.warm is None:
                     host.warm = host.warm_module.WarmRuntime(pl.PipelineConfig.load(host.config_path),
-                                                             rtp.CameraOptions.from_node_config(node),
+                                                             rtp.CameraOptions.from_node_config(node, authority="gpu"),
                                                              int(node.get("doppler_workers", 0)))
                     host.warm.wait_ready(timeout)
                 self.pipe = host.warm.pipeline(pipeline_cls, clock=src.IIIClockContract(), streams_dir=streams,
@@ -155,16 +155,13 @@ class Epoch:
                                          construction_s=round(host.warm.construction_s[-1], 3))
             else:
                 self.pipe = pipeline_cls(pl.PipelineConfig.load(host.config_path), clock=src.IIIClockContract(),
-                                         streams_dir=streams, camera=rtp.CameraOptions.from_node_config(node),
+                                         streams_dir=streams, camera=rtp.CameraOptions.from_node_config(node, authority="gpu"),
                                          doppler_workers=int(node.get("doppler_workers", 0)),
                                          evidence=bool(node.get("evidence", True)))
                 # activation completes only when every worker is ready: no model load or GPU set-up on the first frame
                 self.workers_info = self.pipe.wait_ready(timeout)
-        else:
-            self.pipe = pl.IncrementalPipeline(pl.PipelineConfig.load(host.config_path), clock=src.IIIClockContract(),
-                                               streams_dir=streams,
-                                               prefetch_workers=int(node.get("prefetch_workers", 0)),
-                                               doppler_workers=int(node.get("doppler_workers", 0)))
+        else:                                               # never reached: validate_node_config admits 'rt' only
+            raise RuntimeError(f"{realtime.MASK_AUTHORITY}: the live host runs the real-time pipeline only")
         if host.f30_pipeline is not None:
             self.pipe.f30_keep_records = bool(node.get("evidence", True))    # transport records are evaluation records
         if host.ol_pipeline is not None and self.pipe.live_priors is None:
@@ -385,6 +382,7 @@ class Epoch:
                 "processed_through_ns": pipe.processed_through,
                 "accounting": {"received": dict(pipe.received), "rejected": dict(pipe.rejected)},
                 "prefetch": pipe.prefetch_summary(),
+                "mask_authority": self.host.mask_authority_status(pipe),
                 "live_mission_prior": None if self.host.ol_pipeline is None else self._prior_status(),
                 "pipeline": "rt" if self.realtime else "r1", "affinity": self.affinity, "pid": os.getpid(),
                 "warm_runtime": None if self.host.warm is None else self.host.warm_status(),
@@ -459,6 +457,7 @@ class Host:
         self.pending_high_water = 0
         self.epoch: Epoch | None = None
         self.rt_pipeline = None
+        self.cpu_network_counters = {"gpu_inferences": 0, "cpu_inferences": 0, "cpu_networks_constructed": 0, "cpu_network_loads": 0}
         self.ol_pipeline = None
         self.f30_pipeline = None
         self.fast_rollover = False                 # FAST_TRAVERSAL_EPOCH_v2
@@ -470,6 +469,22 @@ class Host:
 
     def send(self, item) -> None:
         self.conn_out.send(item)
+
+    def mask_authority_status(self, pipe) -> dict:
+        """GPU_MASK_AUTHORITY_v1 as this generation stands: the GPU worker's inference counters, the worker processes'
+        own reports, and this host process's count of CPU networks (constructed, loaded, run)."""
+        camera = getattr(pipe, "prefetcher", None)
+        counters = getattr(camera, "gpu_counters", None) or {}
+        host = dict(self.cpu_network_counters)
+        return {"contract": realtime.MASK_AUTHORITY, "gpu_worker": counters or None, "gpu_inferences": counters.get("gpu_inferences"),
+                "cpu_inferences": None if not counters else counters.get("cpu_inferences", 0) + host["cpu_inferences"],
+                "cpu_networks_constructed": None if not counters else counters.get("cpu_networks_constructed", 0) + host["cpu_networks_constructed"],
+                "cpu_network_loads": None if not counters else counters.get("cpu_network_loads", 0) + host["cpu_network_loads"],
+                "gpu_faults": counters.get("faults"), "host_process": host, "cpu_mask_worker_processes": 0,
+                "torch_loaded_in_host": "torch" in sys.modules,
+                "worker_processes": list(getattr(camera, "worker_processes", []) or []),
+                "mask_worker": {k: (getattr(camera, "info", None) or {}).get(k) for k in (
+                    "authority", "device", "gpu", "torch", "cuda_build", "cudnn", "precision", "model_sha256", "preprocessing_sha256", "threshold", "pid")}}
 
     def setup(self) -> None:
         if self.tools not in sys.path:
@@ -488,9 +503,14 @@ class Host:
         self.node_config = dict(json.loads(self.config_path.read_text()).get("node") or {})
         realtime.validate_node_config(self.node_config)
         realtime.pin_process(os.getpid(), (self.node_config.get("affinity") or {}).get("host"))
-        if self.node_config.get("pipeline", "r1") == "rt":
+        if True:                                            # validate_node_config admits the real-time pipeline only
+            import iii_rt_camera_worker
             import iii_rt_pipeline
             self.rt_pipeline = iii_rt_pipeline
+            # GPU_MASK_AUTHORITY_v1, this process's half of the proof: count every pylon-mask network that would be
+            # constructed, loaded or run here on a device other than CUDA (none may be)
+            self.cpu_network_counters = {"gpu_inferences": 0, "cpu_inferences": 0, "cpu_networks_constructed": 0, "cpu_network_loads": 0}
+            iii_rt_camera_worker.count_cpu_networks(self.cpu_network_counters)
             if self.node_config.get("mission_prior", "sidecar") == "live":
                 import iii_ol_pipeline
                 self.ol_pipeline = iii_ol_pipeline

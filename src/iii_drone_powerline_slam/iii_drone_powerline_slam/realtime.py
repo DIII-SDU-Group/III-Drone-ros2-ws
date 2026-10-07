@@ -109,6 +109,10 @@ ROLLOVER_CONTRACTS = (ROLLOVER_CONTRACT, FAST_ROLLOVER_CONTRACT)
 ROLLOVER_EVENT = "traversal_complete"
 FAST_ROLLOVER_DEFAULTS = {"seal_grace_s": 0.5, "final_timeout_s": 5.0}
 RECOVERY_CONTRACT = "BOUNDED_RECOVERY_v1"
+# The live runtime runs the pylon-mask network on CUDA only; the CUDA result is the result.  There is no CPU network, no
+# CPU recomputation and no CPU substitution after a fault: a CUDA, model or worker fault fails closed (and bounded
+# recovery may start a fresh generation with a fresh CUDA worker).  CPU inference exists in offline reference tools only.
+MASK_AUTHORITY = "GPU_MASK_AUTHORITY_v1"
 RECOVERY_KEYS = {"max_attempts": int, "window_s": float, "cooldown_s": float, "backoff": float}
 # fail-closed reasons after which a recovery attempt is permitted (prefix match)
 RECOVERABLE = ("REALTIME_OVERLOAD_v1:", "TRAVERSAL_EPOCH_v1:", "FAST_TRAVERSAL_EPOCH_v2:", "PIPELINE_EXCEPTION", "PROCESS_RESPAWN", "HOST_LOST", "RECOVERY_FAILED",
@@ -126,11 +130,8 @@ OVERLOAD_KEYS = {"contract": str, "live_age_budget_s": float, "startup_timeout_s
                  "max_node_queue": int}
 AFFINITY_ROLES = ("node", "host", "detector_workers", "mask_worker", "mask_fallback_workers", "radar_workers",
                   "doppler_workers", "prefetch_workers")
-REQUIRED_ROLES = {"r1": ("node", "host", "prefetch_workers", "doppler_workers"),
-                  "rt": ("node", "host", "detector_workers", "mask_worker", "mask_fallback_workers", "radar_workers",
-                         "doppler_workers")}
-WORKER_COUNT_DEFAULTS = {"prefetch_workers": 0, "doppler_workers": 0, "detector_workers": 3, "radar_workers": 1,
-                         "mask_fallback_workers": 0}
+REQUIRED_ROLES = {"rt": ("node", "host", "detector_workers", "mask_worker", "radar_workers", "doppler_workers")}
+WORKER_COUNT_DEFAULTS = {"doppler_workers": 0, "detector_workers": 3, "radar_workers": 1}
 
 
 class Overloaded(RuntimeError):
@@ -139,20 +140,21 @@ class Overloaded(RuntimeError):
 
 def validate_node_config(node: dict) -> None:
     """Refuse a node configuration this version cannot honour (before any process or worker starts)."""
-    if node.get("pipeline", "r1") not in ("r1", "rt"):
-        raise ValueError(f"node.pipeline must be 'r1' or 'rt', not {node.get('pipeline')!r}")
+    # GPU_MASK_AUTHORITY_v1: nothing in a node configuration can bring a CPU pylon-mask network into the live runtime
+    if node.get("pipeline", "rt") != "rt":
+        raise ValueError(f"{MASK_AUTHORITY}: node.pipeline must be 'rt', not {node.get('pipeline')!r} (the 'r1' pipeline runs the "
+                         "pylon-mask network on the CPU; it is an offline reference only)")
+    if node.get("mask_device", "cuda") != "cuda":
+        raise ValueError(f"{MASK_AUTHORITY}: node.mask_device must be 'cuda', not {node.get('mask_device')!r}")
+    for key, allowed in (("mask_fallback_workers", 0), ("prefetch_workers", 0), ("mask_workers", 1)):
+        if int(node.get(key, allowed)) != allowed:
+            raise ValueError(f"{MASK_AUTHORITY}: node.{key} must be {allowed} or absent (no CPU mask process exists in the live runtime)")
     if node.get("mission_prior", "sidecar") not in ("sidecar", "live"):
         raise ValueError(f"node.mission_prior must be 'sidecar' or 'live', not {node.get('mission_prior')!r}")
-    if node.get("mission_prior", "sidecar") == "live" and node.get("pipeline", "r1") != "rt":
-        raise ValueError("node.mission_prior 'live' needs node.pipeline 'rt'")
     if node.get("fusion", "exact") not in ("exact", "fusion30"):
         raise ValueError(f"node.fusion must be 'exact' or 'fusion30', not {node.get('fusion')!r}")
-    if node.get("fusion", "exact") == "fusion30" and node.get("pipeline", "r1") != "rt":
-        raise ValueError("node.fusion 'fusion30' needs node.pipeline 'rt'")
     if node.get("intake", "executor") not in ("executor", "waitset"):
         raise ValueError(f"node.intake must be 'executor' or 'waitset', not {node.get('intake')!r}")
-    if node.get("mask_device", "cpu") not in ("cpu", "cuda"):
-        raise ValueError(f"node.mask_device must be 'cpu' or 'cuda', not {node.get('mask_device')!r}")
     affinity = node.get("affinity") or {}
     for role, cpus in affinity.items():
         if role not in AFFINITY_ROLES:
@@ -161,7 +163,7 @@ def validate_node_config(node: dict) -> None:
             raise ValueError(f"node.affinity.{role} must be a non-empty list of CPU numbers")
     if affinity:
         # a child process inherits its parent's CPUs: a partial plan would silently stack processes on one set
-        missing = [role for role in REQUIRED_ROLES[node.get("pipeline", "r1")] if role not in affinity
+        missing = [role for role in REQUIRED_ROLES["rt"] if role not in affinity
                    and not (role in WORKER_COUNT_DEFAULTS and int(node.get(role, WORKER_COUNT_DEFAULTS[role])) <= 0)]
         if missing:
             raise ValueError(f"node.affinity must name every process role of the pipeline; missing {missing}")
@@ -182,8 +184,6 @@ def validate_node_config(node: dict) -> None:
                 value = rollover.get(key, FAST_ROLLOVER_DEFAULTS[key])
                 if not (isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0):
                     raise ValueError(f"node.rollover.{key} must be a positive number")
-            if node.get("pipeline", "r1") != "rt":
-                raise ValueError(f"{FAST_ROLLOVER_CONTRACT} needs node.pipeline 'rt' (the warm worker runtime)")
             allowed = {"contract", "record_dir", *FAST_ROLLOVER_DEFAULTS}
         unknown = sorted(set(rollover) - allowed)
         if unknown:

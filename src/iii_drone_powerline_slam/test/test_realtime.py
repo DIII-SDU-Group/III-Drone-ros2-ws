@@ -42,10 +42,18 @@ def test_fusion30_is_selectable_only_on_the_realtime_pipeline():
     realtime.validate_node_config({"pipeline": "rt", "fusion": "fusion30"})
     realtime.validate_node_config({"pipeline": "rt", "fusion": "exact"})
     realtime.validate_node_config({"fusion": "exact"})
-    with pytest.raises(ValueError, match="fusion30"):
-        realtime.validate_node_config({"fusion": "fusion30"})
+    realtime.validate_node_config({"fusion": "fusion30"})                   # the real-time pipeline is the only live pipeline
     with pytest.raises(ValueError, match="node.fusion"):
         realtime.validate_node_config({"pipeline": "rt", "fusion": "fusion60"})
+
+
+def test_gpu_mask_authority_admits_no_configuration_with_a_cpu_mask_network():
+    """GPU_MASK_AUTHORITY_v1: nothing a node configuration can say brings CPU inference into the live runtime."""
+    realtime.validate_node_config({"pipeline": "rt", "mask_device": "cuda", "mask_workers": 1, "mask_fallback_workers": 0})
+    for node in ({"pipeline": "r1"}, {"mask_device": "cpu"}, {"mask_fallback_workers": 2}, {"mask_fallback_workers": 4, "mask_device": "cuda"},
+                 {"prefetch_workers": 6}, {"mask_workers": 2}):
+        with pytest.raises(ValueError, match="GPU_MASK_AUTHORITY_v1"):
+            realtime.validate_node_config(node)
 
 
 def test_fast_traversal_epoch_v2_configuration():
@@ -60,8 +68,8 @@ def test_fast_traversal_epoch_v2_configuration():
                 {"contract": "FAST_TRAVERSAL_EPOCH_v3"}):
         with pytest.raises(ValueError):
             realtime.validate_node_config(dict(base, rollover=bad))
-    with pytest.raises(ValueError, match="pipeline 'rt'"):
-        realtime.validate_node_config({"mission_prior": "live", "rollover": {"contract": "FAST_TRAVERSAL_EPOCH_v2"}})
+    with pytest.raises(ValueError, match="GPU_MASK_AUTHORITY_v1"):         # the CPU reference pipeline has no warm runtime (and is not live)
+        realtime.validate_node_config({"pipeline": "r1", "mission_prior": "live", "rollover": {"contract": "FAST_TRAVERSAL_EPOCH_v2"}})
     assert realtime.RecoveryLedger.recoverable("FAST_TRAVERSAL_EPOCH_v2:ROLLOVER_FAILED: x") if hasattr(realtime.RecoveryLedger, "recoverable") else True
 
 
@@ -74,7 +82,6 @@ def test_a_partial_affinity_plan_is_refused_because_children_inherit_their_paren
         realtime.validate_node_config({"pipeline": "rt", "doppler_workers": 2, "mask_fallback_workers": 2,
                                        "affinity": dict(RT_AFFINITY)})
     # a role without processes needs no CPUs
-    realtime.validate_node_config({"affinity": {"node": [1], "host": [2]}})
     realtime.validate_node_config({"pipeline": "rt", "radar_workers": 0,
                                    "affinity": {k: v for k, v in RT_AFFINITY.items() if k not in ("radar_workers", "doppler_workers")}})
 

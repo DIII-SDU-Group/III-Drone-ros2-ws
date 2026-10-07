@@ -139,7 +139,8 @@ FAKE_MODULES["iii_rt_pipeline"] = '''
 import iii_r1_pipeline as pl
 class CameraOptions:
     @classmethod
-    def from_node_config(cls, node):
+    def from_node_config(cls, node, *, authority="hybrid"):
+        assert authority == "gpu"                       # the live host never asks for anything else
         return cls()
 class RealtimePipeline(pl.IncrementalPipeline):
     def __init__(self, cfg, *, clock, streams_dir, camera=None, doppler_workers=0, evidence=True):
@@ -150,6 +151,11 @@ class RealtimePipeline(pl.IncrementalPipeline):
         super().push(key, message, index)
 def realtime_frame_converter(cls):
     return cls
+'''
+FAKE_MODULES["iii_rt_camera_worker"] = '''
+MASK_AUTHORITY = "GPU_MASK_AUTHORITY_v1"
+def count_cpu_networks(counters):
+    return None
 '''
 FAKE_MODULES["iii_ol_pipeline"] = '''
 import iii_rt_pipeline as rtp
@@ -479,8 +485,8 @@ def test_live_mission_prior_needs_its_contract_and_the_real_time_pipeline(node, 
     node.set_parameters([Parameter(RUNTIME_CONFIG_PARAMETER, value=str(config))])
     assert node.trigger_configure() == TransitionCallbackReturn.SUCCESS
     assert node.trigger_activate() == TransitionCallbackReturn.FAILURE       # not a live mission prior contract
-    with pytest.raises(ValueError):
-        realtime.validate_node_config({"mission_prior": "live"})            # the reference pipeline has no live prior
+    with pytest.raises(ValueError, match="GPU_MASK_AUTHORITY_v1"):
+        realtime.validate_node_config({"pipeline": "r1", "mission_prior": "live"})   # the CPU reference pipeline is not a live pipeline
     with pytest.raises(ValueError):
         realtime.validate_node_config({"pipeline": "rt", "mission_prior": "future"})
 
