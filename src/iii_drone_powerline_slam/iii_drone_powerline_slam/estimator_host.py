@@ -138,8 +138,8 @@ class Epoch:
             # live mission prior: the same pipeline, its nominal prior built from the exercise's command events
             pipeline_cls = rtp.RealtimePipeline if host.ol_pipeline is None else host.ol_pipeline.OnlinePipeline
             if host.f30_pipeline is not None:               # FUSION30_v1: the same pipeline with the 30 Hz tick scheduler
-                pipeline_cls = (host.f30_pipeline.Fusion30Realtime if host.ol_pipeline is None
-                                else host.f30_pipeline.Fusion30Online)
+                prefix = "Cycle30" if node.get("fusion") == "cycle30" else "Fusion30"
+                pipeline_cls = getattr(host.f30_pipeline, prefix + ("Realtime" if host.ol_pipeline is None else "Online"))
             timeout = float(node.get("worker_start_timeout_s", WORKER_START_TIMEOUT_S))
             if host.fast_rollover:
                 # FAST_TRAVERSAL_EPOCH_v2: the worker processes and the static inputs belong to the host's warm runtime,
@@ -386,7 +386,7 @@ class Epoch:
                 "live_mission_prior": None if self.host.ol_pipeline is None else self._prior_status(),
                 "pipeline": "rt" if self.realtime else "r1", "affinity": self.affinity, "pid": os.getpid(),
                 "warm_runtime": None if self.host.warm is None else self.host.warm_status(),
-                "fusion": "exact" if self.host.f30_pipeline is None else "fusion30",
+                "fusion": self.host.node_config.get("fusion", "exact"),
                 "fusion30": None if self.host.f30_pipeline is None else pipe.fusion_status(),
                 "traversal": None if self.rollover is None else {"contract": self.rollover["contract"], "first_source_ns": self.first_source_ns,
                                                                "complete": self.traversal},
@@ -517,6 +517,9 @@ class Host:
             if self.node_config.get("fusion", "exact") == "fusion30":
                 import iii_f30_pipeline
                 self.f30_pipeline = iii_f30_pipeline
+            elif self.node_config.get("fusion", "exact") == "cycle30":
+                import iii_gc_pipeline                      # CYCLE_FUSION30_v2: the same scheduler interface on Radar-U cycles
+                self.f30_pipeline = iii_gc_pipeline
             if (self.node_config.get("rollover") or {}).get("contract") == realtime.FAST_ROLLOVER_CONTRACT:
                 import iii_f30_warm
                 self.warm_module = iii_f30_warm

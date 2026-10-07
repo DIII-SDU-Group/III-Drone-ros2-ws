@@ -113,6 +113,9 @@ RECOVERY_CONTRACT = "BOUNDED_RECOVERY_v1"
 # CPU recomputation and no CPU substitution after a fault: a CUDA, model or worker fault fails closed (and bounded
 # recovery may start a fresh generation with a fresh CUDA worker).  CPU inference exists in offline reference tools only.
 MASK_AUTHORITY = "GPU_MASK_AUTHORITY_v1"
+# exact: one update per distinct source stamp (the reference); fusion30: FUSION30_v1 (fixed 30 Hz grid);
+# cycle30: CYCLE_FUSION30_v2 (one update per Radar-U cycle, common time = latest assigned source time)
+FUSIONS = ("exact", "fusion30", "cycle30")
 RECOVERY_KEYS = {"max_attempts": int, "window_s": float, "cooldown_s": float, "backoff": float}
 # fail-closed reasons after which a recovery attempt is permitted (prefix match)
 RECOVERABLE = ("REALTIME_OVERLOAD_v1:", "TRAVERSAL_EPOCH_v1:", "FAST_TRAVERSAL_EPOCH_v2:", "PIPELINE_EXCEPTION", "PROCESS_RESPAWN", "HOST_LOST", "RECOVERY_FAILED",
@@ -151,8 +154,8 @@ def validate_node_config(node: dict) -> None:
             raise ValueError(f"{MASK_AUTHORITY}: node.{key} must be {allowed} or absent (no CPU mask process exists in the live runtime)")
     if node.get("mission_prior", "sidecar") not in ("sidecar", "live"):
         raise ValueError(f"node.mission_prior must be 'sidecar' or 'live', not {node.get('mission_prior')!r}")
-    if node.get("fusion", "exact") not in ("exact", "fusion30"):
-        raise ValueError(f"node.fusion must be 'exact' or 'fusion30', not {node.get('fusion')!r}")
+    if node.get("fusion", "exact") not in FUSIONS:
+        raise ValueError(f"node.fusion must be one of {FUSIONS}, not {node.get('fusion')!r}")
     if node.get("intake", "executor") not in ("executor", "waitset"):
         raise ValueError(f"node.intake must be 'executor' or 'waitset', not {node.get('intake')!r}")
     affinity = node.get("affinity") or {}

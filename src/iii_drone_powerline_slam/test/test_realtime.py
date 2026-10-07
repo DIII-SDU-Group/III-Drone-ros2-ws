@@ -43,6 +43,7 @@ def test_fusion30_is_selectable_only_on_the_realtime_pipeline():
     realtime.validate_node_config({"pipeline": "rt", "fusion": "exact"})
     realtime.validate_node_config({"fusion": "exact"})
     realtime.validate_node_config({"fusion": "fusion30"})                   # the real-time pipeline is the only live pipeline
+    realtime.validate_node_config({"fusion": "cycle30"})                    # CYCLE_FUSION30_v2
     with pytest.raises(ValueError, match="node.fusion"):
         realtime.validate_node_config({"pipeline": "rt", "fusion": "fusion60"})
 
