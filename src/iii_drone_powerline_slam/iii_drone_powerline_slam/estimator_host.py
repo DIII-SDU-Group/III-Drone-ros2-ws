@@ -55,6 +55,7 @@ ADVANCE_CHUNK = 8                 # groups between intake checks (scheduling onl
 STATUS_PERIOD_S = 1.0
 LATENCY_WINDOW = 2000
 WORKER_START_TIMEOUT_S = 240.0    # worker processes: runtime activation, model load, GPU set-up
+DROP_STEP_INTERVAL_S = 0.25       # between the steps in which a sealed generation is let go (the estimator catches up in between)
 HOST_GC_POLICY = "HOST_GC_AT_SEAL_v1"   # execution only: no automatic full collection inside a generation (see HostGc)
 ARRIVAL_WINDOW_S = 2.0            # arrival-burst statistic: most messages received within any window of this length
 
@@ -64,9 +65,11 @@ class HostGc:
     process in one uninterrupted pass; a generation's records grow to millions of objects, and the pass then holds the
     estimator loop for about a second, once or twice per traversal, at a moment nothing chooses.  Under this policy
     the objects alive after start-up are frozen (never walked again), the young collections stay automatic, and the
-    full collection runs only where the host chooses: right after a sealed generation's copy is dropped, when little
-    else is alive.  Reference counting frees everything else as before; cyclic garbage that outlives the young
-    collections waits for the next seal."""
+    full collection runs only where the host chooses: after a sealed generation has been let go.  A generation is a web
+    of reference cycles, so its owners (core, layer state, pipeline, epoch) first release what they hold, one per step
+    with the running generation served in between: reference counting then frees most of it, and the full collection
+    that follows has only the remaining cycles and the young successor to walk.  Cyclic garbage that outlives the young
+    collections inside a generation waits for the next seal."""
 
     def __init__(self) -> None:
         self.status = {"policy": HOST_GC_POLICY, "full_collections": 0, "last_s": None, "max_s": None, "collected": 0, "frozen": 0,
@@ -513,6 +516,7 @@ class Host:
         self.finalizers: list[dict] = []           # forked finalizer processes of sealed generations
         self.rollovers = 0
         self.gc = HostGc()
+        self.dropping: dict | None = None          # a sealed generation being let go, see drop_step
 
     def send(self, item) -> None:
         self.conn_out.send(item)
@@ -598,6 +602,7 @@ class Host:
                         self.end_epoch()
                     return
                 continue                                   # drain every queued command/batch before processing
+            self.drop_step()
             if self.epoch is None:
                 self.pending.clear()
                 self.poll_finalizers()
@@ -743,8 +748,39 @@ class Host:
         record["end_counts"] = closing.end()                # the host's own copy goes; the workers stay
         self.finalizers.append({"pid": pid, "generation": closing.number, "result": result, "forked": time.monotonic(), "record": record,
                                 "deadline": time.monotonic() + float(config.get("final_timeout_s", realtime.FAST_ROLLOVER_DEFAULTS["final_timeout_s"]))})
-        del closing
-        record["host_gc_s"] = round(self.gc.collect(), 4)   # HOST_GC_AT_SEAL_v1: the one chosen full collection
+        # HOST_GC_AT_SEAL_v1: the host's copy is let go in steps between which the running generation is served
+        pipe = closing.pipe
+        self.finish_drop()
+        self.dropping = {"owners": [o for o in (getattr(pipe, "core", None), getattr(pipe, "L", None), pipe, closing) if o is not None],
+                         "record": record, "next": 0.0, "seconds": []}
+
+    def drop_step(self, now: bool = False) -> None:
+        """One step of letting a sealed generation go: an owner releases what it holds (reference counting frees most
+        of the generation), and last the one full collection takes the cycles that remain."""
+        drop = self.dropping
+        if drop is None or (not now and time.monotonic() < drop["next"]):
+            return
+        began = time.perf_counter()
+        if drop["owners"]:
+            vars(drop["owners"].pop(0)).clear()
+            drop["seconds"].append(round(time.perf_counter() - began, 4))
+        else:
+            before = self.gc.status["collected"]
+            self.gc.collect()
+            record = drop["record"]
+            record["host_drop_s"] = drop["seconds"]
+            record["host_gc_s"] = self.gc.status["last_s"]
+            record["host_gc_collected"] = self.gc.status["collected"] - before
+            self.gc.status["drop_step_max_s"] = max([self.gc.status.get("drop_step_max_s") or 0.0, record["host_gc_s"], *drop["seconds"]])
+            self.dropping = None
+            self.send(("log", "info", f"generation {record['generation']} released in steps of {record['host_drop_s']} s; "
+                                      f"full collection {record['host_gc_s']} s ({record['host_gc_collected']} objects)"))
+            return
+        drop["next"] = time.monotonic() + DROP_STEP_INTERVAL_S
+
+    def finish_drop(self) -> None:
+        while self.dropping is not None:
+            self.drop_step(now=True)
 
     def poll_finalizers(self, wait: bool = False) -> None:
         for entry in list(self.finalizers):
@@ -781,6 +817,7 @@ class Host:
     def start_epoch(self, number: int, run_name: str) -> None:
         if self.epoch is not None:
             self.end_epoch()
+            self.finish_drop()
             self.gc.collect()                               # between epochs: nothing is being estimated
         self.pending.clear()
         self.pending_high_water = 0
