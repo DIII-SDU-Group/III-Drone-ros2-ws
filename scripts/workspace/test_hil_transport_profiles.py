@@ -26,6 +26,9 @@ STACK_DDS = {
     "RMW_IMPLEMENTATION": "rmw_fastrtps_cpp",
     "FASTDDS_BUILTIN_TRANSPORTS": "UDPv4",
 }
+# The Pi's services use Fast DDS's default transports: shared memory between
+# Pi processes, UDPv4 to the workstation. Operator shells stay UDPv4.
+SERVICE_DDS = {**STACK_DDS, "FASTDDS_BUILTIN_TRANSPORTS": "DEFAULT"}
 SHELL_PROFILES = {"real": "setup/setup_real.bash", "opti_track": "setup/setup_opti_track.bash"}
 
 
@@ -99,7 +102,7 @@ class HilTransportProfilesTests(unittest.TestCase):
         for profile in AIRCRAFT_PROFILES:
             with self.subTest(profile=profile):
                 env = runtime_environment(profile)
-                self.assertEqual({key: env.get(key) for key in STACK_DDS}, STACK_DDS)
+                self.assertEqual({key: env.get(key) for key in SERVICE_DDS}, SERVICE_DDS)
                 self.assertEqual(env["III_SYSTEM_PROFILE"], profile)
                 self.assertNotIn("CYCLONEDDS_URI", env)
 
@@ -133,7 +136,7 @@ class HilTransportProfilesTests(unittest.TestCase):
                 for line in content.splitlines()
                 if line.startswith("Environment=")
             )
-            self.assertEqual(environment, {**STACK_DDS, "ROS_DOMAIN_ID": str(domain)})
+            self.assertEqual(environment, {**SERVICE_DDS, "ROS_DOMAIN_ID": str(domain)})
             self.assertIn("UnsetEnvironment=CYCLONEDDS_URI", content)
 
     def test_onboard_aircraft_shells_adopt_the_provisioned_runtime_contract(self):
