@@ -129,3 +129,29 @@ def test_real_baseline_undoes_everything_the_opti_track_baseline_changes():
     # The lab's estimator sources and failsafes all differ from the outdoor ones.
     assert {"EKF2_EV_CTRL", "EKF2_GPS_CTRL", "EKF2_HGT_REF", "EKF2_MAG_TYPE", "SYS_HAS_GPS",
             "SYS_HAS_MAG", "EKF2_NOAID_TOUT", "NAV_RCL_ACT", "COM_LOW_BAT_ACT"} <= changed
+
+
+SNAPSHOT = ROOT / "deployment/px4/snapshots/real-commissioned-2026-09-04.params"
+
+
+def test_the_commissioned_flight_controller_is_tracked_in_full():
+    from iii_drone_contracts.px4_parameters import parse_baseline
+
+    snapshot = parse_baseline(SNAPSHOT.read_text(encoding="utf-8"))
+    assert len(snapshot) == 1155
+    # A reference record: complete, with this airframe's calibration.
+    assert any(name.startswith("CAL_") for name in snapshot)
+    assert "MPC_THR_HOVER" in snapshot
+
+
+def test_real_baseline_takes_its_values_from_the_commissioned_snapshot():
+    from iii_drone_contracts.px4_parameters import parse_baseline
+
+    snapshot = parse_baseline(SNAPSHOT.read_text(encoding="utf-8"))
+    for name, value in _parameters("real").items():
+        if name.startswith(TRANSPORT_PREFIXES):
+            # The transport moved to Ethernet after the snapshot.
+            continue
+        assert name in snapshot, name
+        assert snapshot[name] == pytest.approx(value, rel=1e-6), name
+        assert type(snapshot[name]) is type(value), name

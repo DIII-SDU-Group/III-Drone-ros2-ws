@@ -26,6 +26,14 @@ receivers work as moving base and rover (`GPS_UBX_MODE 1`) and are blended for
 position, while the heading comes from the magnetometer: `EKF2_GPS_CTRL` is 7,
 so the GNSS heading is not fused.
 
+The complete commissioned parameter set, all 1155 parameters including this
+airframe's calibration and tuning, is tracked as a reference in
+[`deployment/px4/snapshots/real-commissioned-2026-09-04.params`](../deployment/px4/snapshots/real-commissioned-2026-09-04.params).
+Nothing applies it and nothing is checked against it: it is the record the
+`real` baseline is drawn from and the place to look up any other original
+value. It predates the Ethernet transport, so its transport parameters hold
+the earlier values.
+
 Deliberately outside every baseline: sensor calibration, tuning,
 `MPC_THR_HOVER`, the geofence and the RC input source. A parameter in a
 baseline is held to its exact value at boot, so a baseline holds configuration,
