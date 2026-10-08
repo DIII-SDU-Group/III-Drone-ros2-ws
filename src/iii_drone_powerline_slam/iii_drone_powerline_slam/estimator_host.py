@@ -681,7 +681,7 @@ class Host:
         while True:
             busy = self.epoch is not None and (self.pending or self.epoch.more or self.closing is not None)
             ready = self.conn_in.poll(0 if busy else 0.02 if self.finalizers else 0.2)
-            self._spent("receive" if busy or ready else "idle")
+            self._spent("receive" if busy else "idle")     # the wait for input of a loop with nothing to do is idle time
             if ready:
                 item = self.conn_in.recv()
                 kind = item[0]
