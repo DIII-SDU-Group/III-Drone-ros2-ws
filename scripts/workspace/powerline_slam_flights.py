@@ -568,12 +568,21 @@ class CorridorRunner(dataset.DatasetRunner):
             if time.monotonic() > deadline:
                 self.tools.cancel_operation_goal(goal_id)
                 raise RuntimeError(f"leg {leg['name']} timed out")
+            self._still_running()
             time.sleep(0.2)
         hold_until_ns = begin_ns + int(leg["duration_s"] * 1e9)
         while self.clock.now_ns() < hold_until_ns:
             self.sample(samples, phase=leg["name"], target_index=index)
+            self._still_running()
             time.sleep(0.25)
         return begin_ns
+
+    @staticmethod
+    def _still_running() -> None:
+        """An interrupt shuts rclpy down; the simulation clock this exercise waits on then stops for it."""
+        import rclpy
+        if not rclpy.ok():
+            raise KeyboardInterrupt("rclpy was shut down (interrupted)")
 
     def run_flight(self, direction: str, flight_dir: Path) -> dict[str, Any]:
         assert self.clock is not None
