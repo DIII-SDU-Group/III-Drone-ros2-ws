@@ -56,7 +56,8 @@ STATUS_PERIOD_S = 1.0
 LATENCY_WINDOW = 2000
 WORKER_START_TIMEOUT_S = 240.0    # worker processes: runtime activation, model load, GPU set-up
 DROP_STEP_INTERVAL_S = 0.25       # between the steps in which a sealed generation is let go (the estimator catches up in between)
-HOST_GC_POLICY = "HOST_GC_AT_SEAL_v1"   # execution only: no automatic full collection inside a generation (see HostGc)
+HOST_GC_POLICY = "HOST_GC_BOUNDED_v2"   # execution only: no automatic full collection; bounded passes inside a generation (see HostGc)
+GC_PASS_INTERVAL_S = 5.0          # between the bounded passes inside a generation (each walks only what was made since the last)
 ARRIVAL_WINDOW_S = 2.0            # arrival-burst statistic: most messages received within any window of this length
 
 
@@ -68,14 +69,22 @@ class HostGc:
     full collection runs only where the host chooses: after a sealed generation has been let go.  A generation is a web
     of reference cycles, so its owners (core, layer state, pipeline, epoch) first release what they hold, one per step
     with the running generation served in between: reference counting then frees most of it, and the full collection
-    that follows has only the remaining cycles and the young successor to walk.  Cyclic garbage that outlives the young
-    collections inside a generation waits for the next seal."""
+    that follows has only the remaining cycles and the young successor to walk.
+
+    HOST_GC_BOUNDED_v2 adds the generation that never seals (no traversal for a long time): every GC_PASS_INTERVAL_S,
+    at a moment the estimator loop has nothing ready, one bounded pass collects the objects made since the previous
+    pass and freezes the survivors, so the cost of a pass follows the allocation of one interval and not the age of
+    the generation.  A frozen object is still freed by reference counting; frozen cycles that become garbage later
+    are taken by the chosen full collection (seal, epoch start, epoch end), which thaws everything first."""
 
     def __init__(self) -> None:
         self.status = {"policy": HOST_GC_POLICY, "full_collections": 0, "last_s": None, "max_s": None, "collected": 0, "frozen": 0,
                        "automatic_full_collections": 0}
+        self.status.update({"bounded_passes": 0, "bounded_last_s": None, "bounded_max_s": None, "bounded_collected": 0,
+                            "bounded_interval_s": GC_PASS_INTERVAL_S})
         self._callback = None
         self._explicit = False
+        self._next_pass = None
 
     def begin(self) -> None:
         gc.collect()
@@ -83,6 +92,7 @@ class HostGc:
         young, middle, _ = gc.get_threshold()
         gc.set_threshold(young, middle, 1 << 30)
         self.status["frozen"] = gc.get_freeze_count()
+        self._next_pass = time.monotonic() + GC_PASS_INTERVAL_S
 
         def seen(phase, info):                              # proof that no full collection runs on its own
             if phase == "stop" and info.get("generation") == 2 and not self._explicit:
@@ -94,15 +104,41 @@ class HostGc:
         began = time.perf_counter()
         self._explicit = True
         try:
+            gc.unfreeze()                                   # the frozen survivors of the bounded passes are judged again
             found = gc.collect()
+            gc.freeze()
         finally:
             self._explicit = False
         spent = time.perf_counter() - began
+        self._next_pass = time.monotonic() + GC_PASS_INTERVAL_S
         s = self.status
+        s["frozen"] = gc.get_freeze_count()
         s["full_collections"] += 1
         s["collected"] += int(found)
         s["last_s"] = round(spent, 4)
         s["max_s"] = s["last_s"] if s["max_s"] is None else max(s["max_s"], s["last_s"])
+        return spent
+
+    def bounded_pass(self, idle: bool) -> float | None:
+        """One bounded pass if it is due and the loop is idle (twice overdue: taken anyway, the cost stays bounded)."""
+        now = time.monotonic()
+        if self._next_pass is None or now < self._next_pass or (not idle and now < self._next_pass + GC_PASS_INTERVAL_S):
+            return None
+        began = time.perf_counter()
+        self._explicit = True
+        try:
+            found = gc.collect()
+            gc.freeze()
+        finally:
+            self._explicit = False
+        spent = time.perf_counter() - began
+        self._next_pass = time.monotonic() + GC_PASS_INTERVAL_S
+        s = self.status
+        s["frozen"] = gc.get_freeze_count()
+        s["bounded_passes"] += 1
+        s["bounded_collected"] += int(found)
+        s["bounded_last_s"] = round(spent, 4)
+        s["bounded_max_s"] = s["bounded_last_s"] if s["bounded_max_s"] is None else max(s["bounded_max_s"], s["bounded_last_s"])
         return spent
 
 
@@ -449,6 +485,7 @@ class Epoch:
                 "live_mission_prior": None if self.host.ol_pipeline is None else self._prior_status(),
                 "pipeline": "rt" if self.realtime else "r1", "affinity": self.affinity, "pid": os.getpid(),
                 "warm_runtime": None if self.host.warm is None else self.host.warm_status(), "host_gc": dict(self.host.gc.status),
+                "host_loop": self.host.loop_status(),
                 "fusion": self.host.node_config.get("fusion", "exact"),
                 "fusion30": None if self.host.f30_pipeline is None else pipe.fusion_status(),
                 "traversal": None if self.rollover is None else {"contract": self.rollover["contract"], "first_source_ns": self.first_source_ns,
@@ -530,6 +567,9 @@ class Host:
         self.finalizers: list[dict] = []           # forked finalizer processes of sealed generations
         self.rollovers = 0
         self.gc = HostGc()
+        # where the loop's wall time goes, cumulative seconds by stage (diagnostics only), and the loop thread's CPU time
+        self.loop_s = {"receive": 0.0, "idle": 0.0, "drop": 0.0, "ingest": 0.0, "closing": 0.0, "step": 0.0, "housekeeping": 0.0}
+        self._loop_mark = time.perf_counter()
         self.dropping: dict | None = None          # a sealed generation being let go, see drop_step
 
     def send(self, item) -> None:
@@ -596,10 +636,20 @@ class Host:
         self.types["command"] = get_message("iii_drone_interfaces/msg/StringStamped")
         self.gc.begin()
 
+    def _spent(self, stage: str) -> None:
+        now = time.perf_counter()
+        self.loop_s[stage] += now - self._loop_mark
+        self._loop_mark = now
+
+    def loop_status(self) -> dict:
+        return {"seconds": {k: round(v, 3) for k, v in self.loop_s.items()}, "thread_cpu_s": round(time.thread_time(), 3)}
+
     def run(self) -> None:
         while True:
             busy = self.epoch is not None and (self.pending or self.epoch.more or self.closing is not None)
-            if self.conn_in.poll(0 if busy else 0.02 if self.finalizers else 0.2):
+            ready = self.conn_in.poll(0 if busy else 0.02 if self.finalizers else 0.2)
+            self._spent("receive" if busy or ready else "idle")
+            if ready:
                 item = self.conn_in.recv()
                 kind = item[0]
                 if kind == "msgs":
@@ -615,8 +665,10 @@ class Host:
                     if self.epoch is not None:
                         self.end_epoch()
                     return
+                self._spent("receive")
                 continue                                   # drain every queued command/batch before processing
             self.drop_step()
+            self._spent("drop")
             if self.epoch is None:
                 self.pending.clear()
                 self.poll_finalizers()
@@ -635,14 +687,20 @@ class Host:
                     else:
                         self.complete_traversal()
                         break
+            self._spent("ingest")
             if self.closing is not None:
                 self.activate(self.closing)
                 self.closing.step()
                 self.maybe_seal()
+                self._spent("closing")
             self.activate(self.epoch)
             self.epoch.step()
+            self._spent("step")
             if self.finalizers:
                 self.poll_finalizers()
+            if self.dropping is None and self.closing is None:
+                self.gc.bounded_pass(idle=not (self.pending or self.epoch.more))
+            self._spent("housekeeping")
 
     # ------------------------------------------------------------------ FAST_TRAVERSAL_EPOCH_v2
     def activate(self, epoch: "Epoch") -> None:

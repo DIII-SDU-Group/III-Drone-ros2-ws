@@ -50,7 +50,9 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import perception_dataset_flights as dataset  # noqa: E402
 
-CATALOG_PATH = Path(__file__).resolve().with_name("powerline_slam_corridor_flights.json")
+# III_POWERLINE_SLAM_FLIGHT_CATALOG: a catalog of the same schema for another span geometry (scenario runs); default: this span
+CATALOG_PATH = Path(os.environ.get("III_POWERLINE_SLAM_FLIGHT_CATALOG")
+                    or Path(__file__).resolve().with_name("powerline_slam_corridor_flights.json"))
 DEFAULT_OUTPUT_ROOT = WORKSPACE_ROOT / "datasets/powerline_slam"
 # the evaluation model or one of its sensor timing profiles (same sensor layout; run_isolated_powerline_slam_online.sh)
 SIM_MODEL = "gz_" + os.environ.get("III_POWERLINE_SIM_MODEL", "d4s_dc_drone_powerline_eval")

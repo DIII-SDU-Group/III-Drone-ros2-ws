@@ -190,3 +190,71 @@ def test_host_gc_policy_runs_full_collections_only_when_asked():
         gc.callbacks.remove(policy._callback)
         gc.unfreeze()
         gc.set_threshold(*before)
+
+
+def test_host_gc_bounded_pass_walks_only_what_is_new_and_frozen_cycles_go_at_the_chosen_collection(monkeypatch):
+    """HOST_GC_BOUNDED_v2: a due pass collects the cycles made since the last one and freezes the survivors; a later pass
+    does not walk them again; survivors that become garbage afterwards are taken by the chosen full collection."""
+    import gc
+
+    from iii_drone_powerline_slam import estimator_host
+
+    before = gc.get_threshold()
+    monkeypatch.setattr(estimator_host, "GC_PASS_INTERVAL_S", 0.0)
+    policy = estimator_host.HostGc()
+    try:
+        policy.begin()
+        frozen_at_start = policy.status["frozen"]
+
+        class Node:
+            pass
+
+        def ring(count):
+            out = []
+            for _ in range(count):
+                a, b = Node(), Node()
+                a.other, b.other = b, a
+                out.append(a)
+            return out
+
+        keep = ring(50_000)
+        garbage = ring(50_000)
+        del garbage
+        assert policy.bounded_pass(idle=True) is not None
+        assert policy.status["bounded_passes"] == 1 and policy.status["bounded_collected"] >= 100_000
+        assert policy.status["frozen"] >= frozen_at_start + 100_000          # the kept rings are frozen now
+        first = policy.status["bounded_last_s"]
+        assert policy.bounded_pass(idle=True) is not None                     # nothing new: the frozen rings are not walked
+        assert policy.status["bounded_collected"] < 100_000 + 1_000 and policy.status["bounded_last_s"] <= max(first, 0.005)
+        del keep                                                             # frozen cycles become garbage
+        policy.bounded_pass(idle=True)
+        assert policy.status["bounded_collected"] < 100_000 + 2_000           # ... and a bounded pass cannot take them
+        policy.collect()
+        assert policy.status["collected"] >= 100_000                          # the chosen full collection does
+        assert policy.status["automatic_full_collections"] == 0
+    finally:
+        gc.callbacks.remove(policy._callback)
+        gc.unfreeze()
+        gc.set_threshold(*before)
+
+
+def test_host_gc_bounded_pass_waits_for_an_idle_loop_but_not_forever(monkeypatch):
+    import gc
+
+    from iii_drone_powerline_slam import estimator_host
+
+    before = gc.get_threshold()
+    monkeypatch.setattr(estimator_host, "GC_PASS_INTERVAL_S", 0.05)
+    policy = estimator_host.HostGc()
+    try:
+        policy.begin()
+        assert policy.bounded_pass(idle=True) is None                         # not due yet
+        import time as _time
+        _time.sleep(0.06)
+        assert policy.bounded_pass(idle=False) is None                        # due, but the loop is busy
+        _time.sleep(0.06)
+        assert policy.bounded_pass(idle=False) is not None                    # twice overdue: taken anyway
+    finally:
+        gc.callbacks.remove(policy._callback)
+        gc.unfreeze()
+        gc.set_threshold(*before)
