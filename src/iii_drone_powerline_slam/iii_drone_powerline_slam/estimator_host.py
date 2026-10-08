@@ -85,6 +85,11 @@ class HostGc:
         self._callback = None
         self._explicit = False
         self._next_pass = None
+        # diagnostics only (POWERLINE_SLAM_GC_PROBE_S, never set in operation): every so many seconds one thawed full
+        # collection inside the generation, to count the cycles that died after a bounded pass had frozen them
+        probe = os.environ.get("POWERLINE_SLAM_GC_PROBE_S")
+        self._probe_s = float(probe) if probe else None
+        self._next_probe = None
 
     def begin(self) -> None:
         gc.collect()
@@ -122,6 +127,34 @@ class HostGc:
     def bounded_pass(self, idle: bool) -> float | None:
         """One bounded pass if it is due and the loop is idle (twice overdue: taken anyway, the cost stays bounded)."""
         now = time.monotonic()
+        if self._probe_s is not None and self._next_pass is not None:
+            if self._next_probe is None:
+                self._next_probe = now + self._probe_s
+            elif now >= self._next_probe:
+                before = self.status["collected"]
+                census = os.environ.get("POWERLINE_SLAM_GC_PROBE_TYPES")
+                if census:                                  # keep what the collection finds, to name it
+                    gc.set_debug(gc.DEBUG_SAVEALL)
+                spent = self.collect()
+                self.status["full_collections"] -= 1          # a probe is not a chosen collection of the policy
+                row = {"collected": self.status["collected"] - before, "seconds": round(spent, 4), "frozen": self.status["frozen"]}
+                if census:
+                    gc.set_debug(0)
+                    kinds: dict = {}
+                    for item in gc.garbage:
+                        name = f"{type(item).__module__}.{type(item).__qualname__}"
+                        if isinstance(item, dict):
+                            name += "{" + ",".join(sorted(str(k) for k in list(item)[:6])) + "}"
+                        elif type(item).__name__ in ("function", "method", "cell", "frame"):
+                            name += ":" + str(getattr(item, "__qualname__", getattr(getattr(item, "f_code", None), "co_qualname", "")))
+                        kinds[name] = kinds.get(name, 0) + 1
+                    row["types"] = dict(sorted(kinds.items(), key=lambda kv: -kv[1])[:25])
+                    gc.garbage.clear()
+                    self.collect()
+                    self.status["full_collections"] -= 1
+                self.status.setdefault("probe", []).append(row)
+                self._next_probe = time.monotonic() + self._probe_s
+                return None
         if self._next_pass is None or now < self._next_pass or (not idle and now < self._next_pass + GC_PASS_INTERVAL_S):
             return None
         began = time.perf_counter()
