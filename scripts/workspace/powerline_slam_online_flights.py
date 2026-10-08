@@ -101,6 +101,7 @@ class OnlineRunner(flights.CorridorRunner):
         self.traversal_epochs = bool(kwargs.pop("traversal_epochs", False))
         self.backend_first_s = float(kwargs.pop("backend_first_s", 0.0))
         self.boundary_at_staging = bool(kwargs.pop("boundary_at_staging", False))
+        self.ground_hold_s = float(kwargs.pop("ground_hold_s", 0.0))
         super().__init__(*args, **kwargs)
         self.commands: CommandPublisher | None = None
         self._tf: tuple | None = None               # (tools node, buffer, listener) of the trajectory log
@@ -134,6 +135,9 @@ class OnlineRunner(flights.CorridorRunner):
                          f"start {entity} with its dependencies")
         state = self.require(self.tools.px4("status", timeout_sec=20), "read PX4 status")
         if not bool(state.get("in_air")):
+            if self.ground_hold_s > 0 and not bool(state.get("armed")):
+                # fixed-pose stimulus: the system and its sensor bridges run, the vehicle rests where it was spawned
+                time.sleep(self.ground_hold_s)
             if not bool(state.get("armed")):
                 self.require(self.tools.px4("arm", timeout_sec=75, postcondition_timeout_sec=30, health_stable_sec=2.0),
                              "PX4 arm")
@@ -298,6 +302,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="do not start powerline_slam: the same exercise as a simulation-only baseline")
     parser.add_argument("--backend-first-s", type=float, default=0.0,
                         help="start-up test: start powerline_slam before the flight path and wait this long before starting it")
+    parser.add_argument("--ground-hold-s", type=float, default=0.0,
+                        help="keep the vehicle at rest on the ground this long (wall time) after the system started and before arming")
     parser.add_argument("--traversal-epochs", action="store_true",
                         help="one traversal instance per flight (directions may repeat); publish traversal_complete after each")
     parser.add_argument("--boundary-at-staging", action="store_true",
@@ -326,7 +332,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     flights.write_json(run_dir / "run_manifest.json", manifest)
     runner = OnlineRunner(run_dir, args.geometry, catalog, headless=args.headless, keep_running=args.keep_running,
                           skip_backend=args.skip_backend, traversal_epochs=args.traversal_epochs,
-                          backend_first_s=args.backend_first_s, boundary_at_staging=args.boundary_at_staging)
+                          backend_first_s=args.backend_first_s, boundary_at_staging=args.boundary_at_staging,
+                          ground_hold_s=args.ground_hold_s)
     failures = []
     try:
         runner.ensure_ready()
