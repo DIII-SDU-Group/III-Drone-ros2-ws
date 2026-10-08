@@ -32,3 +32,11 @@ def test_ci_retains_only_developer_integrity_gates() -> None:
         "refresh-submodule-pointers.yml",
     ):
         assert not (WORKFLOWS / retired_workflow).exists()
+
+
+def test_ci_runs_the_curated_iii_suite_without_px4() -> None:
+    workflow = (WORKFLOWS / "iii-tests.yml").read_text(encoding="utf-8")
+
+    assert "./scripts/workspace/run_iii_test_suite.sh" in workflow
+    assert "grep -vx PX4-Autopilot" in workflow
+    assert "submodules: recursive" not in workflow

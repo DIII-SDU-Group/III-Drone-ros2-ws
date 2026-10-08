@@ -1,0 +1,67 @@
+name: III Tests
+
+# Runs the curated III-only suite (scripts/workspace/run_iii_test_suite.sh) in
+# the same ROS base image the devcontainer builds on. Third-party package tests
+# are never run; PX4-Autopilot is not checked out because no III package build
+# or test needs it.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+
+concurrency:
+  group: iii-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  iii-test-suite:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    permissions:
+      contents: read
+    container:
+      image: osrf/ros:jazzy-desktop-full
+    env:
+      PIP_BREAK_SYSTEM_PACKAGES: "1"
+      DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build prerequisites
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates git python3-pip python3-colcon-common-extensions \
+            ros-jazzy-rmw-cyclonedds-cpp ros-jazzy-generate-parameter-library \
+            ros-jazzy-generate-parameter-library-py ros-jazzy-parameter-traits \
+            build-essential cmake ninja-build curl xz-utils
+
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Check out every submodule except PX4-Autopilot
+        run: |
+          git config --global --add safe.directory '*'
+          # Submodule URLs are SSH; all repositories are public over HTTPS.
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          paths=$(git config -f .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '{print $2}' | grep -vx PX4-Autopilot)
+          git submodule update --init --recursive -- $paths
+
+      - name: Install Python and ROS dependencies
+        run: |
+          python3 -m pip install --disable-pip-version-check -r requirements.txt pytest
+          rosdep update --rosdistro jazzy
+          rosdep install --rosdistro jazzy --from-paths src --ignore-src -y -r
+
+      - name: Run the III test suite
+        run: ./scripts/workspace/run_iii_test_suite.sh
