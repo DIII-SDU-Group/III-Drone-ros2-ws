@@ -1,0 +1,33 @@
+---
+- name: Verify the interactive developer account exists
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ iii_runtime_user }}"
+  when: not ansible_check_mode
+
+- name: Verify the writable developer workspace paths
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /home/iii/ws
+    - /home/iii/.config/iii_drone
+    - /home/iii/.ros/log
+    - /etc/iii/runtime.env
+  register: iii_developer_host_paths
+
+- name: Require direct developer paths
+  ansible.builtin.assert:
+    that: item.stat.exists
+    fail_msg: "Developer host path is absent: {{ item.item }}"
+  loop: "{{ iii_developer_host_paths.results }}"
+
+- name: Verify the direct workspace units parse
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemd-analyze
+      - verify
+      - /etc/systemd/system/iii-system-daemon.service
+      - /etc/systemd/system/iii-runtime-api.service
+      - /etc/systemd/system/iii.target
+  changed_when: false
+  when: not ansible_check_mode

@@ -28,6 +28,7 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import Transform
+from nav_msgs.msg import Odometry
 
 from iii_drone_interfaces.action import ModeExecutorAction
 from iii_drone_interfaces.msg import Maneuver, ManeuverQueue
@@ -46,10 +47,11 @@ from iii_drone_interfaces.srv import (
     GetPowerlineOverview,
     GetPylonOverview,
     GripperCommand,
+    GetMissionCatalog,
     LoadParameters,
-    OverrideMissionSpecification,
     PLMapperCommand,
     SaveParameters,
+    SelectMissionCatalogEntry,
     SetParameterFromGC,
     StorePylonOverview,
     UpdatePowerlineOverview,
@@ -57,7 +59,6 @@ from iii_drone_interfaces.srv import (
 from iii_drone_mission.operations_client import OperationsClient, OperationResult
 from iii_drone_mcp.px4_command_client import Px4CommandClient
 from iii_drone_mcp.simulation_observation import (
-    all_conductor_samples,
     compact_conductors,
     conductor_height_range,
     conductor_samples,
@@ -137,7 +138,7 @@ class DroneAgentTools:
         *,
         node_name: str = "iii_drone_agent_tools",
         artifact_dir: str | Path = "/tmp/iii_drone/iii_drone_agent",
-        px4_system_address: str = "udpin://0.0.0.0:14540",
+        px4_system_address: str | None = None,
     ):
         if not rclpy.ok():
             rclpy.init(args=None)
@@ -147,7 +148,9 @@ class DroneAgentTools:
         self.artifact_dir = self._resolve_artifact_dir(Path(artifact_dir))
         self.artifact_dir.mkdir(parents=True, exist_ok=True)
         self.operations = OperationsClient(self.node)
-        self._px4_system_address = px4_system_address
+        self._px4_system_address = str(
+            px4_system_address or os.environ.get("III_PX4_SYSTEM_ADDRESS", "udpin://0.0.0.0:14540")
+        )
         self._workspace_root = Path(os.environ.get("WORKSPACE_DIR", "/home/iii/ws"))
         self._iii_cli_path = self._resolve_iii_cli()
         self._mcp_session_id = str(uuid.uuid4())
@@ -219,9 +222,13 @@ class DroneAgentTools:
             GetCurrentParameterFile,
             "/configuration/configuration_server/get_current_parameter_file",
         )
-        self._override_mission_specification = self.node.create_client(
-            OverrideMissionSpecification,
-            "/mission/mission_executor/override_mission_specification",
+        self._get_mission_catalog = self.node.create_client(
+            GetMissionCatalog,
+            "/mission/mission_executor/get_mission_catalog",
+        )
+        self._select_mission_catalog_entry = self.node.create_client(
+            SelectMissionCatalogEntry,
+            "/mission/mission_executor/select_mission_catalog_entry",
         )
 
     def close(self) -> None:
@@ -734,20 +741,58 @@ class DroneAgentTools:
                 clear_result = ToolResult(False, {"error": str(exc)}, "queue clear failed")
             events.append({"step": "clear_queue", "success": clear_result.success, "message": clear_result.message, "data": clear_result.data})
 
+        # Safety recovery must use the target-resolved ROS VehicleCommand path.
+        # MAVSDK telemetry can lag the ROS/uXRCE land detector and previously
+        # allowed LAND to report success while the simulated vehicle was still
+        # armed and descending.
+        if mode == "land":
+            # A foreign MCP/workflow process may still own an external-mode
+            # action even after its client exits. MAV_CMD_NAV_LAND alone can
+            # then be immediately superseded by that mode. Force PX4 into its
+            # native AUTO_LAND nav state first; this target-resolved ROS path
+            # has priority over the orphaned external-mode stream.
+            land_mode = self._px4_tool_result_or_error(
+                "set_nav_state",
+                nav_state=18,
+                target_system=int(os.environ.get("III_PX4_TARGET_SYSTEM", "1")),
+                target_component=int(os.environ.get("III_PX4_TARGET_COMPONENT", "1")),
+                repeat_count=8,
+                postcondition_timeout_sec=min(15.0, timeout_sec),
+                stable_sec=1.0,
+            )
+            events.append(
+                {
+                    "step": "px4_land_mode_override",
+                    "success": land_mode.success,
+                    "message": land_mode.message,
+                    "data": land_mode.data,
+                }
+            )
+
+        px4_command = "land_direct" if mode == "land" else "hold_direct"
         px4_result = self._px4_tool_result_or_error(
-            mode,
+            px4_command,
             timeout_sec=timeout_sec,
             postcondition_timeout_sec=timeout_sec,
         )
         events.append({"step": f"px4_{mode}", "success": px4_result.success, "message": px4_result.message, "data": px4_result.data})
 
-        if mode == "land" and disarm_after_land:
+        if mode == "land" and disarm_after_land and px4_result.success:
             disarm_result = self._px4_tool_result_or_error(
-                "disarm",
+                "disarm_direct",
                 timeout_sec=timeout_sec,
                 postcondition_timeout_sec=min(10.0, timeout_sec),
             )
             events.append({"step": "px4_disarm", "success": disarm_result.success, "message": disarm_result.message, "data": disarm_result.data})
+        elif mode == "land" and disarm_after_land:
+            events.append(
+                {
+                    "step": "px4_disarm",
+                    "success": False,
+                    "message": "disarm skipped because ROS land detector did not confirm touchdown",
+                    "data": {"skipped": True},
+                }
+            )
 
         final_px4 = self._px4_tool_result_or_error("status", timeout_sec=min(10.0, timeout_sec))
         events.append({"step": "px4_status", "success": final_px4.success, "message": final_px4.message, "data": final_px4.data})
@@ -1393,6 +1438,59 @@ class DroneAgentTools:
         data["mission_mode_activation_status"] = activation_status
         return ToolResult(result.success, data, f"mission mode {topic_key} activated")
 
+    def mission_mode_readiness(
+        self,
+        mode_key: str = "reach_cable",
+        timeout_sec: float = 5.0,
+    ) -> ToolResult:
+        """Verify that the selected mission mode is registered in the live PX4 session."""
+        requested_mode_key = str(mode_key or "")
+        topic_key = _mission_mode_topic_key(requested_mode_key)
+        topic = f"/mission/modes/{topic_key}/status"
+        try:
+            status = self._take_message(topic, StringStamped, timeout_sec, required=True)
+            status_data = json.loads(status.data)
+            mode_id = int(status_data["mode_id"])
+        except (TimeoutError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            return ToolResult(
+                False,
+                {
+                    "requested_mission_mode_key": requested_mode_key,
+                    "mission_mode_key": topic_key,
+                    "mission_mode_status_topic": topic,
+                    "error": str(exc),
+                },
+                "mission mode status is unavailable or invalid",
+            )
+
+        safety = self.px4_safety(timeout_sec=timeout_sec)
+        safety_data = safety.data if isinstance(safety.data, dict) else {}
+        ros = safety_data.get("ros") if isinstance(safety_data.get("ros"), dict) else {}
+        vehicle_status = ros.get("vehicle_status") if isinstance(ros.get("vehicle_status"), dict) else {}
+        mask = vehicle_status.get("can_set_nav_states_mask")
+        nav_state = vehicle_status.get("nav_state")
+        settable = isinstance(mask, int) and bool(mask & (1 << mode_id))
+        active = nav_state == mode_id
+        data = {
+            "requested_mission_mode_key": requested_mode_key,
+            "mission_mode_key": topic_key,
+            "mission_mode_id": mode_id,
+            "mission_mode_status_topic": topic,
+            "mission_mode_status": status_data,
+            "can_set_nav_states_mask": mask,
+            "active_nav_state": nav_state,
+            "settable": settable,
+            "active": active,
+            "px4_safety_success": bool(safety.success),
+            "px4_safety": safety_data,
+        }
+        ready = bool(safety.success) and (settable or active)
+        return ToolResult(
+            ready,
+            data,
+            "mission mode is registered in PX4" if ready else "mission mode is not registered in the live PX4 session",
+        )
+
     def _wait_mission_mode_status_active(
         self,
         topic: str,
@@ -1563,7 +1661,15 @@ class DroneAgentTools:
                 recovery_result = self.system("start", timeout_sec=recovery_timeout)
                 last_state["recovery_result"] = recovery_result.data
             rclpy.spin_once(self.node, timeout_sec=0.05)
-        return ToolResult(False, last_state, "maneuver controller is not lifecycle-active")
+        lifecycle = last_state.get("lifecycle", {})
+        return ToolResult(
+            False,
+            last_state,
+            "maneuver controller is not lifecycle-active "
+            f"(lifecycle={lifecycle.get('label', 'unknown')}, "
+            f"clear_queue_service_ready={last_state.get('clear_queue_service_ready')}, "
+            f"recovery_attempted={last_state.get('recovery_attempted')})",
+        )
 
     def _maneuver_controller_state(self, timeout_sec: float = 0.5) -> dict[str, Any]:
         if not self._maneuver_controller_get_state.wait_for_service(timeout_sec=timeout_sec):
@@ -2066,36 +2172,64 @@ class DroneAgentTools:
         finally:
             self.node.destroy_client(client)
 
-    def override_mission_specification(
+    def get_mission_catalog(
         self,
         *,
-        mission_specification_file: str = "",
-        use_default: bool = False,
+        include_incompatible: bool = False,
         timeout_sec: float = 5.0,
     ) -> ToolResult:
-        request = OverrideMissionSpecification.Request()
-        request.mission_specification_file = str(mission_specification_file or "")
-        request.use_default = bool(use_default)
-        response = self._call_service(self._override_mission_specification, request, timeout_sec)
+        request = GetMissionCatalog.Request()
+        request.include_incompatible = bool(include_incompatible)
+        response = self._call_service(self._get_mission_catalog, request, timeout_sec)
+        catalog = json.loads(str(response.catalog_json)) if response.success and response.catalog_json else {}
         data = {
             "success": bool(response.success),
             "message": str(response.message),
-            "mission_specification_file": request.mission_specification_file,
-            "use_default": bool(request.use_default),
-            "active_mission_specification_file": str(response.active_mission_specification_file),
+            "include_incompatible": bool(request.include_incompatible),
+            "catalog": catalog,
         }
-        return ToolResult(
-            bool(response.success),
-            data,
-            str(response.message),
-        )
+        return ToolResult(bool(response.success), data, str(response.message))
+
+    def select_mission_catalog_entry(
+        self,
+        *,
+        catalog_id: str = "",
+        use_default: bool = False,
+        timeout_sec: float = 10.0,
+    ) -> ToolResult:
+        request = SelectMissionCatalogEntry.Request()
+        request.catalog_id = str(catalog_id or "")
+        request.use_default = bool(use_default)
+        response = self._call_service(self._select_mission_catalog_entry, request, timeout_sec)
+        data = {
+            "success": bool(response.success),
+            "message": str(response.message),
+            "catalog_id": request.catalog_id,
+            "use_default": bool(request.use_default),
+            "active_catalog_id": str(response.active_catalog_id),
+            "active_entry_hash": str(response.active_entry_hash),
+            "temporary_override": bool(response.temporary_override),
+            "warning": str(response.warning),
+        }
+        return ToolResult(bool(response.success), data, str(response.message))
 
     def mission_status(self, timeout_sec: float = 2.0) -> ToolResult:
         status = self._take_message("/mission/status", MissionModeStatus, timeout_sec, required=True)
         data = {
             "mission_state": int(status.mission_state),
             "mission_state_label": str(status.mission_state_label),
-            "active_mission_specification": str(status.active_mission_specification),
+            "active_catalog_id": str(status.active_catalog_id),
+            "catalog_hash": str(status.catalog_hash),
+            "active_entry_hash": str(status.active_entry_hash),
+            "default_catalog_id": str(status.default_catalog_id),
+            "configuration_profile": str(status.configuration_profile),
+            "classification": str(status.classification),
+            "compatible_profiles": list(status.compatible_profiles),
+            "temporary_override": bool(status.temporary_override),
+            "experimental": bool(status.experimental),
+            "experimental_warning": str(status.experimental_warning),
+            "catalog_ready": bool(status.catalog_ready),
+            "catalog_error": str(status.catalog_error),
             "mission_active": bool(status.mission_active),
             "required_modes_registered": bool(status.required_modes_registered),
             "required_modes": list(status.required_modes),
@@ -2172,7 +2306,12 @@ class DroneAgentTools:
             str(artifact_dir),
             "--status-path",
             str(status_path),
+            "--px4-system-address",
+            self._px4_system_address,
         ]
+        runtime_api_url = str(kwargs.get("runtime_api_url") or os.environ.get("III_RUNTIME_API_URL") or "")
+        if runtime_api_url:
+            command.extend(["--runtime-api-url", runtime_api_url])
         for option in (
             "position_id",
             "frame_id",
@@ -2192,6 +2331,7 @@ class DroneAgentTools:
             "overview_timeout_s",
             "overview_service_timeout_sec",
             "overview_query_timeout_sec",
+            "max_sim_powerline_overview_line_error_m",
             "overview_store_attempts",
             "overview_retry_delay_sec",
             "min_pylons",
@@ -2199,9 +2339,11 @@ class DroneAgentTools:
             "demo_pos_over_corridor_id",
             "demo_pos_pylon_1_id",
             "demo_pos_pylon_2_id",
-            "mission_specification_file",
+            "mission_catalog_id",
             "mission_mode",
             "px4_timeout_sec",
+            "px4_target_system",
+            "px4_target_component",
             "custom_mode_timeout_sec",
             "fly_send_timeout_sec",
             "fly_wait_timeout_sec",
@@ -2220,8 +2362,8 @@ class DroneAgentTools:
             command.append("--skip-mission-activation")
         if bool(kwargs.get("require_pylon_overview", False)):
             command.append("--require-pylon-overview")
-        if bool(kwargs.get("use_default_mission_specification", False)):
-            command.append("--use-default-mission-specification")
+        if bool(kwargs.get("use_default_mission_catalog", False)):
+            command.append("--use-default-mission-catalog")
         force_update_overview = bool(kwargs.get("force_update_overview", True))
         if force_update_overview:
             command.append("--force-update-overview")
@@ -2438,6 +2580,28 @@ class DroneAgentTools:
                 repeat_count=int(kwargs.get("repeat_count", 5)),
                 postcondition_timeout_sec=float(kwargs.get("postcondition_timeout_sec", timeout_sec)),
             )
+        if command == "takeoff_direct":
+            return self._send_px4_takeoff(
+                takeoff_altitude_m=float(kwargs.get("takeoff_altitude_m", 2.0)),
+                target_system=int(kwargs.get("target_system", 1)),
+                target_component=int(kwargs.get("target_component", 1)),
+                repeat_count=int(kwargs.get("repeat_count", 5)),
+                postcondition_timeout_sec=float(kwargs.get("postcondition_timeout_sec", timeout_sec)),
+            )
+        if command == "land_direct":
+            return self._send_px4_land(
+                target_system=int(kwargs.get("target_system", 1)),
+                target_component=int(kwargs.get("target_component", 1)),
+                repeat_count=int(kwargs.get("repeat_count", 3)),
+                postcondition_timeout_sec=float(kwargs.get("postcondition_timeout_sec", timeout_sec)),
+            )
+        if command == "hold_direct":
+            return self._send_px4_hold(
+                target_system=int(kwargs.get("target_system", 1)),
+                target_component=int(kwargs.get("target_component", 1)),
+                repeat_count=int(kwargs.get("repeat_count", 3)),
+                postcondition_timeout_sec=float(kwargs.get("postcondition_timeout_sec", timeout_sec)),
+            )
         if command == "disarm_direct":
             return self._send_px4_arm_disarm(
                 arm=False,
@@ -2601,6 +2765,39 @@ class DroneAgentTools:
                 if abs(observed_pct - target_pct) <= tolerance_pct:
                     break
 
+        # The reset token is a transient command/acknowledgement handshake, but
+        # both values are exposed through the complete PX4 parameter inventory.
+        # Restore the release baseline before returning so a successful HIL
+        # fixture cannot make the next deployment audit report false drift.
+        cleanup_result = None
+        cleanup_acknowledgement = None
+        if next_token != 0:
+            cleanup_result = self.px4(
+                "set_param",
+                param_name="SIM_BAT_RESET",
+                param_value=0,
+                param_type=6,
+                timeout_sec=timeout_sec,
+            )
+            cleanup_deadline = time.monotonic() + timeout_sec
+            while time.monotonic() < cleanup_deadline:
+                cleanup_acknowledgement = self.px4(
+                    "get_param",
+                    param_name="SIM_BAT_RST_ACK",
+                    timeout_sec=max(0.1, cleanup_deadline - time.monotonic()),
+                )
+                if int(round(float(cleanup_acknowledgement.data["param_value"]))) == 0:
+                    break
+                time.sleep(min(0.1, max(0.0, cleanup_deadline - time.monotonic())))
+
+        cleanup_ack_token = (
+            0
+            if next_token == 0
+            else None
+            if cleanup_acknowledgement is None
+            else int(round(float(cleanup_acknowledgement.data["param_value"])))
+        )
+
         data = {
             "target_remaining_pct": target_pct,
             "tolerance_pct": tolerance_pct,
@@ -2612,6 +2809,8 @@ class DroneAgentTools:
             "acknowledgement_parameter": None if acknowledgement is None else acknowledgement.data,
             "initial_percentage_parameter": initial_result.data,
             "reset_parameter": reset_result.data,
+            "cleanup_reset_parameter": None if cleanup_result is None else cleanup_result.data,
+            "cleanup_acknowledgement_token": cleanup_ack_token,
             "battery_before": None if before is None else self._message_to_nested_dict(before),
             "battery_after": None if after is None else self._message_to_nested_dict(after),
             "observed_remaining_pct": observed_pct,
@@ -2621,6 +2820,8 @@ class DroneAgentTools:
         }
         if acknowledgement_token != next_token:
             return ToolResult(False, data, "battery simulator did not acknowledge the reset request")
+        if cleanup_ack_token != 0:
+            return ToolResult(False, data, "battery simulator reset handshake did not return to baseline")
         if observed_pct is None:
             return ToolResult(False, data, "battery reset was acknowledged but no battery status was observed")
         return ToolResult(
@@ -2791,9 +2992,18 @@ class DroneAgentTools:
             }
 
             if vehicle_status is not None:
+                # The uXRCE/DDS VehicleStatus sample is the PX4-side truth for
+                # arming state.  MAVSDK telemetry may remain connected while
+                # returning an old armed/in-air snapshot after an external-mode
+                # action is cancelled, so never let that stale snapshot win.
+                data["derived"]["armed"] = int(vehicle_status.arming_state) == int(
+                    VehicleStatus.ARMING_STATE_ARMED
+                )
                 data["derived"]["nav_state"] = int(vehicle_status.nav_state)
                 data["derived"]["failsafe"] = bool(vehicle_status.failsafe)
-            if land_detected is not None and data["derived"]["in_air"] is None:
+            if land_detected is not None:
+                # VehicleLandDetected is likewise authoritative for the
+                # airborne/landed postcondition in split-host HIL.
                 data["derived"]["in_air"] = not bool(land_detected.landed)
         except Exception as exc:
             data["ros"]["error"] = exception_message(exc)
@@ -3080,7 +3290,7 @@ class DroneAgentTools:
         stable_sec: float,
     ) -> dict[str, Any]:
         try:
-            from px4_msgs.msg import VehicleCommand
+            from px4_msgs.msg import VehicleCommand, VehicleStatus
         except ImportError as exc:
             raise RuntimeError("px4_msgs is required for PX4 nav-state commands") from exc
 
@@ -3090,9 +3300,21 @@ class DroneAgentTools:
             while publisher.get_subscription_count() == 0 and time.monotonic() < deadline:
                 rclpy.spin_once(self.node, timeout_sec=0.1)
 
+            # PX4 validates command timestamps in its own boot-time domain.
+            # Split-host HIL intentionally does not share wall-clock time with
+            # SITL, so obtain the timestamp from the live VehicleStatus sample
+            # rather than using the Pi process clock.
+            vehicle_status = self._take_message(
+                "/fmu/out/vehicle_status_v1",
+                VehicleStatus,
+                2.0,
+                required=False,
+            )
+            vehicle_timestamp = int(getattr(vehicle_status, "timestamp", 0) or 0)
+
             for _ in range(max(1, repeat_count)):
                 message = VehicleCommand()
-                message.timestamp = int(self.node.get_clock().now().nanoseconds / 1000)
+                message.timestamp = vehicle_timestamp or int(self.node.get_clock().now().nanoseconds / 1000)
                 message.command = VehicleCommand.VEHICLE_CMD_SET_NAV_STATE
                 message.param1 = float(nav_state)
                 message.target_system = target_system
@@ -3123,6 +3345,10 @@ class DroneAgentTools:
         postcondition_timeout_sec: float,
         stable_sec: float,
     ) -> ToolResult:
+        target_system, target_component = self._resolve_px4_command_target(
+            target_system,
+            target_component,
+        )
         try:
             status = self._publish_px4_nav_state_command(
                 nav_state,
@@ -3137,12 +3363,26 @@ class DroneAgentTools:
         except TimeoutError as ros_exc:
             ros_error = str(ros_exc)
 
-        client = Px4CommandClient(self._px4_system_address)
-        command_data = client.set_external_nav_state_mavlink(
-            nav_state,
-            target_system=target_system,
-            target_component=target_component,
-            timeout_sec=max(5.0, min(20.0, postcondition_timeout_sec)),
+        async def send_external_mode_via_mavsdk() -> dict[str, Any]:
+            client = Px4CommandClient(self._px4_system_address)
+            try:
+                await client.connect()
+                return await client.set_external_nav_state(
+                    nav_state,
+                    target_system=target_system,
+                    target_component=target_component,
+                )
+            finally:
+                await client.close_async()
+
+        # Reuse the existing MAVSDK server instead of opening a second UDP
+        # listener on the PX4 endpoint. In split-host HIL the runtime already
+        # owns that listener, so the old pymavlink fallback failed with EADDRINUSE.
+        command_data = asyncio.run(
+            asyncio.wait_for(
+                send_external_mode_via_mavsdk(),
+                timeout=max(5.0, min(20.0, postcondition_timeout_sec)),
+            )
         )
         try:
             status = self._wait_px4_nav_state(
@@ -3156,9 +3396,35 @@ class DroneAgentTools:
             ) from exc
         data = dict(command_data)
         data.update(status)
-        data["external_mode_command_method"] = "mavlink_do_set_mode"
+        data["external_mode_command_method"] = "mavsdk_mavlink_direct_do_set_mode"
         data["ros_vehicle_command_error"] = ros_error
         return ToolResult(True, data, "PX4 external mode command accepted")
+
+    def _resolve_px4_command_target(
+        self,
+        target_system: int,
+        target_component: int,
+    ) -> tuple[int, int]:
+        """Use the live PX4 identity instead of an assumed MAVLink system ID."""
+        try:
+            from px4_msgs.msg import VehicleStatus
+            if not hasattr(self, "node"):
+                return int(target_system), int(target_component)
+            status = self._take_message(
+                "/fmu/out/vehicle_status_v1",
+                VehicleStatus,
+                1.0,
+                required=False,
+            )
+            if status is None:
+                return int(target_system), int(target_component)
+            live_system = int(getattr(status, "system_id", 0))
+            live_component = int(getattr(status, "component_id", 0))
+            if 1 <= live_system <= 255 and 1 <= live_component <= 255:
+                return live_system, live_component
+        except Exception:
+            pass
+        return int(target_system), int(target_component)
 
     @staticmethod
     def _px4_input_qos() -> QoSProfile:
@@ -3224,6 +3490,10 @@ class DroneAgentTools:
         except ImportError as exc:
             raise RuntimeError("px4_msgs is required for PX4 arm/disarm commands") from exc
 
+        target_system, target_component = self._resolve_px4_command_target(
+            target_system,
+            target_component,
+        )
         publisher = self.node.create_publisher(VehicleCommand, "/fmu/in/vehicle_command", self._px4_input_qos())
         try:
             deadline = time.monotonic() + 2.0
@@ -3277,6 +3547,197 @@ class DroneAgentTools:
             f"{int(target_state)}; last arming_state={int(last_status.arming_state)}, "
             f"nav_state={int(last_status.nav_state)}"
         )
+
+    def _send_px4_takeoff(
+        self,
+        *,
+        takeoff_altitude_m: float,
+        target_system: int,
+        target_component: int,
+        repeat_count: int,
+        postcondition_timeout_sec: float,
+    ) -> ToolResult:
+        """Issue a target-resolved takeoff command and observe airborne state."""
+        try:
+            from px4_msgs.msg import VehicleGlobalPosition, VehicleLandDetected
+        except ImportError as exc:
+            raise RuntimeError("px4_msgs is required for PX4 takeoff commands") from exc
+
+        target_system, target_component = self._resolve_px4_command_target(
+            target_system,
+            target_component,
+        )
+        global_position = self._take_message(
+            "/fmu/out/vehicle_global_position",
+            VehicleGlobalPosition,
+            3.0,
+        )
+        if not bool(global_position.lat_lon_valid) or not bool(global_position.alt_valid):
+            raise RuntimeError("PX4 global position is not valid for a targeted takeoff command")
+        takeoff_altitude_amsl_m = float(global_position.alt) + float(takeoff_altitude_m)
+
+        async def request_takeoff() -> dict[str, Any]:
+            client = Px4CommandClient(self._px4_system_address)
+            try:
+                await client.connect()
+                return await client.takeoff_target(
+                    target_system=target_system,
+                    target_component=target_component,
+                    takeoff_altitude_m=takeoff_altitude_m,
+                    latitude_deg=float(global_position.lat),
+                    longitude_deg=float(global_position.lon),
+                    takeoff_altitude_amsl_m=takeoff_altitude_amsl_m,
+                )
+            finally:
+                await client.close_async()
+
+        try:
+            command_results = [
+                asyncio.run(asyncio.wait_for(request_takeoff(), timeout=10.0))
+                for _ in range(max(1, repeat_count))
+            ]
+        except Exception as exc:
+            raise RuntimeError(f"targeted MAVLink takeoff request failed: {exc}") from exc
+
+        deadline = time.monotonic() + postcondition_timeout_sec
+        last_landed: Any = None
+        while time.monotonic() < deadline and rclpy.ok():
+            landed = self._take_message(
+                "/fmu/out/vehicle_land_detected",
+                VehicleLandDetected,
+                min(0.5, max(0.1, deadline - time.monotonic())),
+                required=False,
+            )
+            if landed is not None:
+                last_landed = landed
+                if not bool(landed.landed):
+                    return ToolResult(
+                        True,
+                        {
+                            "in_air": True,
+                            "takeoff_altitude_m": float(takeoff_altitude_m),
+                            "takeoff_altitude_amsl_m": takeoff_altitude_amsl_m,
+                            "target_system": target_system,
+                            "target_component": target_component,
+                            "command_results": command_results,
+                        },
+                        "takeoff complete",
+                    )
+            time.sleep(0.1)
+        if last_landed is None:
+            raise TimeoutError("timed out waiting for PX4 takeoff; no VehicleLandDetected received")
+        raise TimeoutError("timed out waiting for PX4 takeoff; vehicle still reports landed")
+
+    def _send_px4_land(
+        self,
+        *,
+        target_system: int,
+        target_component: int,
+        repeat_count: int,
+        postcondition_timeout_sec: float,
+    ) -> ToolResult:
+        """Land the addressed PX4 vehicle and wait for its land detector."""
+        try:
+            from px4_msgs.msg import VehicleLandDetected
+        except ImportError as exc:
+            raise RuntimeError("px4_msgs is required for PX4 landing commands") from exc
+
+        target_system, target_component = self._resolve_px4_command_target(
+            target_system,
+            target_component,
+        )
+
+        async def request_land() -> dict[str, Any]:
+            client = Px4CommandClient(self._px4_system_address)
+            try:
+                await client.connect()
+                return await client.land_target(
+                    target_system=target_system,
+                    target_component=target_component,
+                )
+            finally:
+                await client.close_async()
+
+        try:
+            command_results = [
+                asyncio.run(asyncio.wait_for(request_land(), timeout=10.0))
+                for _ in range(max(1, repeat_count))
+            ]
+        except Exception as exc:
+            raise RuntimeError(f"targeted MAVLink land request failed: {exc}") from exc
+
+        deadline = time.monotonic() + postcondition_timeout_sec
+        last_landed: Any = None
+        while time.monotonic() < deadline and rclpy.ok():
+            landed = self._take_message(
+                "/fmu/out/vehicle_land_detected",
+                VehicleLandDetected,
+                min(0.5, max(0.1, deadline - time.monotonic())),
+                required=False,
+            )
+            if landed is not None:
+                last_landed = landed
+                if bool(landed.landed):
+                    return ToolResult(
+                        True,
+                        {
+                            "landed": True,
+                            "target_system": target_system,
+                            "target_component": target_component,
+                            "command_results": command_results,
+                        },
+                        "landing complete",
+                    )
+            time.sleep(0.1)
+        if last_landed is None:
+            raise TimeoutError("timed out waiting for PX4 landing; no VehicleLandDetected received")
+        raise TimeoutError("timed out waiting for PX4 landing; vehicle still reports airborne")
+
+    def _send_px4_hold(
+        self,
+        *,
+        target_system: int,
+        target_component: int,
+        repeat_count: int,
+        postcondition_timeout_sec: float,
+    ) -> ToolResult:
+        """Select AUTO/LOITER on the live PX4 identity before arming."""
+        target_system, target_component = self._resolve_px4_command_target(
+            target_system,
+            target_component,
+        )
+
+        async def request_hold() -> dict[str, Any]:
+            client = Px4CommandClient(self._px4_system_address)
+            try:
+                await client.connect()
+                return await client.hold_target(
+                    target_system=target_system,
+                    target_component=target_component,
+                )
+            finally:
+                await client.close_async()
+
+        try:
+            command_results = [
+                asyncio.run(asyncio.wait_for(request_hold(), timeout=10.0))
+                for _ in range(max(1, repeat_count))
+            ]
+        except Exception as exc:
+            raise RuntimeError(f"targeted MAVLink Hold request failed: {exc}") from exc
+        status = self._wait_px4_nav_state(
+            4,  # VehicleStatus.NAVIGATION_STATE_AUTO_LOITER
+            timeout_sec=postcondition_timeout_sec,
+            stable_sec=0.5,
+        )
+        status.update(
+            {
+                "target_system": target_system,
+                "target_component": target_component,
+                "command_results": command_results,
+            }
+        )
+        return ToolResult(True, status, "Hold selected")
 
     def _wait_px4_local_altitude(self, min_altitude_m: float, *, timeout_sec: float) -> dict[str, Any]:
         try:
@@ -3360,7 +3821,7 @@ class DroneAgentTools:
         if command == "boot":
             timeout_sec = float(kwargs.get("timeout_sec", 120.0))
             result = self._run_tool_command(
-                self._iii_command("system", "boot"),
+                self._iii_mutation_command("system", "boot"),
                 timeout_sec=timeout_sec,
                 daemon_timeout_sec=timeout_sec,
             )
@@ -3378,7 +3839,7 @@ class DroneAgentTools:
                 )
             return self._system_start_until_ready(timeout_sec=float(kwargs.get("timeout_sec", 120.0)))
         if command == "stop":
-            args = self._iii_command("system", "stop")
+            args = self._iii_mutation_command("system", "stop")
             if kwargs.get("entity_id"):
                 args.extend(["--select-nodes", str(kwargs["entity_id"])])
                 if kwargs.get("include_dependencies", True):
@@ -3386,7 +3847,7 @@ class DroneAgentTools:
             timeout_sec = float(kwargs.get("timeout_sec", 60.0))
             return self._run_tool_command(args, timeout_sec=timeout_sec, daemon_timeout_sec=timeout_sec)
         if command == "restart":
-            args = self._iii_command("system", "restart")
+            args = self._iii_mutation_command("system", "restart")
             if kwargs.get("cold", True):
                 args.append("--cold")
             if kwargs.get("entity_id"):
@@ -3396,13 +3857,13 @@ class DroneAgentTools:
             timeout_sec = float(kwargs.get("timeout_sec", 180.0))
             return self._run_tool_command(args, timeout_sec=timeout_sec, daemon_timeout_sec=timeout_sec)
         if command == "shutdown":
-            args = self._iii_command("system", "shutdown")
+            args = self._iii_mutation_command("system", "shutdown")
             if kwargs.get("keep_session", False):
                 args.append("--keep-session")
             timeout_sec = float(kwargs.get("timeout_sec", 90.0))
             return self._run_tool_command(args, timeout_sec=timeout_sec, daemon_timeout_sec=timeout_sec)
         if command == "daemon_restart":
-            return self._run_tool_command(self._iii_command("system", "daemon", "restart"), timeout_sec=kwargs.get("timeout_sec", 30.0))
+            return self._run_tool_command(self._iii_mutation_command("system", "daemon", "restart"), timeout_sec=kwargs.get("timeout_sec", 30.0))
         if command == "status":
             return self._run_tool_command(self._iii_command("system", "status"), timeout_sec=kwargs.get("timeout_sec", 10.0))
         if command == "service_list":
@@ -3410,7 +3871,7 @@ class DroneAgentTools:
         if command == "service_restart":
             timeout_sec = float(kwargs.get("timeout_sec", 60.0))
             return self._run_tool_command(
-                self._iii_command("system", "service", "restart", str(kwargs["entity_id"])),
+                self._iii_mutation_command("system", "service", "restart", str(kwargs["entity_id"])),
                 timeout_sec=timeout_sec,
                 daemon_timeout_sec=timeout_sec,
             )
@@ -3566,7 +4027,7 @@ class DroneAgentTools:
         last_result: ToolResult | None = None
         while time.monotonic() < deadline:
             per_attempt_timeout = max(5.0, min(120.0, deadline - time.monotonic()))
-            command = self._iii_command("system", "start")
+            command = self._iii_mutation_command("system", "start")
             if entity_id:
                 command.extend(["--select-nodes", entity_id])
                 if include_dependencies:
@@ -3592,13 +4053,13 @@ class DroneAgentTools:
                 if boot_timeout > 0.0:
                     if daemon_timed_out:
                         self._run_tool_command(
-                            self._iii_command("system", "daemon", "restart"),
+                            self._iii_mutation_command("system", "daemon", "restart"),
                             timeout_sec=boot_timeout,
                             daemon_timeout_sec=boot_timeout,
                             check=False,
                         )
                     self._run_tool_command(
-                        self._iii_command("system", "boot"),
+                        self._iii_mutation_command("system", "boot"),
                         timeout_sec=boot_timeout,
                         daemon_timeout_sec=boot_timeout,
                         check=False,
@@ -3633,18 +4094,20 @@ class DroneAgentTools:
         headless: bool = False,
         wait_ready: bool = True,
         ready_timeout_sec: float = 180.0,
+        sim_model: Optional[str] = None,
     ) -> ToolResult:
         script = self._workspace_root / "tools" / "simulation" / "launch_simulation_tools.sh"
+        model_args = ["--sim-model", sim_model] if sim_model else []
         if command == "start":
             timeout_sec = 180.0 if timeout_sec is None else timeout_sec
-            command_args = [str(script), "--no-attach"]
+            command_args = [str(script), "--no-attach", *model_args]
             if headless:
                 command_args.append("--headless")
             result = self._run_tool_command(command_args, timeout_sec=timeout_sec)
             return self._wait_for_simulation_ready(result, ready_timeout_sec) if result.success and wait_ready else result
         if command == "restart":
             timeout_sec = 180.0 if timeout_sec is None else timeout_sec
-            command_args = [str(script), "--no-attach", "--recreate"]
+            command_args = [str(script), "--no-attach", "--recreate", *model_args]
             if headless:
                 command_args.append("--headless")
             result = self._run_tool_command(command_args, timeout_sec=timeout_sec)
@@ -3656,6 +4119,28 @@ class DroneAgentTools:
             timeout_sec = 10.0 if timeout_sec is None else timeout_sec
             return self._run_tool_command([str(script), "--status"], timeout_sec=timeout_sec)
         raise ValueError(f"unknown simulation command: {command}")
+
+    def _gazebo_drone_model(self) -> str:
+        """Gazebo entity name of the simulated drone.
+
+        III_GAZEBO_DRONE_MODEL overrides; otherwise the name follows the running
+        PX4 SITL model (gz_<model> spawns <model>_<instance>).
+        """
+        configured = os.environ.get("III_GAZEBO_DRONE_MODEL")
+        if configured:
+            return configured
+        instance = os.environ.get("III_SIM_TOOLS_PX4_INSTANCE", "0")
+        running = ""
+        try:
+            status = self.simulation("status", timeout_sec=15.0)
+            for line in str((status.data or {}).get("stdout", "")).splitlines():
+                if line.startswith("px4_sim_model_running:"):
+                    running = line.split(":", 1)[1].strip()
+        except Exception:  # noqa: BLE001 - fall back to the production drone name
+            running = ""
+        if running.startswith("gz_"):
+            return f"{running[len('gz_'):]}_{instance}"
+        return f"d4s_dc_drone_{instance}"
 
     @staticmethod
     def _simulation_status_flags(stdout: str) -> dict[str, bool]:
@@ -4001,9 +4486,7 @@ class DroneAgentTools:
             gazebo_pose = self._lookup_gazebo_drone_model_pose(timeout_sec=float(kwargs.get("gazebo_timeout_sec", 5.0)))
             record["gazebo_ground_truth_pose"] = gazebo_pose
             record["recorded_from"]["gazebo_world"] = "hca_full_pylon_setup"
-            record["recorded_from"]["gazebo_model"] = os.environ.get(
-                "III_GAZEBO_DRONE_MODEL", "d4s_dc_drone_0"
-            )
+            record["recorded_from"]["gazebo_model"] = self._gazebo_drone_model()
             record["recorded_from"]["gazebo_model_pose"] = {
                 "position": gazebo_pose["position"],
                 "orientation": gazebo_pose["orientation"],
@@ -4125,9 +4608,8 @@ class DroneAgentTools:
 
         recorded_from = position.get("recorded_from") if isinstance(position.get("recorded_from"), dict) else {}
         world = str(recorded_from.get("gazebo_world") or "hca_full_pylon_setup")
-        model = os.environ.get(
-            "III_GAZEBO_DRONE_MODEL",
-            str(recorded_from.get("gazebo_model") or "d4s_dc_drone_0"),
+        model = os.environ.get("III_GAZEBO_DRONE_MODEL") or str(
+            recorded_from.get("gazebo_model") or self._gazebo_drone_model()
         )
         half_yaw = gazebo_pose["yaw"] / 2.0
         request = Pose()
@@ -4237,18 +4719,33 @@ class DroneAgentTools:
         model_name: str | None = None,
         timeout_sec: float = 5.0,
     ) -> dict[str, Any]:
-        model_name = model_name or os.environ.get("III_GAZEBO_DRONE_MODEL", "d4s_dc_drone_0")
-        result = self.gazebo(
-            "topic_once",
-            topic=f"/world/{world}/dynamic_pose/info",
-            timeout_sec=timeout_sec,
-            filename="gz_dynamic_pose_for_recorded_position.txt",
-        )
-        stdout = ((result.data or {}).get("stdout") if isinstance(result.data, dict) else "") or ""
-        pose = self._parse_gazebo_named_pose(stdout, model_name)
-        if pose is None:
-            raise RuntimeError(f"Gazebo pose for model {model_name!r} not found on world {world!r}")
-        return pose
+        model_name = model_name or self._gazebo_drone_model()
+        local_error = ""
+        try:
+            result = self.gazebo(
+                "topic_once",
+                topic=f"/world/{world}/dynamic_pose/info",
+                timeout_sec=timeout_sec,
+                filename="gz_dynamic_pose_for_recorded_position.txt",
+            )
+            stdout = ((result.data or {}).get("stdout") if isinstance(result.data, dict) else "") or ""
+            pose = self._parse_gazebo_named_pose(stdout, model_name)
+            if pose is not None:
+                return pose
+            local_error = result.message or f"Gazebo pose for model {model_name!r} not found"
+        except Exception as exc:
+            local_error = str(exc)
+
+        # Split-host HIL intentionally runs Gazebo on the workstation and the
+        # mission workflow on the Pi. The workstation bridge publishes the raw
+        # Gazebo pose into the Pi ROS graph for exactly this case.
+        try:
+            return self._lookup_simulation_ground_truth_drone_pose(timeout_sec=timeout_sec)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Gazebo pose for model {model_name!r} unavailable on world {world!r}; "
+                f"local query failed: {local_error}; bridged ground-truth fallback failed: {exc}"
+            ) from exc
 
     @staticmethod
     def _parse_gazebo_named_pose(stdout: str, model_name: str) -> dict[str, Any] | None:
@@ -4920,7 +5417,6 @@ class DroneAgentTools:
 
         corridor = corridor_model(geometry)
         center = corridor["center"]
-        span_axis = corridor["span_axis"]
         lateral_axis = corridor["lateral_axis"]
         z_range = conductor_height_range(geometry)
         try:
@@ -5536,6 +6032,10 @@ class DroneAgentTools:
             )
         return [self._iii_cli_path, *args]
 
+    def _iii_mutation_command(self, *args: str) -> list[str]:
+        """Build a non-interactive, explicitly confirmed III CLI mutation."""
+        return [*self._iii_command(*args), "--confirm", "--non-interactive"]
+
     def _send_action(self, client: ActionClient, goal: Any, action_name: str, timeout_sec: Optional[float]) -> ToolResult:
         if not client.wait_for_server(timeout_sec=timeout_sec):
             return ToolResult(False, message=f"{action_name} action server unavailable")
@@ -5830,6 +6330,34 @@ class DroneAgentTools:
         transform = self._lookup_world_drone_transform(timeout_sec=timeout_sec)
         pose = transform["pose"]
         return {"x": pose["x"], "y": pose["y"], "z": pose["z"], "yaw": pose["yaw"]}
+
+    def _lookup_simulation_ground_truth_drone_pose(self, *, timeout_sec: float) -> dict[str, float]:
+        """Read the bridged Gazebo pose without requiring Gazebo on this host.
+
+        Split-host HIL intentionally keeps Gazebo on the workstation while the
+        ROS graph and mission workflow run on the Pi. The simulation bridge
+        publishes this topic into that ROS graph, retaining Gazebo's ENU pose
+        convention for fixture-to-live-world mapping.
+        """
+        message = self._take_message(
+            "/simulation/ground_truth/drone/odometry",
+            Odometry,
+            timeout_sec,
+            required=True,
+        )
+        orientation = message.pose.pose.orientation
+        yaw = math.atan2(
+            2.0 * (orientation.w * orientation.z + orientation.x * orientation.y),
+            1.0 - 2.0 * (orientation.y * orientation.y + orientation.z * orientation.z),
+        )
+        position = message.pose.pose.position
+        return {
+            "x": float(position.x),
+            "y": float(position.y),
+            "z": float(position.z),
+            "yaw": float(yaw),
+            "source": "bridged_simulation_ground_truth_odometry",
+        }
 
     def _lookup_world_drone_transform(self, *, timeout_sec: float) -> dict[str, Any]:
         try:

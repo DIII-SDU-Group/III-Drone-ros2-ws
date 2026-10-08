@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Finalize the 20-flight qualification dataset and visibility audit."""
 from __future__ import annotations
-import collections,csv,hashlib,json,subprocess,sys
+import collections, csv, json, subprocess, sys
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt

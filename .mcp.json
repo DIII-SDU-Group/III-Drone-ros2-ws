@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "iii_drone": {
+      "command": "bash",
+      "args": ["scripts/workspace/iii_drone_mcp_bridge.sh"]
+    }
+  }
+}

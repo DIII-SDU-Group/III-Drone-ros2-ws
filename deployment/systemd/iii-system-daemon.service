@@ -1,0 +1,22 @@
+[Unit]
+Description=III editable-workspace system daemon
+After=network-online.target
+Wants=network-online.target
+PartOf=iii.target
+ConditionPathExists=/home/iii/ws/install/setup.bash
+ConditionPathExists=/home/iii/ws/.venv/bin/python
+
+[Service]
+Type=simple
+User=iii
+Group=iii
+WorkingDirectory=/home/iii/ws
+EnvironmentFile=/etc/iii/runtime.env
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source /home/iii/ws/install/setup.bash && exec /home/iii/ws/.venv/bin/python -m iii_drone_supervision.system_daemon --socket /run/iii/system_manager.sock'
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=20s
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

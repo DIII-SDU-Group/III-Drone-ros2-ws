@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate one completed qualification bag and its executed truth trajectory."""
 from __future__ import annotations
-import argparse,csv,json,math,sys
+import argparse, csv, json, sys
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt

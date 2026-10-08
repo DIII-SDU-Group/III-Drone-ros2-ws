@@ -2,15 +2,6 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Install development configuration",
-            "type": "shell",
-            "command": "${workspaceFolder}/src/III-Drone-Configuration/scripts/install.sh",
-            "args": [
-                "${workspaceFolder}/.config"
-            ],
-            "problemMatcher": []
-        },
-        {
             "label": "PX4 clean",
             "type": "shell",
             "command": "if [ ${input:cleanPrompt} == \"Yes\" ]; then cd ~/ws/PX4-Autopilot && make clean; else echo \"Cleaning cancelled.\"; exit 1; fi",
@@ -112,16 +103,6 @@
         }
     ],
     "inputs": [
-        {
-            "id": "dockerComposeBuildFiles",
-            "type": "command",
-            "command": "extension.commandvariable.file.pickFile",
-            "description": "Select the docker-compose files to build",
-            "fromWorkspace": "${workspaceFolderBasename}",
-            "args": {
-                "include": "docker/docker-compose*.yml",
-            }
-        },
         {
             "id": "cleanPrompt",
             "description": "Are you sure you want to clean the workspace?",

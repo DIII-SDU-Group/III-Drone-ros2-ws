@@ -141,7 +141,6 @@ def main() -> int:
         matrix = lambda names: np.array([[float(row[name]) for name in names] for row in rows])
         actual_p = matrix(["actual_xG", "actual_yG", "actual_zG"])
         actual_v = matrix(["actual_vxG", "actual_vyG", "actual_vzG"])
-        command_p = matrix(["cmd_xG", "cmd_yG", "cmd_zG"])
         command_v = matrix(["cmd_vxG", "cmd_vyG", "cmd_vzG"])
         command_yaw = matrix(["cmd_yaw"])[:, 0]
         executed_d = g.z(g.ids[0], actual_p[:, 0]) - actual_p[:, 2]

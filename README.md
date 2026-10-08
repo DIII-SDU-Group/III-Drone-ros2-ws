@@ -43,9 +43,9 @@ Development uses the VS Code devcontainer as the reference OS-equivalent environ
 - Cross-compilation container: `Dockerfile.cc`
 - Entrypoints: `entrypoint_dev.sh`, `entrypoint_real.sh`, `entrypoint_cc.sh`
 
-The workspace-owned [`deployment/`](deployment/) package and Ansible assets own
-native host installation. This workspace also owns the internal daemon, launch
-graph, service model, and devcontainer behavior.
+The workspace-owned [`deployment/`](deployment/) Ansible assets configure the
+native Pi as an editable developer host. This workspace also owns the internal
+daemon, launch graph, service model, and devcontainer behavior.
 
 ## Canonical Bringup Model
 
@@ -74,14 +74,18 @@ From the host workspace root, the complete operator stack can be started and
 managed without entering the devcontainer terminal:
 
 ```bash
+python3 scripts/install_gc.py --profile dev
 ./iii-dev stack start
 ./iii-dev stack status
-./iii-dev system attach
+iii --runtime-target sim system attach
 ./iii-dev stack stop
 ```
 
 See [`docs/host-development-commands.md`](docs/host-development-commands.md)
 for individual simulation, III CLI, tmux, shell, and ground-control commands.
+The [ground-computer install guide](docs/ground-computer-installation.md)
+describes native workstation and field-laptop profiles and the pinned GUI/QGC
+paths.
 
 The underlying canonical commands remain available inside the devcontainer:
 
@@ -90,16 +94,17 @@ iii system boot
 iii system attach
 ```
 
-## Branching And Stability
+## Field Iteration
 
-Recommended working model:
+The Pi is an editable research host. Use ordinary Git workflow for collaboration
+and deploy a local change directly when testing:
 
-- `main`: stable, deployable
-- `develop`: active integration
-- `release`: qualified workspace releases promoted only from `main`
-- feature branches: all development work
-- `promote/develop-to-main/*`: mechanical, evidence-gated promotion branches
-- `vX.Y.Z` tags: immutable qualified snapshots reachable from `release`
+```bash
+iii deploy dev --host <pi-host-or-ip> --build --restart
+```
+
+This path intentionally has no signed release, receiver, immutable slot, or
+qualification gate. See [developer host provisioning](docs/host-provisioning.md).
 
 ## Dependency Governance
 
@@ -116,6 +121,8 @@ CI enforces lock consistency on PRs/pushes.
 Start here for detailed technical documentation:
 
 - [Workspace Docs Index](docs/README.md)
+- [Domain Context Map](CONTEXT-MAP.md)
+- [Agent Router](AGENTS.md)
 - [Workspace Overview](docs/workspace-overview.md)
 - [Runtime Launch And Node Graph](docs/runtime-launch-and-node-graph.md)
 - [Supervision And Process Management](docs/supervision-and-process-management.md)
@@ -128,6 +135,6 @@ Start here for detailed technical documentation:
 This codebase was built in active research and is being hardened for multi-developer team use while continuing feature development.
 
 That means ongoing priorities are:
-- robustness and reproducibility
-- clearer ownership and release discipline
-- preserving operator transparency during testing
+- rapid test iteration
+- transparent runtime operation
+- preserving physical flight safety during testing

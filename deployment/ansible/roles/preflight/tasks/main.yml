@@ -1,0 +1,22 @@
+---
+- name: Report the developer field host
+  ansible.builtin.debug:
+    msg: >-
+      Provisioning {{ inventory_hostname }} as an editable III developer host.
+      No receiver, signing, enrollment, or trust-store input is required.
+
+# 0..101 is the portable ROS 2 domain range on Linux. The OptiTrack lab
+# gateway publishes in domain 0 (docs/opti-track-lab-readiness.md); the
+# opti_track pose relay bridges that domain into the stack domain, so they
+# must differ.
+- name: Validate the aircraft profile and stack ROS domain
+  ansible.builtin.assert:
+    that:
+      - iii_profile in ['hil', 'real', 'opti_track']
+      - (iii_ros_domain_id | string) is match('^[0-9]{1,3}$')
+      - (iii_ros_domain_id | int) <= 101
+      - iii_profile != 'opti_track' or (iii_ros_domain_id | int) != 0
+    fail_msg: >-
+      iii_profile must be hil, real, or opti_track, and iii_ros_domain_id must
+      be within 0..101 (and not the OptiTrack lab domain 0 for opti_track).
+    quiet: true
