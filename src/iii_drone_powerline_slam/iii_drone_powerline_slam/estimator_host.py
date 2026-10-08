@@ -870,6 +870,10 @@ class Host:
             self.epoch = None
         self.pending.clear()
         self.send(("epoch_ended", counts))
+        # HOST_GC_AT_SEAL_v1: nothing is being estimated; an ended epoch is a web of cycles that only a full collection frees
+        # (a deactivation ends the epoch here, and the next activation finds no epoch to end)
+        self.finish_drop()
+        self.gc.collect()
 
 
 def main(conn_in, conn_out, config_path: str, tools: str) -> None:
