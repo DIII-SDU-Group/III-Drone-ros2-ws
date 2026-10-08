@@ -560,7 +560,8 @@ def test_a_rollover_that_takes_too_long_fails_closed_and_a_new_epoch_recovers(no
     node._enqueue("camera", _image(3))
     node._enqueue("command", _command("traversal_complete", 4.0))
     assert _wait(lambda: node._overload is not None)
-    assert node._overload["fail_closed_reason"] == "TRAVERSAL_EPOCH_v1:ROLLOVER_TIMEOUT" and node._state == "FailClosed"
+    assert node._overload["fail_closed_reason"] == "TRAVERSAL_EPOCH_v1:ROLLOVER_TIMEOUT"
+    assert _wait(lambda: node._state == "FailClosed")                          # the state follows the latch
     assert node._rollovers == 0
     node._enqueue("camera", _image(5))                                       # dead epoch: counted, never forwarded
     assert node._overload_counters["messages_dropped_after_overload"] == 1
@@ -739,8 +740,8 @@ def test_an_internal_error_in_the_receiver_fails_closed_instead_of_going_silent(
     assert node.trigger_activate() == TransitionCallbackReturn.SUCCESS
     node._publish_frame = lambda *args: (_ for _ in ()).throw(RuntimeError("stand-in publish failure"))
     node._enqueue("camera", _image(3))
-    assert _wait(lambda: node._overload is not None)
-    assert node._overload["fail_closed_reason"] == "NODE_INTERNAL:RECEIVER_EXCEPTION" and node._state == "FailClosed"
+    assert _wait(lambda: node._overload is not None and node._state == "FailClosed")     # the state follows the latch
+    assert node._overload["fail_closed_reason"] == "NODE_INTERNAL:RECEIVER_EXCEPTION"
     assert node._receiver.is_alive()
 
 
