@@ -129,10 +129,48 @@ iii_dev_container_status() {
     return 1
 }
 
+iii_dev_host_has_nvidia_container_support() {
+    "${III_DEV_DOCKER_BIN}" info --format '{{json .}}' 2>/dev/null | grep -qi nvidia
+}
+
+# devcontainer.json requests the NVIDIA container runtime. On a host without it
+# (integrated Intel/AMD graphics) `docker run --gpus all` is refused, so render
+# through Mesa instead: drop the NVIDIA request and pass the host DRM devices
+# together with the groups that own them.
+iii_dev_write_mesa_devcontainer_config() {
+    local output="$1"
+    local device gid
+    local run_args=""
+    local -A seen_gids=()
+
+    if [[ -d /dev/dri ]]; then
+        run_args+='        "--device", "/dev/dri",\n'
+        for device in /dev/dri/renderD* /dev/dri/card*; do
+            [[ -e "${device}" ]] || continue
+            gid="$(stat -c '%g' "${device}")" || return
+            [[ -z "${seen_gids[${gid}]:-}" ]] || continue
+            seen_gids["${gid}"]=1
+            run_args+="        \"--group-add\", \"${gid}\",\n"
+        done
+    fi
+
+    sed -E \
+        -e '/"(NVIDIA_VISIBLE_DEVICES|NVIDIA_DRIVER_CAPABILITIES|__GLX_VENDOR_LIBRARY_NAME)"[[:space:]]*:/d' \
+        -e "s|^[[:space:]]*\"--gpus\",[[:space:]]*\"all\",[[:space:]]*\$|${run_args%\\n}|" \
+        "${III_DEV_WORKSPACE_ROOT}/.devcontainer/devcontainer.json" > "${output}" || return
+    if grep -q -- '--gpus\|NVIDIA\|nvidia' "${output}"; then
+        iii_dev_die "Could not derive a Mesa devcontainer configuration from .devcontainer/devcontainer.json."
+        return 1
+    fi
+}
+
 iii_dev_container_up() {
     local command_name="${III_DEV_DEVCONTAINER_BIN:-devcontainer}"
     local -a devcontainer_command=()
+    local -a devcontainer_args=()
     local container_id=""
+    local mesa_config=""
+    local up_rc=0
 
     iii_dev_require_docker || return
     if [[ -n "$(iii_dev_running_containers)" ]]; then
@@ -159,7 +197,16 @@ iii_dev_container_up() {
         return 1
     fi
 
-    "${devcontainer_command[@]}" up --workspace-folder "${III_DEV_WORKSPACE_ROOT}"
+    devcontainer_args=(up --workspace-folder "${III_DEV_WORKSPACE_ROOT}")
+    if ! iii_dev_host_has_nvidia_container_support; then
+        printf 'No NVIDIA container runtime on this host; starting the devcontainer with Mesa rendering.\n'
+        mesa_config="$(mktemp --suffix=.devcontainer.json)" || return
+        iii_dev_write_mesa_devcontainer_config "${mesa_config}" || { rm -f "${mesa_config}"; return 1; }
+        devcontainer_args+=(--override-config "${mesa_config}")
+    fi
+    "${devcontainer_command[@]}" "${devcontainer_args[@]}" || up_rc=$?
+    [[ -z "${mesa_config}" ]] || rm -f "${mesa_config}"
+    [[ "${up_rc}" -eq 0 ]] || return "${up_rc}"
     container_id="$(iii_dev_container_id)" || return
     "${III_DEV_DOCKER_BIN}" exec --user "${III_DEV_CONTAINER_USER}" \
         "${container_id}" test -f /run/lock/iii-dev-post-start.ready || {

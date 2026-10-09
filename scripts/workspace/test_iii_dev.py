@@ -30,6 +30,7 @@ with Path(os.environ["FAKE_COMMAND_LOG"]).open("a", encoding="utf-8") as stream:
     stream.write(json.dumps(args) + "\n")
 
 if args and args[0] == "info":
+    print(os.environ.get("FAKE_DOCKER_INFO_STDOUT", ""))
     raise SystemExit(int(os.environ.get("FAKE_DOCKER_INFO_RC", "0")))
 if args and args[0] == "ps":
     key = "FAKE_DOCKER_ALL" if "-a" in args else "FAKE_DOCKER_RUNNING"
@@ -260,6 +261,56 @@ class IiiDevTests(unittest.TestCase):
         result = self.run_cli("container", "up", env=environment)
         self.assertEqual(result.returncode, 3)
         self.assertNotIn("Workspace devcontainer: running", result.stdout)
+
+    def fake_devcontainer_environment(self, docker_info: str) -> dict[str, str]:
+        running_file = self.root / "running"
+        running_file.write_text("", encoding="utf-8")
+        devcontainer = self.bin_dir / "devcontainer"
+        devcontainer.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os, sys\n"
+            "from pathlib import Path\n"
+            "args = sys.argv[1:]\n"
+            "config = (Path(args[args.index('--override-config') + 1]).read_text()\n"
+            "          if '--override-config' in args else None)\n"
+            "with open(os.environ['FAKE_COMMAND_LOG'], 'a', encoding='utf-8') as f:\n"
+            "    f.write(json.dumps(['devcontainer', config, *args]) + '\\n')\n"
+            "Path(os.environ['FAKE_DOCKER_RUNNING_FILE']).write_text('container-123\\tiii-dev-test')\n",
+            encoding="utf-8",
+        )
+        devcontainer.chmod(0o755)
+        return {
+            **self.env,
+            "FAKE_DOCKER_RUNNING_FILE": str(running_file),
+            "FAKE_DOCKER_INFO_STDOUT": docker_info,
+            "III_DEV_DEVCONTAINER_BIN": str(devcontainer),
+        }
+
+    def devcontainer_commands(self) -> list[list[str]]:
+        return [command for command in self.commands() if command[0] == "devcontainer"]
+
+    def test_container_up_keeps_nvidia_configuration_when_runtime_exists(self) -> None:
+        environment = self.fake_devcontainer_environment('{"Runtimes":{"nvidia":{}}}')
+        result = self.run_cli("container", "up", env=environment)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (command,) = self.devcontainer_commands()
+        self.assertEqual(command[1:], [None, "up", "--workspace-folder", str(WORKSPACE)])
+
+    def test_container_up_uses_mesa_without_nvidia_runtime(self) -> None:
+        environment = self.fake_devcontainer_environment('{"Runtimes":{"runc":{}}}')
+        result = self.run_cli("container", "up", env=environment)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Mesa rendering", result.stdout)
+        (command,) = self.devcontainer_commands()
+        config = command[1]
+        self.assertIsNotNone(config)
+        self.assertNotIn("--gpus", config)
+        self.assertNotIn("nvidia", config.lower())
+        self.assertIn('"--network","host"', config)
+        if Path("/dev/dri").is_dir():
+            self.assertIn('"--device", "/dev/dri"', config)
+        override_path = Path(command[command.index("--override-config") + 1])
+        self.assertFalse(override_path.exists())
 
     def test_container_down_stops_only_this_workspace_container(self) -> None:
         running_file = self.root / "running"

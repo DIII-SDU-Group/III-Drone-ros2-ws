@@ -17,7 +17,11 @@ and the ROS graph by the III daemon.
   Container CLI. `container up` uses an installed `devcontainer` executable and
   falls back to `npx --yes @devcontainers/cli`.
 - X11/GPU access is established by the devcontainer configuration when Gazebo
-  and QGroundControl are required.
+  and QGroundControl are required. `.devcontainer/devcontainer.json` requests
+  the NVIDIA container runtime; on a host without it (integrated Intel/AMD
+  graphics) `container up` instead passes `/dev/dri` and renders through Mesa.
+  Opening the workspace directly in VS Code does not apply this fallback, so on
+  such a host create the container with `./iii-dev container up` first.
 
 Container discovery uses the exact
 `devcontainer.local_folder=<canonical-workspace-path>` label and rejects zero or
