@@ -128,6 +128,9 @@ else
   echo "the active parameter set has no /perception/powerline_slam/runtime_config" >&2; exit 2
 fi
 grep -q "^    /perception/powerline_slam/runtime_config: ${RUNTIME_CONFIG}\$" "${active_set}"
+# The backend's camera extrinsic must be the mount of the model the simulator renders (no stale camera transform).
+python3 "${WORKSPACE_ROOT}/scripts/workspace/powerline_slam_camera_mount.py" check "${III_POWERLINE_SIM_MODEL}" "${RUNTIME_CONFIG}" \
+  > "${ISOLATION_ROOT}/camera_calibration_check.json"
 cp "${active_set}" "${ISOLATION_ROOT}/active_parameter_set.yaml"
 
 # The transient daemon, its system session and the simulation session are

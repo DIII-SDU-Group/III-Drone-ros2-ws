@@ -9,11 +9,13 @@ renders.
 
   powerline_slam_camera_mount.py show MODEL
   powerline_slam_camera_mount.py apply MODEL PARAMETER_SET     write the mount into a run's own parameter set
+  powerline_slam_camera_mount.py check MODEL RUNTIME_CONFIG    refuse a backend calibration made for another mount
 """
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -79,6 +81,34 @@ def apply(model: str, parameter_set: Path) -> dict:
     return {"model": model, "parameter": MOUNT_PARAMETER, "mount_xyz_ypr": wanted, "previous": current, "changed": changed}
 
 
+def rotation(roll: float, pitch: float, yaw: float) -> list[float]:
+    """Row-major rotation parent-from-sensor of an SDF pose (Rz(yaw) Ry(pitch) Rx(roll))."""
+    cr, sr, cp, sp, cy, sy = math.cos(roll), math.sin(roll), math.cos(pitch), math.sin(pitch), math.cos(yaw), math.sin(yaw)
+    return [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr,
+            sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr,
+            -sp, cp * sr, cp * cr]
+
+
+def check(model: str, runtime_config: Path, tolerance: float = 1e-9) -> dict:
+    """The camera extrinsic of the calibration set a backend runtime configuration names must be the mount of the
+    model the simulator renders; a calibration made for another mount is refused."""
+    calibration = Path(json.loads(runtime_config.read_text())["calibration_dir"])
+    extrinsics = json.loads((calibration / "camera_extrinsics.json").read_text())["extrinsics"]
+    x, y, z, roll, pitch, yaw = camera_pose(model)
+    stored_translation = [float(extrinsics["translation_m"][axis]) for axis in "xyz"]
+    stored_rotation = [float(value) for value in extrinsics["rotation_matrix_parent_from_sensor_row_major"]]
+    wanted_rotation = rotation(roll, pitch, yaw)
+    error = max([abs(a - b) for a, b in zip(stored_translation, [x, y, z])] + [abs(a - b) for a, b in zip(stored_rotation, wanted_rotation)])
+    result = {"model": model, "runtime_config": str(runtime_config), "calibration_dir": str(calibration),
+              "model_sdf_pose_xyz_rpy": [x, y, z, roll, pitch, yaw], "calibration_translation_m": stored_translation,
+              "calibration_rotation_row_major": stored_rotation, "max_abs_difference": error, "tolerance": tolerance,
+              "matches": error <= tolerance}
+    if not result["matches"]:
+        raise ValueError(f"{calibration}: the camera extrinsic is not the mount of {model} (largest difference {error:.6g}); "
+                         "a backend calibration made for another camera mount is refused")
+    return result
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -87,8 +117,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     write = commands.add_parser("apply")
     write.add_argument("model")
     write.add_argument("parameter_set", type=Path)
+    verify = commands.add_parser("check")
+    verify.add_argument("model")
+    verify.add_argument("runtime_config", type=Path)
     args = parser.parse_args(argv)
-    if args.command == "show":
+    if args.command == "check":
+        print(json.dumps(check(args.model, args.runtime_config)))
+    elif args.command == "show":
         print(json.dumps({"model": args.model, "sdf_pose_xyz_rpy": camera_pose(args.model), "mount_xyz_ypr": mount(args.model)}))
     else:
         print(json.dumps(apply(args.model, args.parameter_set)))

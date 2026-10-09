@@ -91,6 +91,23 @@ class CameraMountCalibrationTest(unittest.TestCase):
             self.assertTrue(manifest["derived_from"]["variant_model"]["path"].endswith("d4s_dc_drone_powerline_eval_c25_maxphase/model.sdf"))
             self.assertNotIn("camera_mount", json.loads((nominal / "SOURCE_MANIFEST.json").read_text()))
 
+    def test_a_backend_calibration_made_for_another_mount_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            configs = {}
+            for name, model in (("nominal", None), ("c25", "d4s_dc_drone_powerline_eval_c25_maxphase_longrun")):
+                configs[name] = root / f"{name}.json"
+                configs[name].write_text(json.dumps({"calibration_dir": str(self.build(root, name, model))}))
+            for model in ("d4s_dc_drone_powerline_eval", "d4s_dc_drone_powerline_eval_maxphase_longrun"):
+                self.assertTrue(camera_mount.check(model, configs["nominal"])["matches"])
+                with self.assertRaises(ValueError):
+                    camera_mount.check(model, configs["c25"])
+            for model in ("d4s_dc_drone_powerline_eval_c25_maxphase", "d4s_dc_drone_powerline_eval_c25_maxphase_longrun"):
+                self.assertTrue(camera_mount.check(model, configs["c25"])["matches"])
+                with self.assertRaises(ValueError):
+                    camera_mount.check(model, configs["nominal"])
+            self.assertEqual(0, camera_mount.main(["check", "d4s_dc_drone_powerline_eval_c25_maxphase", str(configs["c25"])]))
+
 
 if __name__ == "__main__":
     unittest.main()
