@@ -175,6 +175,45 @@ class HostGc:
         return spent
 
 
+class HostProbe:
+    """Diagnostics only (POWERLINE_SLAM_HOST_PROBE, never set in operation): the file of a module whose ``take(host)`` is
+    called every POWERLINE_SLAM_HOST_PROBE_S seconds (default 30) at a moment the estimator loop has nothing ready, or
+    when it is twice overdue.  The module reads the host's state and writes its own record; nothing it returns is used.
+    The environment is read at the first call, so a node configuration's ``environment`` block can set it."""
+
+    def __init__(self) -> None:
+        self._module = None
+        self._next = None
+        self._interval = None
+        self.status = {"calls": 0, "seconds": 0.0, "max_s": 0.0, "error": None}
+
+    def take(self, host, idle: bool) -> None:
+        if self._interval is None:
+            path = os.environ.get("POWERLINE_SLAM_HOST_PROBE")
+            self._interval = float(os.environ.get("POWERLINE_SLAM_HOST_PROBE_S", "30")) if path else 0.0
+            if path:
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("powerline_slam_host_probe", path)
+                self._module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(self._module)
+                self._next = time.monotonic() + self._interval
+        if self._module is None:
+            return
+        now = time.monotonic()
+        if now < self._next or (not idle and now < self._next + self._interval):
+            return
+        began = time.perf_counter()
+        try:
+            self._module.take(host)
+        except Exception as exc:                            # a probe never ends the estimator
+            self.status["error"] = f"{type(exc).__name__}: {exc}"[:200]
+        spent = time.perf_counter() - began
+        self.status["calls"] += 1
+        self.status["seconds"] = round(self.status["seconds"] + spent, 4)
+        self.status["max_s"] = round(max(self.status["max_s"], spent), 4)
+        self._next = time.monotonic() + self._interval
+
+
 def _percentiles(values) -> dict:
     ordered = sorted(values)
     if not ordered:
@@ -600,6 +639,7 @@ class Host:
         self.finalizers: list[dict] = []           # forked finalizer processes of sealed generations
         self.rollovers = 0
         self.gc = HostGc()
+        self.probe = HostProbe()                   # diagnostics only, see HostProbe
         # where the loop's wall time goes, cumulative seconds by stage (diagnostics only), and the loop thread's CPU time
         self.loop_s = {"receive": 0.0, "idle": 0.0, "drop": 0.0, "ingest": 0.0, "closing": 0.0, "step": 0.0, "housekeeping": 0.0}
         self._loop_mark = time.perf_counter()
@@ -675,7 +715,10 @@ class Host:
         self._loop_mark = now
 
     def loop_status(self) -> dict:
-        return {"seconds": {k: round(v, 3) for k, v in self.loop_s.items()}, "thread_cpu_s": round(time.thread_time(), 3)}
+        status = {"seconds": {k: round(v, 3) for k, v in self.loop_s.items()}, "thread_cpu_s": round(time.thread_time(), 3)}
+        if self.probe.status["calls"]:
+            status["probe"] = dict(self.probe.status)       # diagnostics only: what the probe cost
+        return status
 
     def run(self) -> None:
         while True:
@@ -733,6 +776,7 @@ class Host:
                 self.poll_finalizers()
             if self.dropping is None and self.closing is None:
                 self.gc.bounded_pass(idle=not (self.pending or self.epoch.more))
+                self.probe.take(self, idle=not (self.pending or self.epoch.more))
             self._spent("housekeeping")
 
     # ------------------------------------------------------------------ FAST_TRAVERSAL_EPOCH_v2

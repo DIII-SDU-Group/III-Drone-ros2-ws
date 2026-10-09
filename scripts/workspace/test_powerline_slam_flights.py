@@ -146,5 +146,20 @@ class EvidenceTest(unittest.TestCase):
             flights.mission_phase_evidence("a_to_b", plan, [5], 9, "0" * 64)
 
 
+class BagStoragePresetTest(unittest.TestCase):
+    def test_the_merged_bag_is_uncompressed_unless_a_known_preset_is_asked_for(self) -> None:
+        import os
+        from unittest import mock
+
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("III_POWERLINE_BAG_STORAGE_PRESET", None)
+            self.assertIsNone(flights.bag_storage_preset())
+        with mock.patch.dict(os.environ, {"III_POWERLINE_BAG_STORAGE_PRESET": "zstd_fast"}):
+            self.assertEqual("zstd_fast", flights.bag_storage_preset())
+        with mock.patch.dict(os.environ, {"III_POWERLINE_BAG_STORAGE_PRESET": "gzip"}):
+            with self.assertRaises(RuntimeError):
+                flights.bag_storage_preset()
+
+
 if __name__ == "__main__":
     unittest.main()

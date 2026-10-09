@@ -258,3 +258,33 @@ def test_host_gc_bounded_pass_waits_for_an_idle_loop_but_not_forever(monkeypatch
         gc.callbacks.remove(policy._callback)
         gc.unfreeze()
         gc.set_threshold(*before)
+
+
+def test_host_probe_is_off_unless_asked_for_and_never_ends_the_estimator(monkeypatch, tmp_path):
+    """HostProbe (diagnostics only): nothing happens without POWERLINE_SLAM_HOST_PROBE; with it the module's take(host)
+    runs when due and the loop is idle (or twice overdue), and a failing probe is recorded, not raised."""
+    import time
+
+    from iii_drone_powerline_slam import estimator_host
+
+    monkeypatch.delenv("POWERLINE_SLAM_HOST_PROBE", raising=False)
+    off = estimator_host.HostProbe()
+    off.take(object(), idle=True)
+    assert off.status["calls"] == 0 and off._module is None
+
+    module = tmp_path / "probe.py"
+    module.write_text("seen = []\ndef take(host):\n    seen.append(host)\n    if len(seen) == 2:\n        raise ValueError('probe failure')\n")
+    monkeypatch.setenv("POWERLINE_SLAM_HOST_PROBE", str(module))
+    monkeypatch.setenv("POWERLINE_SLAM_HOST_PROBE_S", "0.05")
+    probe = estimator_host.HostProbe()
+    host = object()
+    probe.take(host, idle=True)                             # the first call only arms it
+    assert probe.status["calls"] == 0
+    time.sleep(0.06)
+    probe.take(host, idle=False)                            # due but the loop is busy: not yet
+    assert probe.status["calls"] == 0
+    probe.take(host, idle=True)
+    assert probe.status["calls"] == 1 and probe._module.seen == [host] and probe.status["error"] is None
+    time.sleep(0.11)
+    probe.take(host, idle=False)                            # twice overdue: taken although the loop is busy
+    assert probe.status["calls"] == 2 and probe.status["error"].startswith("ValueError")

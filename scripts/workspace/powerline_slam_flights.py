@@ -274,6 +274,18 @@ def bag_message_counts(metadata_path: Path) -> dict[str, int]:
     return {item["topic_metadata"]["name"]: int(item["message_count"]) for item in info["topics_with_message_count"]}
 
 
+BAG_STORAGE_PRESETS = ("zstd_fast", "zstd_small")
+
+
+def bag_storage_preset() -> str | None:
+    """III_POWERLINE_BAG_STORAGE_PRESET: MCAP's own chunk compression for the merged bag (default: none, as before).
+    The messages and their receipt stamps are the same bytes either way; readers need no option."""
+    preset = os.environ.get("III_POWERLINE_BAG_STORAGE_PRESET") or None
+    if preset is not None and preset not in BAG_STORAGE_PRESETS:
+        raise RuntimeError(f"III_POWERLINE_BAG_STORAGE_PRESET must be one of {BAG_STORAGE_PRESETS}")
+    return preset
+
+
 def merge_bags(parts: Sequence[Path], output: Path) -> dict[str, int]:
     """One MCAP bag of the parts' messages in receipt order; the per-topic counts must add up."""
     import rosbag2_py
@@ -282,8 +294,10 @@ def merge_bags(parts: Sequence[Path], output: Path) -> dict[str, int]:
     if output.exists():
         raise RuntimeError(f"bag output already exists: {output}")
     config = output.parent / f"{output.name}_merge.yaml"
-    config.write_text(yaml.safe_dump({"output_bags": [{"uri": str(output), "storage_id": "mcap", "all_topics": True}]}),
-                      encoding="utf-8")
+    bag = {"uri": str(output), "storage_id": "mcap", "all_topics": True}
+    if bag_storage_preset() is not None:
+        bag["storage_preset_profile"] = bag_storage_preset()
+    config.write_text(yaml.safe_dump({"output_bags": [bag]}), encoding="utf-8")
     try:
         rosbag2_py.bag_rewrite([rosbag2_py.StorageOptions(uri=str(part)) for part in parts], str(config))
     finally:
@@ -731,6 +745,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "catalog": {"path": str(CATALOG_PATH), "sha256": sha256_file(CATALOG_PATH)},
             "record_topics": list(RECORD_TOPICS),
             "simulation_seed": os.environ.get("III_SIMULATION_SEED"),
+            "bag_storage_preset": bag_storage_preset(),
             "flights": {},
         }
         write_json(run_dir / "run_manifest.json", manifest)
