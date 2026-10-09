@@ -163,15 +163,21 @@ def camera_intrinsics(sdf_path: Path = VARIANT_SDF) -> dict[str, Any]:
     }
 
 
-def build_calibration(output: Path, doppler_source: Path) -> dict[str, Any]:
+def build_calibration(output: Path, doppler_source: Path, model: str | None = None) -> dict[str, Any]:
+    """``model``: a camera-mount profile (or any evaluation model) whose own SDF gives the camera mount and intrinsics;
+    without it, the nominal variant: the mount of the tracked sim parameter set and the nominal model's intrinsics."""
     params = sim_parameters()
+    variant_sdf = VARIANT_SDF
+    if model is not None:
+        import powerline_slam_camera_mount as camera_mount_source
+        variant_sdf = camera_mount_source.model_sdf(model)
     if output.exists():
         raise SystemExit(f"output already exists: {output}")
     output.mkdir(parents=True)
     radar_up = extrinsics(params["/tf/sim/drone_to_mmwave"], params["/tf/mmwave_frame_id"])
     radar_forward = extrinsics(
         params["/tf/sim/powerline_eval/drone_to_mmwave_forward"], params["/tf/mmwave_forward_frame_id"])
-    camera_mount = params["/tf/sim/powerline_eval/drone_to_cable_camera"]
+    camera_mount = params["/tf/sim/powerline_eval/drone_to_cable_camera"] if model is None else camera_mount_source.mount(model)
     camera_rotation = rotation_ypr(camera_mount[3], camera_mount[4], camera_mount[5])
     camera = {
         "calibration_kind": "source-derived-model-calibration",
@@ -197,20 +203,24 @@ def build_calibration(output: Path, doppler_source: Path) -> dict[str, Any]:
     (output / "radar_forward_extrinsics.yaml").write_text(
         yaml.safe_dump(radar_document(radar_forward), sort_keys=False))
     (output / "camera_extrinsics.json").write_text(json.dumps(camera, indent=2, sort_keys=True) + "\n")
-    (output / "camera_intrinsics.yaml").write_text(yaml.safe_dump(camera_intrinsics(), sort_keys=False))
+    (output / "camera_intrinsics.yaml").write_text(yaml.safe_dump(camera_intrinsics(variant_sdf), sort_keys=False))
     for name in DOPPLER_FILES:
         shutil.copyfile(doppler_source / name, output / name)
     manifest = {
         "schema_version": 1,
-        "variant": "iii_d4s_dc_drone_powerline_eval",
+        "variant": "iii_d4s_dc_drone_powerline_eval" if model is None else f"iii_{model}",
         "derived_from": {
             "sim_parameter_set": {"path": str(SIM_PARAMETER_SET.relative_to(WORKSPACE_ROOT)),
                                   "sha256": sha256_file(SIM_PARAMETER_SET)},
-            "variant_model": {"path": str(VARIANT_SDF.relative_to(WORKSPACE_ROOT)), "sha256": sha256_file(VARIANT_SDF)},
+            "variant_model": {"path": str(variant_sdf.relative_to(WORKSPACE_ROOT)), "sha256": sha256_file(variant_sdf)},
             "doppler_calibrations": {name: {"source": str(doppler_source / name),
                                             "sha256": sha256_file(doppler_source / name)} for name in DOPPLER_FILES},
         },
         "radar_extrinsics.yaml": "v13-compatible alias of radar_up (frame mmwave)",
+        **({} if model is None else {"camera_mount": {
+            "source": "the model's cable_camera sensor pose (its segmentation camera and both radar plugins carry the same pose)",
+            "mount_xyz_ypr": [float(value) for value in camera_mount],
+            "nominal_parameter_mount_xyz_ypr": [float(value) for value in params["/tf/sim/powerline_eval/drone_to_cable_camera"]]}}),
         "files_sha256": {path.name: sha256_file(path) for path in sorted(output.iterdir())},
     }
     (output / "SOURCE_MANIFEST.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
@@ -488,6 +498,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     calibration.add_argument("--doppler-source", type=Path, required=True,
                              help="powerline_slam calibration set providing the radar-profile Doppler files")
     calibration.add_argument("--compare", type=Path, help="powerline_slam calibration set to compare against")
+    calibration.add_argument("--model", default=None,
+                             help="evaluation model whose own SDF gives the camera mount and intrinsics (a camera-mount "
+                                  "profile such as d4s_dc_drone_powerline_eval_c25_maxphase); default: the nominal variant")
     mission = commands.add_parser("mission-priors")
     mission.add_argument("--evidence", type=Path, required=True)
     mission.add_argument("--output", type=Path, required=True)
@@ -510,7 +523,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "calibration":
-        manifest = build_calibration(args.output, args.doppler_source)
+        manifest = build_calibration(args.output, args.doppler_source, args.model)
         print(json.dumps(manifest["files_sha256"], indent=2))
         if args.compare:
             print(json.dumps(compare_calibration(args.output, args.compare), indent=2))

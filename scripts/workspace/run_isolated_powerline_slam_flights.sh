@@ -102,6 +102,11 @@ PY
 )"
 sed -i 's|^\(    /tf/sim/sensor_layout:\).*$|\1 d4s_dc_drone_powerline_eval|' "${active_set}"
 grep -q '^    /tf/sim/sensor_layout: d4s_dc_drone_powerline_eval$' "${active_set}"
+# The static drone -> cable_camera transform follows the booted model: a camera-mount profile (for example
+# d4s_dc_drone_powerline_eval_c25_maxphase) carries the camera at another pitch.  The mount is read from the model's SDF
+# and written into this run's own parameter set; a set that already carries it is left as it is.
+python3 "${WORKSPACE_ROOT}/scripts/workspace/powerline_slam_camera_mount.py" apply "${III_POWERLINE_SIM_MODEL}" "${active_set}" \
+  > "${ISOLATION_ROOT}/camera_mount.json"
 
 # The transient daemon, its system session and the simulation session are
 # owned by this launcher; ones left over from an earlier run carry that run's
