@@ -54,8 +54,11 @@ Registered BT nodes include command/decision primitives such as:
 
 ## 5. Mission Specification
 
-Mission specifications are registered with `iii_register_mission(...)` in the
-package CMake configuration. The build produces deterministic local, qualified,
+Mission specifications are registered in
+`src/III-Drone-Mission/config/mission_registrations.json` (ID, specification,
+classification, status, profiles, default profiles), which the package CMake
+configuration reads with `iii_register_missions_from_json` and which `iii deploy
+missions` also reads. The build produces deterministic local, qualified,
 and explicit field-candidate catalogs. Production releases install the qualified
 catalog; local development catalogs retain classified test and legacy entries.
 
@@ -70,6 +73,33 @@ Important behavior:
 - `executor_owned_mode` must match an existing `entries[].key`.
 - `next_mode` values are mode-entry keys (not display names).
 - `behavior_tree_xml_file` is a package-relative logical asset name. Absolute paths, traversal, environment expansion, missing assets, unknown nodes, and node-port mismatches fail catalog generation.
+
+### 5.1 Installing Missions On The Pi Without A Build
+
+A changed specification, behaviour tree or registration reaches the Pi without
+a cross-build:
+
+```bash
+iii deploy missions --host <pi> --dry-run
+iii deploy missions --host <pi>
+```
+
+The command fetches the behaviour-node contract, node model and interface
+contracts installed with the Pi's Mission package, regenerates all three
+catalogs here from the checkout with the same generator, and lists the missions
+that differ. It then copies them to a staging directory on the Pi, verifies them
+there, keeps the installed catalogs under
+`share/iii_drone_mission/catalog-backups/<UTC time>/`, swaps the new ones in,
+syncs the Mission source copy, and restarts the runtime services. Like
+`iii deploy dev` it needs the aircraft disarmed and landed (`--force` only when
+that state cannot be read).
+
+It refuses a change that is not soft: when a source the installed catalog
+records as a build input (C++ sources, CMake files, the generator, the runtime
+contract) differs in this checkout, or when a tree uses a node or port the Pi's
+binary does not have, and asks for `iii deploy dev --build`. A Pi whose Mission
+package predates the installed node contract needs one `iii deploy dev --build`
+first.
 - Experimental entries require explicit field-artifact inclusion and emit a prominent runtime warning. They never enter qualified catalogs.
 - Runtime selection is a session-scoped transactional override; `--default` restores the profile default and a cold restart restores it automatically.
 
