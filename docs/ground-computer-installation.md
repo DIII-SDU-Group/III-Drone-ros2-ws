@@ -33,6 +33,23 @@ QGroundControl user unit are backed up under
 An occupied install root without this installer's `install.json` ownership
 record is rejected and left intact.
 
+The installer also builds the ARM64 cross-builder image
+`iii-arm64-cross-builder:p1` from the checkout's `Dockerfile.cc`, so the
+computer can run `iii deploy dev --build` without the workstation. The image is
+labelled with a hash of its inputs (`Dockerfile.cc`, `entrypoint_cc.sh`,
+`cc_ws/`): an unchanged image is reused, a changed input rebuilds it. The first
+build needs internet and takes a while; later deployments build offline.
+Building it needs QEMU arm64 emulation registered on the host. If it is not,
+the installer stops and says so; `--register-arm64-emulation` lets it register
+emulation with a privileged Docker container (lasting until the next reboot),
+or install `qemu-user-static` and `binfmt-support` with apt. The image is
+built before the new install is promoted, so a failed build leaves the
+previous install in place. `--skip-cross-builder` installs without it.
+
+```bash
+python3 scripts/install_gc.py --profile deploy --register-arm64-emulation
+```
+
 The default paths are:
 
 | Component | Installed path |

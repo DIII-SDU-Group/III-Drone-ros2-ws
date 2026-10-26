@@ -39,6 +39,20 @@ IGNORE_NAMES = {
 }
 
 
+# `iii deploy dev --build` cross-compiles the Pi runtime in this image
+# (scripts/build/cross_compile_arm64.sh). It is built here from the checkout's
+# Dockerfile.cc so a ground computer can build and deploy without the
+# workstation. Its label records the build inputs, so an unchanged image is
+# reused and a changed Dockerfile or toolchain file rebuilds it.
+CROSS_BUILDER_IMAGE = "iii-arm64-cross-builder:p1"
+CROSS_BUILDER_LABEL = "org.iii.cross-builder.inputs"
+CROSS_BUILDER_INPUTS = (Path("Dockerfile.cc"), Path("entrypoint_cc.sh"), Path("cc_ws"))
+# The Dockerfile's sysroot stage runs arm64 commands, which needs QEMU
+# registered with the kernel's binfmt_misc on this x86_64 host.
+ARM64_BINFMT = Path("/proc/sys/fs/binfmt_misc/qemu-aarch64")
+BINFMT_IMAGE = "docker.io/tonistiigi/binfmt:qemu-v10.1.3"
+
+
 class InstallError(RuntimeError):
     pass
 
@@ -447,6 +461,100 @@ def _rebase_venv(venv_path: Path, staged_root: Path, install_root: Path) -> None
             path.write_bytes(contents.replace(old, new))
 
 
+def cross_builder_inputs_hash() -> str:
+    """One hash over every file the cross-builder image is built from."""
+
+    digest = hashlib.sha256()
+    for relative in CROSS_BUILDER_INPUTS:
+        source = REPO_ROOT / relative
+        if not source.exists():
+            raise InstallError(f"cross-builder input is missing: {source}")
+        files = (
+            sorted(path for path in source.rglob("*") if path.is_file())
+            if source.is_dir()
+            else [source]
+        )
+        for path in files:
+            digest.update(path.relative_to(REPO_ROOT).as_posix().encode() + b"\0")
+            digest.update(_sha256(path).encode() + b"\n")
+    return digest.hexdigest()
+
+
+def cross_builder_state(inputs_hash: str) -> str:
+    """current, outdated or missing: the local cross-builder image versus the checkout."""
+
+    try:
+        completed = _run(
+            [
+                "docker",
+                "image",
+                "inspect",
+                "--format",
+                f'{{{{index .Config.Labels "{CROSS_BUILDER_LABEL}"}}}}',
+                CROSS_BUILDER_IMAGE,
+            ],
+            check=False,
+        )
+    except OSError:
+        # No Docker: the prerequisite check reports it before anything is built.
+        return "missing"
+    if completed.returncode:
+        return "missing"
+    return "current" if completed.stdout.strip() == inputs_hash else "outdated"
+
+
+def arm64_emulation_registered() -> bool:
+    try:
+        return ARM64_BINFMT.read_text(encoding="utf-8").splitlines()[0].strip() == "enabled"
+    except (OSError, IndexError):
+        return False
+
+
+def _build_cross_builder(inputs_hash: str, *, register_emulation: bool) -> None:
+    _run(["docker", "buildx", "version"])
+    if not arm64_emulation_registered():
+        if not register_emulation:
+            raise InstallError(
+                "building the ARM64 cross-builder image needs QEMU arm64 emulation, "
+                f"which is not registered ({ARM64_BINFMT} is missing). Rerun with "
+                "--register-arm64-emulation to register it (a privileged Docker "
+                f"container, {BINFMT_IMAGE}; it lasts until the next reboot), or "
+                "install qemu-user-static and binfmt-support with apt. "
+                "--skip-cross-builder installs without the image."
+            )
+        print(f"Registering QEMU arm64 emulation with {BINFMT_IMAGE}", file=sys.stderr)
+        _run(["docker", "run", "--privileged", "--rm", BINFMT_IMAGE, "--install", "arm64"])
+        if not arm64_emulation_registered():
+            raise InstallError(f"QEMU arm64 emulation is still not registered ({ARM64_BINFMT})")
+    # Streamed, not captured: the first build downloads the base images and the
+    # Pi sysroot packages and takes a while.
+    completed = subprocess.run(
+        [
+            "docker",
+            "buildx",
+            "build",
+            "-f",
+            str(REPO_ROOT / "Dockerfile.cc"),
+            "--target",
+            "cross-compiler",
+            "-t",
+            CROSS_BUILDER_IMAGE,
+            "--label",
+            f"{CROSS_BUILDER_LABEL}={inputs_hash}",
+            "--load",
+            str(REPO_ROOT),
+        ],
+        check=False,
+        stdout=sys.stderr,
+        stderr=sys.stderr,
+    )
+    if completed.returncode:
+        raise InstallError(
+            f"the ARM64 cross-builder image build failed ({completed.returncode}); "
+            "the previous install is unchanged"
+        )
+
+
 def _compose(stage_workspace: Path, profile: str) -> None:
     compose_file = stage_workspace / "src/III-Drone-GC/docker-compose.prod.yml"
     base = [
@@ -509,7 +617,12 @@ def _verify_managed_install_root(install_root: Path) -> None:
 
 
 def install(
-    profile: str, *, dry_run: bool = False, qgc_asset: Path | None = None
+    profile: str,
+    *,
+    dry_run: bool = False,
+    qgc_asset: Path | None = None,
+    cross_builder: bool = True,
+    register_emulation: bool = False,
 ) -> dict[str, Any]:
     if profile not in {"dev", "deploy"}:
         raise InstallError("profile must be dev or deploy")
@@ -540,6 +653,18 @@ def install(
         "dirty_checkout": source_identity["dirty"],
         "image_action": "build only; no containers or GUI processes are started",
     }
+    state = "skipped"
+    inputs_hash = ""
+    if cross_builder:
+        inputs_hash = cross_builder_inputs_hash()
+        state = cross_builder_state(inputs_hash)
+        plan["cross_builder"] = (
+            f"{CROSS_BUILDER_IMAGE} is current"
+            if state == "current"
+            else f"build {CROSS_BUILDER_IMAGE} ({state})"
+        )
+    else:
+        plan["cross_builder"] = "skipped (--skip-cross-builder)"
     if dry_run:
         return plan
 
@@ -547,7 +672,7 @@ def install(
     cli_kind = _classify_cli(host_cli, install_root / "venv/bin/iii")
     unit_kind = _classify_unit(user_unit, install_root, home)
     print(
-        "[1/6] Checking Linux x86_64, Docker Compose, Python venv, Git and user systemd",
+        "[1/7] Checking Linux x86_64, Docker Compose, Python venv, Git and user systemd",
         file=sys.stderr,
     )
     check_prerequisites()
@@ -563,16 +688,16 @@ def install(
         staged_root.mkdir()
         (staged_root / "qgc").mkdir()
         qgc_path = staged_root / "qgc/QGroundControl.AppImage"
-        print("[2/6] Acquiring and verifying pinned QGroundControl", file=sys.stderr)
+        print("[2/7] Acquiring and verifying pinned QGroundControl", file=sys.stderr)
         _download_qgc(pin, qgc_path, local_asset)
         shutil.copy2(PIN_PATH, staged_root / "qgroundcontrol.json")
         print(
-            "[3/6] Creating checkout-bound GUI and source identity snapshot",
+            "[3/7] Creating checkout-bound GUI and source identity snapshot",
             file=sys.stderr,
         )
         _copy_snapshot(staged_root / "workspace", source_identity)
         print(
-            "[4/6] Installing the checkout CLI and Contracts in an isolated venv",
+            "[4/7] Installing the checkout CLI and Contracts in an isolated venv",
             file=sys.stderr,
         )
         _prepare_venv(
@@ -594,10 +719,20 @@ def install(
             encoding="utf-8",
         )
         print(
-            "[5/6] Validating Compose and building GUI images (no services started)",
+            "[5/7] Validating Compose and building GUI images (no services started)",
             file=sys.stderr,
         )
         _compose(staged_root / "workspace", profile)
+        # Before promotion: a failed image build leaves the previous install.
+        if state in {"missing", "outdated"}:
+            print(
+                f"[6/7] Building the ARM64 cross-builder image {CROSS_BUILDER_IMAGE} "
+                f"({state}) for iii deploy dev --build",
+                file=sys.stderr,
+            )
+            _build_cross_builder(inputs_hash, register_emulation=register_emulation)
+        else:
+            print(f"[6/7] Cross-builder image: {plan['cross_builder']}", file=sys.stderr)
 
         staged_unit = staging_parent / "iii-qgc.service"
         _write_qgc_service(staged_unit, install_root)
@@ -625,7 +760,7 @@ def install(
             os.replace(staged_cli, host_cli)
             os.replace(staged_unit, user_unit)
             print(
-                "[6/6] Refreshing the user QGroundControl service definition",
+                "[7/7] Refreshing the user QGroundControl service definition",
                 file=sys.stderr,
             )
             _run(["systemctl", "--user", "daemon-reload"])
@@ -683,6 +818,22 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="use a local AppImage and verify it against the pin",
     )
+    parser.add_argument(
+        "--skip-cross-builder",
+        action="store_true",
+        help=(
+            f"do not build the ARM64 cross-builder image {CROSS_BUILDER_IMAGE} that "
+            "iii deploy dev --build needs (for example without internet)"
+        ),
+    )
+    parser.add_argument(
+        "--register-arm64-emulation",
+        action="store_true",
+        help=(
+            "register QEMU arm64 emulation (a privileged Docker container) when the "
+            "cross-builder image must be built and it is not registered"
+        ),
+    )
     return parser
 
 
@@ -690,7 +841,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        plan = install(args.profile, dry_run=args.dry_run, qgc_asset=args.qgc_asset)
+        plan = install(
+            args.profile,
+            dry_run=args.dry_run,
+            qgc_asset=args.qgc_asset,
+            cross_builder=not args.skip_cross_builder,
+            register_emulation=args.register_arm64_emulation,
+        )
     except (InstallError, OSError, subprocess.SubprocessError) as exc:
         print(f"GC install failed: {exc}", file=sys.stderr)
         return 2

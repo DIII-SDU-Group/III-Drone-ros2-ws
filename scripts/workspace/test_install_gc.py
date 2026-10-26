@@ -22,6 +22,8 @@ sys.path.insert(0, str(CLI_PACKAGE_ROOT))
 from iii.qgc import _unit_selects_binary
 
 
+REAL_CROSS_BUILDER_STATE = install_gc.cross_builder_state
+
 def _write(path: Path, contents: str, mode: int = 0o644) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(contents, encoding="utf-8")
@@ -54,6 +56,9 @@ def _repo(tmp_path: Path) -> Path:
     _write(root / "src/III-Drone-GC/frontend/package.json", "{}\n")
     _write(root / "src/III-Drone-GC/frontend/package-lock.json", "{}\n")
     _write(root / "src/III-Drone-GC/dirty-local-change.txt", "preserve me\n")
+    _write(root / "Dockerfile.cc", "FROM scratch AS cross-compiler\n")
+    _write(root / "entrypoint_cc.sh", "#!/bin/sh\n", 0o755)
+    _write(root / "cc_ws/arm64-toolchain.cmake", "set(CMAKE_SYSTEM_NAME Linux)\n")
     _write(
         root / "scripts/workspace/iii_ground_control.sh", "#!/usr/bin/env bash\n", 0o755
     )
@@ -98,6 +103,18 @@ def _configure(monkeypatch, tmp_path: Path, root: Path, asset: Path):
         }
 
     monkeypatch.setattr(install_gc, "_source_identity", source_identity)
+    # The real image build is slow and needs Docker; tests record the request
+    # and treat the image as current unless they say otherwise.
+    monkeypatch.setattr(install_gc, "cross_builder_state", lambda _inputs_hash: "current")
+    builds = []
+    monkeypatch.setattr(
+        install_gc,
+        "_build_cross_builder",
+        lambda inputs_hash, *, register_emulation: builds.append(
+            (inputs_hash, register_emulation)
+        ),
+    )
+    return builds
 
 
 def _fake_run(monkeypatch):
@@ -577,3 +594,143 @@ def test_installed_ground_control_launcher_uses_snapshot_root_override(tmp_path)
         f"Compose file: {configured_root}/src/III-Drone-GC/docker-compose.prod.yml"
         in completed.stdout
     )
+
+
+def _image_label(monkeypatch, label):
+    """Answer `docker image inspect` with this label, or as a missing image."""
+
+    commands = _fake_run(monkeypatch)
+    fake_run = install_gc._run
+    monkeypatch.setattr(install_gc, "cross_builder_state", REAL_CROSS_BUILDER_STATE)
+
+    def run(command, *, check=True, environment=None):
+        if command[:3] == ["docker", "image", "inspect"]:
+            commands.append((list(command), environment))
+            if label is None:
+                return subprocess.CompletedProcess(command, 1, "", "No such image")
+            return subprocess.CompletedProcess(command, 0, label + "\n", "")
+        return fake_run(command, check=check, environment=environment)
+
+    monkeypatch.setattr(install_gc, "_run", run)
+    return commands
+
+
+@pytest.mark.parametrize("profile", ["dev", "deploy"])
+def test_install_builds_a_missing_cross_builder_image(monkeypatch, tmp_path, profile):
+    root = _repo(tmp_path)
+    asset = tmp_path / "qgc.AppImage"
+    asset.write_bytes(b"test pinned AppImage")
+    builds = _configure(monkeypatch, tmp_path, root, asset)
+    monkeypatch.setattr(install_gc, "check_prerequisites", lambda: None)
+    _image_label(monkeypatch, None)
+
+    plan = install_gc.install(profile, qgc_asset=asset, register_emulation=True)
+
+    assert plan["cross_builder"] == f"build {install_gc.CROSS_BUILDER_IMAGE} (missing)"
+    assert builds == [(install_gc.cross_builder_inputs_hash(), True)]
+
+
+def test_a_current_cross_builder_image_is_reused(monkeypatch, tmp_path):
+    root = _repo(tmp_path)
+    asset = tmp_path / "qgc.AppImage"
+    asset.write_bytes(b"test pinned AppImage")
+    builds = _configure(monkeypatch, tmp_path, root, asset)
+    monkeypatch.setattr(install_gc, "check_prerequisites", lambda: None)
+    _image_label(monkeypatch, install_gc.cross_builder_inputs_hash())
+
+    plan = install_gc.install("deploy", qgc_asset=asset)
+
+    assert plan["cross_builder"] == f"{install_gc.CROSS_BUILDER_IMAGE} is current"
+    assert builds == []
+
+
+def test_a_changed_toolchain_input_makes_the_image_outdated(monkeypatch, tmp_path):
+    root = _repo(tmp_path)
+    asset = tmp_path / "qgc.AppImage"
+    asset.write_bytes(b"test pinned AppImage")
+    builds = _configure(monkeypatch, tmp_path, root, asset)
+    monkeypatch.setattr(install_gc, "check_prerequisites", lambda: None)
+    built_from = install_gc.cross_builder_inputs_hash()
+    _write(root / "cc_ws/arm64-toolchain.cmake", "set(CMAKE_SYSTEM_NAME Linux) # changed\n")
+    _image_label(monkeypatch, built_from)
+
+    plan = install_gc.install("deploy", qgc_asset=asset)
+
+    assert plan["cross_builder"].endswith("(outdated)")
+    assert builds == [(install_gc.cross_builder_inputs_hash(), False)]
+    assert builds[0][0] != built_from
+
+
+def test_skip_cross_builder_neither_inspects_nor_builds(monkeypatch, tmp_path):
+    root = _repo(tmp_path)
+    asset = tmp_path / "qgc.AppImage"
+    asset.write_bytes(b"test pinned AppImage")
+    builds = _configure(monkeypatch, tmp_path, root, asset)
+    monkeypatch.setattr(install_gc, "check_prerequisites", lambda: None)
+    commands = _image_label(monkeypatch, None)
+
+    plan = install_gc.install("deploy", qgc_asset=asset, cross_builder=False)
+
+    assert plan["cross_builder"] == "skipped (--skip-cross-builder)"
+    assert builds == []
+    assert not any(command[:3] == ["docker", "image", "inspect"] for command, _ in commands)
+
+
+def test_a_failed_image_build_leaves_no_install(monkeypatch, tmp_path):
+    root = _repo(tmp_path)
+    asset = tmp_path / "qgc.AppImage"
+    asset.write_bytes(b"test pinned AppImage")
+    _configure(monkeypatch, tmp_path, root, asset)
+    monkeypatch.setattr(install_gc, "check_prerequisites", lambda: None)
+    _image_label(monkeypatch, None)
+
+    def fail(_inputs_hash, *, register_emulation):
+        raise install_gc.InstallError("the ARM64 cross-builder image build failed (1)")
+
+    monkeypatch.setattr(install_gc, "_build_cross_builder", fail)
+
+    with pytest.raises(install_gc.InstallError, match="cross-builder image build failed"):
+        install_gc.install("deploy", qgc_asset=asset)
+
+    assert not Path(os.environ["III_GC_INSTALL_ROOT"]).exists()
+    assert not (Path.home() / ".local/bin/iii").exists()
+
+
+def test_missing_arm64_emulation_is_refused_unless_registration_is_requested(
+    monkeypatch, tmp_path
+):
+    binfmt = tmp_path / "qemu-aarch64"
+    monkeypatch.setattr(install_gc, "ARM64_BINFMT", binfmt)
+    calls = []
+
+    def run(command, *, check=True, environment=None):
+        calls.append(list(command))
+        if command[:3] == ["docker", "run", "--privileged"]:
+            binfmt.write_text("enabled\ninterpreter /usr/bin/qemu-aarch64\n")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    builds = []
+    monkeypatch.setattr(install_gc, "_run", run)
+    monkeypatch.setattr(
+        install_gc.subprocess,
+        "run",
+        lambda command, **_kwargs: builds.append(list(command))
+        or subprocess.CompletedProcess(command, 0),
+    )
+
+    with pytest.raises(install_gc.InstallError, match="--register-arm64-emulation"):
+        install_gc._build_cross_builder("f" * 64, register_emulation=False)
+    assert builds == []
+    assert not any(call[:2] == ["docker", "run"] for call in calls)
+
+    install_gc._build_cross_builder("f" * 64, register_emulation=True)
+
+    assert ["docker", "run", "--privileged", "--rm", install_gc.BINFMT_IMAGE,
+            "--install", "arm64"] in calls
+    (build,) = builds
+    assert build[:3] == ["docker", "buildx", "build"]
+    assert build[build.index("--target") + 1] == "cross-compiler"
+    assert build[build.index("-t") + 1] == install_gc.CROSS_BUILDER_IMAGE
+    assert f"{install_gc.CROSS_BUILDER_LABEL}={'f' * 64}" in build
+    assert "--load" in build
+
