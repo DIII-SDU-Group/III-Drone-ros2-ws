@@ -31,6 +31,11 @@ For a Pi change, use:
 iii deploy dev --host <pi-host-or-ip> --build --restart
 ```
 
+A deployment keeps the living parameters the Pi already has (`--parameters
+keep`, the default). `--parameters defaults` sets them to this checkout's
+tracked default after the restart, saving the replaced set as a snapshot; see
+[the configuration system](configuration-system.md#71-living-parameters-and-the-tracked-default).
+
 `--build` runs the repository's pinned ARM64 cross-builder on the workstation,
 including `px4_msgs` and the runtime packages, builds the Pi's Micro XRCE-DDS
 agent against the pinned ARM64 Fast-DDS sysroot, then synchronizes the

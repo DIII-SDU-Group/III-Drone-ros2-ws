@@ -40,7 +40,7 @@ PX4-Autopilot/src/modules/zenoh/zenoh-pico f093aa7955bb24dfa3e626de084583711e3ba
 src/BehaviorTree.CPP 3ff6a32ba0497a08519c77a1436e3b81eff1bcd6
 src/BehaviorTree.ROS2 c72596242684ed6f03796665908d337269afb4b3
 src/III-Drone-Configuration bec8dbae89006223bc2f38c6e76549479fc0652c
-src/III-Drone-Contracts f939d44ca45683e94668338ad3ad7cac1bf40f7e
+src/III-Drone-Contracts 152b99f7c5b3b41f3e9eaea35a933c207045896e
 src/III-Drone-Core 8457ec80e7170c30cabc4a280d7bfd4c16ccba14
 src/III-Drone-GC 0c33417ce6805364ed0a8cf29f9aa065fe003d17
 src/III-Drone-Interfaces 9564ac178e6c08f598890d9147aafe3513f6747e
@@ -56,4 +56,4 @@ src/micro-ROS-Agent 52abdf5a9897637b2539cb1c239e1ec4fa92e01c
 src/micro_ros_msgs e65ab21bd0733ebff2af6317d573cc584efa5893
 src/px4-ros2-interface-lib 809e422bfd088a6f5a30105eb36eb2e4cf52c02a
 src/px4_msgs 5e0e33cc6f192c1ad10548ffb25473fb618b9858
-tools/III-Drone-CLI 6a5bf4cb92c46ed3bc569b3d3130bde94e7c8d74
+tools/III-Drone-CLI 84fed816fb4495540bf912fd87fb33ad8c9ea954

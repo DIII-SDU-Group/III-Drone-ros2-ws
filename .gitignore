@@ -44,3 +44,6 @@ node_modules/.package-lock.json
 **/.pytest_cache/
 *.pyc
 *.egg-info/
+
+# Lab reference document, kept out of Git
+docs/references/OptiTrack_setup.pdf

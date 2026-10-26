@@ -116,6 +116,39 @@ to synchronize it to the Pi. Keep normal Git history when it is useful, but the
 onboard workflow does not require a release ID, source seal, promotion command,
 or a signed configuration artifact.
 
+### 7.1 Living Parameters And The Tracked Default
+
+Each runtime keeps a living parameter set per profile. A start only adds new
+parameters to it and keeps every value that already exists, so a deployment
+never changes an aircraft tuned in the field. A changed tracked default
+therefore does not reach an aircraft that already has a living set until it is
+synchronized on purpose:
+
+```bash
+iii config sync --host <pi> --profile opti_track --dry-run
+iii config sync --host <pi> --profile opti_track --mode defaults
+```
+
+- `--mode keep` (the default) writes nothing and lists every living value that
+  differs from the tracked default.
+- `--mode defaults` writes the tracked default's values into the living default
+  set (`tracked/default.yaml`) and selects it. `--parameter NAME` (repeatable)
+  limits it to those parameters; without it every parameter is set.
+- Nothing is overwritten without a copy: the set that is replaced is first
+  saved as `snapshots/pre_sync_<UTC time>.yaml` in the same profile, where the
+  operator interface can load it again.
+- The system must be shut down to write, because the configuration server
+  would write its own values back. The values take effect at the next start.
+
+From a ground computer the command runs on the Pi and this checkout's tracked
+default travels with it, so an edited default needs no build. A parameter that
+is new in the default but not yet in the Pi's installed schema is reported and
+left out: it arrives with `iii deploy dev --build`. On the runtime host itself
+(the Pi, or the devcontainer for `sim` and `hil`) run it without `--host`.
+
+`iii deploy dev --parameters defaults` runs the same synchronization for the
+Pi's provisioned profile after the restart; `--parameters keep` is the default.
+
 ## 8. Validation Semantics
 
 `ParameterHandler` enforces:
