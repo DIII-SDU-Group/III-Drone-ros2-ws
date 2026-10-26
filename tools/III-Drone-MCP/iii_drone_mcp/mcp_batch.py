@@ -40,7 +40,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run multiple III-Drone MCP tool calls in one process")
     parser.add_argument("path", nargs="?", help="JSON file containing a list of calls; reads stdin when omitted")
     parser.add_argument("--artifact-dir", default=os.environ.get("III_DRONE_MCP_ARTIFACT_DIR", "/tmp/iii_drone/iii_drone_agent"))
-    parser.add_argument("--px4-system-address", default="udpin://0.0.0.0:14540")
+    parser.add_argument("--px4-system-address", default=os.environ.get("III_PX4_SYSTEM_ADDRESS", "udpin://0.0.0.0:14540"))
     parser.add_argument("--continue-on-error", action="store_true")
     parser.add_argument("--per-call-timeout-sec", type=float, default=300.0)
     parser.add_argument("--log-stderr", action="store_true", help="Keep middleware logs on stderr instead of writing them to an artifact log")

@@ -21,8 +21,6 @@ export GZ_IP=127.0.0.1
 
 export CONFIG_BASE_DIR="${ISOLATION_ROOT}/config"
 export NODE_MANAGEMENT_CONFIG_DIR="${WORKSPACE_ROOT}/src/III-Drone-Supervision/node_management_config"
-export MISSION_SPECIFICATION_DIR="${WORKSPACE_ROOT}/src/III-Drone-Mission/mission_specification"
-export BEHAVIOR_TREES_DIR="${WORKSPACE_ROOT}/src/III-Drone-Mission/behavior_trees"
 export III_SYSTEM_RUNTIME_DIR="${ISOLATION_ROOT}/system"
 export III_SYSTEM_DAEMON_SOCKET="${III_SYSTEM_RUNTIME_DIR}/system_manager.sock"
 export III_SYSTEM_DAEMON_LOG="${III_SYSTEM_RUNTIME_DIR}/system_manager.log"

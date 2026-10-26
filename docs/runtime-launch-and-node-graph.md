@@ -4,6 +4,13 @@
 
 Canonical operational entrypoint is the III CLI (`iii`), backed by the supervision daemon and a launch-driven runtime graph.
 
+Inside the SIM devcontainer or onboard Pi, `iii` operates on the local
+runtime after sourcing its `setup/` profile. The [native ground-computer
+install](ground-computer-installation.md) routes the same runtime command over
+Docker to the matching SIM devcontainer or over SSH to a selected Pi. Native
+GC routing checks CLI source identity before execution; `iii-dev` owns only
+SIM/HIL stack composition and container helpers.
+
 Operational sequence:
 1. Environment profile is loaded from `setup/*.bash` (for example dev/sim profile).
 2. `iii system boot` ensures the system daemon is running.
@@ -42,7 +49,7 @@ The authoritative launch topology comes from the canonical system specification 
 The model is organized as:
 
 - `common entities`
-  Present in all profiles, for example configuration, payload, perception, control, and mission nodes.
+  Present in the full profiles, for example configuration, payload, perception, control, and mission nodes. The reduced `opti_track` profile keeps only the subset listed in section 2.5.
 
 - `common services`
   Daemon-owned non-lifecycle processes present in the selected profile, for example `micro_ros_agent`.
@@ -76,11 +83,47 @@ Examples from the specification:
 
 - `micro_ros_agent`
 
-### 2.4 Real / OptiTrack profile entities
+In split-host HIL, `micro_ros_agent` owns the workstation PX4 SITL endpoint on
+Pi UDP port 8890 and is the readiness gate for the mission graph. The physical
+PX4 transport is deliberately not started in this profile: it is not part of
+the virtual-flight proof and would consume Pi capacity. Real and OptiTrack
+profiles own their physical PX4 transport separately: their agent listens on
+Pi UDP port 8888 for the flight controller on the Ethernet link.
+
+Every aircraft profile (`hil`, `real`, `opti_track`) runs the stack in the ROS
+domain provisioned in `/etc/iii/runtime.env` (`iii_ros_domain_id`, default 42)
+with Fast DDS over UDPv4. The agent creates PX4's DDS participant in the domain
+that PX4's `UXRCE_DDS_DOM_ID` selects, so that parameter must equal the
+provisioned domain. The onboard `setup/setup_*.bash` profiles import the same
+settings.
+
+### 2.4 Real profile entities
 
 - managed TF real launch wrapper (`tf`)
 - managed cable camera wrapper (`cable_camera`)
 - `/sensor/mmwave/mmwave`
+
+### 2.5 OptiTrack reduced profile
+
+`opti_track` is a reduced flight-basics graph for the OptiTrack lab, where there
+is no cable. It runs with and without the payload mounted:
+
+- `configuration_server`, `tf`, `trajectory_generator`, `maneuver_controller`,
+  `rosbag_recorder`, `mission_executor`, and `custom_operation`
+- daemon services: `micro_ros_agent` (UDP 8888) and the motion-capture pose
+  relay (`opti_track_pose_relay`)
+
+There is no payload node, perception chain, overview provider, cable camera, or
+mmWave node. The relay subscribes to the lab gateway's
+`/body_splitter/body_<id>/pose` in the lab ROS domain (0) and publishes PX4
+external vision on `/fmu/in/vehicle_visual_odometry` in the stack domain. Its
+readiness is the heartbeat `/opti_track/pose_relay/fresh`, published only while
+fresh poses flow, so `iii system start` waits for motion capture (up to 120 s).
+The relay also sets PX4's EKF global origin once per flight-controller boot.
+The relay (III-Drone-Core), this graph (III-Drone-Supervision), and its
+parameters (III-Drone-Configuration) belong to those packages; see
+[OptiTrack lab readiness](opti-track-lab-readiness.md) for the data flow and the
+lab facts.
 
 ## 3. Node Categories
 
@@ -145,6 +188,21 @@ At the process level, the canonical path is launch-driven:
 - the daemon tracks which launched processes are alive
 - the daemon owns service processes that are not lifecycle nodes
 - supervision logic decides which managed nodes may be configured/activated
+
+When a lifecycle node's process dies and launch respawns it while the node is
+meant to be active, the system manager configures and activates the new
+process again. A process start or exit discards the supervisor's cached
+lifecycle state for that node, so recovery always waits for the new process to
+report its own state rather than trusting its predecessor's.
+
+III C++ executables spin their nodes with `iii_drone::utils::MultiThreadedExecutor`
+(`iii_drone_core/utils/multi_threaded_executor.hpp`), not rclcpp's
+`MultiThreadedExecutor`. On Jazzy the upstream executor can permanently drop a
+mutually exclusive callback group, including a node's default group with its
+lifecycle services and timers, from its wait set
+([ros2/rclcpp#3240](https://github.com/ros2/rclcpp/issues/3240)). The III
+executor requests the rebuild that restores the group directly after every
+mutually exclusive callback. Use it for new multi-threaded III executables.
 
 `mission_executor` is gated by `micro_ros_agent: ready`. The micro-ROS agent service may be alive while PX4 is absent; readiness follows configured FMU topic heartbeats. This supports starting the III system before PX4 SITL or the physical flight controller is available, then bringing PX4 online later and rerunning `iii system start`.
 

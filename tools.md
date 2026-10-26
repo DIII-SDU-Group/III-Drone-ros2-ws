@@ -6,6 +6,8 @@ The MCP implementation lives in `tools/III-Drone-MCP`. The Codex registration is
 
 If the III-Drone MCP tools are not visible in Codex, search for them first with `tool_search` using a query such as `iii drone mcp system simulation px4`.
 
+For Claude Code, the project `.mcp.json` registers the same server as `iii_drone` through `scripts/workspace/iii_drone_mcp_bridge.sh`. The bridge discovers the devcontainer by its `devcontainer.local_folder` label; from a git worktree without its own devcontainer it falls back to the main checkout's devcontainer. Claude Code exposes the tools as `mcp__iii_drone__<tool>` (for example `mcp__iii_drone__simulation`); the map below uses the Codex-style names.
+
 ## Preferred MCP Map
 
 Use these MCP tools instead of shelling into the container:

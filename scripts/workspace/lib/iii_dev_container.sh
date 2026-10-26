@@ -90,6 +90,26 @@ iii_dev_exec() {
         iii-dev "${III_DEV_CONTAINER_WORKSPACE}" "$@"
 }
 
+# A devcontainer shares the workspace with occasional root-owned maintenance and
+# CI commands.  Root-owned generated files make the normal ``iii`` user fail
+# late in a boot-time incremental build.  Repair only generated trees and only
+# entries owned by root; source and user-owned artifacts are never touched.
+iii_dev_repair_generated_ownership() {
+    local container_id
+    local repair_shell
+
+    container_id="$(iii_dev_container_id)" || return
+    repair_shell='set -eu; workspace="$1"; target_user="$2"; target_group="$(id -gn "$target_user")"; for root in build install log; do path="$workspace/$root"; [ -d "$path" ] || continue; find "$path" -xdev -uid 0 -exec chown "$target_user:$target_group" -- {} +; done'
+    "${III_DEV_DOCKER_BIN}" exec \
+        --user root \
+        --workdir "${III_DEV_CONTAINER_WORKSPACE}" \
+        "${container_id}" \
+        bash -lc "${repair_shell}" \
+        iii-dev-repair-generated-ownership \
+        "${III_DEV_CONTAINER_WORKSPACE}" \
+        "${III_DEV_CONTAINER_USER}"
+}
+
 iii_dev_container_status() {
     local running all
 
@@ -109,12 +129,59 @@ iii_dev_container_status() {
     return 1
 }
 
+iii_dev_host_has_nvidia_container_support() {
+    "${III_DEV_DOCKER_BIN}" info --format '{{json .}}' 2>/dev/null | grep -qi nvidia
+}
+
+# devcontainer.json requests the NVIDIA container runtime. On a host without it
+# (integrated Intel/AMD graphics) `docker run --gpus all` is refused, so render
+# through Mesa instead: drop the NVIDIA request and pass the host DRM devices
+# together with the groups that own them.
+iii_dev_write_mesa_devcontainer_config() {
+    local output="$1"
+    local device gid
+    local run_args=""
+    local -A seen_gids=()
+
+    if [[ -d /dev/dri ]]; then
+        run_args+='        "--device", "/dev/dri",\n'
+        for device in /dev/dri/renderD* /dev/dri/card*; do
+            [[ -e "${device}" ]] || continue
+            gid="$(stat -c '%g' "${device}")" || return
+            [[ -z "${seen_gids[${gid}]:-}" ]] || continue
+            seen_gids["${gid}"]=1
+            run_args+="        \"--group-add\", \"${gid}\",\n"
+        done
+    fi
+
+    sed -E \
+        -e '/"(NVIDIA_VISIBLE_DEVICES|NVIDIA_DRIVER_CAPABILITIES|__GLX_VENDOR_LIBRARY_NAME)"[[:space:]]*:/d' \
+        -e "s|^[[:space:]]*\"--gpus\",[[:space:]]*\"all\",[[:space:]]*\$|${run_args%\\n}|" \
+        "${III_DEV_WORKSPACE_ROOT}/.devcontainer/devcontainer.json" > "${output}" || return
+    if grep -q -- '--gpus\|NVIDIA\|nvidia' "${output}"; then
+        iii_dev_die "Could not derive a Mesa devcontainer configuration from .devcontainer/devcontainer.json."
+        return 1
+    fi
+}
+
 iii_dev_container_up() {
     local command_name="${III_DEV_DEVCONTAINER_BIN:-devcontainer}"
     local -a devcontainer_command=()
+    local -a devcontainer_args=()
+    local container_id=""
+    local mesa_config=""
+    local up_rc=0
 
     iii_dev_require_docker || return
     if [[ -n "$(iii_dev_running_containers)" ]]; then
+        container_id="$(iii_dev_container_id)" || return
+        if ! "${III_DEV_DOCKER_BIN}" exec --user "${III_DEV_CONTAINER_USER}" \
+            "${container_id}" test -f /run/lock/iii-dev-post-start.ready; then
+            printf 'Workspace devcontainer is running; completing interrupted post-start setup.\n'
+            "${III_DEV_DOCKER_BIN}" exec --user "${III_DEV_CONTAINER_USER}" \
+                --workdir "${III_DEV_CONTAINER_WORKSPACE}" "${container_id}" \
+                bash .devcontainer/post_start.sh --if-needed || return
+        fi
         iii_dev_container_status
         return 0
     fi
@@ -130,7 +197,56 @@ iii_dev_container_up() {
         return 1
     fi
 
-    "${devcontainer_command[@]}" up --workspace-folder "${III_DEV_WORKSPACE_ROOT}"
-    iii_dev_container_id >/dev/null
+    devcontainer_args=(up --workspace-folder "${III_DEV_WORKSPACE_ROOT}")
+    if ! iii_dev_host_has_nvidia_container_support; then
+        printf 'No NVIDIA container runtime on this host; starting the devcontainer with Mesa rendering.\n'
+        mesa_config="$(mktemp --suffix=.devcontainer.json)" || return
+        iii_dev_write_mesa_devcontainer_config "${mesa_config}" || { rm -f "${mesa_config}"; return 1; }
+        devcontainer_args+=(--override-config "${mesa_config}")
+    fi
+    "${devcontainer_command[@]}" "${devcontainer_args[@]}" || up_rc=$?
+    [[ -z "${mesa_config}" ]] || rm -f "${mesa_config}"
+    [[ "${up_rc}" -eq 0 ]] || return "${up_rc}"
+    container_id="$(iii_dev_container_id)" || return
+    "${III_DEV_DOCKER_BIN}" exec --user "${III_DEV_CONTAINER_USER}" \
+        "${container_id}" test -f /run/lock/iii-dev-post-start.ready || {
+        iii_dev_error "The devcontainer started, but its post-start setup did not complete."
+        return 1
+    }
     iii_dev_container_status
+}
+
+iii_dev_container_down() {
+    local rows container_id
+    local -a containers=()
+
+    iii_dev_require_docker || return
+    rows="$(iii_dev_running_containers)" || return
+    while IFS=$'\t' read -r container_id _container_name; do
+        [[ -n "${container_id}" ]] && containers+=("${container_id}")
+    done <<< "${rows}"
+
+    if ((${#containers[@]} == 0)); then
+        printf 'Workspace devcontainer is already stopped.\n'
+        return 0
+    fi
+    if ((${#containers[@]} != 1)); then
+        iii_dev_error "Expected one running workspace devcontainer, found ${#containers[@]}:"
+        printf '%s\n' "${rows}" >&2
+        return 1
+    fi
+
+    container_id="${containers[0]}"
+    printf 'Stopping workspace devcontainer %s...\n' "${container_id}"
+    "${III_DEV_DOCKER_BIN}" stop --time 20 "${container_id}" >/dev/null || {
+        iii_dev_error "Failed to stop workspace devcontainer ${container_id}."
+        return 1
+    }
+    rows="$(iii_dev_running_containers)" || return
+    if [[ -n "${rows}" ]]; then
+        iii_dev_error "Workspace devcontainer is still running after stop:"
+        printf '%s\n' "${rows}" >&2
+        return 1
+    fi
+    printf 'Workspace devcontainer stopped.\n'
 }

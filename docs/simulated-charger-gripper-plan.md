@@ -371,36 +371,41 @@ Config:
 - `/sim/charger_gripper/trigger_max_z_m`
 - `/sim/charger_gripper/required_contact_duration_ms`
 
-### Latch Joint
+### Latch Model (Implemented: Jaws, Not A Joint)
 
-When the ROS node requests latch, Gazebo should create a constraint at the selected conductor point.
+The real gripper does not latch rigidly. Its slot floor and walls are part of
+the airframe, and its closed jaws only keep the conductor from leaving the slot
+through the opening. A vehicle hanging from the conductor rests on the jaws. A
+vehicle pushing up presses the slot floor against the conductor, and the jaws
+carry nothing, so opening them does not change the vehicle's motion.
 
-Recommended first implementation:
+The simulation models it the same way:
 
-- Spawn or maintain an invisible static latch anchor model at the closest conductor point.
-- Create a joint between the gripper link and latch anchor.
-- Use a fixed joint initially.
-- If simulation becomes unstable, replace with a stiff 6-DOF joint with compliance/damping.
+- The slot floor and walls are collisions of the drone's collision mesh (floor
+  at `base_link` z 0.344, walls 3.9 cm apart, flared lips). The conductors
+  collide as cylinders of `conductor_radius_m` from `conductors.yaml`, generated
+  into `world_models/hcaa_pylon_setup/model.sdf` by
+  `scripts/generate_conductor_collisions.py` (the exported world mesh's coarse
+  conductor tube is removed from the world collision mesh).
+- `SimChargerGripperPlugin` detects the conductor at the seat
+  (`latch_local_point`: conductor centre resting on the slot floor) and, while
+  closed, applies only the jaws (`iii_drone_simulation/charger_gripper_jaws.hpp`):
+  a one-sided stiff contact that keeps the conductor within `jaw_clearance` of
+  the seat, plus a grip along the conductor. Lateral support comes from the
+  slot walls.
+- `gripper_pose` equals `/tf/sim/drone_to_cable_gripper`: x along the
+  conductor, z out of the slot opening.
+- Open removes the jaws immediately; the floor and walls remain.
 
-Joint behavior:
-
-- Latched state should support the full drone weight.
-- The drone should not fall through or detach while closed.
-- Open command should remove the joint immediately.
-
-Config:
-
-- `/sim/charger_gripper/latch_joint_type`
-- `/sim/charger_gripper/latch_joint_stiffness`
-- `/sim/charger_gripper/latch_joint_damping`
-- `/sim/charger_gripper/latch_anchor_model_name`
-- `/sim/charger_gripper/latch_timeout_s`
+Leave Cable relies on this: it pushes the vehicle up against the conductor
+with an acceleration setpoint before it opens the gripper (see
+[Mission And Behavior Layer](mission-and-behavior-layer.md)).
 
 ### Detach Behavior
 
 On detach:
 
-- Remove/destroy the joint.
+- Remove the jaws.
 - Clear selected conductor ID.
 - Clear latch anchor.
 - Publish latch state as not latched.

@@ -1,0 +1,7 @@
+---
+# This overlay is used only by the amd64 syntax/integration harness.
+iii_hostname_manage: false
+iii_ros_packages:
+  - ros-jazzy-ros-base
+  - ros-jazzy-rmw-cyclonedds-cpp
+  - ros-jazzy-usb-cam

@@ -297,31 +297,36 @@ class MissionScenarioSuite:
         }
         saw_reach_active = False
         saw_leave_success = False
-        qos_profile = self._transient_local_qos()
+        mission_qos_profile = self._transient_local_qos()
+        # Mission status is retained, while individual PX4-mode status
+        # publishers intentionally use the default volatile QoS.  Using the
+        # retained profile for both creates an incompatible subscription and
+        # makes an otherwise successful lifecycle invisible to this observer.
+        mode_qos_profile = self._volatile_reliable_qos()
         subscriptions = [
             self.tools.node.create_subscription(
                 MissionModeStatus,
                 "/mission/status",
                 lambda message: latest_mission.__setitem__("message", message),
-                qos_profile,
+                mission_qos_profile,
             ),
             self.tools.node.create_subscription(
                 StringStamped,
                 "/mission/modes/reach_cable/status",
                 lambda message: latest_modes.__setitem__("reach_cable", self._parse_mode_status_message(message)),
-                qos_profile,
+                mode_qos_profile,
             ),
             self.tools.node.create_subscription(
                 StringStamped,
                 "/mission/modes/cable_charging/status",
                 lambda message: latest_modes.__setitem__("cable_charging", self._parse_mode_status_message(message)),
-                qos_profile,
+                mode_qos_profile,
             ),
             self.tools.node.create_subscription(
                 StringStamped,
                 "/mission/modes/leave_cable/status",
                 lambda message: latest_modes.__setitem__("leave_cable", self._parse_mode_status_message(message)),
-                qos_profile,
+                mode_qos_profile,
             ),
         ]
         try:
@@ -397,6 +402,15 @@ class MissionScenarioSuite:
         return QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
+
+    @staticmethod
+    def _volatile_reliable_qos() -> QoSProfile:
+        return QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
         )

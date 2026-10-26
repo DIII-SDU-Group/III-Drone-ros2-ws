@@ -8,9 +8,10 @@ readonly toolchain="${CMAKE_TOOLCHAIN_FILE:-/opt/iii/arm64-toolchain.cmake}"
 
 colcon build \
   --base-paths src \
-  --packages-skip micro_ros_agent microxrcedds_agent micro_ros_msgs px4_msgs \
+  --packages-skip iii_drone_simulation micro_ros_agent microxrcedds_agent micro_ros_msgs btcpp_ros2_samples \
   --packages-skip-regex 'example_.*' \
   "$@" \
   --cmake-args \
   -DCMAKE_TOOLCHAIN_FILE="${toolchain}" \
-  -DCMAKE_PREFIX_PATH="${sysroot}/opt/ros/jazzy;${sysroot}/usr"
+  -DCMAKE_PREFIX_PATH="${sysroot}/opt/ros/jazzy;${sysroot}/usr" \
+  -DBTCPP_GROOT_INTERFACE=OFF

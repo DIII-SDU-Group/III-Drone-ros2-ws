@@ -32,6 +32,7 @@ data_analysis/
 
 # Common editor and OS noise
 node_modules/
+**/node_modules/
 .vscode/
 .idea/
 .DS_Store

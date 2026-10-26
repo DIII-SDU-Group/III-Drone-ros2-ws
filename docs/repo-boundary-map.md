@@ -1,6 +1,8 @@
 # Repository Boundary Map
 
-This document proposes how to structure repository boundaries for the III-Drone stack to reduce submodule complexity while preserving modularity and research velocity.
+This document records the current repository boundaries for the III-Drone stack.
+Branch, gitlink, and release policy is owned by
+[dependency governance](dependency-governance.md).
 
 ## 1. Guiding Principle
 
@@ -14,7 +16,7 @@ Decision rule:
 
 ## 2. Recommended Target Structure
 
-### 2.1 Keep As Separate Repos (Submodules or Manifest-managed externals)
+### 2.1 Separate Repositories
 
 1. `src/III-Drone-Interfaces`
 - Contract/API package; should remain independent and versioned deliberately.
@@ -37,7 +39,7 @@ Decision rule:
 7. `PX4-Autopilot`
 - Keep separate repository.
 
-### 2.2 Move Into Workspace Repo (or treat as workspace-owned, not independent products)
+### 2.2 Workspace-Owned Integration
 
 1. `setup/*` and top-level `scripts/*`
 - Environment/bootstrap/deployment glue for this specific integrated system.
@@ -51,20 +53,11 @@ Decision rule:
 4. Deployment profile definitions
 - Any files that encode local robot/developer workflow assumptions should be workspace-owned.
 
-### 2.3 Optional Decision (Choose One and Stay Consistent)
+### 2.3 Ground Control And CLI
 
-`III-Drone-GC` and `III-Drone-CLI` can go either way:
-
-Option A: Keep separate repos
-- Good if they may be reused across projects.
-- Better ownership/versioning boundaries.
-
-Option B: Move into workspace
-- Good if they are tightly coupled to this exact stack and unlikely to be reused.
-- Simplifies day-to-day branch/PR flow.
-
-Recommendation:
-- Keep both separate until coupling becomes clearly one-project-only.
+`III-Drone-GC` and `III-Drone-CLI` are editable III submodules. Their code,
+package tests, `develop`, and `main` branches stay in their owning repositories;
+the workspace owns integration, release composition, and exact gitlink/lock pins.
 
 ## 3. Submodule Complexity Reduction Plan
 
@@ -96,13 +89,13 @@ The governed branch flow is explicit:
 - Qualified robot deployments use immutable workspace `vX.Y.Z` tags reachable
   from `release`, freezing every dependency ref.
 
-## 5. Suggested Immediate Actions (Low Disruption)
+## 5. Current Governance
 
-1. Keep current repo split for core/mission/config/interfaces/supervision.
-2. Treat workspace as the canonical integration repo.
-3. Add dependency lock + CI validation in workspace.
-4. Define policy for GC/CLI after 1-2 months of observed coupling.
-5. Migrate only obviously workspace-local glue if needed; avoid major structural churn during active research cycles.
+1. The workspace is the canonical integration and qualified-release repository.
+2. Every editable III repository owns its code and package checks through `main`.
+3. Gitlinks and `deps/submodule-lock.txt` freeze exact integration commits.
+4. Forks and third-party repositories remain outside editable-III automation.
+5. Structural repository moves require a separate architecture decision.
 
 ## 6. Anti-Patterns To Avoid
 

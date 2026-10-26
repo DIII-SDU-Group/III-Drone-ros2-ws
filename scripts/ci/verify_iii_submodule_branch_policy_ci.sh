@@ -7,9 +7,14 @@ Usage:
   ./scripts/ci/verify_iii_submodule_branch_policy_ci.sh --base <base-branch> --feature <feature-branch>
 
 CI-safe III submodule branch policy verifier.
-It validates that each III submodule pinned commit (HEAD in the checked-out submodule)
-is reachable from at least one branch in the allowed stack:
+It validates that each changed III submodule pinned commit (HEAD in the
+checked-out submodule) is reachable from at least one branch in the allowed
+stack:
   base -> ... -> feature
+Governed forks (PX4-Autopilot, px4-ros2-interface-lib, BehaviorTree.*,
+iwr6843aop-ROS2-pkg) follow the same rule, and may also pin a commit on the
+fork's default branch (an unmodified upstream revision). A fork pin that lives
+only on a temporary branch would disappear when that branch is deleted.
 
 This avoids relying on local branch names (submodules are often detached in CI)
 and is intended for pull-request validation, not day-to-day local branch
@@ -68,9 +73,17 @@ mapfile -t iii_submodules < <(
     | awk '{print $2}' \
     | grep -E '^(src/III-|tools/III-)'
 )
+governed_forks=(PX4-Autopilot src/px4-ros2-interface-lib src/BehaviorTree.CPP src/BehaviorTree.ROS2 src/iwr6843aop-ROS2-pkg)
+is_fork() {
+  local candidate="$1" fork
+  for fork in "${governed_forks[@]}"; do
+    [[ "$fork" == "$candidate" ]] && return 0
+  done
+  return 1
+}
 
 changed_iii_submodules=()
-for p in "${iii_submodules[@]}"; do
+for p in "${iii_submodules[@]}" "${governed_forks[@]}"; do
   if ! git diff --quiet "origin/$base_branch...origin/$feature_branch" -- "$p"; then
     changed_iii_submodules+=("$p")
   fi
@@ -104,7 +117,12 @@ for p in "${changed_iii_submodules[@]}"; do
   git -C "$p" fetch --no-tags origin >/dev/null 2>&1 || true
 
   ok=0
-  for b in "${allowed_branches[@]}"; do
+  candidates=("${allowed_branches[@]}")
+  if is_fork "$p"; then
+    default_branch="$(git -C "$p" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+    [[ -n "$default_branch" ]] && candidates+=("${default_branch#origin/}")
+  fi
+  for b in "${candidates[@]}"; do
     if git -C "$p" rev-parse --verify --quiet "origin/$b" >/dev/null; then
       if git -C "$p" merge-base --is-ancestor "$commit" "origin/$b"; then
         ok=1

@@ -30,6 +30,10 @@ def present_paths(value, prefix=""):
     return paths
 
 
+# The frozen dataset and its template live in the separate disturbance_nmpc
+# research checkout; without it there is nothing to check.
+@unittest.skipUnless(TEMPLATE.is_file() and (DATASET / "dataset_manifest.json").is_file(),
+                     "external disturbance_nmpc FINALTEST dataset is not present")
 class FinalTestManifestContract(unittest.TestCase):
     def setUp(self):
         self.template = json.loads(TEMPLATE.read_text())

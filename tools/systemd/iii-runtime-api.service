@@ -17,8 +17,6 @@ Environment=III_RUNTIME_API_PROFILE=sim
 Environment=III_RUNTIME_API_MDNS_ENABLED=1
 Environment="III_RUNTIME_API_MDNS_INSTANCE=III Runtime API Devcontainer"
 Environment=III_RUNTIME_API_SYSTEM_ID=iii-drone-dev
-Environment=III_RUNTIME_API_BROWSER_PASSWORD=dev-password
-Environment=III_RUNTIME_API_CLI_TOKEN=dev-cli-token
 Environment=III_RUNTIME_API_LOG_DIR=/home/iii/ws/runtime_logs/runtime-api
 EnvironmentFile=-/home/iii/ws/.config/iii-runtime-api.env
 ExecStartPre=/bin/mkdir -p /home/iii/ws/runtime_logs/runtime-api

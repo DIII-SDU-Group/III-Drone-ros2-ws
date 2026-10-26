@@ -1,0 +1,87 @@
+---
+- name: Create the III developer group
+  ansible.builtin.group:
+    name: "{{ iii_runtime_group }}"
+    gid: "{{ iii_runtime_gid }}"
+    system: false
+    state: present
+
+- name: Create hardware-access groups
+  ansible.builtin.group:
+    name: "{{ item }}"
+    system: true
+    state: present
+  loop: "{{ iii_runtime_supplementary_groups }}"
+
+- name: Create the interactive III developer account
+  ansible.builtin.user:
+    name: "{{ iii_runtime_user }}"
+    uid: "{{ iii_runtime_uid }}"
+    group: "{{ iii_runtime_group_effective }}"
+    groups: "{{ omit if ansible_check_mode else (iii_runtime_supplementary_groups | join(',')) }}"
+    append: true
+    create_home: true
+    home: /home/iii
+    shell: /bin/bash
+    password_lock: false
+    system: false
+    state: present
+  # `usermod` cannot alter the account owning the active SSH session.  The
+  # first-boot image already creates this exact developer account, so retain
+  # it in place when provisioning connects as `iii`.
+  when: ansible_user != iii_runtime_user
+
+- name: Verify the active III developer bootstrap account
+  ansible.builtin.assert:
+    that:
+      - ansible_user == iii_runtime_user
+    fail_msg: >-
+      The active III developer account does not match the first-boot account
+      expected by this profile. Provision through a separate administrator
+      account or repair the bootstrap account first.
+  when: ansible_user == iii_runtime_user
+
+- name: Create an ordinary writable SSH directory
+  ansible.builtin.file:
+    path: /home/iii/.ssh
+    state: directory
+    owner: "{{ iii_runtime_owner_effective }}"
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0700"
+
+- name: Grant the III developer account full passwordless sudo
+  ansible.builtin.template:
+    src: 90-iii-maintenance.sudoers.j2
+    dest: /etc/sudoers.d/90-iii-maintenance
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+
+- name: Remove the restricted deployment transport account
+  ansible.builtin.user:
+    name: iii-deploy
+    state: absent
+    remove: true
+
+- name: Remove forced-command SSH policy
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d/50-iii-forced-command.conf
+    state: absent
+  notify: Restart SSH
+
+- name: Install permissive developer SSH policy
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/50-iii-developer.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      PasswordAuthentication yes
+      PermitRootLogin yes
+      PubkeyAuthentication yes
+      AllowAgentForwarding yes
+      AllowTcpForwarding yes
+      PermitTunnel yes
+      X11Forwarding yes
+  notify: Restart SSH
