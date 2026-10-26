@@ -37,6 +37,9 @@ def _render(template: Path, **overrides) -> str:
         undefined=jinja2.StrictUndefined, trim_blocks=True, keep_trailing_newline=True
     )
     environment.filters["to_json"] = json.dumps
+    environment.filters["bool"] = lambda value: (
+        value if isinstance(value, bool) else str(value).lower() in {"1", "true", "yes", "on"}
+    )
     return environment.from_string(template.read_text(encoding="utf-8")).render(values)
 
 
@@ -54,6 +57,7 @@ def test_wifi_client_is_optional_and_carries_no_committed_secret():
     assert values["iii_wifi_ssid"] == ""
     assert values["iii_wifi_psk"] == ""
     assert values["iii_wifi_remove"] is False
+    assert values["iii_wifi_hidden"] is False
     # Every task that mentions the secret, or copies a file holding it,
     # refuses to log it.
     for task in _tasks():
@@ -85,6 +89,14 @@ def test_wifi_owns_the_default_route_over_wired_dhcp():
 def test_wifi_regulatory_domain_is_rendered_only_when_selected():
     wlan = _wifi(iii_wifi_regulatory_domain="DK")["network"]["wifis"]["wlan0"]
     assert wlan["regulatory-domain"] == "DK"
+
+
+def test_hidden_wifi_network_is_probed_by_name_only_when_selected():
+    # A network that does not broadcast its SSID (the OptiTrack lab) is never
+    # found by a passive scan; netplan's hidden flag makes the Pi probe for it.
+    access_point = _wifi(iii_wifi_hidden=True)["network"]["wifis"]["wlan0"]["access-points"][SSID]
+    assert access_point == {"password": PASSPHRASE, "hidden": True}
+    assert "hidden" not in _wifi()["network"]["wifis"]["wlan0"]["access-points"][SSID]
 
 
 def test_wifi_client_file_is_root_only_and_applied_through_netplan():

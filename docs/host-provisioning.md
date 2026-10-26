@@ -71,8 +71,14 @@ Pi. Give the network once:
 
 ```bash
 iii host provision --host <pi> --profile opti_track \
-  --wifi-ssid OptiTrack_5G --wifi-psk-file ~/.config/iii/optitrack-wifi.psk --wifi-country DK
+  --wifi-ssid OptiTrack_5G --wifi-psk-file ~/.config/iii/optitrack-wifi.psk --wifi-country DK \
+  --wifi-hidden
 ```
+
+`--wifi-hidden` is for a network that does not broadcast its SSID, such as the
+OptiTrack lab's: the Pi then probes for it by name. Without it the Pi never
+finds a hidden network. A client stored without the flag has to be given again
+with it.
 
 Later runs of `iii host provision --profile opti_track` need no Wi-Fi options:
 they activate that profile's stored client again. `--wifi-ssid` replaces the

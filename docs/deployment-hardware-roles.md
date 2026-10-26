@@ -43,7 +43,8 @@ root-only slot (`/etc/iii/wifi/<profile>.yaml`): the OptiTrack lab network for
 `opti_track`, the ground station's network for `real`. Provisioning a profile
 activates its slot, so switching profiles switches networks; `--wifi-ssid`
 replaces the slot of the profile being provisioned. For `hil` the client is
-optional (`--wifi-ssid` sets it, `--remove-wifi` removes it).
+optional (`--wifi-ssid` sets it, `--remove-wifi` removes it). Add
+`--wifi-hidden` for a network that does not broadcast its SSID.
 
 ## OptiTrack lab data flow
 

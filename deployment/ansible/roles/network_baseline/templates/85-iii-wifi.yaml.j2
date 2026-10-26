@@ -15,3 +15,6 @@ network:
       access-points:
         {{ iii_wifi_ssid | to_json }}:
           password: {{ iii_wifi_psk | to_json }}
+{% if iii_wifi_hidden | bool %}
+          hidden: true
+{% endif %}

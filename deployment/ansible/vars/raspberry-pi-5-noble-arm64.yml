@@ -30,6 +30,9 @@ iii_ros_domain_id: 42
 iii_wifi_ssid: ""
 iii_wifi_psk: ""
 iii_wifi_regulatory_domain: ""
+# A network that does not broadcast its SSID (`--wifi-hidden`): the Pi probes
+# for it by name.
+iii_wifi_hidden: false
 iii_wifi_remove: false
 # real and opti_track require a Wi-Fi client and each keep their own here.
 iii_wifi_slot_profiles: [real, opti_track]
