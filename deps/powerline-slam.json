@@ -3,7 +3,7 @@
   "purpose": "Source pin of the powerline SLAM estimator run by src/iii_drone_powerline_slam (simulation profile, passive backend).",
   "repository": "git@github.com:frnyb/powerline-slam.git",
   "branch": "codex/full-offline-estimator",
-  "commit": "e0d79abed8de707d6d41695da66d924b960505bb",
+  "commit": "4dc37c500c4c21bfa79a967b9e22ec2f8e61788e",
   "checkout": ".cache/powerline_slam_checkout",
   "estimator_environment": ".cache/powerline_slam_estimator",
   "v13_derived_runtime": {
