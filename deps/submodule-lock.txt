@@ -44,8 +44,8 @@ src/III-Drone-Contracts 152b99f7c5b3b41f3e9eaea35a933c207045896e
 src/III-Drone-Core 8457ec80e7170c30cabc4a280d7bfd4c16ccba14
 src/III-Drone-GC 0c33417ce6805364ed0a8cf29f9aa065fe003d17
 src/III-Drone-Interfaces 9564ac178e6c08f598890d9147aafe3513f6747e
-src/III-Drone-Mission db4eede7afdb4e175aeb5a5c119d017d4a3d52f4
-src/III-Drone-Runtime 81f478c51ef06d14f7a7df85350412e826b677a8
+src/III-Drone-Mission 1c7cc11b4188a97597756ec984494e682c951567
+src/III-Drone-Runtime 315bb5be713ca0e4aae618b875930b9bb65f9102
 src/III-Drone-Simulation 4ae5e03ae1304098fdf799e18cbdf83d56fb1a9b
 src/III-Drone-Simulation/Gazebo-simulation-assets 1c4f14b2cfebbccd5d5ada18ed0f7e8edab5a636
 src/III-Drone-Supervision 6ef3e467b023456c1f3db91ac8386597234d04b0
