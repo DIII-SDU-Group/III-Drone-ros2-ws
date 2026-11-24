@@ -59,6 +59,19 @@ if [[ -r "${III_HIL_ONBOARD_RUNTIME_ENV:-/etc/iii/runtime.env}" ]] &&
     # Onboard CLI commands use the local daemon. Workstation commands retain
     # their legacy HTTP behavior unless a native GC install routes them over SSH.
     export CLI_CONFIGURATION="dev"
+    # Onboard, as in setup_real.bash: ROS and the workspace install the
+    # systemd units run. Commands routed from a ground computer source only
+    # this profile, and `iii config sync` failed without the ament index
+    # ("iii_drone_configuration is not available through the ament index").
+    _iii_hil_ros_prefix="${III_ROS_PREFIX:-/opt/ros/jazzy}"
+    if [[ -r "${_iii_hil_ros_prefix}/setup.bash" ]]; then
+        source "${_iii_hil_ros_prefix}/setup.bash"
+    fi
+    _iii_hil_install="${III_WORKSPACE_INSTALL:-$(dirname "${SCRIPT_DIR}")/install}"
+    if [[ -r "${_iii_hil_install}/setup.bash" ]]; then
+        source "${_iii_hil_install}/setup.bash"
+    fi
+    unset _iii_hil_ros_prefix _iii_hil_install
 else
     export CLI_CONFIGURATION="remote"
 fi
