@@ -133,6 +133,31 @@ def discover_container() -> str:
     return ids[0]
 
 
+def physical_px4_link_up(peer: str | None) -> bool:
+    """HIL: whether the Pi has its PX4 Ethernet address, i.e. the flight controller is powered and linked."""
+    if not peer:
+        return False
+    result = run(["ssh", *SSH_OPTIONS, f"iii@{peer}", "ip -4 -o addr show | grep -q ' 10.41.10.1/'"],
+                 check=False, timeout=30)
+    return result.returncode == 0
+
+
+def physical_px4_monitor_required(link_up: bool, without_physical_px4: bool) -> bool:
+    """HIL proves a powered flight controller stayed disarmed; with it unpowered only the Pi runs.
+
+    User decision 2026-11-24: the check applies only when the flight controller
+    is powered. A reachable flight controller is always monitored; an
+    unreachable one needs the explicit --without-physical-px4.
+    """
+    if link_up:
+        return True
+    if without_physical_px4:
+        return False
+    raise RunnerError(
+        "the physical flight controller is not reachable from the Pi (no 10.41.10.1 PX4 link); "
+        "power and connect it, or pass --without-physical-px4 for a Pi-only HIL run")
+
+
 def require_stack_ready(target_name: str, host: str | None) -> str | None:
     """Return the HIL Pi peer, or None for SIM. Raises if the stack is not ready."""
     if target_name == "sim":
@@ -214,6 +239,9 @@ def execute(args: argparse.Namespace) -> Path:
                                   f"{result.stdout[-2000:]}{result.stderr[-2000:]}")
     peer = require_stack_ready(args.target, args.host)
     target = Target(args.target, discover_container(), peer)
+    physical_link = physical_px4_link_up(peer) if args.target == "hil" else False
+    monitor_physical_px4 = args.target == "hil" and physical_px4_monitor_required(
+        physical_link, bool(getattr(args, "without_physical_px4", False)))
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = (args.run_dir or ROOT / "runtime" / "endurance" / f"{args.target}-{stamp}").resolve()
     rel = run_dir.relative_to(ROOT)
@@ -224,7 +252,8 @@ def execute(args: argparse.Namespace) -> Path:
         "started_at": utc_now(), "target": target.name, "pi_peer": peer,
         "duration_sec": args.duration_sec, "required_cycles": args.required_cycles,
         "scenario": args.scenario, "hold_phase": args.hold_phase,
-        "physical_px4_monitor": target.name == "hil",
+        "physical_px4_monitor": monitor_physical_px4,
+        "physical_px4_link": physical_link if target.name == "hil" else None,
         "fast_cycles": bool(getattr(args, "fast_cycles", False)),
         "probe_duration_sec": None if args.no_probe else probe_duration_sec(args.duration_sec),
         "source_identity": source_identity(),
@@ -697,6 +726,9 @@ def main(argv: list[str] | None = None) -> int:
                              "battery drain (isolated checks; not a battery-driven qualification)")
     parser.add_argument("--fresh-start", action="store_true",
                         help="recreate the simulation epoch first (SIM: stack start --recreate-sim, HIL: hil restart)")
+    parser.add_argument("--without-physical-px4", action="store_true",
+                        help="HIL with only the Pi powered: skip the physical flight-controller disarm record "
+                             "when the flight controller is not reachable (it is still monitored when it is)")
     parser.add_argument("--evaluate-only", type=Path, metavar="RUN_DIR")
     parser.add_argument("--strict-warnings", action="store_true",
                         help="also fail on any WARN line in node logs during the run")

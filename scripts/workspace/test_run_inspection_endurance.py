@@ -311,3 +311,12 @@ def test_cable_release_failures_and_missing_releases_fail_acceptance(tmp_path: P
     report = endurance.evaluate(run_dir, target=target, fetch_status=lambda host: safe, log_lines=lambda t, d: [])
     assert "cable releases in PX4 logs 0 < cycles 1" in report["failures"]
 
+
+
+def test_physical_px4_monitor_follows_the_flight_controller_link() -> None:
+    assert endurance.physical_px4_monitor_required(True, False) is True
+    # A powered, reachable flight controller is monitored even when skipping is allowed.
+    assert endurance.physical_px4_monitor_required(True, True) is True
+    assert endurance.physical_px4_monitor_required(False, True) is False
+    with pytest.raises(endurance.RunnerError, match="--without-physical-px4"):
+        endurance.physical_px4_monitor_required(False, False)
