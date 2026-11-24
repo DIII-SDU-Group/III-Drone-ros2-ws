@@ -5,7 +5,7 @@ set -euo pipefail
 STATUS_SERVICE="${III_DEV_ROSBAG_STATUS_SERVICE:-/mission/rosbag_recorder/recording_status}"
 START_SERVICE="${III_DEV_ROSBAG_START_SERVICE:-/mission/rosbag_recorder/start_recording}"
 STOP_SERVICE="${III_DEV_ROSBAG_STOP_SERVICE:-/mission/rosbag_recorder/stop_recording}"
-ARTIFACT_ROOT="${III_DEV_ROSBAG_ROOT:-/tmp/iii_drone/rosbags}"
+ARTIFACT_ROOT="${III_DEV_ROSBAG_ROOT:-/home/iii/ws/runtime_logs/rosbags}"
 SERVICE_TIMEOUT_SEC="${III_DEV_ROSBAG_SERVICE_TIMEOUT_SEC:-10}"
 
 usage() {

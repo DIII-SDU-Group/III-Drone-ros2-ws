@@ -6668,7 +6668,7 @@ class DroneAgentTools:
         if output_dir_arg:
             output_dir = Path(str(output_dir_arg)).expanduser()
         else:
-            output_dir = Path("/tmp/iii_drone/rosbags") / recording_id
+            output_dir = Path("/home/iii/ws/runtime_logs/rosbags") / recording_id
         output_dir.parent.mkdir(parents=True, exist_ok=True)
         if output_dir.exists():
             return ToolResult(False, {"recording_id": recording_id, "output_dir": str(output_dir)}, "rosbag output directory already exists")
