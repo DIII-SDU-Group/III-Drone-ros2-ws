@@ -390,6 +390,13 @@ def execute(args: argparse.Namespace) -> Path:
 # Pi/workstation link in HIL). That is a recording-completeness metric, not a
 # flight-system quirk (user decision), so it is reported separately.
 RECORDING_LOSS = re.compile(r"Number of messages lost on the transport layer: (\d+)")
+# rosbag2 0.26 (Jazzy) finds no message definition for the action status and
+# feedback topics an all-topics recording includes; it records their data and
+# leaves the definition empty in the bag (decodable with the installed
+# interfaces). A recording note, reported separately, not a system quirk.
+RECORDING_MISSING_DEFINITION = re.compile(
+    r"Message definition for topic '([^']+)' with type '[^']+' not found\. "
+    r"Message definition will be left empty in bag\.")
 LOG_LINE = re.compile(r"^\[(ERROR|WARN|FATAL)\] \[(\d+)\.\d+\] \[([^\]]+)\]: (.*)$")
 
 
@@ -405,6 +412,7 @@ def summarize_log_lines(lines: list[str], since_epoch: float, until_epoch: float
     groups: dict[tuple[str, str, str], dict[str, Any]] = {}
     counts = {"ERROR": 0, "WARN": 0, "FATAL": 0}
     recording_lost_messages = 0
+    recording_missing_definitions: set[str] = set()
     markers = {marker: 0 for marker in CONTINUITY_FAULT_MARKERS}
     seen: set[str] = set()
     for line in lines:
@@ -424,6 +432,10 @@ def summarize_log_lines(lines: list[str], since_epoch: float, until_epoch: float
         if loss and node.startswith("rosbag2_recorder"):
             recording_lost_messages += int(loss.group(1))
             continue
+        missing_definition = RECORDING_MISSING_DEFINITION.search(message)
+        if missing_definition and node.startswith("rosbag2"):
+            recording_missing_definitions.add(missing_definition.group(1))
+            continue
         counts[level] += 1
         for marker in markers:
             if marker in message:
@@ -434,7 +446,8 @@ def summarize_log_lines(lines: list[str], since_epoch: float, until_epoch: float
         group["count"] += 1
     ordered = sorted(groups.values(), key=lambda g: (g["level"] != "FATAL", g["level"] != "ERROR", -g["count"]))
     return {"counts": counts, "continuity_markers": markers, "patterns": ordered,
-            "recording_lost_messages": recording_lost_messages}
+            "recording_lost_messages": recording_lost_messages,
+            "recording_missing_definitions": sorted(recording_missing_definitions)}
 
 
 def collect_log_lines(target: Target, run_dir: Path) -> list[str]:
@@ -605,6 +618,7 @@ def evaluate(run_dir: Path, *, target: Target | None = None, strict_warnings: bo
         report["log_counts"] = findings["counts"]
         report["continuity_faults"] = findings["continuity_markers"]
         report["recording_lost_messages"] = findings["recording_lost_messages"]
+        report["recording_missing_definitions"] = findings["recording_missing_definitions"]
         report["log_patterns"] = [{k: g[k] for k in ("level", "node", "count", "pattern")}
                                   for g in findings["patterns"][:40]]
         # A metric, not a failure: it says whether SITL ran in real time.
@@ -680,6 +694,7 @@ def evaluate_hold(run_dir: Path, plan: dict[str, Any], *, target: Target | None,
         (run_dir / "log_findings.json").write_text(json.dumps(findings, indent=2) + "\n")
         report["log_counts"] = findings["counts"]
         report["recording_lost_messages"] = findings["recording_lost_messages"]
+        report["recording_missing_definitions"] = findings["recording_missing_definitions"]
         report["log_patterns"] = [{k: g[k] for k in ("level", "node", "count", "pattern")}
                                   for g in findings["patterns"][:40]]
         # A clean handover means no warnings at all, not just no errors.

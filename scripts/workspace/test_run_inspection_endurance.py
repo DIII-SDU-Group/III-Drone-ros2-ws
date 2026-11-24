@@ -320,3 +320,15 @@ def test_physical_px4_monitor_follows_the_flight_controller_link() -> None:
     assert endurance.physical_px4_monitor_required(False, True) is False
     with pytest.raises(endurance.RunnerError, match="--without-physical-px4"):
         endurance.physical_px4_monitor_required(False, False)
+
+
+def test_missing_bag_message_definitions_are_a_recording_note() -> None:
+    lines = [
+        "[WARN] [150.1] [rosbag2_cpp]: Message definition for topic '/c/hover/_action/status' with type "
+        "'action_msgs/msg/GoalStatusArray' not found. Message definition will be left empty in bag.",
+        "[WARN] [150.2] [other_node]: Message definition for topic '/x' with type 'a/msg/B' not found. "
+        "Message definition will be left empty in bag.",
+    ]
+    summary = endurance.summarize_log_lines(lines, 100, 200)
+    assert summary["recording_missing_definitions"] == ["/c/hover/_action/status"]
+    assert summary["counts"]["WARN"] == 1
