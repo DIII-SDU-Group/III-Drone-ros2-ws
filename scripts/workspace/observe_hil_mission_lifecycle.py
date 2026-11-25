@@ -21,6 +21,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 
+from action_msgs.msg import GoalStatus, GoalStatusArray
 from iii_drone_interfaces.msg import MissionModeStatus, StringStamped
 from px4_msgs.msg import VehicleLandDetected, VehicleStatus
 
@@ -211,6 +212,17 @@ def main() -> int:
     )
     parser.add_argument("--prelude-timeout-sec", type=float, default=300.0)
     parser.add_argument(
+        "--continue-after-landing-exhaustion",
+        action="store_true",
+        help=(
+            "A Reach Cable that fails after --landing-attempts aborted cable landings ends that cycle as "
+            "'landing attempts exhausted' instead of the mission; the next cycle starts at the next "
+            "Inspection activation. Any other mode failure still ends the mission (wind soaks, 2026-11-25)."
+        ),
+    )
+    parser.add_argument("--landing-attempts", type=int, default=3,
+                        help="cable-landing attempts per Reach Cable (reach_cable_tree num_attempts)")
+    parser.add_argument(
         "--final-safe-grace-sec",
         type=float,
         default=300.0,
@@ -275,6 +287,15 @@ def main() -> int:
     completed_cycles: list[dict[str, Any]] = []
     current_cycle: dict[str, Any] | None = None
     failures: list[dict[str, Any]] = []
+    # Cycles whose Reach Cable used every cable-landing attempt (aborted goals
+    # counted on the cable-landing action status) under
+    # --continue-after-landing-exhaustion.
+    exhausted_cycles: list[dict[str, Any]] = []
+    aborted_landing_goals: set[bytes] = set()
+    aborted_landing_goals_at_reach: set[bytes] = set()
+    # The failed Reach Cable keeps publishing its terminal status until it is
+    # activated again; those replays belong to the accepted exhaustion.
+    exhausted_reach_replays_ignored = False
     post_deadline_mode_events: list[dict[str, Any]] = []
     mission_started_monotonic: float | None = None
     mission_started_at: str | None = None
@@ -369,6 +390,30 @@ def main() -> int:
                     "message_timestamp_us": sample["message_timestamp_us"],
                 },
             )
+
+    def on_landing_goal_status(message: GoalStatusArray) -> None:
+        for status in message.status_list:
+            if status.status == GoalStatus.STATUS_ABORTED:
+                aborted_landing_goals.add(bytes(status.goal_info.goal_id.uuid))
+
+    def accept_landing_exhaustion(failure: dict[str, Any]) -> bool:
+        """End the cycle, not the mission, when Reach Cable used every landing attempt."""
+        nonlocal current_cycle, cycle_phase, cycle_floor_source_stamp_ns, exhausted_reach_replays_ignored
+        if not args.continue_after_landing_exhaustion or cycle_phase != "reach_active" or current_cycle is None:
+            return False
+        aborted = len(aborted_landing_goals - aborted_landing_goals_at_reach)
+        if aborted < args.landing_attempts:
+            return False
+        current_cycle["landing_attempts_exhausted"] = {**failure, "aborted_landing_goals": aborted}
+        exhausted_cycles.append(current_cycle)
+        events.append({"time": failure["time"], "event": "landing_attempts_exhausted",
+                       "aborted_landing_goals": aborted, "source_stamp_ns": failure["source_stamp_ns"]})
+        current_cycle = None
+        cycle_phase = "awaiting_inspection"
+        if _positive_source_stamp(failure["source_stamp_ns"]):
+            cycle_floor_source_stamp_ns = max(cycle_floor_source_stamp_ns, failure["source_stamp_ns"])
+        exhausted_reach_replays_ignored = True
+        return True
 
     def on_land_detected(message: VehicleLandDetected) -> None:
         nonlocal latest_land_detected_sample
@@ -523,6 +568,8 @@ def main() -> int:
                 accept_phase_evidence(current_cycle, "reach_cable_active", "reach_cable", observation)
                 cycle_floor_source_stamp_ns = observation["source_stamp_ns"]
                 cycle_phase = "reach_active"
+                aborted_landing_goals_at_reach.clear()
+                aborted_landing_goals_at_reach.update(aborted_landing_goals)
                 continue
             if cycle_phase == "reach_active":
                 observation = next_phase_candidate(
@@ -562,9 +609,12 @@ def main() -> int:
 
     def on_mode(name: str):
         def callback(message: StringStamped) -> None:
+            nonlocal exhausted_reach_replays_ignored
             value = _mode(message)
             if value is None:
                 return
+            if name == "reach_cable" and value.get("active"):
+                exhausted_reach_replays_ignored = False
             source_stamp = _mode_source_stamp(message)
             source_stamp_ns = source_stamp["nanoseconds"]
             now = datetime.now(timezone.utc).isoformat()
@@ -619,17 +669,19 @@ def main() -> int:
                         }
                     )
                 else:
-                    latch_mission_failure(
-                        "mode_failed",
-                        {
-                            "time": now,
-                            "receipt_at": now,
-                            "mode": name,
-                            "status": value,
-                            "source_stamp": source_stamp,
-                            "source_stamp_ns": source_stamp_ns,
-                        },
-                )
+                    failure = {
+                        "time": now,
+                        "receipt_at": now,
+                        "mode": name,
+                        "status": value,
+                        "source_stamp": source_stamp,
+                        "source_stamp_ns": source_stamp_ns,
+                    }
+                    if name == "reach_cable" and (
+                        exhausted_reach_replays_ignored or accept_landing_exhaustion(failure)
+                    ):
+                        return
+                    latch_mission_failure("mode_failed", failure)
                 return
 
             activity_index = cache_mode_activity(name, observation)
@@ -651,6 +703,13 @@ def main() -> int:
         # samples this observer exists to retain.
         node.create_subscription(VehicleStatus, "/fmu/out/vehicle_status_v1", on_vehicle, qos_profile_sensor_data),
         node.create_subscription(VehicleLandDetected, "/fmu/out/vehicle_land_detected", on_land_detected, qos_profile_sensor_data),
+        # Action status is reliable and transient-local.
+        node.create_subscription(
+            GoalStatusArray,
+            "/control/maneuver_controller/cable_landing/_action/status",
+            on_landing_goal_status,
+            QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.TRANSIENT_LOCAL),
+        ),
         *[
             node.create_subscription(StringStamped, f"/mission/modes/{name}/status", on_mode(name), _mode_qos())
             for name in latest_modes
@@ -756,6 +815,8 @@ def main() -> int:
             "completed_cycles": completed_cycles,
             "in_progress_cycle": current_cycle,
             "cycle_phase_at_finish": cycle_phase,
+            "landing_exhausted_cycle_count": len(exhausted_cycles),
+            "landing_exhausted_cycles": exhausted_cycles,
             "mission_failures": failures,
             "mode_failures": failures,
             "mission_failure_latched": mission_failure_latched,

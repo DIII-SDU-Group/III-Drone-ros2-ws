@@ -60,6 +60,9 @@ OBSERVER_PRELUDE_TIMEOUT_SEC = 420
 PROBE_MAX_DURATION_SEC = 3600
 # Fast-cycle mode: healthy Inspection time before the recharge is commanded.
 FAST_CYCLE_INSPECTION_DWELL_SEC = 20
+# Wind soaks: a cycle whose Reach Cable used every cable-landing attempt is a
+# counted outcome; driver and observer continue with the next cycle.
+EXHAUSTION_FLAG = " --continue-after-landing-exhaustion"
 
 
 class RunnerError(RuntimeError):
@@ -255,6 +258,7 @@ def execute(args: argparse.Namespace) -> Path:
         "physical_px4_monitor": monitor_physical_px4,
         "physical_px4_link": physical_link if target.name == "hil" else None,
         "fast_cycles": bool(getattr(args, "fast_cycles", False)),
+        "continue_after_landing_exhaustion": bool(getattr(args, "continue_after_landing_exhaustion", False)),
         "probe_duration_sec": None if args.no_probe else probe_duration_sec(args.duration_sec),
         "source_identity": source_identity(),
     }
@@ -288,6 +292,7 @@ def execute(args: argparse.Namespace) -> Path:
         f"{target.observer_python()} {observer_src} --artifact-dir {remote_dir}"
         f" --duration-sec {args.duration_sec} --required-cycles {args.required_cycles}"
         f" --prelude-timeout-sec {OBSERVER_PRELUDE_TIMEOUT_SEC} --final-safe-grace-sec 600"
+        f"{EXHAUSTION_FLAG if plan['continue_after_landing_exhaustion'] else ''}"
         f" > {remote_dir}/observer.log 2>&1")
     probe_cmd = (
         f"printf '%s\\n' $$ > {remote_dir}/probe.pid && exec /usr/bin/python3 {probe_src}"
@@ -348,7 +353,8 @@ def execute(args: argparse.Namespace) -> Path:
                   else " --automatic-cycles --automatic-recharge-timeout-sec 600")
     driver_cmd = (
         f"python3 scripts/workspace/hil_inspection_cycle_driver.py --artifact-dir {CONTAINER_WS}/{rel}"
-        f"{cycle_mode} --charging-dwell-sec 0 --charge-until-full-timeout-sec 90")
+        f"{cycle_mode} --charging-dwell-sec 0 --charge-until-full-timeout-sec 90"
+        f"{EXHAUSTION_FLAG if plan['continue_after_landing_exhaustion'] else ''}")
     if hold_scenario:
         driver_cmd += (f" --operator-hold-phase {args.hold_phase}"
                        f" --operator-hold-after-sec {args.hold_after_sec}")
@@ -607,7 +613,8 @@ def evaluate(run_dir: Path, *, target: Target | None = None, strict_warnings: bo
                               "completed_cycles_total": len(completed),
                               "completed_cycles_in_window": len(in_window), "cycles": cycles,
                               "full_charge_proofs": len(charges),
-                              "fast_cycles": bool(plan.get("fast_cycles"))}
+                              "fast_cycles": bool(plan.get("fast_cycles")),
+                              "landing_exhausted_cycles": observer.get("landing_exhausted_cycle_count", 0)}
     if physical_px4 is not None:
         report["physical_px4"] = physical_px4
     if target is not None:
@@ -744,6 +751,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--without-physical-px4", action="store_true",
                         help="HIL with only the Pi powered: skip the physical flight-controller disarm record "
                              "when the flight controller is not reachable (it is still monitored when it is)")
+    parser.add_argument("--continue-after-landing-exhaustion", action="store_true",
+                        help="a Reach Cable that used every cable-landing attempt ends that cycle (counted as "
+                             "exhausted; the vehicle flies back to the start pose and Inspection resumes), "
+                             "not the run (wind soaks)")
     parser.add_argument("--evaluate-only", type=Path, metavar="RUN_DIR")
     parser.add_argument("--strict-warnings", action="store_true",
                         help="also fail on any WARN line in node logs during the run")

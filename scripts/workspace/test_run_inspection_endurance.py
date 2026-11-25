@@ -332,3 +332,12 @@ def test_missing_bag_message_definitions_are_a_recording_note() -> None:
     summary = endurance.summarize_log_lines(lines, 100, 200)
     assert summary["recording_missing_definitions"] == ["/c/hover/_action/status"]
     assert summary["counts"]["WARN"] == 1
+
+
+def test_exhausted_landing_cycles_are_reported(tmp_path: Path) -> None:
+    run_dir = write_run(tmp_path, cycles=[cycle("2026-09-28T06:10:00+00:00"),
+                                          cycle("2026-09-28T06:20:00+00:00")],
+                        landing_exhausted_cycle_count=1)
+    report = endurance.evaluate(run_dir)
+    assert report["accepted"], report["failures"]
+    assert report["landing_exhausted_cycles"] == 1

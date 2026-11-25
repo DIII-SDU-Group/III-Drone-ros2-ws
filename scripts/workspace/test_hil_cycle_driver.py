@@ -1582,3 +1582,31 @@ def test_phase_read_still_fails_when_two_modes_stay_active(monkeypatch):
     monkeypatch.setattr(module, "spin_ready", lambda *args, **kwargs: None)
     with pytest.raises(RuntimeError, match="Cannot verify active mission phase"):
         module.Driver.read_fresh_native_mission_phase(driver)
+
+
+@pytest.mark.parametrize(
+    ("failure", "aborted", "expected"),
+    [
+        (RuntimeError("reach_cable failed before cable_charging: {}"), 3, True),
+        (RuntimeError("reach_cable failed before cable_charging: {}"), 4, True),
+        (RuntimeError("reach_cable failed before cable_charging: {}"), 2, False),  # failed for another reason
+        (RuntimeError("cable_charging failed: {}"), 3, False),
+        (TimeoutError("timed out waiting for cable_charging status"), 3, False),
+    ],
+)
+def test_only_a_reach_cable_failure_after_every_landing_attempt_is_exhaustion(failure, aborted, expected):
+    assert module.landing_attempts_exhausted(failure, aborted, 3) is expected
+
+
+def test_aborted_landing_goals_are_collected_by_goal_id():
+    driver = SimpleNamespace(aborted_landing_goals=set())
+    aborted = module.GoalStatus.STATUS_ABORTED
+    succeeded = module.GoalStatus.STATUS_SUCCEEDED
+
+    def goal(value, status):
+        return SimpleNamespace(status=status, goal_info=SimpleNamespace(goal_id=SimpleNamespace(uuid=bytes([value]) * 16)))
+
+    module.Driver._on_landing_goal_status(driver, SimpleNamespace(status_list=[goal(1, aborted), goal(2, succeeded)]))
+    module.Driver._on_landing_goal_status(driver, SimpleNamespace(status_list=[goal(1, aborted), goal(3, aborted)]))
+
+    assert driver.aborted_landing_goals == {bytes([1]) * 16, bytes([3]) * 16}

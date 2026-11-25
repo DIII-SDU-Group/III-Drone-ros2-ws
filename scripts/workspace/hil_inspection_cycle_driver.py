@@ -33,6 +33,7 @@ from rclpy.executors import (
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
+from action_msgs.msg import GoalStatus, GoalStatusArray
 from std_srvs.srv import SetBool
 from std_msgs.msg import Float32, String
 
@@ -181,6 +182,10 @@ class Driver(Node):
         self.mode_status_receipts: list[dict[str, object]] = []
         self.registration_refresh_trace: list[dict[str, object]] = []
         self._mode_status_floor: dict[str, tuple[int, int]] = {}
+        # Aborted cable-landing goals (by goal ID) from the action status, to
+        # tell a Reach Cable that used every landing attempt from any other
+        # Reach Cable failure.
+        self.aborted_landing_goals: set[bytes] = set()
         self.publisher = self.create_publisher(
             VehicleCommand, "/fmu/in/vehicle_command", 10
         )
@@ -270,6 +275,23 @@ class Driver(Node):
             self._on_custom_operation_status,
             custom_mode_qos,
         )
+        # Action status is reliable and transient-local.
+        self.create_subscription(
+            GoalStatusArray,
+            "/control/maneuver_controller/cable_landing/_action/status",
+            self._on_landing_goal_status,
+            QoSProfile(
+                history=HistoryPolicy.KEEP_LAST,
+                depth=10,
+                reliability=ReliabilityPolicy.RELIABLE,
+                durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            ),
+        )
+
+    def _on_landing_goal_status(self, message: GoalStatusArray) -> None:
+        for status in message.status_list:
+            if status.status == GoalStatus.STATUS_ABORTED:
+                self.aborted_landing_goals.add(bytes(status.goal_info.goal_id.uuid))
 
     def destroy_node(self) -> None:
         self._executor.remove_node(self)
@@ -2053,6 +2075,20 @@ def initialize_driver_ros() -> None:
         rclpy.init(args=None, signal_handler_options=SignalHandlerOptions.NO)
 
 
+def landing_attempts_exhausted(failure: Exception, aborted_landing_goals: int, landing_attempts: int) -> bool:
+    """A Reach Cable failure that used every cable-landing attempt.
+
+    Only the Reach Cable failure seen while waiting for Cable Charging counts,
+    and only with at least ``landing_attempts`` cable-landing goals aborted
+    since that Reach Cable became active; any other failure ends the run.
+    """
+    return (
+        isinstance(failure, RuntimeError)
+        and str(failure).startswith("reach_cable failed before cable_charging")
+        and aborted_landing_goals >= landing_attempts
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--artifact-dir", required=True, type=Path)
@@ -2145,7 +2181,21 @@ def main() -> int:
             "the live registration from /mission/modes/inspection_demo/status."
         ),
     )
+    parser.add_argument(
+        "--continue-after-landing-exhaustion",
+        action="store_true",
+        help=(
+            "When Reach Cable fails after --landing-attempts aborted cable landings (the landing "
+            "fallback used every attempt), record the cycle as exhausted, fly the cable-aware ingress "
+            "back to the mission start pose from the air and resume Inspection instead of ending the "
+            "run. Any other failure still ends the run (wind soaks, 2026-11-25)."
+        ),
+    )
+    parser.add_argument("--landing-attempts", type=int, default=3,
+                        help="cable-landing attempts per Reach Cable (reach_cable_tree num_attempts)")
     args = parser.parse_args()
+    if args.landing_attempts <= 0:
+        parser.error("--landing-attempts must be positive")
     if args.inspection_dwell_sec < 0:
         parser.error("--inspection-dwell-sec must be non-negative")
     if args.charging_dwell_sec < 0:
@@ -2225,70 +2275,81 @@ def main() -> int:
                 f"requested CustomOperation mode {custom_mode_id} is stale; "
                 f"live PX4 registration is {registered_modes['custom_operation']}"
             )
-        driver.wait_native_vehicle_state({"armed": True, "in_air": True})
-        driver.native_flight_command("custom_operation.activate")
-        driver.wait_nav_state(custom_mode_id)
-        activation_request_id = driver.native_command_receipts[-1]["response"]["request_id"]
-        driver.wait_native_command_result(activation_request_id)
-        record({"event": "custom_operation_active", "mode_id": custom_mode_id, "status": driver.status_snapshot()})
 
-        started = tools.fly_to_fixture(
-            "low_entry_side",
-            activate_custom_operation=False,
-            # Pi PX4 odometry owns dynamic world->drone TF in HIL; workstation
-            # ground-truth publishes cable and sensor statics only.
-            use_cable_aware_if_overview_present=True,
-            send_timeout_sec=15.0,
-            mapping_timeout_sec=30.0,
-            gazebo_timeout_sec=8.0,
-            tf_timeout_sec=5.0,
-        )
-        if not started.success:
-            raise RuntimeError(started.message)
-        record({"event": "ingress_started", "data": started.data, "status": driver.status_snapshot()})
-        result = tools.wait_operation_goal(
-            started.data["goal_id"],
-            max_wait_sec=90.0,
-            no_feedback_timeout_sec=30.0,
-            allow_no_feedback=False,
-        )
-        record({"event": "ingress_result", "success": result.success,
-                "message": result.message, "data": result.data,
-                "status": driver.status_snapshot()})
-        if not result.success or result.data.get("state") != "succeeded":
-            raise RuntimeError(f"ingress did not succeed: {result.message}; {result.data}")
-        record({"event": "ingress_succeeded", "data": result.data, "status": driver.status_snapshot()})
+        def ingress_to_inspection(stage_only: bool = False) -> dict[str, object] | None:
+            """Custom Operation, cable-aware fly-to the start fixture, then Inspection.
 
-        # Preserve the custom-operation setpoint/frame through the handoff.
-        # Unexpected disarm is a failed ingress, so stop instead of re-arming.
-        driver.ensure_armed_handoff()
-        record({"event": "airborne_handoff_preserved", "status": driver.status_snapshot()})
+            Runs once after the take-off and again, from the air, after a
+            cycle whose landing attempts were exhausted. None for --stage-only.
+            """
+            driver.wait_native_vehicle_state({"armed": True, "in_air": True})
+            driver.native_flight_command("custom_operation.activate")
+            driver.wait_nav_state(custom_mode_id)
+            activation_request_id = driver.native_command_receipts[-1]["response"]["request_id"]
+            driver.wait_native_command_result(activation_request_id)
+            record({"event": "custom_operation_active", "mode_id": custom_mode_id, "status": driver.status_snapshot()})
 
-        if args.stage_only:
-            return 0
-
-        driver.clear_mode_status("inspection_demo", "reach_cable", "cable_charging", "leave_cable")
-        inspection_mode_id = args.inspection_mode_id
-        if inspection_mode_id is None:
-            inspection_mode_id = registered_modes["inspection_demo"]
-        elif inspection_mode_id != registered_modes["inspection_demo"]:
-            raise RuntimeError(
-                f"requested Inspection Demo mode {inspection_mode_id} is stale; "
-                f"live PX4 registration is {registered_modes['inspection_demo']}"
+            started = tools.fly_to_fixture(
+                "low_entry_side",
+                activate_custom_operation=False,
+                # Pi PX4 odometry owns dynamic world->drone TF in HIL; workstation
+                # ground-truth publishes cable and sensor statics only.
+                use_cable_aware_if_overview_present=True,
+                send_timeout_sec=15.0,
+                mapping_timeout_sec=30.0,
+                gazebo_timeout_sec=8.0,
+                tf_timeout_sec=5.0,
             )
-        driver.activate_inspection_from_ingress(inspection_mode_id)
-        # Do not enqueue the first recharge intent in the tiny PX4 mode
-        # handoff window between onActivate() and the behavior-tree worker
-        # becoming live.  The mode status publisher announces `active` before
-        # StartExecution() has finished; accepting an intent in that window
-        # makes repeated HIL cycles race tree construction and teardown.
-        inspection_status = driver.wait_mode(
-            "inspection_demo",
-            lambda value: bool(value.get("active")) and bool(value.get("tree_running")),
-            timeout_sec=20.0,
-        )
-        time.sleep(1.0)
-        record({"event": "inspection_active"})
+            if not started.success:
+                raise RuntimeError(started.message)
+            record({"event": "ingress_started", "data": started.data, "status": driver.status_snapshot()})
+            result = tools.wait_operation_goal(
+                started.data["goal_id"],
+                max_wait_sec=90.0,
+                no_feedback_timeout_sec=30.0,
+                allow_no_feedback=False,
+            )
+            record({"event": "ingress_result", "success": result.success,
+                    "message": result.message, "data": result.data,
+                    "status": driver.status_snapshot()})
+            if not result.success or result.data.get("state") != "succeeded":
+                raise RuntimeError(f"ingress did not succeed: {result.message}; {result.data}")
+            record({"event": "ingress_succeeded", "data": result.data, "status": driver.status_snapshot()})
+
+            # Preserve the custom-operation setpoint/frame through the handoff.
+            # Unexpected disarm is a failed ingress, so stop instead of re-arming.
+            driver.ensure_armed_handoff()
+            record({"event": "airborne_handoff_preserved", "status": driver.status_snapshot()})
+            if stage_only:
+                return None
+
+            driver.clear_mode_status("inspection_demo", "reach_cable", "cable_charging", "leave_cable")
+            inspection_mode_id = args.inspection_mode_id
+            if inspection_mode_id is None:
+                inspection_mode_id = registered_modes["inspection_demo"]
+            elif inspection_mode_id != registered_modes["inspection_demo"]:
+                raise RuntimeError(
+                    f"requested Inspection Demo mode {inspection_mode_id} is stale; "
+                    f"live PX4 registration is {registered_modes['inspection_demo']}"
+                )
+            driver.activate_inspection_from_ingress(inspection_mode_id)
+            # Do not enqueue the first recharge intent in the tiny PX4 mode
+            # handoff window between onActivate() and the behavior-tree worker
+            # becoming live.  The mode status publisher announces `active` before
+            # StartExecution() has finished; accepting an intent in that window
+            # makes repeated HIL cycles race tree construction and teardown.
+            inspection_status = driver.wait_mode(
+                "inspection_demo",
+                lambda value: bool(value.get("active")) and bool(value.get("tree_running")),
+                timeout_sec=20.0,
+            )
+            time.sleep(1.0)
+            record({"event": "inspection_active"})
+            return inspection_status
+
+        inspection_status = ingress_to_inspection(stage_only=args.stage_only)
+        if inspection_status is None:
+            return 0
         if args.operator_hold_phase:
             run_operator_hold_scenario(driver, args, record)
             cleanup_started_monotonic = time.monotonic()
@@ -2341,10 +2402,33 @@ def main() -> int:
                 **transition._asdict(),
             })
             record({"event": "reach_cable_active", "cycle": cycle, "status": transition.reach_status})
-            driver.wait_mode(
-                "cable_charging", lambda value: bool(value.get("active")),
-                failed_predecessor="reach_cable",
-            )
+            aborted_before_reach = set(driver.aborted_landing_goals)
+            try:
+                driver.wait_mode(
+                    "cable_charging", lambda value: bool(value.get("active")),
+                    failed_predecessor="reach_cable",
+                )
+            except RuntimeError as exc:
+                aborted = len(driver.aborted_landing_goals - aborted_before_reach)
+                if not (args.continue_after_landing_exhaustion
+                        and landing_attempts_exhausted(exc, aborted, args.landing_attempts)):
+                    raise
+                # The landing fallback used every attempt (wind): a counted
+                # outcome, not the end of the run. The vehicle is airborne
+                # near the conductor after the last retry takeoff; landing
+                # there would put the next takeoff under the conductor, so
+                # fly the cable-aware ingress back to the start pose instead.
+                record({
+                    "event": "reach_cable_landing_attempts_exhausted",
+                    "cycle": cycle,
+                    "aborted_landing_goals": aborted,
+                    "error": str(exc),
+                    "status": driver.status_snapshot(),
+                })
+                driver.clear_mode_status("inspection_demo", "reach_cable", "cable_charging", "leave_cable")
+                inspection_status = ingress_to_inspection()
+                record({"event": "inspection_resumed_after_landing_exhaustion", "cycle": cycle})
+                continue
             record({"event": "cable_charging_active", "cycle": cycle})
             record({"event": "charging_power_verified", "cycle": cycle,
                     "evidence": driver.wait_charging_evidence()})

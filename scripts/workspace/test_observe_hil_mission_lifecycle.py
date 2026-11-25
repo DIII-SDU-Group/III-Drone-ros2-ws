@@ -64,6 +64,7 @@ def _replay(
     cleanup_mode_replay: tuple[str, dict[str, object], tuple[int | None, int | None]] | None = None,
     cleanup_failsafe: bool = False,
     duration_sec: float = 1,
+    extra_args: list[str] | None = None,
 ) -> dict[str, object]:
     state = {"running": True, "mode_index": 0, "final_safety_sent": False}
     monkeypatch.setattr(observer, "Node", _FakeNode)
@@ -75,7 +76,10 @@ def _replay(
         callbacks = dict(node.subscriptions)
         if state["mode_index"] < len(sequence):
             name, status, stamp = sequence[state["mode_index"]]
-            callbacks[f"/mission/modes/{name}/status"](_mode_message(status, stamp))
+            if name == LANDING_STATUS:
+                callbacks["/control/maneuver_controller/cable_landing/_action/status"](status)
+            else:
+                callbacks[f"/mission/modes/{name}/status"](_mode_message(status, stamp))
             state["mode_index"] += 1
             if state["mode_index"] == len(sequence) and not safety_after_modes:
                 state["running"] = False
@@ -124,8 +128,23 @@ def _replay(
     )
     if finish_after_required_cycles:
         sys.argv.append("--finish-after-required-cycles")
+    sys.argv.extend(extra_args or [])
     observer.main()
     return json.loads((tmp_path / "mission_lifecycle_observation.json").read_text(encoding="utf-8"))
+
+
+LANDING_STATUS = "__cable_landing_action_status__"
+
+
+def _landing_status(*aborted_goal_ids: int) -> SimpleNamespace:
+    """A cable-landing GoalStatusArray with the given goals aborted."""
+    return SimpleNamespace(status_list=[
+        SimpleNamespace(
+            status=observer.GoalStatus.STATUS_ABORTED,
+            goal_info=SimpleNamespace(goal_id=SimpleNamespace(uuid=bytes([goal]) * 16)),
+        )
+        for goal in aborted_goal_ids
+    ])
 
 
 ACTIVE = {"active": True}
@@ -589,3 +608,56 @@ def test_incremental_phase_join_matches_full_rebuild(monkeypatch, tmp_path):
             results.append(json.dumps(_without_wall_clock(result), sort_keys=True, default=str))
         assert results[0] == results[1], f"seed {seed}"
 
+
+REACH_FAILED = {"active": False, "tree_finished": True, "tree_success": False}
+
+
+def _exhausted_cycle_then_full_cycle(aborted_goals: tuple[int, ...]):
+    """Reach Cable fails after the given aborted landings, the vehicle flies
+    back, Inspection resumes, and one canonical cycle follows."""
+    return [
+        (LANDING_STATUS, _landing_status(9), (0, 0)),  # an earlier cycle's abort
+        ("inspection_demo", ACTIVE, (10, 0)),
+        ("reach_cable", INACTIVE, (15, 0)),
+        ("reach_cable", ACTIVE, (20, 0)),
+        ("inspection_demo", INACTIVE, (21, 0)),
+        (LANDING_STATUS, _landing_status(9, *aborted_goals), (0, 0)),
+        ("reach_cable", REACH_FAILED, (30, 0)),
+        ("reach_cable", REACH_FAILED, (31, 0)),  # periodic replay of the terminal status
+        ("inspection_demo", ACTIVE, (50, 0)),
+        ("reach_cable", INACTIVE, (55, 0)),
+        ("reach_cable", ACTIVE, (60, 0)),
+        ("cable_charging", INACTIVE, (65, 0)),
+        ("cable_charging", ACTIVE, (70, 0)),
+        ("leave_cable", INACTIVE, (74, 0)),
+        ("leave_cable", ACTIVE, (75, 0)),
+        ("leave_cable", LEAVE_SUCCESS, (80, 0)),
+        ("inspection_demo", INACTIVE, (81, 0)),
+        ("inspection_demo", ACTIVE, (82, 0)),
+    ]
+
+
+def test_exhausted_landing_attempts_end_the_cycle_not_the_mission(monkeypatch, tmp_path):
+    result = _replay(monkeypatch, tmp_path, _exhausted_cycle_then_full_cycle((1, 2, 3)),
+                     extra_args=["--continue-after-landing-exhaustion"])
+
+    assert result["mission_failure_latched"] is False
+    assert result["landing_exhausted_cycle_count"] == 1
+    assert result["landing_exhausted_cycles"][0]["landing_attempts_exhausted"]["aborted_landing_goals"] == 3
+    assert result["completed_cycle_count"] == 1
+
+
+def test_reach_failure_with_fewer_aborted_landings_still_ends_the_mission(monkeypatch, tmp_path):
+    result = _replay(monkeypatch, tmp_path, _exhausted_cycle_then_full_cycle((1, 2)),
+                     extra_args=["--continue-after-landing-exhaustion"])
+
+    assert result["mission_failure_latched"] is True
+    assert result["mission_failure_kind"] == "mode_failed"
+    assert result["landing_exhausted_cycle_count"] == 0
+
+
+def test_exhausted_landing_attempts_end_the_mission_without_the_option(monkeypatch, tmp_path):
+    result = _replay(monkeypatch, tmp_path, _exhausted_cycle_then_full_cycle((1, 2, 3)))
+
+    assert result["mission_failure_latched"] is True
+    assert result["landing_exhausted_cycle_count"] == 0
