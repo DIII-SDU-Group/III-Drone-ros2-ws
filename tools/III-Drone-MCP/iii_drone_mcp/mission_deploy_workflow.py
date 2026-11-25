@@ -199,6 +199,7 @@ class MissionDeployWorkflow:
 
     def _takeoff_if_needed(self, tools: DroneAgentTools, telemetry: dict[str, Any]) -> None:
         if not bool(telemetry.get("in_air")):
+            armed_here = not bool(telemetry.get("armed"))
             if not bool(telemetry.get("armed")):
                 self._step(
                     "restore_hold_before_arm",
@@ -230,6 +231,9 @@ class MissionDeployWorkflow:
                     timeout_sec=self.args.px4_timeout_sec,
                     postcondition_timeout_sec=self.args.px4_timeout_sec,
                     takeoff_altitude_m=self.args.takeoff_altitude,
+                    # This workflow armed the vehicle: an automatic landed
+                    # disarm before the take-off arrives is re-armed.
+                    rearm_after_auto_disarm=armed_here,
                 ),
             )
             self._step("wait_takeoff_mode_exit", lambda: self._wait_takeoff_mode_exit(tools))

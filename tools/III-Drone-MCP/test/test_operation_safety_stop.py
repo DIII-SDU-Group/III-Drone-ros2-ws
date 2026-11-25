@@ -101,3 +101,34 @@ def test_px4_safety_ros_truth_overrides_stale_mavsdk_booleans() -> None:
     assert result.data["derived"]["armed"] is True
     assert result.data["derived"]["in_air"] is True
     assert result.data["derived"]["verdict_source"] == "ros"
+
+
+def _rearm_tools(status):
+    tools = object.__new__(DroneAgentTools)
+    tools.arm_calls = []
+    tools._take_message = lambda *_args, **_kwargs: status
+    tools._send_px4_arm_disarm = lambda **kwargs: tools.arm_calls.append(kwargs) or ToolResult(True, {}, "armed")
+    msg = ModuleType("px4_msgs.msg")
+    msg.VehicleStatus = SimpleNamespace(
+        ARMING_STATE_ARMED=2, ARM_DISARM_REASON_AUTO_DISARM_LAND=7, ARM_DISARM_REASON_AUTO_DISARM_PREFLIGHT=8
+    )
+    pkg = ModuleType("px4_msgs")
+    pkg.msg = msg
+    return tools, {"px4_msgs": pkg, "px4_msgs.msg": msg}
+
+
+def test_takeoff_rearms_only_after_an_automatic_ground_disarm():
+    cases = [
+        (SimpleNamespace(arming_state=1, latest_disarming_reason=7), True),   # auto-disarmed on the ground
+        (SimpleNamespace(arming_state=1, latest_disarming_reason=8), True),   # idle after arming (preflight)
+        (SimpleNamespace(arming_state=1, latest_disarming_reason=4), False),  # disarmed by an operator command
+        (SimpleNamespace(arming_state=1, latest_disarming_reason=9), False),  # kill switch
+        (SimpleNamespace(arming_state=2, latest_disarming_reason=7), False),  # still armed
+        (None, False),                                                        # no status
+    ]
+    for status, rearms in cases:
+        tools, modules = _rearm_tools(status)
+        with patch.dict(sys.modules, modules):
+            result = tools._rearm_after_auto_ground_disarm(1, 1)
+        assert (result is not None) is rearms
+        assert len(tools.arm_calls) == (1 if rearms else 0)

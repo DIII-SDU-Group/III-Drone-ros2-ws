@@ -285,7 +285,26 @@ def test_takeoff_workflow_uses_target_resolved_direct_px4_commands(tmp_path):
         "timeout_sec": workflow.args.px4_timeout_sec,
         "postcondition_timeout_sec": workflow.args.px4_timeout_sec,
         "takeoff_altitude_m": workflow.args.takeoff_altitude,
+        "rearm_after_auto_disarm": True,
     }) in calls
+
+
+def test_takeoff_of_an_already_armed_vehicle_does_not_rearm(tmp_path):
+    workflow = _workflow(tmp_path)
+    calls = []
+    tools = SimpleNamespace(
+        px4=lambda command, **kwargs: calls.append((command, kwargs)) or ToolResult(True, {}, command),
+        px4_health=lambda **_kwargs: ToolResult(True, {}, "healthy"),
+    )
+    workflow._wait_takeoff_mode_exit = lambda _tools: ToolResult(True, {}, "mode exited")
+    workflow._px4_command_with_retries = lambda _tools, command, **kwargs: (
+        calls.append((command, kwargs)) or ToolResult(True, {}, command)
+    )
+
+    workflow._takeoff_if_needed(tools, {"armed": True, "in_air": False})
+
+    assert [command for command, _ in calls] == ["takeoff_direct"]
+    assert calls[0][1]["rearm_after_auto_disarm"] is False
 
 
 def test_resilient_status_prefers_ros_truth_over_stale_mavsdk_status(tmp_path):

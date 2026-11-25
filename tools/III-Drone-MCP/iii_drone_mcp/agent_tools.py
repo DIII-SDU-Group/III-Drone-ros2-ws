@@ -2587,6 +2587,7 @@ class DroneAgentTools:
                 target_component=int(kwargs.get("target_component", 1)),
                 repeat_count=int(kwargs.get("repeat_count", 5)),
                 postcondition_timeout_sec=float(kwargs.get("postcondition_timeout_sec", timeout_sec)),
+                rearm_after_auto_disarm=bool(kwargs.get("rearm_after_auto_disarm", False)),
             )
         if command == "land_direct":
             return self._send_px4_land(
@@ -3548,6 +3549,34 @@ class DroneAgentTools:
             f"nav_state={int(last_status.nav_state)}"
         )
 
+    def _rearm_after_auto_ground_disarm(self, target_system: int, target_component: int) -> dict[str, Any] | None:
+        """Arm again when PX4 disarmed the vehicle on the ground by itself.
+
+        Only PX4's automatic disarms of a vehicle that has not taken off
+        (land detector, COM_DISARM_LAND; idle after arming, COM_DISARM_PRFLT)
+        qualify; any other disarm (operator, kill switch, failure detector)
+        returns None and is never overridden.
+        """
+        from px4_msgs.msg import VehicleStatus
+
+        status = self._take_message("/fmu/out/vehicle_status_v1", VehicleStatus, 2.0, required=False)
+        if status is None or int(status.arming_state) == int(VehicleStatus.ARMING_STATE_ARMED):
+            return None
+        if int(status.latest_disarming_reason) not in (
+            int(VehicleStatus.ARM_DISARM_REASON_AUTO_DISARM_LAND),
+            int(VehicleStatus.ARM_DISARM_REASON_AUTO_DISARM_PREFLIGHT),
+        ):
+            return None
+        result = self._send_px4_arm_disarm(
+            arm=True,
+            force=False,
+            target_system=target_system,
+            target_component=target_component,
+            repeat_count=5,
+            postcondition_timeout_sec=5.0,
+        )
+        return {"success": bool(result.success), "message": result.message}
+
     def _send_px4_takeoff(
         self,
         *,
@@ -3556,10 +3585,20 @@ class DroneAgentTools:
         target_component: int,
         repeat_count: int,
         postcondition_timeout_sec: float,
+        rearm_after_auto_disarm: bool = False,
     ) -> ToolResult:
-        """Issue a target-resolved takeoff command and observe airborne state."""
+        """Issue a target-resolved takeoff command and observe airborne state.
+
+        The command goes over ``/fmu/in/vehicle_command`` like the arm command.
+        It was sent over a MAVSDK MAVLink-direct connection, whose send gives
+        no delivery guarantee: in SIM (2026-11-25) PX4's log showed the arm
+        commands but no take-off for 11 s, and PX4 then disarmed the idle
+        vehicle (COM_DISARM_PRFLT). With ``rearm_after_auto_disarm`` (set by
+        callers that just armed the vehicle) a vehicle that PX4 disarmed
+        automatically on the ground is armed again before the take-off.
+        """
         try:
-            from px4_msgs.msg import VehicleGlobalPosition, VehicleLandDetected
+            from px4_msgs.msg import VehicleCommand, VehicleGlobalPosition, VehicleLandDetected
         except ImportError as exc:
             raise RuntimeError("px4_msgs is required for PX4 takeoff commands") from exc
 
@@ -3576,28 +3615,41 @@ class DroneAgentTools:
             raise RuntimeError("PX4 global position is not valid for a targeted takeoff command")
         takeoff_altitude_amsl_m = float(global_position.alt) + float(takeoff_altitude_m)
 
-        async def request_takeoff() -> dict[str, Any]:
-            client = Px4CommandClient(self._px4_system_address)
-            try:
-                await client.connect()
-                return await client.takeoff_target(
-                    target_system=target_system,
-                    target_component=target_component,
-                    takeoff_altitude_m=takeoff_altitude_m,
-                    latitude_deg=float(global_position.lat),
-                    longitude_deg=float(global_position.lon),
-                    takeoff_altitude_amsl_m=takeoff_altitude_amsl_m,
-                )
-            finally:
-                await client.close_async()
+        rearmed = None
+        if rearm_after_auto_disarm:
+            rearmed = self._rearm_after_auto_ground_disarm(target_system, target_component)
 
+        publisher = self.node.create_publisher(VehicleCommand, "/fmu/in/vehicle_command", self._px4_input_qos())
         try:
-            command_results = [
-                asyncio.run(asyncio.wait_for(request_takeoff(), timeout=10.0))
-                for _ in range(max(1, repeat_count))
-            ]
-        except Exception as exc:
-            raise RuntimeError(f"targeted MAVLink takeoff request failed: {exc}") from exc
+            deadline = time.monotonic() + 2.0
+            while publisher.get_subscription_count() == 0 and time.monotonic() < deadline:
+                rclpy.spin_once(self.node, timeout_sec=0.1)
+            for _ in range(max(1, repeat_count)):
+                message = VehicleCommand()
+                message.timestamp = int(self.node.get_clock().now().nanoseconds / 1000)
+                message.command = VehicleCommand.VEHICLE_CMD_NAV_TAKEOFF
+                message.param1 = 0.0
+                message.param2 = 0.0
+                message.param3 = 0.0
+                message.param4 = float("nan")
+                message.param5 = float(global_position.lat)
+                message.param6 = float(global_position.lon)
+                message.param7 = float(takeoff_altitude_amsl_m)
+                message.target_system = target_system
+                message.target_component = target_component
+                message.source_system = 255
+                message.source_component = 0
+                message.from_external = True
+                publisher.publish(message)
+                rclpy.spin_once(self.node, timeout_sec=0.05)
+        finally:
+            self.node.destroy_publisher(publisher)
+        command_results = [{
+            "command": "VEHICLE_CMD_NAV_TAKEOFF",
+            "transport": "/fmu/in/vehicle_command",
+            "repeat_count": max(1, repeat_count),
+            "takeoff_altitude_amsl_m": takeoff_altitude_amsl_m,
+        }]
 
         deadline = time.monotonic() + postcondition_timeout_sec
         last_landed: Any = None
@@ -3620,6 +3672,7 @@ class DroneAgentTools:
                             "target_system": target_system,
                             "target_component": target_component,
                             "command_results": command_results,
+                            "rearmed_after_auto_disarm": rearmed,
                         },
                         "takeoff complete",
                     )
