@@ -42,6 +42,13 @@ iii_wifi_interface: wlan0
 # Below the default DHCP route metric of wired links (100), so Wi-Fi owns the
 # default route while it is associated.
 iii_wifi_route_metric: 50
+# Units that update packages by themselves; masked by roles/update_policy.
+iii_automatic_update_units:
+  - apt-daily.timer
+  - apt-daily-upgrade.timer
+  - apt-daily.service
+  - apt-daily-upgrade.service
+  - unattended-upgrades.service
 iii_hardware_packages:
   - udev
   - usbutils

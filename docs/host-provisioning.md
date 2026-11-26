@@ -57,6 +57,34 @@ For every profile it also writes the stack's ROS 2 domain (`--ros-domain-id`,
 default 42) and Fast DDS settings into `/etc/iii/runtime.env`; the flight
 controller's `UXRCE_DDS_DOM_ID` must equal that domain.
 
+## No automatic package updates
+
+Provisioning turns off automatic package updates on the aircraft host
+(`roles/update_policy`, tag `updates`). On 2026-11-26 Ubuntu's
+unattended-upgrades installed library updates during a HIL mission and
+needrestart then restarted `iii-system-daemon.service`, which stopped and
+restarted the whole III runtime mid-flight. The role:
+
+- sets APT's periodic refresh and unattended upgrades to off in
+  `/etc/apt/apt.conf.d/99-iii-no-automatic-updates`;
+- stops, disables and masks `apt-daily.timer`, `apt-daily-upgrade.timer`,
+  their services and `unattended-upgrades.service`;
+- sets needrestart to list only (`/etc/needrestart/conf.d/90-iii-list-only.conf`),
+  so no package operation restarts a service by itself.
+
+Packages change only when an operator runs `apt` or `iii host provision`
+deliberately, with the aircraft on the ground; restart the runtime afterwards
+with `iii deploy dev --restart` or a reboot. The host health check fails while
+any of those units is not masked.
+
+To apply only this policy to a host whose runtime must keep running (it does
+not restart the daemon or the Runtime API):
+
+```bash
+ANSIBLE_CONFIG=deployment/ansible/ansible.cfg ansible-playbook -i <pi-host-or-ip>, -u iii --become \
+  deployment/ansible/playbooks/aircraft-converge.yml -e iii_profile=<profile> --tags updates
+```
+
 ## Switching profiles
 
 `iii host provision --host <pi> --profile hil|opti_track|real` is how the Pi

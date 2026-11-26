@@ -31,3 +31,20 @@
       - /etc/systemd/system/iii.target
   changed_when: false
   when: not ansible_check_mode
+
+- name: Read the automatic update units
+  ansible.builtin.command:
+    argv: ["/usr/bin/systemctl", "is-enabled", "{{ item }}"]
+  loop: "{{ iii_automatic_update_units }}"
+  register: iii_automatic_update_unit_states
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Require no automatic package updates
+  ansible.builtin.assert:
+    that: item.stdout | trim == 'masked'
+    fail_msg: "{{ item.item }} is {{ item.stdout | trim }}; automatic package updates must stay off (roles/update_policy)"
+    quiet: true
+  loop: "{{ iii_automatic_update_unit_states.results | default([]) }}"
+  when: not ansible_check_mode

@@ -8,6 +8,8 @@
   roles:
     - role: preflight
       tags: [always]
+    - role: update_policy
+      tags: [updates]
     - role: identity
       tags: [identity]
     - role: filesystem
