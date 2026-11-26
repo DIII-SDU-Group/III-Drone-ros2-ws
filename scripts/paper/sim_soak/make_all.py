@@ -263,7 +263,7 @@ def fig1(data: Data, out: pathlib.Path) -> None:
     ax.set_xlim(0, 100)
     ax.set_xlabel("Landing phases (%)")
     handles = [Patch(facecolor=CATEGORY_COLORS[c], edgecolor="white", hatch="////" if c == "limit reached" else None,
-                     label="limit reached (test setting: 3)" if c == "limit reached" else f"captured, {c}")
+                     label="Limit reached (test setting: 3)" if c == "limit reached" else f"Captured, {c}")
                for c in CATEGORIES]
     ax.set_ylim(1.75, -0.45)
     ax.legend(handles=handles, ncol=2, loc="upper center", bbox_to_anchor=(0.5, -0.45), frameon=False)
@@ -351,14 +351,16 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
         names.append("verify_gripper_closed_check")
         for t, closed in checks:
             ax.plot(t - t_ref, y, marker="|", color=ps.SLATE if closed else ps.BRICK, markersize=6)
+    for y in range(len(names)):
+        ax.axhline(y, color=ps.SLATE_LIGHT, lw=0.5, ls=(0, (4, 3)), zorder=0)
     ax.set_yticks(range(len(names)), [wrapped(n) for n in names])
     ax.tick_params(axis="y", labelsize=6.5)
     ax.invert_yaxis()
     present = {n["result"] for n in nodes} | ({"failed"} if any(not closed for _t, closed in checks) else set()) \
         | ({"succeeded"} if any(closed for _t, closed in checks) else set())
-    ax.legend(handles=[Patch(color=c, label=k) for k, c in result_colors.items() if k in present and k != "running"],
-              loc="lower right", ncol=1, frameon=False)
-    ax.set_title("Behavior tree execution: maneuver and condition nodes")
+    ax.legend(handles=[Patch(color=c, label=k.capitalize()) for k, c in result_colors.items() if k in present and k != "running"],
+              loc="lower right", ncol=1, frameon=True, facecolor="white", edgecolor="none", framealpha=1.0)
+    ax.set_title("Behavior tree execution")
 
     ax = axes[1]
     wind_note = ""
@@ -417,7 +419,7 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
             ax.plot(tt, yy, color=ps.SLATE_DARK, lw=0.8)
             for a, b in gaps:
                 if b - a >= 6:
-                    ax.text((a + b) / 2, 0.5, "no position\nreference", transform=ax.get_xaxis_transform(),
+                    ax.text((a + b) / 2, 0.5, "No position\nreference", transform=ax.get_xaxis_transform(),
                             ha="center", va="center", fontsize=6.5, color=ps.TEXT,
                             bbox={"boxstyle": "square,pad=0.2", "fc": "white", "ec": "none"})
             ax.set_ylabel("Error (cm)")
@@ -436,7 +438,7 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
     grip = sig.get("gripper")
     if grip is not None and len(grip):
         ax.step(grip[:, 0] - t_ref, grip[:, 1], where="post", color=ps.TEXT, lw=0.8)
-    ax.set_yticks([0, 1], ["open", "closed"])
+    ax.set_yticks([0, 1], ["Open", "Closed"])
     ax.set_ylim(-0.3, 1.3)
     ax.set_title("Gripper status")
     ax.set_xlabel("Time from the first landing attempt (s)")
@@ -469,10 +471,10 @@ def fig3(data: Data, out: pathlib.Path) -> None:
     ax.set_yticks(range(len(rows)), [label for label, _runs in rows])
     ax.set_ylim(1.6, -0.6)
     ax.set_xlabel("Operating time (h); wind runs placed end to end")
-    handles = [plt.Line2D([], [], color=CATEGORY_COLORS[c], lw=1.5, label=f"captured, {c}") for c in CATEGORIES[:3]]
-    handles += [plt.Line2D([], [], color=ps.TEXT, marker="x", lw=0, label="limit reached (test setting)"),
-                plt.Line2D([], [], color=ps.BRICK, marker="v", lw=0, label="infrastructure interruption"),
-                plt.Line2D([], [], color=ps.GREY, ls=":", lw=0.8, label="run restart")]
+    handles = [plt.Line2D([], [], color=CATEGORY_COLORS[c], lw=1.5, label=f"Captured, {c}") for c in CATEGORIES[:3]]
+    handles += [plt.Line2D([], [], color=ps.TEXT, marker="x", lw=0, label="Limit reached (test setting)"),
+                plt.Line2D([], [], color=ps.BRICK, marker="v", lw=0, label="Infrastructure interruption"),
+                plt.Line2D([], [], color=ps.GREY, ls=":", lw=0.8, label="Run restart")]
     ax.legend(handles=handles, ncol=3, loc="upper center", bbox_to_anchor=(0.5, -0.45), frameon=False)
     save(fig, out, "fig3_run_timelines")
 
@@ -514,7 +516,7 @@ def fig4(data: Data, out: pathlib.Path) -> None:
     triggers = [m.start for m in data.logs[nominal.run].modes if m.mode == "reach_cable"]
     trig_v = np.interp(triggers, bat_n[:, 0], bat_n[:, 1])
     ax.plot((np.asarray(triggers) - nominal.start) / 3600, trig_v, "|", color=ps.SAND_DARK, markersize=4, mew=0.6, lw=0,
-            label="recharge triggered (Reach Cable starts)")
+            label="Recharge triggered (Reach Cable starts)")
     ax.set_xlabel("Time since run start (h)")
     ax.set_ylabel("Battery voltage (V)")
     ax.set_title("Battery voltage over no wind run")
@@ -540,9 +542,9 @@ def fig4(data: Data, out: pathlib.Path) -> None:
         ax.set_ylabel("Battery voltage (V)")
         ax.set_title(title)
     handles = [Patch(color=MODE_COLORS[m], label=MODE_LABELS[m]) for m in MODES]
-    handles.append(plt.Line2D([], [], color=ps.BRICK, ls="--", lw=0.8, label="retry take-off after an aborted landing"))
+    handles.append(plt.Line2D([], [], color=ps.BRICK, ls="--", lw=0.8, label="Retry take-off after an aborted landing"))
     handles.append(plt.Line2D([], [], color=ps.SAND_DARK, marker="|", markersize=6, mew=0.8, lw=0,
-                              label="recharge triggered (Reach Cable starts)"))
+                              label="Recharge triggered (Reach Cable starts)"))
     fig.tight_layout(rect=(0, 0.075, 1, 1))
     fig.legend(handles=handles, ncol=3, loc="lower center", bbox_to_anchor=(0.5, 0.0), frameon=False)
     save(fig, out, "fig4_battery_and_modes")
@@ -575,12 +577,12 @@ def fig5(data: Data, out: pathlib.Path) -> dict:
     medians = {k: statistics.median(by_attempts[k]) for k in keys}
     added = (medians[2] - medians[1]) * 60 if 1 in medians and 2 in medians else float("nan")
     ax2.set_title("Reach Cable duration by landing attempts")
-    ax2.text(0.98, 0.04, f"median +{added:.0f} s per retry", transform=ax2.transAxes, ha="right", va="bottom",
+    ax2.text(0.98, 0.04, f"Median +{added:.0f} s per retry", transform=ax2.transAxes, ha="right", va="bottom",
              fontsize=6.5, color=ps.TEXT)
-    handles = [Patch(facecolor=ps.BLUE_FILL, edgecolor=ps.SLATE_DARK, label="interquartile range"),
-               plt.Line2D([], [], color=ps.SAND, lw=1.4, label="median"),
-               plt.Line2D([], [], color=ps.SLATE_DARK, lw=0.8, label="whiskers: 1.5 × IQR"),
-               plt.Line2D([], [], color=ps.SLATE, marker="o", markerfacecolor="none", markersize=3, lw=0, label="outlier")]
+    handles = [Patch(facecolor=ps.BLUE_FILL, edgecolor=ps.SLATE_DARK, label="Interquartile range"),
+               plt.Line2D([], [], color=ps.SAND, lw=1.4, label="Median"),
+               plt.Line2D([], [], color=ps.SLATE_DARK, lw=0.8, label="Whiskers: 1.5 × IQR"),
+               plt.Line2D([], [], color=ps.SLATE, marker="o", markerfacecolor="none", markersize=3, lw=0, label="Outlier")]
     fig.tight_layout(rect=(0, 0.07, 1, 1))
     fig.legend(handles=handles, ncol=2, loc="lower center", bbox_to_anchor=(0.5, 0.0), frameon=False)
     save(fig, out, "fig5_cycle_time")
@@ -628,7 +630,7 @@ def fig6(data: Data, out: pathlib.Path) -> dict:
         load = cpu[run.run].get("__load1__", [])
         psi = cpu[run.run].get("__psi_some_avg60__", [])
         if load:
-            ax.plot(h([t for t, _v in load]), [v for _t, v in load], color=ps.NAVY, lw=0.8, label="load average (1 min)")
+            ax.plot(h([t for t, _v in load]), [v for _t, v in load], color=ps.NAVY, lw=0.8, label="Load average (1 min)")
         if psi:
             ax.plot(h([t for t, _v in psi]), [v / 10 for _t, v in psi], color=ps.SAND, lw=0.8, label="CPU pressure stall (%) / 10")
         if col == 0:
@@ -639,7 +641,7 @@ def fig6(data: Data, out: pathlib.Path) -> dict:
             ax.plot(h([t for t, _v in used]), [v / 1024 for _t, v in used], color=ps.SLATE_DARK, lw=0.8)
             summary.setdefault(run.run, {})["mem_used_gib_max"] = max(v for _t, v in used) / 1024
         else:
-            ax.text(0.5, 0.5, "memory not recorded for this run", ha="center", va="center", transform=ax.transAxes,
+            ax.text(0.5, 0.5, "Memory not recorded for this run", ha="center", va="center", transform=ax.transAxes,
                     fontsize=7, color=ps.GREY)
             ax.set_yticks([])
             MISSING.append(f"Figure 6: Pi memory not recorded for run {run.run} (memory logging starts with run 47).")
@@ -649,7 +651,7 @@ def fig6(data: Data, out: pathlib.Path) -> dict:
         if rtf[run.run]:
             t = h([r[0] for r in rtf[run.run]])
             ax.plot(t, [r[2] for r in rtf[run.run]], color=ps.NAVY, lw=0.8, label="60 s")
-            ax.plot(t, [r[1] for r in rtf[run.run]], color=ps.SAND, lw=0.6, label="worst 5 s window")
+            ax.plot(t, [r[1] for r in rtf[run.run]], color=ps.SAND, lw=0.6, label="Worst 5 s window")
             summary.setdefault(run.run, {})["rtf_min_5s"] = min(r[1] for r in rtf[run.run])
         if col == 0:
             ax.set_ylabel("Gazebo real-time factor")
