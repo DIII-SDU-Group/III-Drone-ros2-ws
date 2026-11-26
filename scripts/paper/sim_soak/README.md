@@ -4,13 +4,18 @@ Scripted, repeatable tables and figures for the paper's simulation
 subsection: no wind (HIL soak run 39) and wind (Gazebo wind, runs 42 on).
 The agreed plan is `runtime/soak/20260929/PRESENTATION_PLAN.md`.
 
-Run inside the devcontainer (bag reading needs ROS):
+Build from the workspace root on the host:
 
 ```bash
-source /opt/ros/jazzy/setup.bash && source install/setup.bash
-python3 scripts/paper/sim_soak/extract_all.py   # optional: fill the bag cache first
-python3 scripts/paper/sim_soak/make_all.py
+scripts/paper/sim_soak/build.sh
 ```
+
+It reads the bags inside the devcontainer (`extract_all.py`, needs ROS) into
+the cache, then renders on the host (`make_all.py`), where Nimbus Sans, the
+manuscript's Helvetica, is installed. `paper_style.py` holds the
+manuscript's palette (from its draw.io figures) and table style (LaTeX
+`table*` like the manuscript's Table 1; needs `xcolor` with `table` and
+`array`).
 
 Outputs go to `runtime/paper/sim_soak/` (PDF and PNG figures; tables as CSV,
 Markdown and LaTeX; `summary.json`; `MISSING.md` lists what could not be

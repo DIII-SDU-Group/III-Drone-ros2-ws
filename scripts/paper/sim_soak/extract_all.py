@@ -17,6 +17,14 @@ def main() -> int:
             print(f"run {run.run} {bag_dir.name}: battery {len(series['battery'])} samples, "
                   f"odometry {int(series['odometry_count'])}, gap quantiles {series['gap_quantiles'].round(4)}, "
                   f"{time.monotonic() - started:.0f} s", flush=True)
+    # Figure 2's bag window.
+    import make_all
+    data = make_all.Data(cat)
+    window = make_all.fig2_window(data)
+    if window is not None:
+        run, _phase, _t_ref, t0, t1 = window
+        signals = bag_extract.window_signals(run.bag_dirs(), t0, t1, cat.cache)
+        print(f"figure 2 window: run {run.run}, " + ", ".join(f"{k} {len(v)}" for k, v in signals.items()), flush=True)
     return 0
 
 

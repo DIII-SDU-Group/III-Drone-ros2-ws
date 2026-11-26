@@ -19,6 +19,16 @@ import pathlib
 
 import numpy as np
 
+ROOT = pathlib.Path(__file__).resolve().parents[3]
+
+
+def _rel(path: pathlib.Path) -> str:
+    """Workspace-relative path: the same key inside the devcontainer and on the host."""
+    try:
+        return str(path.resolve().relative_to(ROOT))
+    except ValueError:
+        return str(path.resolve())
+
 BATTERY_TOPIC = "/hil/px4_battery_status"
 ODOMETRY_TOPIC = "/fmu/out/vehicle_odometry"
 GAP_QUANTILES = (0.5, 0.9, 0.99, 0.999, 1.0)
@@ -31,7 +41,7 @@ def _bag_files(bag_dir: pathlib.Path) -> list[pathlib.Path]:
 
 def _key(bag_dir: pathlib.Path, extra: str = "") -> str:
     sizes = ",".join(f"{p.name}:{p.stat().st_size}" for p in _bag_files(bag_dir))
-    return hashlib.sha1(f"{bag_dir.resolve()}|{sizes}|{extra}".encode()).hexdigest()[:16]
+    return hashlib.sha1(f"{_rel(bag_dir)}|{sizes}|{extra}".encode()).hexdigest()[:16]
 
 
 def _readers(bag_dir: pathlib.Path, topics: list[str]):
@@ -111,7 +121,7 @@ WINDOW_TOPICS = {
 def window_signals(bag_dirs: list[pathlib.Path], t0: float, t1: float, cache: pathlib.Path) -> dict:
     """Figure 2's context signals inside [t0, t1] (epoch seconds, receipt time)."""
     cache.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha1(json.dumps([str(d) for d in bag_dirs] + [round(t0, 3), round(t1, 3)]).encode()).hexdigest()[:16]
+    key = hashlib.sha1(json.dumps([_rel(d) for d in bag_dirs] + [round(t0, 3), round(t1, 3)]).encode()).hexdigest()[:16]
     path = cache / f"window_{key}.npz"
     if path.exists():
         data = np.load(path, allow_pickle=False)

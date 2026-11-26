@@ -38,24 +38,20 @@ from matplotlib.patches import Patch  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import bag_extract as bx  # noqa: E402
+import paper_style as ps  # noqa: E402
 import soak_data as sd  # noqa: E402
 
 CATEGORIES = ["1st attempt", "2nd attempt", "3rd attempt", "limit reached"]
-CATEGORY_COLORS = {"1st attempt": "#2b8a3e", "2nd attempt": "#74b816", "3rd attempt": "#f59f00",
-                   "limit reached": "#adb5bd"}
+CATEGORY_COLORS = ps.CATEGORY_COLORS
 MODES = ["inspection_demo", "reach_cable", "cable_charging", "leave_cable"]
 MODE_LABELS = {"inspection_demo": "Inspection", "reach_cable": "Reach Cable",
                "cable_charging": "Cable Charging", "leave_cable": "Leave Cable"}
-MODE_COLORS = {"inspection_demo": "#d0ebff", "reach_cable": "#ffe8cc", "cable_charging": "#d3f9d8",
-               "leave_cable": "#f3d9fa"}
-SINGLE = 3.5   # in, one column
-DOUBLE = 7.16  # in, two columns
+MODE_COLORS = ps.MODE_COLORS
+SINGLE, DOUBLE = ps.SINGLE, ps.DOUBLE
 WORLD_SDF = sd.ROOT / "src/III-Drone-Simulation/Gazebo-simulation-assets/worlds/hca_full_pylon_setup.sdf"
 WIND_SEED = (1.75, 0.0)  # m/s, ENU, as set by the soak's wind keeper
 
-plt.rcParams.update({"font.size": 8, "axes.titlesize": 8, "axes.labelsize": 8, "legend.fontsize": 7,
-                     "xtick.labelsize": 7, "ytick.labelsize": 7, "figure.dpi": 150, "savefig.bbox": "tight",
-                     "pdf.fonttype": 42, "ps.fonttype": 42})
+ps.apply()
 
 MISSING: list[str] = []
 
@@ -66,7 +62,8 @@ def save(fig, out: pathlib.Path, name: str) -> None:
     plt.close(fig)
 
 
-def write_table(out: pathlib.Path, name: str, header: list[str], rows: list[list], caption: str, notes: list[str]) -> None:
+def write_table(out: pathlib.Path, name: str, header: list[str], rows: list[list], caption: str, notes: list[str],
+                first_width: float = 0.45) -> None:
     with open(out / f"{name}.csv", "w", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(header)
@@ -76,20 +73,8 @@ def write_table(out: pathlib.Path, name: str, header: list[str], rows: list[list
     md += [""] + [f"{n}" for n in notes]
     (out / f"{name}.md").write_text("\n".join(md) + "\n")
     esc = lambda text: str(text).replace("%", r"\%").replace("&", r"\&").replace("_", r"\_").replace("#", r"\#")  # noqa: E731
-    tex = [r"\begin{table}[t]", r"\centering", rf"\caption{{{esc(caption)}}}", rf"\label{{tab:{name}}}",
-           r"\begin{tabular}{l" + "r" * (len(header) - 1) + "}", r"\toprule",
-           " & ".join(esc(h) for h in header) + r" \\", r"\midrule"]
-    for row in rows:
-        if row and str(row[0]).startswith("—"):
-            tex.append(r"\midrule")
-            tex.append(rf"\multicolumn{{{len(header)}}}{{l}}{{\emph{{{esc(str(row[0]).strip('— '))}}}}} \\")
-            continue
-        tex.append(" & ".join(esc(c) for c in row) + r" \\")
-    tex += [r"\bottomrule", r"\end{tabular}"]
-    if notes:
-        tex.append(r"\par\smallskip\footnotesize " + r" \\ ".join(esc(n) for n in notes))
-    tex.append(r"\end{table}")
-    (out / f"{name}.tex").write_text("\n".join(tex) + "\n")
+    tex = ps.latex_table(caption, name, header, rows, notes, esc, first_width)
+    (out / f"{name}.tex").write_text(tex)
 
 
 # ----------------------------------------------------------------------------- data
@@ -109,6 +94,9 @@ class Data:
             for bag_dir in run.bag_dirs():
                 try:
                     out.append(bx.run_series(bag_dir, self.cat.cache))
+                except ImportError:
+                    MISSING.append(f"bag {bag_dir.name} (run {run.run}) is not in the cache and ROS is not available "
+                                   "here: run extract_all.py in the devcontainer first (build.sh does both).")
                 except Exception as exc:  # noqa: BLE001 - reported in MISSING.md
                     MISSING.append(f"bag {bag_dir.name} (run {run.run}) could not be read: {exc}")
             self.series[run.run] = out
@@ -244,7 +232,8 @@ def table2(data: Data, out: pathlib.Path) -> dict:
     ]
     notes = ["Counts of branch activations from the mission executor and maneuver controller logs.",
              "(d) Refused by the maneuver server: a cable take-off needs an open gripper, and the gripper had closed (late capture)."]
-    write_table(out, "table2_branch_coverage", header, rows, "Behaviour-tree fallback and retry branch activations", notes)
+    write_table(out, "table2_branch_coverage", header, rows, "Behaviour-tree fallback and retry branch activations", notes,
+                first_width=0.62)
     return values
 
 
@@ -260,23 +249,21 @@ def fig1(data: Data, out: pathlib.Path) -> None:
         left = 0.0
         for cat in CATEGORIES:
             share = 100.0 * c[cat] / n if n else 0.0
-            ax.barh(i, share, left=left, color=CATEGORY_COLORS[cat], edgecolor="white", linewidth=0.5,
-                    hatch="///" if cat == "limit reached" else None)
+            ax.barh(i, share, left=left, color=CATEGORY_COLORS[cat], edgecolor="white", linewidth=0.6,
+                    hatch="////" if cat == "limit reached" else None, height=0.62)
             if share >= 6:
                 ax.text(left + share / 2, i, f"{share:.0f} %", ha="center", va="center", fontsize=6.5,
-                        color="white" if cat in ("1st attempt", "2nd attempt") else "black")
+                        color="white" if cat in ("1st attempt", "2nd attempt", "3rd attempt") else ps.TEXT)
             left += share
         labels.append(f"{data.cat.config['conditions'][cond]['label']}\n(n = {n})")
     ax.set_yticks([0, 1], labels)
     ax.invert_yaxis()
     ax.set_xlim(0, 100)
     ax.set_xlabel("Landing phases (%)")
-    handles = [Patch(facecolor=CATEGORY_COLORS[c], hatch="///" if c == "limit reached" else None,
+    handles = [Patch(facecolor=CATEGORY_COLORS[c], edgecolor="white", hatch="////" if c == "limit reached" else None,
                      label="limit reached (test setting: 3)" if c == "limit reached" else f"captured, {c}")
                for c in CATEGORIES]
     ax.legend(handles=handles, ncol=2, loc="upper center", bbox_to_anchor=(0.45, -0.55), frameon=False)
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
     save(fig, out, "fig1_attempts_to_capture")
 
 
@@ -314,16 +301,23 @@ def choose_recovered_landing(data: Data) -> tuple[sd.Run, sd.LandingPhase] | Non
     return None
 
 
-def fig2(data: Data, out: pathlib.Path) -> dict:
+def fig2_window(data: Data):
+    """(run, phase, t_ref, t0, t1) of Figure 2's recovered landing, or None."""
     chosen = choose_recovered_landing(data)
     if chosen is None:
+        return None
+    run, phase = chosen
+    goals = [t for t, _l, m in data.logs[run.run].lines if phase.start <= t <= phase.end and sd.SIG["landing_goal"] in m]
+    return run, phase, goals[0], goals[0] - 15.0, phase.end + 5.0
+
+
+def fig2(data: Data, out: pathlib.Path) -> dict:
+    window = fig2_window(data)
+    if window is None:
         MISSING.append("Figure 2: no recovered landing (2 attempts, captured) with a bag in the wind runs.")
         return {}
-    run, phase = chosen
+    run, phase, t_ref, t0, t1 = window
     log = data.logs[run.run]
-    goals = [t for t, _l, m in log.lines if phase.start <= t <= phase.end and sd.SIG["landing_goal"] in m]
-    t_ref = goals[0]
-    t0, t1 = t_ref - 15.0, phase.end + 5.0
     nodes = [n for n in sd.node_intervals(log.lines, t0, t1)]
     checks = [(t, sd.SIG["gripper_closed"] in m) for t, _l, m in log.lines if t0 <= t <= t1
               and (sd.SIG["gripper_closed"] in m or sd.SIG["gripper_not_closed"] in m)]
@@ -341,7 +335,7 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
     for n in nodes:
         if n["node"] not in names:
             names.append(n["node"])
-    result_colors = {"succeeded": "#2b8a3e", "failed": "#e03131", "rejected": "#f59f00", "running": "#868e96"}
+    result_colors = ps.RESULT_COLORS
     for n in nodes:
         y = names.index(n["node"])
         ax.barh(y, max(0.3, n["end"] - n["start"]), left=n["start"] - t_ref, height=0.6,
@@ -350,7 +344,7 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
         y = len(names)
         names.append("verify_gripper_closed (check)")
         for t, closed in checks:
-            ax.plot(t - t_ref, y, marker="|", color="#2b8a3e" if closed else "#e03131", markersize=6)
+            ax.plot(t - t_ref, y, marker="|", color=ps.SLATE if closed else ps.BRICK, markersize=6)
     ax.set_yticks(range(len(names)), names)
     ax.invert_yaxis()
     ax.legend(handles=[Patch(color=c, label=k) for k, c in result_colors.items() if k != "running"],
@@ -376,11 +370,13 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
         speed = direction = np.zeros(0)
         MISSING.append("Figure 2: no wind or clock samples in the window.")
     if tw.size:
-        ax.plot(tw - t_ref, speed, color="#1971c2", lw=0.9)
+        ax.plot(tw - t_ref, speed, color=ps.NAVY, lw=0.9)
         ax2 = ax.twinx()
-        ax2.plot(tw - t_ref, direction, color="#e8590c", lw=0.7, ls="--")
+        ax2.plot(tw - t_ref, direction, color=ps.SAND, lw=0.8, ls="--")
+        ax2.spines["right"].set_visible(True)
+        ax2.tick_params(axis="y", colors=ps.SAND_DARK)
         ax.set_ylabel("wind (m/s)\nsolid")
-        ax2.set_ylabel("direction (deg)\ndashed", color="#e8590c")
+        ax2.set_ylabel("direction (deg)\ndashed", color=ps.SAND_DARK)
 
     ax = axes[2]
     deviation_note = None
@@ -401,13 +397,13 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
             breaks = np.where(np.diff(tt) > 0.5)[0]
             tt = np.insert(tt, breaks + 1, np.nan)
             yy = np.insert(yy, breaks + 1, np.nan)
-            ax.plot(tt, yy, color="#5f3dc4", lw=0.8)
+            ax.plot(tt, yy, color=ps.SLATE_DARK, lw=0.8)
             ax.set_ylabel("|ref − pos| (cm)")
             deviation_note = "controller reference vs PX4 odometry"
     if deviation_note is None:
         truth = sig.get("truth")
         if truth is not None and len(truth):
-            ax.plot(truth[:, 0] - t_ref, truth[:, 3], color="#5f3dc4", lw=0.8)
+            ax.plot(truth[:, 0] - t_ref, truth[:, 3], color=ps.SLATE_DARK, lw=0.8)
             ax.set_ylabel("height (m)")
             MISSING.append("Figure 2: controller reference and PX4 odometry frames did not line up (median "
                            "deviation >= 0.5 m); panel shows ground-truth height instead of tracking deviation.")
@@ -415,13 +411,10 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
     ax = axes[3]
     grip = sig.get("gripper")
     if grip is not None and len(grip):
-        ax.step(grip[:, 0] - t_ref, grip[:, 1], where="post", color="#212529", lw=0.8)
+        ax.step(grip[:, 0] - t_ref, grip[:, 1], where="post", color=ps.TEXT, lw=0.8)
     ax.set_yticks([0, 1], ["open", "closed"])
     ax.set_ylim(-0.3, 1.3)
     ax.set_xlabel("time from the first landing attempt (s)")
-    for a in axes:
-        for side in ("top",):
-            a.spines[side].set_visible(False)
     if wind_note:
         axes[1].text(1.0, 1.02, f"applied wind, {wind_note}", transform=axes[1].transAxes, ha="right", fontsize=6.5)
     if deviation_note:
@@ -435,29 +428,27 @@ def fig3(data: Data, out: pathlib.Path) -> None:
     runs = data.cat.by_condition("no_wind") + data.cat.by_condition("wind")
     fig, ax = plt.subplots(figsize=(DOUBLE, 0.32 * len(runs) + 0.9))
     for y, run in enumerate(runs):
-        ax.plot([0, run.hours], [y, y], color="#dee2e6", lw=6, solid_capstyle="butt", zorder=1)
+        ax.plot([0, run.hours], [y, y], color=ps.BLUE_FILL, lw=8, solid_capstyle="butt", zorder=1)
         for p in data.logs[run.run].phases:
             h = (p.start - run.start) / 3600.0
             if p.outcome == "captured":
                 ax.plot([h, h], [y - 0.28, y + 0.28], color=CATEGORY_COLORS[p.category], lw=0.9, zorder=2)
             elif p.outcome == "limit":
-                ax.plot(h, y, marker="x", color="#212529", markersize=3.5, mew=0.8, zorder=3)
+                ax.plot(h, y, marker="x", color=ps.TEXT, markersize=3.5, mew=0.8, zorder=3)
             elif p.outcome == "interrupted":
-                ax.plot(h, y, marker="v", color="#c92a2a", markersize=3.5, zorder=3)
+                ax.plot(h, y, marker="v", color=ps.BRICK, markersize=3.5, zorder=3)
         if run.running:
             ax.annotate("running", (run.hours, y), xytext=(3, 0), textcoords="offset points", va="center", fontsize=6)
         elif any(i["run"] == run.run for i in data.cat.config.get("infrastructure", [])) and not any(
                 p.outcome == "interrupted" for p in data.logs[run.run].phases):
-            ax.plot(run.hours, y, marker="v", color="#c92a2a", markersize=3.5, zorder=3)
+            ax.plot(run.hours, y, marker="v", color=ps.BRICK, markersize=3.5, zorder=3)
     ax.set_yticks(range(len(runs)), [f"{'No wind' if r.condition == 'no_wind' else 'Wind'}, run {r.run}" for r in runs])
     ax.invert_yaxis()
     ax.set_xlabel("time since run start (h)")
     handles = [plt.Line2D([], [], color=CATEGORY_COLORS[c], lw=1.5, label=f"captured, {c}") for c in CATEGORIES[:3]]
-    handles += [plt.Line2D([], [], color="#212529", marker="x", lw=0, label="limit reached (test setting)"),
-                plt.Line2D([], [], color="#c92a2a", marker="v", lw=0, label="infrastructure interruption")]
+    handles += [plt.Line2D([], [], color=ps.TEXT, marker="x", lw=0, label="limit reached (test setting)"),
+                plt.Line2D([], [], color=ps.BRICK, marker="v", lw=0, label="infrastructure interruption")]
     ax.legend(handles=handles, ncol=5, loc="upper center", bbox_to_anchor=(0.5, -0.22), frameon=False)
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
     save(fig, out, "fig3_run_timelines")
 
 
@@ -494,10 +485,10 @@ def fig4(data: Data, out: pathlib.Path) -> None:
     grid = fig.add_gridspec(2, 2, height_ratios=[1, 1.1])
     ax = fig.add_subplot(grid[0, :])
     hours = (bat_n[:, 0] - nominal.start) / 3600
-    ax.plot(hours, bat_n[:, 1], color="#1971c2", lw=0.4)
+    ax.plot(hours, bat_n[:, 1], color=ps.NAVY, lw=0.35)
     triggers = [m.start for m in data.logs[nominal.run].modes if m.mode == "reach_cable"]
     trig_v = np.interp(triggers, bat_n[:, 0], bat_n[:, 1])
-    ax.plot((np.asarray(triggers) - nominal.start) / 3600, trig_v, "|", color="#e8590c", markersize=3, mew=0.5, lw=0,
+    ax.plot((np.asarray(triggers) - nominal.start) / 3600, trig_v, "|", color=ps.SAND, markersize=3, mew=0.5, lw=0,
             label="recharge triggered (Reach Cable starts)")
     ax.set_xlabel(f"time since run start (h), no wind, run {nominal.run}")
     ax.set_ylabel("battery voltage (V)")
@@ -515,17 +506,17 @@ def fig4(data: Data, out: pathlib.Path) -> None:
         t0, t1 = window
         sel = (bat[:, 0] >= t0) & (bat[:, 0] <= t1)
         shade_modes(ax, data.logs[run.run].modes, t0, t1, t0, 60)
-        ax.plot((bat[sel, 0] - t0) / 60, bat[sel, 1], color="#1971c2", lw=0.8)
+        ax.plot((bat[sel, 0] - t0) / 60, bat[sel, 1], color=ps.NAVY, lw=0.9)
         for p in data.logs[run.run].phases:
             if t0 <= p.start <= t1 and p.attempts >= 2:
                 retries = [t for t, _l, m in data.logs[run.run].lines if p.start <= t <= p.end and sd.SIG["retry_takeoff"] in m]
                 for t in retries:
-                    ax.axvline((t - t0) / 60, color="#e03131", lw=0.7, ls="--")
+                    ax.axvline((t - t0) / 60, color=ps.BRICK, lw=0.8, ls="--")
         ax.set_xlabel("time (min)")
         ax.set_ylabel("battery voltage (V)")
         ax.set_title(title, loc="left")
     handles = [Patch(color=MODE_COLORS[m], label=MODE_LABELS[m]) for m in MODES]
-    handles.append(plt.Line2D([], [], color="#e03131", ls="--", lw=0.8, label="retry take-off after an aborted landing"))
+    handles.append(plt.Line2D([], [], color=ps.BRICK, ls="--", lw=0.8, label="retry take-off after an aborted landing"))
     fig.legend(handles=handles, ncol=5, loc="lower center", bbox_to_anchor=(0.5, -0.04), frameon=False)
     fig.tight_layout(rect=(0, 0.05, 1, 1))
     save(fig, out, "fig4_battery_and_modes")
@@ -541,8 +532,8 @@ def fig5(data: Data, out: pathlib.Path) -> dict:
                 if c["phase"] is not None and c["phase"].outcome == "captured":
                     values.append(c["duration_s"] / 60)
         cycle_minutes[cond] = values
-    ax1.boxplot([cycle_minutes["no_wind"], cycle_minutes["wind"]], widths=0.5, showfliers=True,
-                flierprops={"markersize": 2}, medianprops={"color": "#e8590c"})
+    ax1.boxplot([cycle_minutes["no_wind"], cycle_minutes["wind"]], widths=0.5, showfliers=True, patch_artist=True,
+                boxprops={"facecolor": ps.BLUE_FILL, "edgecolor": ps.SLATE_DARK}, medianprops={"color": ps.SAND, "lw": 1.4})
     ax1.set_xticks([1, 2], [f"No wind\n(n = {len(cycle_minutes['no_wind'])})", f"Wind\n(n = {len(cycle_minutes['wind'])})"])
     ax1.set_ylabel("mission cycle time (min)")
     ax1.set_title("Cycle time (captured cycles)", loc="left")
@@ -551,15 +542,13 @@ def fig5(data: Data, out: pathlib.Path) -> dict:
         for p in data.phases(cond, outcomes=("captured",)):
             by_attempts[p.attempts].append((p.end - p.start) / 60)
     keys = sorted(k for k in by_attempts if k <= 3)
-    ax2.boxplot([by_attempts[k] for k in keys], widths=0.5, flierprops={"markersize": 2}, medianprops={"color": "#e8590c"})
+    ax2.boxplot([by_attempts[k] for k in keys], widths=0.5, patch_artist=True,
+                boxprops={"facecolor": ps.BLUE_FILL, "edgecolor": ps.SLATE_DARK}, medianprops={"color": ps.SAND, "lw": 1.4})
     ax2.set_xticks(range(1, len(keys) + 1), [f"{k} attempt{'s' if k > 1 else ''}\n(n = {len(by_attempts[k])})" for k in keys])
     ax2.set_ylabel("landing phase duration (min)")
     medians = {k: statistics.median(by_attempts[k]) for k in keys}
     added = (medians[2] - medians[1]) * 60 if 1 in medians and 2 in medians else float("nan")
     ax2.set_title(f"Reach Cable duration by attempts (median +{added:.0f} s per retry)", loc="left")
-    for a in (ax1, ax2):
-        for side in ("top", "right"):
-            a.spines[side].set_visible(False)
     fig.tight_layout()
     save(fig, out, "fig5_cycle_time")
     return {"cycle_median_min": {c: statistics.median(v) for c, v in cycle_minutes.items() if v},
@@ -578,7 +567,7 @@ def fig6(data: Data, out: pathlib.Path) -> dict:
                 procs[name] += statistics.mean(v for _t, v in rows)
     top = [name for name, _v in procs.most_common(6)]
     fig, axes = plt.subplots(4, 2, figsize=(DOUBLE, 6.2), sharex="col", sharey="row", layout="constrained")
-    colors = plt.get_cmap("tab10").colors
+    colors = ps.SERIES
     summary = {}
     for col, run in enumerate(runs):
         h = lambda t: (np.asarray(t) - run.start) / 3600  # noqa: E731
@@ -595,7 +584,7 @@ def fig6(data: Data, out: pathlib.Path) -> dict:
             other = [tot - sum(s[i] for s in stack) for i, (_t, tot) in enumerate(total)]
             stack.append([max(0.0, v) for v in other])
             labels.append("other")
-            ax.stackplot(h(times), stack, labels=labels, colors=list(colors[:len(top)]) + ["#ced4da"], lw=0)
+            ax.stackplot(h(times), stack, labels=labels, colors=list(colors[:len(top)]) + [ps.OTHER], lw=0)
             summary[run.run] = {"cpu_total_mean": statistics.mean(v for _t, v in total)}
         else:
             MISSING.append(f"Figure 6: no Pi CPU samples for run {run.run}.")
@@ -606,19 +595,19 @@ def fig6(data: Data, out: pathlib.Path) -> dict:
         load = cpu[run.run].get("__load1__", [])
         psi = cpu[run.run].get("__psi_some_avg60__", [])
         if load:
-            ax.plot(h([t for t, _v in load]), [v for _t, v in load], color="#1971c2", lw=0.8, label="load average (1 min)")
+            ax.plot(h([t for t, _v in load]), [v for _t, v in load], color=ps.NAVY, lw=0.8, label="load average (1 min)")
         if psi:
-            ax.plot(h([t for t, _v in psi]), [v / 10 for _t, v in psi], color="#e8590c", lw=0.8, label="CPU pressure stall (%) / 10")
+            ax.plot(h([t for t, _v in psi]), [v / 10 for _t, v in psi], color=ps.SAND, lw=0.8, label="CPU pressure stall (%) / 10")
         if col == 0:
             ax.set_ylabel("load / pressure")
         ax = axes[2, col]
         used = mem[run.run].get("__mem_used_mb__", [])
         if used:
-            ax.plot(h([t for t, _v in used]), [v / 1024 for _t, v in used], color="#5f3dc4", lw=0.8)
+            ax.plot(h([t for t, _v in used]), [v / 1024 for _t, v in used], color=ps.SLATE_DARK, lw=0.8)
             summary.setdefault(run.run, {})["mem_used_gib_max"] = max(v for _t, v in used) / 1024
         else:
             ax.text(0.5, 0.5, "memory not recorded for this run", ha="center", va="center", transform=ax.transAxes,
-                    fontsize=7, color="#868e96")
+                    fontsize=7, color=ps.GREY)
             ax.set_yticks([])
             MISSING.append(f"Figure 6: Pi memory not recorded for run {run.run} (memory logging starts with run 47).")
         if col == 0:
@@ -626,8 +615,8 @@ def fig6(data: Data, out: pathlib.Path) -> dict:
         ax = axes[3, col]
         if rtf[run.run]:
             t = h([r[0] for r in rtf[run.run]])
-            ax.plot(t, [r[2] for r in rtf[run.run]], color="#2b8a3e", lw=0.8, label="60 s")
-            ax.plot(t, [r[1] for r in rtf[run.run]], color="#e03131", lw=0.5, alpha=0.8, label="worst 5 s window")
+            ax.plot(t, [r[2] for r in rtf[run.run]], color=ps.NAVY, lw=0.8, label="60 s")
+            ax.plot(t, [r[1] for r in rtf[run.run]], color=ps.SAND, lw=0.6, label="worst 5 s window")
             summary.setdefault(run.run, {})["rtf_min_5s"] = min(r[1] for r in rtf[run.run])
         if col == 0:
             ax.set_ylabel("Gazebo real-time factor")
@@ -654,9 +643,6 @@ def fig6(data: Data, out: pathlib.Path) -> dict:
         if axes[row, 0].get_legend_handles_labels()[0]:
             axes[row, 0].legend(loc="lower left", ncol=2, frameon=False, fontsize=6)
     axes[3, 0].set_ylim(0.8, 1.05)
-    for a in axes.flat:
-        for side in ("top", "right"):
-            a.spines[side].set_visible(False)
     save(fig, out, "fig6_computational_load")
     return summary
 
