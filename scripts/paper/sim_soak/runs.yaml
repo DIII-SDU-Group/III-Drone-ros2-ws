@@ -86,6 +86,15 @@ conditions:
         rtf: runtime/soak/20260929/rtf.tsv
         pi_cpu: runtime/soak/20260929/pi_cpu.tsv
         pi_mem: runtime/soak/20260929/pi_mem.tsv
+        end: "2026-11-26T19:32:13Z"
+        ended_by: "item 55: reference stream hand-over race (software defect)"
+      - run: 49
+        run_dir: runtime/endurance/hil-20261126T194615Z
+        node_logs: runtime/soak/20260929/paper_results_wind_1.75/pi_node_logs
+        bag_roots: [runtime/soak/20260929/paper_results_wind_1.75/rosbags]
+        rtf: runtime/soak/20260929/rtf.tsv
+        pi_cpu: runtime/soak/20260929/pi_cpu.tsv
+        pi_mem: runtime/soak/20260929/pi_mem.tsv
         end: null
         ended_by: "running"
 
