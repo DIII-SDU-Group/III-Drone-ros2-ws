@@ -77,8 +77,8 @@ conditions:
         rtf: runtime/soak/20260929/rtf.tsv
         pi_cpu: runtime/soak/20260929/pi_cpu.tsv
         pi_mem: runtime/soak/20260929/pi_mem.tsv
-        end: null
-        ended_by: "running"
+        end: "2026-11-26T11:23:29Z"
+        ended_by: "stopped on user request (soak paused)"
 
 # Runs shown in the single-run figures (battery, computational load).
 figure_runs:
