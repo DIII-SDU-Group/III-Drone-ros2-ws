@@ -156,7 +156,6 @@ def table1(data: Data, out: pathlib.Path) -> dict:
     header = ["", "No wind", "Wind (1.75 m/s, gusts)"]
     row = lambda label, key, fmt="{}": [label] + [fmt.format(s[c][key]) for c in cols]  # noqa: E731
     rows = [
-        row("Runs", "runs"),
         [ "Autonomous operation (h)"] + [f"{s[c]['hours']:.1f}" for c in cols],
         row("Complete mission cycles", "cycles"),
         row("Charges completed (to full)", "charges"),
@@ -164,11 +163,7 @@ def table1(data: Data, out: pathlib.Path) -> dict:
         ["Human interventions", "0", "0"],
         ["— Landing phases"],
         row("Landing phases", "n"),
-        ["Captured within the attempt limit (%)"] + [f"{s[c]['captured']} ({pct(s[c]['captured'], s[c]['n'])}) {ci(s[c]['captured'], s[c]['n'])}" for c in cols],
-        ["  at the 1st attempt (%)"] + [f"{s[c]['first']} ({pct(s[c]['first'], s[c]['n'])}) {ci(s[c]['first'], s[c]['n'])}" for c in cols],
-        ["  at the 2nd attempt (%)"] + [f"{s[c]['second']} ({pct(s[c]['second'], s[c]['n'])})" for c in cols],
-        ["  at the 3rd attempt (%)"] + [f"{s[c]['third']} ({pct(s[c]['third'], s[c]['n'])})" for c in cols],
-        ["Attempt limit reached (a) (%)"] + [f"{s[c]['limit']} ({pct(s[c]['limit'], s[c]['n'])})" for c in cols],
+        ["Captured within the attempt limit (a) (%)"] + [f"{s[c]['captured']} ({pct(s[c]['captured'], s[c]['n'])})" for c in cols],
         ["Late captures (b)"] + [str(s[c]["late"]) for c in cols],
         ["Landing attempts / aborted"] + [f"{s[c]['attempts']} / {s[c]['aborts']}" for c in cols],
         ["Abort trigger: V-gate / above-target"] + [f"{s[c]['aborts_vgate']} / {s[c]['aborts_above']}" for c in cols],
@@ -176,7 +171,7 @@ def table1(data: Data, out: pathlib.Path) -> dict:
         ["Infrastructure interruptions (c)"] + [str(len(s[c]["infrastructure"])) for c in cols],
     ]
     notes = [
-        "Percentages of landing phases with a decided outcome; brackets: 95 % Wilson confidence interval.",
+        "Percentages of landing phases with a decided outcome. Figure 1 breaks the landing phases down by attempt.",
         f"(a) Attempt limit of {sd.LANDING_ATTEMPT_LIMIT} is a validation setting; the test harness then flies the vehicle back to the mission start pose and resumes.",
         "(b) The landing aborted at contact while the gripper closed; the gripper-closed check continued the mission. Counted as captured.",
         "(c) " + "; ".join(f"run {i['run']}: {i['what']}" for c in cols for i in s[c]["infrastructure"]) + ".",
@@ -220,7 +215,6 @@ def table2(data: Data, out: pathlib.Path) -> dict:
         ["Landing retried after an abort (landing_maneuver_retry_until_successful_on_aborted)"] + [str(v[c]["landing_retry"]) for c in cols],
         ["Retry take-off after an aborted landing (cable_takeoff_retry); refused (d)"] + [f"{v[c]['retry_takeoff']}; {v[c]['retry_takeoff_rejected']}" for c in cols],
         ["Gripper-closed check after a landing failure; found closed"] + [f"{v[c]['gripper_checks']}; {v[c]['late']}" for c in cols],
-        ["Attempt limit reached, Reach Cable fails (test setting)"] + [str(v[c]["limit"]) for c in cols],
         ["— Reach Cable: perception"],
         ["Perception reset when the live cable yaw does not settle (reset_unsettled_perception)"] + [str(v[c]["perception"]) for c in cols],
         ["Powerline detection re-poll before landing (detect_powerline_retry_until_successful); phases"] + [f"{v[c]['repoll']}; {v[c]['repoll_phases']}" for c in cols],
@@ -241,21 +235,28 @@ def table2(data: Data, out: pathlib.Path) -> dict:
 # ----------------------------------------------------------------------------- figures
 
 def fig1(data: Data, out: pathlib.Path) -> None:
-    fig, ax = plt.subplots(figsize=(SINGLE, 1.3))
+    fig, ax = plt.subplots(figsize=(SINGLE, 1.55))
     labels = []
     for i, cond in enumerate(["no_wind", "wind"]):
         ph = data.phases(cond)
         n = len(ph)
         c = collections.Counter(p.category for p in ph)
         left = 0.0
+        small = []
         for cat in CATEGORIES:
             share = 100.0 * c[cat] / n if n else 0.0
             ax.barh(i, share, left=left, color=CATEGORY_COLORS[cat], edgecolor="white", linewidth=0.6,
                     hatch="////" if cat == "limit reached" else None, height=0.62)
-            if share >= 6:
-                ax.text(left + share / 2, i, f"{share:.0f} %", ha="center", va="center", fontsize=6.5,
+            label = f"{share:.0f} % ({c[cat]})"
+            if share >= 12:
+                ax.text(left + share / 2, i, label, ha="center", va="center", fontsize=6.5,
                         color="white" if cat in ("1st attempt", "2nd attempt", "3rd attempt") else ps.TEXT)
+            elif c[cat]:
+                small.append(f"{'limit' if cat == 'limit reached' else cat.split()[0]}: {label}")
             left += share
+        if small:
+            # Segments too narrow for an inside label, named under the bar's end.
+            ax.text(100, i + 0.4, ", ".join(small), ha="right", va="top", fontsize=6, color=ps.TEXT)
         labels.append(f"{'No wind' if cond == 'no_wind' else 'Wind'}\n(n = {n})")
     ax.set_yticks([0, 1], labels)
     ax.invert_yaxis()
@@ -264,7 +265,8 @@ def fig1(data: Data, out: pathlib.Path) -> None:
     handles = [Patch(facecolor=CATEGORY_COLORS[c], edgecolor="white", hatch="////" if c == "limit reached" else None,
                      label="limit reached (test setting: 3)" if c == "limit reached" else f"captured, {c}")
                for c in CATEGORIES]
-    ax.legend(handles=handles, ncol=2, loc="upper center", bbox_to_anchor=(0.5, -0.5), frameon=False)
+    ax.set_ylim(1.75, -0.45)
+    ax.legend(handles=handles, ncol=2, loc="upper center", bbox_to_anchor=(0.5, -0.45), frameon=False)
     save(fig, out, "fig1_attempts_to_capture")
 
 
