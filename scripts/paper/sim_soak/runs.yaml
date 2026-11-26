@@ -79,6 +79,15 @@ conditions:
         pi_mem: runtime/soak/20260929/pi_mem.tsv
         end: "2026-11-26T11:23:29Z"
         ended_by: "stopped on user request (soak paused)"
+      - run: 48
+        run_dir: runtime/endurance/hil-20261126T132900Z
+        node_logs: runtime/soak/20260929/paper_results_wind_1.75/pi_node_logs
+        bag_roots: [runtime/soak/20260929/paper_results_wind_1.75/rosbags]
+        rtf: runtime/soak/20260929/rtf.tsv
+        pi_cpu: runtime/soak/20260929/pi_cpu.tsv
+        pi_mem: runtime/soak/20260929/pi_mem.tsv
+        end: null
+        ended_by: "running"
 
 # Runs shown in the single-run figures (battery, computational load).
 figure_runs:
