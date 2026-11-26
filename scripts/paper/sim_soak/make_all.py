@@ -27,6 +27,7 @@ import math
 import pathlib
 import statistics
 import sys
+import textwrap
 import xml.etree.ElementTree as ET
 
 import matplotlib
@@ -213,7 +214,7 @@ def table2(data: Data, out: pathlib.Path) -> dict:
             "lock": sum(p.lock_reacquisitions for p in ph),
         }
     v = values
-    header = ["Branch (behaviour tree node)", "No wind", "Wind"]
+    header = ["Branch (behavior tree node)", "No wind", "Wind"]
     rows = [
         ["— Reach Cable: landing fallback"],
         ["Landing retried after an abort (landing_maneuver_retry_until_successful_on_aborted)"] + [str(v[c]["landing_retry"]) for c in cols],
@@ -232,7 +233,7 @@ def table2(data: Data, out: pathlib.Path) -> dict:
     ]
     notes = ["Counts of branch activations from the mission executor and maneuver controller logs.",
              "(d) Refused by the maneuver server: a cable take-off needs an open gripper, and the gripper had closed (late capture)."]
-    write_table(out, "table2_branch_coverage", header, rows, "Behaviour-tree fallback and retry branch activations", notes,
+    write_table(out, "table2_branch_coverage", header, rows, "Behavior tree fallback and retry branch activations", notes,
                 first_width=0.62)
     return values
 
@@ -240,7 +241,7 @@ def table2(data: Data, out: pathlib.Path) -> dict:
 # ----------------------------------------------------------------------------- figures
 
 def fig1(data: Data, out: pathlib.Path) -> None:
-    fig, ax = plt.subplots(figsize=(SINGLE, 1.35))
+    fig, ax = plt.subplots(figsize=(SINGLE, 1.3))
     labels = []
     for i, cond in enumerate(["no_wind", "wind"]):
         ph = data.phases(cond)
@@ -255,7 +256,7 @@ def fig1(data: Data, out: pathlib.Path) -> None:
                 ax.text(left + share / 2, i, f"{share:.0f} %", ha="center", va="center", fontsize=6.5,
                         color="white" if cat in ("1st attempt", "2nd attempt", "3rd attempt") else ps.TEXT)
             left += share
-        labels.append(f"{data.cat.config['conditions'][cond]['label']}\n(n = {n})")
+        labels.append(f"{'No wind' if cond == 'no_wind' else 'Wind'}\n(n = {n})")
     ax.set_yticks([0, 1], labels)
     ax.invert_yaxis()
     ax.set_xlim(0, 100)
@@ -263,7 +264,7 @@ def fig1(data: Data, out: pathlib.Path) -> None:
     handles = [Patch(facecolor=CATEGORY_COLORS[c], edgecolor="white", hatch="////" if c == "limit reached" else None,
                      label="limit reached (test setting: 3)" if c == "limit reached" else f"captured, {c}")
                for c in CATEGORIES]
-    ax.legend(handles=handles, ncol=2, loc="upper center", bbox_to_anchor=(0.45, -0.55), frameon=False)
+    ax.legend(handles=handles, ncol=2, loc="upper center", bbox_to_anchor=(0.5, -0.5), frameon=False)
     save(fig, out, "fig1_attempts_to_capture")
 
 
@@ -328,29 +329,32 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
         MISSING.append(f"Figure 2: bag window of run {run.run} could not be read ({exc}); trace drawn without signals.")
         sig = {}
 
-    fig, axes = plt.subplots(4, 1, figsize=(DOUBLE, 5.0), sharex=True, layout="constrained",
-                             gridspec_kw={"height_ratios": [2.4, 1, 1, 0.5]})
+    fig, axes = plt.subplots(4, 1, figsize=(DOUBLE, 5.8), sharex=True, layout="constrained",
+                             gridspec_kw={"height_ratios": [3.1, 1, 1, 0.55]})
     ax = axes[0]
     names = []
     for n in nodes:
         if n["node"] not in names:
             names.append(n["node"])
     result_colors = ps.RESULT_COLORS
+    def wrapped(name: str) -> str:
+        return textwrap.fill(name.replace("_", " "), 21)
+
     for n in nodes:
         y = names.index(n["node"])
         ax.barh(y, max(0.3, n["end"] - n["start"]), left=n["start"] - t_ref, height=0.6,
                 color=result_colors[n["result"]], edgecolor="none")
     if checks:
         y = len(names)
-        names.append("verify_gripper_closed (check)")
+        names.append("verify_gripper_closed_check")
         for t, closed in checks:
             ax.plot(t - t_ref, y, marker="|", color=ps.SLATE if closed else ps.BRICK, markersize=6)
-    ax.set_yticks(range(len(names)), names)
+    ax.set_yticks(range(len(names)), [wrapped(n) for n in names])
+    ax.tick_params(axis="y", labelsize=6.5)
     ax.invert_yaxis()
     ax.legend(handles=[Patch(color=c, label=k) for k, c in result_colors.items() if k != "running"],
-              loc="lower left", bbox_to_anchor=(0.0, 1.0), ncol=3, frameon=False)
-    ax.set_title(f"run {run.run}, {dt.datetime.fromtimestamp(t_ref, dt.timezone.utc):%Y-%m-%d %H:%M:%S} UTC",
-                 loc="right", fontsize=7)
+              loc="lower right", ncol=1, frameon=False)
+    ax.set_title("Behavior tree execution: maneuver and condition nodes")
 
     ax = axes[1]
     wind_note = ""
@@ -375,8 +379,9 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
         ax2.plot(tw - t_ref, direction, color=ps.SAND, lw=0.8, ls="--")
         ax2.spines["right"].set_visible(True)
         ax2.tick_params(axis="y", colors=ps.SAND_DARK)
-        ax.set_ylabel("wind (m/s)\nsolid")
-        ax2.set_ylabel("direction (deg)\ndashed", color=ps.SAND_DARK)
+        ax.set_ylabel("Speed (m/s)\nsolid")
+        ax2.set_ylabel("Direction (deg)\ndashed", color=ps.SAND_DARK)
+        ax.set_title("Applied wind")
 
     ax = axes[2]
     deviation_note = None
@@ -398,13 +403,15 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
             tt = np.insert(tt, breaks + 1, np.nan)
             yy = np.insert(yy, breaks + 1, np.nan)
             ax.plot(tt, yy, color=ps.SLATE_DARK, lw=0.8)
-            ax.set_ylabel("|ref − pos| (cm)")
+            ax.set_ylabel("Error (cm)")
+            ax.set_title("Position tracking error")
             deviation_note = "controller reference vs PX4 odometry"
     if deviation_note is None:
         truth = sig.get("truth")
         if truth is not None and len(truth):
             ax.plot(truth[:, 0] - t_ref, truth[:, 3], color=ps.SLATE_DARK, lw=0.8)
-            ax.set_ylabel("height (m)")
+            ax.set_ylabel("Height (m)")
+            ax.set_title("Vehicle height (ground truth)")
             MISSING.append("Figure 2: controller reference and PX4 odometry frames did not line up (median "
                            "deviation >= 0.5 m); panel shows ground-truth height instead of tracking deviation.")
 
@@ -414,41 +421,42 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
         ax.step(grip[:, 0] - t_ref, grip[:, 1], where="post", color=ps.TEXT, lw=0.8)
     ax.set_yticks([0, 1], ["open", "closed"])
     ax.set_ylim(-0.3, 1.3)
-    ax.set_xlabel("time from the first landing attempt (s)")
-    if wind_note:
-        axes[1].text(1.0, 1.02, f"applied wind, {wind_note}", transform=axes[1].transAxes, ha="right", fontsize=6.5)
-    if deviation_note:
-        axes[2].text(1.0, 1.02, f"deviation from the controller reference ({deviation_note})",
-                     transform=axes[2].transAxes, ha="right", fontsize=6.5)
+    ax.set_title("Gripper status")
+    ax.set_xlabel("Time from the first landing attempt (s)")
     save(fig, out, "fig2_recovered_landing_trace")
     return {"run": run.run, "phase_start": phase.start, "wind": wind_note, "deviation": deviation_note}
 
 
 def fig3(data: Data, out: pathlib.Path) -> None:
-    runs = data.cat.by_condition("no_wind") + data.cat.by_condition("wind")
-    fig, ax = plt.subplots(figsize=(DOUBLE, 0.32 * len(runs) + 0.9))
-    for y, run in enumerate(runs):
-        ax.plot([0, run.hours], [y, y], color=ps.BLUE_FILL, lw=8, solid_capstyle="butt", zorder=1)
-        for p in data.logs[run.run].phases:
-            h = (p.start - run.start) / 3600.0
-            if p.outcome == "captured":
-                ax.plot([h, h], [y - 0.28, y + 0.28], color=CATEGORY_COLORS[p.category], lw=0.9, zorder=2)
-            elif p.outcome == "limit":
-                ax.plot(h, y, marker="x", color=ps.TEXT, markersize=3.5, mew=0.8, zorder=3)
-            elif p.outcome == "interrupted":
-                ax.plot(h, y, marker="v", color=ps.BRICK, markersize=3.5, zorder=3)
-        if run.running:
-            ax.annotate("running", (run.hours, y), xytext=(3, 0), textcoords="offset points", va="center", fontsize=6)
-        elif any(i["run"] == run.run for i in data.cat.config.get("infrastructure", [])) and not any(
-                p.outcome == "interrupted" for p in data.logs[run.run].phases):
-            ax.plot(run.hours, y, marker="v", color=ps.BRICK, markersize=3.5, zorder=3)
-    ax.set_yticks(range(len(runs)), [f"{'No wind' if r.condition == 'no_wind' else 'Wind'}, run {r.run}" for r in runs])
-    ax.invert_yaxis()
-    ax.set_xlabel("time since run start (h)")
+    """One row per condition; the wind runs placed end to end in operating time."""
+    rows = [("No wind", data.cat.by_condition("no_wind")), ("Wind", data.cat.by_condition("wind"))]
+    infrastructure = {i["run"] for i in data.cat.config.get("infrastructure", [])}
+    fig, ax = plt.subplots(figsize=(DOUBLE, 1.35))
+    for y, (_label, runs) in enumerate(rows):
+        offset = 0.0
+        for k, run in enumerate(runs):
+            ax.plot([offset, offset + run.hours], [y, y], color=ps.BLUE_FILL, lw=10, solid_capstyle="butt", zorder=1)
+            if k:
+                ax.plot([offset, offset], [y - 0.32, y + 0.32], color=ps.GREY, lw=0.6, ls=":", zorder=1)
+            for p in data.logs[run.run].phases:
+                h = offset + (p.start - run.start) / 3600.0
+                if p.outcome == "captured":
+                    ax.plot([h, h], [y - 0.28, y + 0.28], color=CATEGORY_COLORS[p.category], lw=0.9, zorder=2)
+                elif p.outcome == "limit":
+                    ax.plot(h, y, marker="x", color=ps.TEXT, markersize=3.5, mew=0.8, zorder=3)
+                elif p.outcome == "interrupted":
+                    ax.plot(h, y + 0.42, marker="v", color=ps.BRICK, markersize=3.5, zorder=3, clip_on=False)
+            if run.run in infrastructure and not any(p.outcome == "interrupted" for p in data.logs[run.run].phases):
+                ax.plot(offset + run.hours, y + 0.42, marker="v", color=ps.BRICK, markersize=3.5, zorder=3, clip_on=False)
+            offset += run.hours
+    ax.set_yticks(range(len(rows)), [label for label, _runs in rows])
+    ax.set_ylim(1.6, -0.6)
+    ax.set_xlabel("Operating time (h); wind runs placed end to end")
     handles = [plt.Line2D([], [], color=CATEGORY_COLORS[c], lw=1.5, label=f"captured, {c}") for c in CATEGORIES[:3]]
     handles += [plt.Line2D([], [], color=ps.TEXT, marker="x", lw=0, label="limit reached (test setting)"),
-                plt.Line2D([], [], color=ps.BRICK, marker="v", lw=0, label="infrastructure interruption")]
-    ax.legend(handles=handles, ncol=5, loc="upper center", bbox_to_anchor=(0.5, -0.22), frameon=False)
+                plt.Line2D([], [], color=ps.BRICK, marker="v", lw=0, label="infrastructure interruption"),
+                plt.Line2D([], [], color=ps.GREY, ls=":", lw=0.8, label="run restart")]
+    ax.legend(handles=handles, ncol=3, loc="upper center", bbox_to_anchor=(0.5, -0.45), frameon=False)
     save(fig, out, "fig3_run_timelines")
 
 
@@ -488,15 +496,14 @@ def fig4(data: Data, out: pathlib.Path) -> None:
     ax.plot(hours, bat_n[:, 1], color=ps.NAVY, lw=0.35)
     triggers = [m.start for m in data.logs[nominal.run].modes if m.mode == "reach_cable"]
     trig_v = np.interp(triggers, bat_n[:, 0], bat_n[:, 1])
-    ax.plot((np.asarray(triggers) - nominal.start) / 3600, trig_v, "|", color=ps.SAND, markersize=3, mew=0.5, lw=0,
+    ax.plot((np.asarray(triggers) - nominal.start) / 3600, trig_v, "|", color=ps.SAND_DARK, markersize=4, mew=0.6, lw=0,
             label="recharge triggered (Reach Cable starts)")
-    ax.set_xlabel(f"time since run start (h), no wind, run {nominal.run}")
-    ax.set_ylabel("battery voltage (V)")
-    ax.legend(loc="lower right", frameon=False)
-    ax.set_title("Battery voltage over the whole run", loc="left")
+    ax.set_xlabel("Time since run start (h)")
+    ax.set_ylabel("Battery voltage (V)")
+    ax.set_title("Battery voltage over no wind run")
     for col, (run, bat, retry, title) in enumerate([
-            (nominal, bat_n, False, f"Two cycles, no wind (run {nominal.run})"),
-            (windy, bat_w, True, f"Two cycles with a landing retry, wind (run {windy.run})")]):
+            (nominal, bat_n, False, "Two cycles, no wind run"),
+            (windy, bat_w, True, "Two cycles, wind run")]):
         ax = fig.add_subplot(grid[1, col])
         window = zoom_window(data.logs[run.run], retry)
         if window is None or not len(bat):
@@ -512,18 +519,22 @@ def fig4(data: Data, out: pathlib.Path) -> None:
                 retries = [t for t, _l, m in data.logs[run.run].lines if p.start <= t <= p.end and sd.SIG["retry_takeoff"] in m]
                 for t in retries:
                     ax.axvline((t - t0) / 60, color=ps.BRICK, lw=0.8, ls="--")
-        ax.set_xlabel("time (min)")
-        ax.set_ylabel("battery voltage (V)")
-        ax.set_title(title, loc="left")
+        ax.set_xlabel("Time (min)")
+        ax.set_ylabel("Battery voltage (V)")
+        ax.set_title(title)
     handles = [Patch(color=MODE_COLORS[m], label=MODE_LABELS[m]) for m in MODES]
     handles.append(plt.Line2D([], [], color=ps.BRICK, ls="--", lw=0.8, label="retry take-off after an aborted landing"))
-    fig.legend(handles=handles, ncol=5, loc="lower center", bbox_to_anchor=(0.5, -0.04), frameon=False)
-    fig.tight_layout(rect=(0, 0.05, 1, 1))
+    handles.append(plt.Line2D([], [], color=ps.SAND_DARK, marker="|", markersize=6, mew=0.8, lw=0,
+                              label="recharge triggered (Reach Cable starts)"))
+    fig.tight_layout(rect=(0, 0.075, 1, 1))
+    fig.legend(handles=handles, ncol=3, loc="lower center", bbox_to_anchor=(0.5, 0.0), frameon=False)
     save(fig, out, "fig4_battery_and_modes")
 
 
 def fig5(data: Data, out: pathlib.Path) -> dict:
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(DOUBLE, 2.3), gridspec_kw={"width_ratios": [1, 1.4]})
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(SINGLE, 4.0))
+    box = {"widths": 0.5, "patch_artist": True, "boxprops": {"facecolor": ps.BLUE_FILL, "edgecolor": ps.SLATE_DARK},
+           "medianprops": {"color": ps.SAND, "lw": 1.4}}
     cycle_minutes = {}
     for cond in ("no_wind", "wind"):
         values = []
@@ -532,24 +543,29 @@ def fig5(data: Data, out: pathlib.Path) -> dict:
                 if c["phase"] is not None and c["phase"].outcome == "captured":
                     values.append(c["duration_s"] / 60)
         cycle_minutes[cond] = values
-    ax1.boxplot([cycle_minutes["no_wind"], cycle_minutes["wind"]], widths=0.5, showfliers=True, patch_artist=True,
-                boxprops={"facecolor": ps.BLUE_FILL, "edgecolor": ps.SLATE_DARK}, medianprops={"color": ps.SAND, "lw": 1.4})
+    ax1.boxplot([cycle_minutes["no_wind"], cycle_minutes["wind"]], **box)
     ax1.set_xticks([1, 2], [f"No wind\n(n = {len(cycle_minutes['no_wind'])})", f"Wind\n(n = {len(cycle_minutes['wind'])})"])
-    ax1.set_ylabel("mission cycle time (min)")
-    ax1.set_title("Cycle time (captured cycles)", loc="left")
+    ax1.set_ylabel("Cycle time (min)")
+    ax1.set_title("Mission cycle time (captured cycles)")
     by_attempts = collections.defaultdict(list)
     for cond in ("no_wind", "wind"):
         for p in data.phases(cond, outcomes=("captured",)):
             by_attempts[p.attempts].append((p.end - p.start) / 60)
     keys = sorted(k for k in by_attempts if k <= 3)
-    ax2.boxplot([by_attempts[k] for k in keys], widths=0.5, patch_artist=True,
-                boxprops={"facecolor": ps.BLUE_FILL, "edgecolor": ps.SLATE_DARK}, medianprops={"color": ps.SAND, "lw": 1.4})
+    ax2.boxplot([by_attempts[k] for k in keys], **box)
     ax2.set_xticks(range(1, len(keys) + 1), [f"{k} attempt{'s' if k > 1 else ''}\n(n = {len(by_attempts[k])})" for k in keys])
-    ax2.set_ylabel("landing phase duration (min)")
+    ax2.set_ylabel("Duration (min)")
     medians = {k: statistics.median(by_attempts[k]) for k in keys}
     added = (medians[2] - medians[1]) * 60 if 1 in medians and 2 in medians else float("nan")
-    ax2.set_title(f"Reach Cable duration by attempts (median +{added:.0f} s per retry)", loc="left")
-    fig.tight_layout()
+    ax2.set_title("Reach Cable duration by landing attempts")
+    ax2.text(0.98, 0.04, f"median +{added:.0f} s per retry", transform=ax2.transAxes, ha="right", va="bottom",
+             fontsize=6.5, color=ps.TEXT)
+    handles = [Patch(facecolor=ps.BLUE_FILL, edgecolor=ps.SLATE_DARK, label="interquartile range"),
+               plt.Line2D([], [], color=ps.SAND, lw=1.4, label="median"),
+               plt.Line2D([], [], color=ps.SLATE_DARK, lw=0.8, label="whiskers: 1.5 × IQR"),
+               plt.Line2D([], [], color=ps.SLATE, marker="o", markerfacecolor="none", markersize=3, lw=0, label="outlier")]
+    fig.tight_layout(rect=(0, 0.07, 1, 1))
+    fig.legend(handles=handles, ncol=2, loc="lower center", bbox_to_anchor=(0.5, 0.0), frameon=False)
     save(fig, out, "fig5_cycle_time")
     return {"cycle_median_min": {c: statistics.median(v) for c, v in cycle_minutes.items() if v},
             "landing_median_min_by_attempts": medians, "seconds_added_per_retry": added}

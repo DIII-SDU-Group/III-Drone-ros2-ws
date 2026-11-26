@@ -28,6 +28,7 @@ reads only new or grown bags and takes seconds.
 | `soak_data.py` | Node-log parsing: landing phases and their outcome, abort triggers, behaviour-tree branch activations, mission mode intervals, cycles. No ROS needed. |
 | `bag_extract.py` | Bag signals: battery at 1 Hz and PX4 odometry inter-arrival statistics per bag folder; Figure 2's window signals. |
 | `make_all.py` | Tables 1-2 and Figures 1-6. |
+| `preview_tables.sh` | Compiles the tables with the manuscript class (`ieeetj.cls` from the manuscript folder) into `tables_preview.pdf`. |
 
 Definitions:
 
