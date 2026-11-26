@@ -354,7 +354,9 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
     ax.set_yticks(range(len(names)), [wrapped(n) for n in names])
     ax.tick_params(axis="y", labelsize=6.5)
     ax.invert_yaxis()
-    ax.legend(handles=[Patch(color=c, label=k) for k, c in result_colors.items() if k != "running"],
+    present = {n["result"] for n in nodes} | ({"failed"} if any(not closed for _t, closed in checks) else set()) \
+        | ({"succeeded"} if any(closed for _t, closed in checks) else set())
+    ax.legend(handles=[Patch(color=c, label=k) for k, c in result_colors.items() if k in present and k != "running"],
               loc="lower right", ncol=1, frameon=False)
     ax.set_title("Behavior tree execution: maneuver and condition nodes")
 
@@ -383,7 +385,7 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
         ax2.tick_params(axis="y", colors=ps.SAND_DARK)
         ax.set_ylabel("Speed (m/s)\nsolid")
         ax2.set_ylabel("Direction (deg)\ndashed", color=ps.SAND_DARK)
-        ax.set_title("Applied wind")
+        ax.set_title("Simulated wind")
 
     ax = axes[2]
     deviation_note = None
@@ -398,13 +400,26 @@ def fig2(data: Data, out: pathlib.Path) -> dict:
         idx = np.clip(np.searchsorted(o_t, ref[:, 0]), 0, len(o_t) - 1)
         err = np.linalg.norm(ref[:, 1:4] - nwu[idx], axis=1)
         if len(err) and np.nanmedian(err) < 0.5:
-            # Break the line where the reference has no position (cable landing).
+            # Break the line where the reference has no position (the cable
+            # landing, and on the cable) and shade those stretches.
             tt = ref[:, 0] - t_ref
             yy = err * 100
             breaks = np.where(np.diff(tt) > 0.5)[0]
+            gaps = [(tt[k], tt[k + 1]) for k in breaks]
+            if tt.size and tt[-1] < (t1 - t_ref) - 0.5:
+                gaps.append((tt[-1], t1 - t_ref))
+            if tt.size and tt[0] > (t0 - t_ref) + 0.5:
+                gaps.insert(0, (t0 - t_ref, tt[0]))
+            for a, b in gaps:
+                ax.axvspan(a, b, color=ps.GREY_FILL, ec=ps.GREY_LIGHT, hatch="////", lw=0, zorder=0)
             tt = np.insert(tt, breaks + 1, np.nan)
             yy = np.insert(yy, breaks + 1, np.nan)
             ax.plot(tt, yy, color=ps.SLATE_DARK, lw=0.8)
+            for a, b in gaps:
+                if b - a >= 6:
+                    ax.text((a + b) / 2, 0.5, "no position\nreference", transform=ax.get_xaxis_transform(),
+                            ha="center", va="center", fontsize=6.5, color=ps.TEXT,
+                            bbox={"boxstyle": "square,pad=0.2", "fc": "white", "ec": "none"})
             ax.set_ylabel("Error (cm)")
             ax.set_title("Position tracking error")
             deviation_note = "controller reference vs PX4 odometry"
