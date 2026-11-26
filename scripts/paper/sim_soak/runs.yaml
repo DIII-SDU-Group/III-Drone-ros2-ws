@@ -1,0 +1,92 @@
+# Run catalogue for the paper's simulation results (HIL soaks).
+# Paths are relative to the workspace root. Each run's window starts at the
+# runner's start (run_dir/run_plan.json started_at) and ends when its mission
+# stopped (`end`, UTC; null = still running, i.e. now). Landing phases still
+# open at the end are left out. Bag folders are found by their start time
+# inside the window. See docs in README.md.
+
+output: runtime/paper/sim_soak
+cache: runtime/paper/sim_soak/cache
+
+conditions:
+  no_wind:
+    label: No wind
+    runs:
+      - run: 39
+        run_dir: runtime/soak/20260929/paper_results/run39_18h/run_dir
+        node_logs: runtime/soak/20260929/paper_results/run39_18h/pi_node_logs
+        bag_roots: [runtime/soak/20260929/paper_results/run39_18h/rosbag]
+        rtf: runtime/soak/20260929/paper_results/run39_18h/soak_logs/rtf_run39.tsv
+        pi_cpu: runtime/soak/20260929/paper_results/run39_18h/soak_logs/pi_cpu_run39.tsv
+        pi_mem: null
+        end: "2026-11-25T04:56:13Z"
+        ended_by: "Pi USB-Ethernet adapter lost carrier for 3 s (infrastructure)"
+
+  wind:
+    label: "Wind (1.75 m/s, gusts)"
+    runs:
+      - run: 42
+        run_dir: runtime/soak/20260929/paper_results_wind_1.75/protected/20261125T185025Z_run42/run_dir
+        node_logs: runtime/soak/20260929/paper_results_wind_1.75/pi_node_logs
+        bag_roots: [runtime/soak/20260929/paper_results_wind_1.75/rosbags]
+        rtf: runtime/soak/20260929/rtf.tsv
+        pi_cpu: runtime/soak/20260929/pi_cpu.tsv
+        pi_mem: null
+        end: "2026-11-25T18:45:48Z"
+        ended_by: "Gazebo server froze on the workstation (infrastructure)"
+      - run: 43
+        run_dir: runtime/soak/20260929/paper_results_wind_1.75/protected/20261125T194047Z_run43/run_dir
+        node_logs: runtime/soak/20260929/paper_results_wind_1.75/pi_node_logs
+        bag_roots: [runtime/soak/20260929/paper_results_wind_1.75/rosbags]
+        rtf: runtime/soak/20260929/rtf.tsv
+        pi_cpu: runtime/soak/20260929/pi_cpu.tsv
+        pi_mem: null
+        end: "2026-11-25T19:33:46Z"
+        ended_by: "attempt limit reached; the harness then still ended the run"
+      - run: 44
+        run_dir: runtime/soak/20260929/paper_results_wind_1.75/protected/20261126T002556Z_run44/run_dir
+        node_logs: runtime/soak/20260929/paper_results_wind_1.75/pi_node_logs
+        bag_roots: [runtime/soak/20260929/paper_results_wind_1.75/rosbags]
+        rtf: runtime/soak/20260929/rtf.tsv
+        pi_cpu: runtime/soak/20260929/pi_cpu.tsv
+        pi_mem: null
+        end: "2026-11-26T00:17:52Z"
+        ended_by: "attempt limit reached; the harness then still ended the run"
+      - run: 45
+        run_dir: runtime/soak/20260929/paper_results_wind_1.75/protected/20261126T071128Z_run45/run_dir
+        node_logs: runtime/soak/20260929/paper_results_wind_1.75/pi_node_logs
+        bag_roots: [runtime/soak/20260929/paper_results_wind_1.75/rosbags]
+        rtf: runtime/soak/20260929/rtf.tsv
+        pi_cpu: runtime/soak/20260929/pi_cpu.tsv
+        pi_mem: null
+        end: "2026-11-26T06:49:47Z"
+        ended_by: "Ubuntu unattended upgrade restarted the Pi runtime (infrastructure; now disabled)"
+      - run: 46
+        run_dir: runtime/soak/20260929/paper_results_wind_1.75/protected/20261126T085332Z_run46/run_dir
+        node_logs: runtime/soak/20260929/paper_results_wind_1.75/pi_node_logs
+        bag_roots: [runtime/soak/20260929/paper_results_wind_1.75/rosbags]
+        rtf: runtime/soak/20260929/rtf.tsv
+        pi_cpu: runtime/soak/20260929/pi_cpu.tsv
+        pi_mem: null
+        end: "2026-11-26T08:52:01Z"
+        ended_by: "stopped to add wind and memory logging"
+      - run: 47
+        run_dir: runtime/endurance/hil-20261126T085517Z
+        node_logs: runtime/soak/20260929/paper_results_wind_1.75/pi_node_logs
+        bag_roots: [runtime/soak/20260929/paper_results_wind_1.75/rosbags]
+        rtf: runtime/soak/20260929/rtf.tsv
+        pi_cpu: runtime/soak/20260929/pi_cpu.tsv
+        pi_mem: runtime/soak/20260929/pi_mem.tsv
+        end: null
+        ended_by: "running"
+
+# Runs shown in the single-run figures (battery, computational load).
+figure_runs:
+  no_wind: 39
+  wind: 45     # longest complete wind run; switch to 47 once it is long
+
+# Infrastructure interruptions, reported outside the system statistics.
+infrastructure:
+  - {run: 39, what: "Pi USB-Ethernet adapter lost carrier for 3 s"}
+  - {run: 42, what: "Gazebo server froze on the workstation"}
+  - {run: 45, what: "Ubuntu unattended upgrade restarted the Pi runtime (automatic updates now disabled)"}
