@@ -624,6 +624,9 @@ def _exhausted_cycle_then_full_cycle(aborted_goals: tuple[int, ...]):
         (LANDING_STATUS, _landing_status(9, *aborted_goals), (0, 0)),
         ("reach_cable", REACH_FAILED, (30, 0)),
         ("reach_cable", REACH_FAILED, (31, 0)),  # periodic replay of the terminal status
+        # Run 45 (2026-11-26): the mode reported active again while still
+        # carrying the failed tree.
+        ("reach_cable", {"active": True, "tree_finished": True, "tree_success": False}, (40, 0)),
         ("inspection_demo", ACTIVE, (50, 0)),
         ("reach_cable", INACTIVE, (55, 0)),
         ("reach_cable", ACTIVE, (60, 0)),

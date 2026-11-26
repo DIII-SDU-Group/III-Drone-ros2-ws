@@ -613,7 +613,10 @@ def main() -> int:
             value = _mode(message)
             if value is None:
                 return
-            if name == "reach_cable" and value.get("active"):
+            # Only a new Reach Cable activation (its tree not finished) ends
+            # the replays of the exhausted one: a status can report the mode
+            # active while still carrying the failed tree (run 45, 02:24Z).
+            if name == "reach_cable" and value.get("active") and not value.get("tree_finished"):
                 exhausted_reach_replays_ignored = False
             source_stamp = _mode_source_stamp(message)
             source_stamp_ns = source_stamp["nanoseconds"]
