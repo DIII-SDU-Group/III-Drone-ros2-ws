@@ -1,0 +1,59 @@
+---
+- name: Install the package-source bootstrap tools
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - software-properties-common
+    state: present
+    update_cache: true
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when:
+    - not (iii_offline | default(false) | bool)
+    - not ansible_check_mode
+
+- name: Enable the ordinary Ubuntu Universe repository
+  ansible.builtin.command:
+    cmd: add-apt-repository --yes universe
+  changed_when: false
+  when:
+    - not (iii_offline | default(false) | bool)
+    - not ansible_check_mode
+
+- name: Read the current official ROS package-source release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest
+    return_content: true
+  register: iii_ros_apt_source_release
+  changed_when: false
+  when:
+    - not (iii_offline | default(false) | bool)
+    - not ansible_check_mode
+
+- name: Install the official ROS package-source configuration
+  ansible.builtin.apt:
+    deb: "https://github.com/ros-infrastructure/ros-apt-source/releases/download/{{ iii_ros_apt_source_release.json.tag_name }}/ros2-apt-source_{{ iii_ros_apt_source_release.json.tag_name }}.{{ ansible_distribution_release }}_all.deb"
+    state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when:
+    - not (iii_offline | default(false) | bool)
+    - not ansible_check_mode
+
+- name: Refresh Ubuntu and ROS package indexes
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 0
+  when:
+    - not (iii_offline | default(false) | bool)
+    - not ansible_check_mode
+
+- name: Install developer host and ROS packages
+  ansible.builtin.apt:
+    name: "{{ iii_host_packages + iii_ros_packages }}"
+    state: present
+    install_recommends: false
+    update_cache: false
+  environment:
+    DEBIAN_FRONTEND: noninteractive

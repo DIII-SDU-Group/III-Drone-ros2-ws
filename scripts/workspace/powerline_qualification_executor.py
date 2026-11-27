@@ -74,7 +74,6 @@ class Executor(Node):
         for _ in range(5): self.vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE,1,6); time.sleep(.1)
         for _ in range(5): self.vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM,1); time.sleep(.1)
         deadline=time.monotonic()+8
-        forced=False
         while time.monotonic()<deadline:
             self.publish(p,np.zeros(3),0,0); rclpy.spin_once(self,timeout_sec=.02)
             if self.status and self.status.nav_state==VehicleStatus.NAVIGATION_STATE_OFFBOARD and self.status.arming_state==VehicleStatus.ARMING_STATE_ARMED:return
@@ -83,7 +82,7 @@ class Executor(Node):
         # preflight flag even with valid local position. PX4's documented
         # magic value explicitly force-arms; all executor safety gates remain.
         self.vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM,1,21196,external=False)
-        forced=True; deadline=time.monotonic()+8
+        deadline=time.monotonic()+8
         while time.monotonic()<deadline:
             self.publish(p,np.zeros(3),0,0); rclpy.spin_once(self,timeout_sec=.02)
             if self.status and self.status.nav_state==VehicleStatus.NAVIGATION_STATE_OFFBOARD and self.status.arming_state==VehicleStatus.ARMING_STATE_ARMED:return

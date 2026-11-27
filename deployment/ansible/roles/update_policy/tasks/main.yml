@@ -1,0 +1,65 @@
+---
+# No automatic package updates on the aircraft host (user decision
+# 2026-11-26). Ubuntu's unattended-upgrades installed library updates during
+# a HIL mission and needrestart then restarted iii-system-daemon.service, which
+# stopped and restarted the whole III runtime mid-flight. Packages change only
+# when an operator runs apt or `iii host provision` deliberately, and no
+# package operation restarts services by itself.
+
+- name: Turn off APT's periodic package-list refresh and unattended upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/99-iii-no-automatic-updates
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      // Managed by III provisioning (roles/update_policy): no automatic package
+      // updates on the aircraft host. Overrides 20auto-upgrades and 10periodic.
+      APT::Periodic::Enable "0";
+      APT::Periodic::Update-Package-Lists "0";
+      APT::Periodic::Download-Upgradeable-Packages "0";
+      APT::Periodic::Unattended-Upgrade "0";
+      APT::Periodic::AutocleanInterval "0";
+
+- name: Read the automatic update units
+  ansible.builtin.command:
+    argv: ["/usr/bin/systemctl", "is-enabled", "{{ item }}"]
+  loop: "{{ iii_automatic_update_units }}"
+  register: iii_update_unit_states
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+# A unit that is not installed is masked too, so a later package install
+# cannot bring it back enabled.
+- name: Stop, disable and mask the automatic update units
+  ansible.builtin.shell: |
+    systemctl stop {{ item.item | quote }} 2>/dev/null || true
+    systemctl disable {{ item.item | quote }} 2>/dev/null || true
+    systemctl mask {{ item.item | quote }}
+  loop: "{{ iii_update_unit_states.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - not ansible_check_mode
+    - item.stdout | trim != 'masked'
+
+- name: Create the needrestart configuration directory
+  ansible.builtin.file:
+    path: /etc/needrestart/conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Keep needrestart from restarting services after a package operation
+  ansible.builtin.copy:
+    dest: /etc/needrestart/conf.d/90-iii-list-only.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by III provisioning (roles/update_policy): list the services that
+      # would need a restart, never restart them; the III runtime restarts only
+      # through `iii deploy dev`, `iii host provision` or a reboot.
+      $nrconf{restart} = 'l';

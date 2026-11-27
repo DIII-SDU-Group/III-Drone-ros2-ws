@@ -1,0 +1,14 @@
+---
+- name: Use UTC on the developer host
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/Etc/UTC
+    dest: /etc/localtime
+    state: link
+    force: true
+
+- name: Enable ordinary chrony synchronization
+  ansible.builtin.systemd_service:
+    name: chrony.service
+    state: started
+    enabled: true
+  when: not ansible_check_mode

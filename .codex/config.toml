@@ -1,0 +1,16 @@
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
+service_tier = "default"
+
+[features]
+js_repl = false
+memories = true
+
+[memories]
+generate_memories = true
+use_memories = true
+
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 2
+interrupt_message = true

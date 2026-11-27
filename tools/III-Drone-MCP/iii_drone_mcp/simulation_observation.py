@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import json
 import math
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 
 Point = dict[str, float]

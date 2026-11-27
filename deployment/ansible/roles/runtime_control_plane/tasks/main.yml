@@ -1,0 +1,170 @@
+---
+- name: Create direct-runtime configuration directory
+  ansible.builtin.file:
+    path: /etc/iii
+    state: directory
+    owner: "{{ iii_runtime_owner_effective }}"
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0755"
+
+- name: Install developer runtime environment
+  ansible.builtin.template:
+    src: runtime.env.j2
+    dest: /etc/iii/runtime.env
+    owner: "{{ iii_runtime_owner_effective }}"
+    group: "{{ iii_runtime_group_effective }}"
+    mode: "0644"
+
+- name: Create logind drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/logind.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Keep the runtime user's shared memory across logouts
+  ansible.builtin.copy:
+    dest: /etc/systemd/logind.conf.d/50-iii-keep-ipc.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Login]
+      # The III services run as a regular user. With RemoveIPC=yes (the
+      # default) logind deletes that user's POSIX shared memory about 10 s
+      # after its last login session ends, e.g. an SSH logout. Fast DDS opens
+      # its peers' shared-memory segments by name, so every participant
+      # created afterwards (a respawned node, a mission's bag recorder) loses
+      # shared-memory delivery from the running ones (found 2026-10-05).
+      RemoveIPC=no
+  notify: Restart systemd-logind
+
+- name: Install direct workspace runtime units
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../systemd/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - iii-system-daemon.service
+    - iii-runtime-api.service
+    - iii.target
+  notify: Reload systemd for III control plane
+
+- name: Remove obsolete split-host Cyclone DDS overrides
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item.0 }}.service.d/{{ item.1 }}"
+    state: absent
+  loop: "{{ ['iii-system-daemon', 'iii-runtime-api'] | product(['20-hil-split-domain.conf', '21-hil-cyclone-peer.conf']) | list }}"
+  notify: Reload systemd for III control plane
+
+- name: Create aircraft middleware override directories
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}.service.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - iii-system-daemon
+    - iii-runtime-api
+
+# Every aircraft profile (hil, real, opti_track) runs the HIL-qualified Fast
+# DDS stack in the provisioned domain; runtime.env carries the same values.
+- name: Install aircraft Fast DDS middleware overrides
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item }}.service.d/30-iii-fastdds.conf"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Service]
+      Environment=ROS_DOMAIN_ID={{ iii_ros_domain_id }}
+      Environment=ROS_LOCALHOST_ONLY=0
+      Environment=ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+      Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      Environment=FASTDDS_BUILTIN_TRANSPORTS=DEFAULT
+      UnsetEnvironment=CYCLONEDDS_URI
+  loop:
+    - iii-system-daemon
+    - iii-runtime-api
+  notify: Reload systemd for III control plane
+
+- name: Remove the shared-memory trial override
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/iii-system-daemon.service.d/40-shm-trial.conf
+    - /etc/systemd/system/iii-runtime-api.service.d/40-shm-trial.conf
+    - /etc/iii/shm-trial.env
+  notify: Reload systemd for III control plane
+
+- name: Remove the superseded HIL-only middleware overrides
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}.service.d/30-hil-fastdds.conf"
+    state: absent
+  loop:
+    - iii-system-daemon
+    - iii-runtime-api
+  notify: Reload systemd for III control plane
+
+- name: Remove receiver and security-gate units
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  loop:
+    - iii-deployment-receiver.service
+    - iii-deployment-receiver-candidate.service
+    - iii-deployment-receiver-reconcile.service
+    - iii-receiver-bootstrap-apply.service
+    - iii-receiver-bootstrap-apply.timer
+    - iii-receiver-bootstrap-prepare.service
+    - iii-receiver-bootstrap-reconcile.service
+    - iii-host-maintenance@.service
+    - iii-network-apply@.service
+    - iii-network-revert@.service
+    - iii-network-revert@.timer
+    - iii-network-timeout@.service
+  notify: Reload systemd for III control plane
+
+- name: Disable no-longer-used receiver and firewall services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop:
+    - iii-deployment-receiver.service
+    - iii-log-maintenance.timer
+    - nftables.service
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Enable direct workspace runtime units
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+  loop:
+    - iii-system-daemon.service
+    - iii-runtime-api.service
+    - iii.target
+  when: not ansible_check_mode
+
+# The profile, domain and units above take effect only in freshly started
+# services. `iii host provision` has already checked that the aircraft is
+# disarmed and landed. A Pi without a deployed workspace skips the units'
+# start conditions, so this is harmless before the first deployment.
+- name: Apply control-plane unit changes before the restart
+  ansible.builtin.meta: flush_handlers
+
+- name: Restart the system daemon and the Runtime API
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: restarted
+    daemon_reload: true
+  loop:
+    - iii-system-daemon.service
+    - iii-runtime-api.service
+  when: not ansible_check_mode

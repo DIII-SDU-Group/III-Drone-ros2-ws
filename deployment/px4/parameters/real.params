@@ -1,0 +1,124 @@
+# PX4 parameter baseline: real (outdoor aircraft, dual RTK GNSS)
+#
+# Ethernet transport on the aircraft ports, the two RTK GNSS receivers, the
+# GNSS/magnetometer/barometer estimator and the outdoor failsafes. Applying it
+# also undoes everything the opti_track baseline changes.
+#
+# Everything except the transport is the commissioned flight controller's own
+# value: the parameter snapshot captured on 2026-09-04 (PX4 1.16.1), confirmed
+# unchanged on the flight controller on 2026-10-07. The transport was moved to
+# Ethernet after that snapshot.
+#
+# Pi PX4-facing interface: 10.41.10.1
+# PX4 Ethernet endpoint:   10.41.10.2
+#
+# Not part of this baseline: sensor calibration, tuning, the geofence,
+# MPC_THR_HOVER and the RC input source.
+#
+# This is a QGroundControl parameter file (tab-separated; TYPE 6 = INT32,
+# 9 = REAL32), so QGroundControl can also load it. Lines starting with # are
+# comments. `iii px4 param-baseline --profile real` applies it, and the Pi
+# checks the flight controller against it before every system boot and start.
+#
+# MAV ID	COMPONENT ID	PARAM NAME	VALUE	TYPE
+
+# uXRCE-DDS client over Ethernet (UXRCE_DDS_CFG 1000 = Ethernet) to the Pi's
+# Micro XRCE-DDS agent: 10.41.10.1 as the int32 PX4 expects, UDP 8888.
+1	1	UXRCE_DDS_CFG	1000	6
+1	1	UXRCE_DDS_AG_IP	170461697	6
+1	1	UXRCE_DDS_PRT	8888	6
+
+# Must equal the stack ROS domain provisioned on the Pi (iii_ros_domain_id,
+# ROS_DOMAIN_ID in /etc/iii/runtime.env). The applier and the boot check
+# use the Pi's provisioned domain in place of this value.
+1	1	UXRCE_DDS_DOM_ID	42	6
+
+# No agent time sync, as qualified in HIL.
+1	1	UXRCE_DDS_SYNCT	0	6
+
+# MAVLink instance 2 over Ethernet, broadcasting to the Pi on UDP 14540. The
+# telemetry radio's MAVLink instance, used by QGroundControl, is left untouched.
+1	1	MAV_2_CONFIG	1000	6
+1	1	MAV_2_UDP_PRT	14540	6
+1	1	MAV_2_REMOTE_PRT	14540	6
+1	1	MAV_2_BROADCAST	1	6
+
+# Two u-blox RTK receivers on the GPS 1 and GPS 2 ports (201, 202), protocol
+# u-blox (1), baud rates auto-detected. GPS_UBX_MODE 1: the receivers work as
+# moving base and rover, which gives a GNSS heading; GPS_UBX_BAUD2 is the rate
+# of the link between them and GPS_YAW_OFFSET the antenna baseline's angle to
+# the aircraft's forward axis. GPS_UBX_DYNMODEL 6 = airborne, 1 g.
+1	1	GPS_1_CONFIG	201	6
+1	1	GPS_2_CONFIG	202	6
+1	1	GPS_1_PROTOCOL	1	6
+1	1	GPS_2_PROTOCOL	1	6
+1	1	GPS_1_GNSS	0	6
+1	1	GPS_2_GNSS	0	6
+1	1	SER_GPS1_BAUD	0	6
+1	1	SER_GPS2_BAUD	0	6
+1	1	GPS_UBX_MODE	1	6
+1	1	GPS_UBX_BAUD2	230400	6
+1	1	GPS_UBX_CFG_INTF	0	6
+1	1	GPS_UBX_DYNMODEL	6	6
+1	1	GPS_YAW_OFFSET	0.0	9
+
+# Both receivers are blended (SENS_GPS_MASK 7: speed, horizontal and vertical
+# accuracy), with the first one preferred when blending is not possible.
+1	1	SENS_GPS_MASK	7	6
+1	1	SENS_GPS_PRIME	0	6
+1	1	SENS_GPS_TAU	10.0	9
+
+# EKF2 sources. EKF2_GPS_CTRL 7 = GNSS horizontal position, altitude and
+# velocity; GNSS heading (bit 3) is not fused, the magnetometer provides the
+# heading (EKF2_MAG_TYPE 0 = automatic). EKF2_HGT_REF 1 = GNSS, with the
+# barometer as well. No external vision.
+1	1	SYS_HAS_GPS	1	6
+1	1	SYS_HAS_MAG	1	6
+1	1	SYS_HAS_BARO	1	6
+1	1	EKF2_GPS_CTRL	7	6
+1	1	EKF2_HGT_REF	1	6
+1	1	EKF2_BARO_CTRL	1	6
+1	1	EKF2_MAG_TYPE	0	6
+1	1	EKF2_MAG_CHECK	1	6
+1	1	EKF2_RNG_CTRL	1	6
+1	1	EKF2_OF_CTRL	1	6
+1	1	EKF2_EV_CTRL	0	6
+1	1	EKF2_EV_NOISE_MD	0	6
+1	1	EKF2_EVP_NOISE	0.1	9
+1	1	EKF2_EVA_NOISE	0.1	9
+1	1	EKF2_EV_QMIN	0	6
+1	1	EKF2_EV_DELAY	0.0	9
+
+# GNSS fusion: measurement delay (ms), antenna yaw offset, noise and the quality
+# the EKF requires before it uses GNSS (EKF2_GPS_CHECK 1023 = all checks).
+1	1	EKF2_GPS_DELAY	110.0	9
+1	1	EKF2_GPS_YAW_OFF	0.0	9
+1	1	EKF2_GPS_P_NOISE	0.5	9
+1	1	EKF2_GPS_V_NOISE	0.3	9
+1	1	EKF2_GPS_CHECK	1023	6
+1	1	EKF2_REQ_EPH	3.0	9
+1	1	EKF2_REQ_EPV	5.0	9
+1	1	EKF2_REQ_SACC	0.5	9
+1	1	EKF2_REQ_NSATS	6	6
+1	1	EKF2_REQ_PDOP	2.5	9
+1	1	EKF2_REQ_GPS_H	0.5	9
+1	1	EKF2_REQ_HDRIFT	0.1	9
+1	1	EKF2_REQ_VDRIFT	0.2	9
+
+# Maximum dead-reckoning time without aiding, in microseconds (5 s).
+1	1	EKF2_NOAID_TOUT	5000000	6
+
+# Failsafes and arming as commissioned. NAV_RCL_ACT 0 = no action on RC loss;
+# NAV_DLL_ACT 0 = no action on data-link loss; COM_POSCTL_NAVL 0 = Altitude
+# mode on position loss in Position mode; COM_POS_FS_EPH in m;
+# COM_LOW_BAT_ACT 3 = Return at critical, Land at emergency level;
+# COM_ARM_WO_GPS 1 = arming without a GNSS fix is allowed; MIS_TAKEOFF_ALT in
+# m; BAT1_N_CELLS 6 = 6S.
+1	1	NAV_RCL_ACT	0	6
+1	1	NAV_DLL_ACT	0	6
+1	1	COM_POSCTL_NAVL	0	6
+1	1	COM_POS_FS_EPH	5.0	9
+1	1	COM_LOW_BAT_ACT	3	6
+1	1	COM_ARM_WO_GPS	1	6
+1	1	MIS_TAKEOFF_ALT	2.5	9
+1	1	BAT1_N_CELLS	6	6

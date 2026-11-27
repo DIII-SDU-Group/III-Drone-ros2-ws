@@ -1,0 +1,18 @@
+---
+- name: Install developer hardware utilities
+  ansible.builtin.apt:
+    name: "{{ iii_hardware_packages }}"
+    state: present
+    install_recommends: false
+    update_cache: false
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Install stable local hardware aliases
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../hardware/90-iii-hardware-roles.rules"
+    dest: /etc/udev/rules.d/90-iii-hardware-roles.rules
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reconcile III hardware udev

@@ -1,0 +1,18 @@
+{
+  "description": "Enforce repository-defined subagent routing.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(spawn_agent|Agent)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"$PWD\"; while :; do if [ -f \"$d/.codex/hooks/enforce_subagent_policy.py\" ]; then exec python3 \"$d/.codex/hooks/enforce_subagent_policy.py\"; fi; [ \"$d\" = / ] && exit 1; d=\"$(dirname \"$d\")\"; done",
+            "timeout": 3,
+            "statusMessage": "Checking repository subagent policy"
+          }
+        ]
+      }
+    ]
+  }
+}

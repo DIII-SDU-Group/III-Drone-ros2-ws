@@ -1,0 +1,28 @@
+# PX4 parameter baseline: hil
+#
+# HIL flies the workstation's simulated PX4. The physical flight controller
+# stays connected and only needs its Ethernet transport on the HIL ports, so
+# the Pi can record that it stays disarmed.
+#
+# Pi PX4-facing interface: 10.41.10.1
+# PX4 Ethernet endpoint:   10.41.10.2
+#
+# This is a QGroundControl parameter file (tab-separated; TYPE 6 = INT32,
+# 9 = REAL32), so QGroundControl can also load it. Lines starting with # are
+# comments. `iii px4 param-baseline --profile hil` applies it, and the Pi
+# checks the flight controller against it before every system boot and start.
+#
+# MAV ID	COMPONENT ID	PARAM NAME	VALUE	TYPE
+
+# uXRCE-DDS client over Ethernet (UXRCE_DDS_CFG 1000 = Ethernet) to the Pi's
+# Micro XRCE-DDS agent: 10.41.10.1 as the int32 PX4 expects, UDP 8889.
+1	1	UXRCE_DDS_CFG	1000	6
+1	1	UXRCE_DDS_AG_IP	170461697	6
+1	1	UXRCE_DDS_PRT	8889	6
+
+# MAVLink instance 2 over Ethernet, broadcasting to the Pi on UDP 14542. The
+# telemetry radio's MAVLink instance, used by QGroundControl, is left untouched.
+1	1	MAV_2_CONFIG	1000	6
+1	1	MAV_2_UDP_PRT	14542	6
+1	1	MAV_2_REMOTE_PRT	14542	6
+1	1	MAV_2_BROADCAST	1	6

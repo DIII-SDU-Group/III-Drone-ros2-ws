@@ -1,134 +1,27 @@
 # Ground Control And Operator Tools
 
-## 1. GUI v2 Operator Stack
+Ground control installs on a normal Linux x86_64 workstation or field laptop.
+[Install it from the same checkout](ground-computer-installation.md) with the
+standalone `scripts/install_gc.py` script. That install supplies the GUI,
+checkout-pinned QGroundControl v5.0.8, and a native `iii` command. QGroundControl
+communicates directly with PX4. Native `iii` routes runtime commands to the
+matching SIM devcontainer or a selected Pi over SSH; the Pi/runtime CLI then
+uses its local daemon and Runtime API.
 
-GUI v2 is the primary operator GUI for the new architecture. It is a web stack
-with a ROS-free ground-control computer and a runtime-host API:
-
-```text
-Browser frontend
-  -> GC proxy on the ground-control computer
-  -> iii-runtime-api on the runtime host
-  -> III daemon, ROS graph, MAVLink/MAVSDK, logs, config, rosbag
-```
-
-The frontend and GC proxy live in `src/III-Drone-GC`:
-
-- `frontend/`: React/TypeScript operator interface using generated contract
-  types.
-- `iii_drone_gc/v2_proxy`: thin FastAPI proxy that discovers, validates,
-  selects, and forwards to one runtime API target.
-- `docker-compose.dev.yml`: Vite frontend plus proxy for active development.
-- `docker-compose.prod.yml`: static frontend plus proxy for production-style
-  serving from the ground-control computer.
-
-The runtime API lives in `src/III-Drone-Runtime` and is the only network-facing
-operator/runtime API for GUI v2 and remote runtime-control CLI commands.
-
-## 2. Legacy Tk Reference
-
-The Tk GUI remains in `src/III-Drone-GC` as a legacy parity/reference
-implementation:
-
-- `gc_node.py`: ROS communication backbone for the Tk GUI.
-- `gui.py`: current Tk GUI implementation.
-- `gui_original.py`: earlier Tk implementation retained for reference.
-
-Do not build new GUI v2 behavior on `IIIGCNode`. Current and legacy Tk
-diagnostics/commands are mapped in
-`src/III-Drone-GC/docs/gui-v2-parity.md`.
-
-## 3. Runtime API And Proxy Workflows
-
-Runtime API responsibilities:
-
-- browser session authentication and single active GUI session.
-- remote CLI token authentication.
-- typed operator state domains and WebSocket state streaming.
-- daemon-backed runtime control for boot/start/stop/restart/status.
-- typed command dispatch for PX4, custom operation, payload, perception,
-  configuration, rosbag, logs, map, and simulation surfaces.
-
-The Mission page is the routine inspection workspace: it exposes manual mapper
-and current-position overview capture, readiness, the fixed inspection mission,
-recharge intents, recording, and recovery state. The Runtime page owns III
-lifecycle and service controls. Configuration edits are server-authorized;
-constant changes are persisted for a cold restart. Simulation battery reset is
-available only under the sim profile and is never exposed as a real-aircraft
-operation.
-
-GC proxy responsibilities:
-
-- mDNS discovery of `_iii-runtime-api._tcp.local` runtime APIs.
-- manual endpoint fallback when multicast is unavailable.
-- `/identity` validation before target selection.
-- selected-target HTTP/WebSocket forwarding only; it is not an open proxy.
-
-Key docs:
-
-- `src/III-Drone-GC/docs/gui-v2-deployment.md`
-- `src/III-Drone-GC/docs/gui-v2-sim-e2e-smoke.md`
-- `src/III-Drone-GC/docs/gui-v2-real-profile-acceptance.md`
-- `src/III-Drone-GC/docs/gui-v2-security-checklist.md`
-- `src/III-Drone-Runtime/docs/runtime-api-configuration.md`
-
-## 4. CLI And Supporting Tools
-
-`tools/III-Drone-CLI` provides the `iii` command for build, deploy,
-configuration, system runtime control, and admin workflows.
-
-Canonical local/runtime-host bringup remains:
+There is no receiver gateway, signed field bundle, trusted-signer store, release
+cache, or special deployment account. The normal development loop is:
 
 ```bash
-source setup/setup_dev.bash
-iii system boot
-iii system attach
-iii system start
+python3 scripts/install_gc.py --profile deploy
+source setup/setup_field.bash
+iii deploy dev --host iii.local --build --restart
+iii host inspect --host iii.local
+iii px4 inspect --host iii.local
 ```
 
-Remote runtime-control commands use `iii-runtime-api` with
-`III_RUNTIME_API_URL` and `III_RUNTIME_API_CLI_TOKEN`; they no longer forward
-runtime-control shell commands over SSH. SSH remains for deployment, sync,
-install, and explicit admin sessions.
+For a fresh Pi, run `iii host provision --host iii.local` after it has network
+access and a normal `iii` login. Use QGroundControl directly for explicit PX4
+firmware and parameter work; the CLI’s PX4 command is inspection-only.
 
-Service-scoped CLI commands control daemon-managed services:
-
-```bash
-iii system service list
-iii system service restart micro_ros_agent
-```
-
-QGroundControl is outside the III supervision scope. It connects to PX4/operator
-telemetry and does not gate `iii system start`.
-
-## 5. Deployment And Smoke Commands
-
-Validate and run the GC stack:
-
-```bash
-docker compose -f src/III-Drone-GC/docker-compose.dev.yml config
-docker compose -f src/III-Drone-GC/docker-compose.prod.yml config
-
-III_GC_FRONTEND_PORT=5174 \
-docker compose -p iii-gc-smoke -f src/III-Drone-GC/docker-compose.prod.yml up -d --build
-```
-
-Run the sim E2E smoke while a sim runtime API is available:
-
-```bash
-III_GC_FRONTEND_PORT=5174 \
-scripts/workspace/gui_v2_sim_e2e_smoke.py --start-compose
-```
-
-Stop the production-style smoke stack:
-
-```bash
-docker compose -p iii-gc-smoke -f src/III-Drone-GC/docker-compose.prod.yml down --remove-orphans
-```
-
-## 6. Operational Importance
-
-Ground control is not only visualization; it is an active control and
-configuration interface. GUI v2 therefore treats authentication, command
-gating, selected-runtime validation, and stale/disconnected state as operational
-safety surfaces.
+No command here arms the vehicle or controls motors. Validate the selected
+simulation, OptiTrack, HIL, or field setup separately before flight.

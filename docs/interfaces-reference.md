@@ -58,7 +58,7 @@ Most central message semantically:
 - `SystemCommand`
 - `UpdatePowerlineOverview`, `GetPowerlineOverview`
 - `StoreCurrentState`, `LoadStoredState`
-- `WriteBehaviorTreeModelXML`
+- `GetMissionCatalog`, `SelectMissionCatalogEntry`
 - `RegisterOffboardMode`
 
 ### 3.3 Payload/Supervision Services
